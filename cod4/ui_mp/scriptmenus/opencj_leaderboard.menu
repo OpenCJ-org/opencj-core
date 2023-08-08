@@ -1,13 +1,13 @@
 #include "ui/menudef.h"
 #include "ui_mp/scriptmenus/opencj_common.inc"
 
-#define ADDPREFIX(val)  OPENCJDVAR("lb_")val
+#define ADDPREFIX(val)          OPENCJDVAR("board_")val
 
 // Map route "column"
 #define MR_ORG_X                (LEADERBOARD_ORG_X+10)
 #define MR_ORG_Y                (LEADERBOARD_ORG_Y+10)
 #define MR_SIZE_X               80
-#define MR_SIZE_Y               (LEADERBOARD_SIZE_Y-60)
+#define MR_SIZE_Y               (LEADERBOARD_SIZE_Y-60+1) // +1 for BORDER_FIX
 #define MR_CELL_SIZE_X          MR_SIZE_X
 #define MR_CELL_SIZE_Y          15
 #define MR_ORG_X_IDX(_idx)      (MR_ORG_X) // They're right below each other
@@ -83,7 +83,7 @@
 // Run date column
 #define DATE_ORG_X              (LOAD_ORG_X+LOAD_CELL_SIZE_X+1) // for small black line
 #define DATE_ORG_Y              LOAD_ORG_Y
-#define DATE_CELL_SIZE_X        60
+#define DATE_CELL_SIZE_X        80
 #define DATE_CELL_SIZE_Y        LOAD_CELL_SIZE_Y
 #define DATE_ORG_X_IDX(_idx)    (DATE_ORG_X) // right below each other
 #define DATE_ORG_Y_IDX(_idx)    (DATE_ORG_Y+(DATE_CELL_SIZE_Y*_idx)+_idx) // Small black line
@@ -165,8 +165,8 @@
 #define LB_PAGE_TXT_ORG_X           (LB_PREV_PAGE_BTN_ORG_X+PAGE_BUTTON_SIZE_X)
 #define LB_PAGE_TXT_ORG_Y           LB_PREV_PAGE_BTN_ORG_Y
 
-#define WHEN_LBPAGE_S_MAX     (dvarInt(ADDPREFIX("lbpage")) < dvarInt(ADDPREFIX("lbpagemax")))
-#define WHEN_LBPAGE_G_ONE     (dvarInt(ADDPREFIX("lbpage")) > 1)
+#define WHEN_LBPAGE_S_MAX     (dvarInt(ADDPREFIX("page")) < dvarInt(ADDPREFIX("pagemax")))
+#define WHEN_LBPAGE_G_ONE     (dvarInt(ADDPREFIX("page")) > 1)
 
 // Exit button
 #define EXITBTN_IDX             11
@@ -466,12 +466,12 @@
 
         // Page buttons for leaderboard
             // Normal prev page button (page > 1)
-        SEL_SHADER_RECT_WHEN(lbprevpage,    "opencj_icon_leftarrow",  WHITE_COLOR, WHEN_LBPAGE_G_ONE,  LB_PREV_PAGE_BTN_ORG_X,  LB_PREV_PAGE_BTN_ORG_Y,  PAGE_BUTTON_SIZE_X, PAGE_BUTTON_SIZE_Y)
+        SEL_SHADER_RECT_WHEN(prevpage,    "opencj_icon_leftarrow",  WHITE_COLOR, WHEN_LBPAGE_G_ONE,  LB_PREV_PAGE_BTN_ORG_X,  LB_PREV_PAGE_BTN_ORG_Y,  PAGE_BUTTON_SIZE_X, PAGE_BUTTON_SIZE_Y)
 
             // Normal next page button (page < max)
-        SEL_SHADER_RECT_WHEN(lbnextpage,    "opencj_icon_rightarrow", WHITE_COLOR, WHEN_LBPAGE_S_MAX,  LB_NEXT_PAGE_BTN_ORG_X,  LB_NEXT_PAGE_BTN_ORG_Y,  PAGE_BUTTON_SIZE_X, PAGE_BUTTON_SIZE_Y)
+        SEL_SHADER_RECT_WHEN(nextpage,    "opencj_icon_rightarrow", WHITE_COLOR, WHEN_LBPAGE_S_MAX,  LB_NEXT_PAGE_BTN_ORG_X,  LB_NEXT_PAGE_BTN_ORG_Y,  PAGE_BUTTON_SIZE_X, PAGE_BUTTON_SIZE_Y)
 
             // Page text
-        FIXED_RECT_DVARCENTER(ADDPREFIX("lbpagetxt"), NO_COLOR, WHITE_COLOR, LB_PAGE_TXT_ORG_X, LB_PAGE_TXT_ORG_Y, PAGE_TEXT_SIZE_X, PAGE_TEXT_SIZE_Y)
+        FIXED_RECT_DVARCENTER(ADDPREFIX("pagetxt"), NO_COLOR, WHITE_COLOR, LB_PAGE_TXT_ORG_X, LB_PAGE_TXT_ORG_Y, PAGE_TEXT_SIZE_X, PAGE_TEXT_SIZE_Y)
     } // menuDef
 }
