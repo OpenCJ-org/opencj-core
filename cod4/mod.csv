@@ -42,3 +42,6 @@ material,opencj_icon_fps_classic125
 material,opencj_icon_fps_standard
 material,default
 material,opencj_logo_nobg
+xmodel,body_mp_usmc_specops
+xmodel,head_mp_usmc_tactical_mich_stripes_nomex
+xmodel,viewmodel_base_viewhands
