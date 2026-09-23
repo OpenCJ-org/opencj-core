@@ -1,0 +1,31 @@
+{
+  "folders": [
+    {"path": ".", "name": "dev-tools"},
+    {"path": "../server-gsc"},
+    {"path": "../server-ext"},
+    {"path": "../cod4x-server"},
+    {"path": "../server-db"},
+    {"path": "../client-mod"},
+    {"path": "../discord-integration"},
+    {"path": "../libcod"}
+  ],
+  "settings": {
+    "files.eol": "\n",
+    "files.associations": {"*.gsc": "c", "*.gsx": "c", "*.menu": "c"},
+    "search.exclude": {"**/local/**": true, "**/obj/**": true},
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-x86",
+    "C_Cpp.default.defines": ["COD4"],
+    "C_Cpp.default.includePath": ["${workspaceFolder:server-ext}", "${workspaceFolder:cod4x-server}/src"]
+  },
+  "extensions": {"recommendations": ["ms-vscode.cpptools", "ms-python.python"]},
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {"label": "OpenCJ: build", "type": "process", "command": "python3", "args": ["dev.py", "build"], "options": {"cwd": "${workspaceFolder:dev-tools}"}, "group": {"kind": "build", "isDefault": true}, "problemMatcher": []},
+      {"label": "OpenCJ: start", "type": "process", "command": "python3", "args": ["dev.py", "up"], "options": {"cwd": "${workspaceFolder:dev-tools}"}, "problemMatcher": []},
+      {"label": "OpenCJ: restart", "type": "process", "command": "python3", "args": ["dev.py", "restart"], "options": {"cwd": "${workspaceFolder:dev-tools}"}, "problemMatcher": []},
+      {"label": "OpenCJ: logs", "type": "process", "command": "python3", "args": ["dev.py", "logs"], "options": {"cwd": "${workspaceFolder:dev-tools}"}, "problemMatcher": []},
+      {"label": "OpenCJ: stop", "type": "process", "command": "python3", "args": ["dev.py", "down"], "options": {"cwd": "${workspaceFolder:dev-tools}"}, "problemMatcher": []}
+    ]
+  }
+}
