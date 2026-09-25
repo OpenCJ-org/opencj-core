@@ -52,6 +52,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/migrations/004-shared-demos.sql
+        target: /docker-entrypoint-initdb.d/23-shared-demos.sql
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u opencj openCJ_cod4 -e 'SELECT COUNT(*) FROM playerRuns' >/dev/null"]
       interval: 5s
