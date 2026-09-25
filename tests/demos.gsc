@@ -129,6 +129,8 @@ playbackTest()
     bot.sessionState="playing";
     bot.playerRuns_runPaused=false;
     presentationTest(bot);
+    landingTest(bot);
+    checkpointSeekTest(bot);
     recordingHooksTest(bot);
     bot.playerRuns_runFinished=false;
     bot.playerRuns_runFinishing=false;
@@ -154,17 +156,58 @@ playbackTest()
     {
         origin=bot.demoReturn.origin;angles=bot.demoReturn.angles;
         pausedTime=bot openCJ\playTime::getTimePlayed();
+        check(bot.progressBar.alpha==0,"normal progress bar hidden during playback");
+        check(!bot.hudSpeed["curr"].hideWhenInMenu && bot.hudSpeed["curr"].archived,"demo speedometer remains visible over mouse menu");
+        check(bot.hudTimeLimit.horzalign=="right" && bot.hudTimeLimit.y==-74,"demo timer moves beneath lagometer");
         bot openCJ\demos::whilePlayingDemo();
         check(bot readPlaybackFrame_origin()==(0,20,100),"first playback frame is original recording start");
+
+        bot notify("menuresponse","opencj_demo","pause");
+        wait 0.05;
+        check(bot.playbackPaused,"clickable pause response pauses playback");
+        bot notify("menuresponse","opencj_demo","speed_-4");
+        wait 0.05;
+        check(bot.demoRate==-4 && !bot.playbackPaused,"clickable speed response selects reverse and resumes");
+        bot.playbackPaused=true;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==0,"paused playback does not advance");
+        bot.playbackPaused=false;bot.demoRate=4;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==4,"4x playback advances four recorded frames");
+        bot.demoRate=-2;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==2,"2x reverse moves back two frames");
+        bot.demoRate=-4;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==0 && bot.playbackPaused && bot.demoRate==1,"reverse boundary pauses and resets to forward 1x");
+        bot notify("menuresponse","opencj_demo","resume");
+        wait 0.05;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==1 && !bot.playbackPaused,"Play advances forward after reaching reverse boundary");
+        bot skipPlaybackFrames(-1);
+        bot.demoCheckpointed=false;bot.demoCheckpointRequest=-1;bot.playbackPaused=true;bot.demoFirstFrame=false;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==0,"any-percent playback ignores checkpoint navigation");
+        bot.demoCheckpointed=true;bot.demoCheckpointRequest=-1;
+        bot openCJ\demos::whilePlayingDemo();
+        check(bot skipPlaybackFrames(0)==0 && bot.playbackPaused,"checkpoint seeking displays target while staying paused");
+        bot.playbackPaused=false;bot.demoRate=1;
         for(i=0;i<21;i++)bot openCJ\demos::whilePlayingDemo();
         check(bot openCJ\demos::isPlayingDemo(),"full run loops by default");
         bot openCJ\events\eventHandler::onSavePositionRequest();
         check(!isDefined(bot.eventQueue["save"]),"playback rejects save requests");
+        bot notify("menuresponse","opencj_demo","stop");
+        wait 0.05;
+        check(bot.demoExitRequested,"clickable exit requests a safe return");
         bot openCJ\events\eventHandler::onLoadPositionRequest(0);
         bot openCJ\events\eventHandler::onSavePositionRequest();
         check(bot openCJ\demos::isPlayingDemo() && !isDefined(bot.eventQueue["save"]),"load cancellation keeps save guard until return is restored");
         bot openCJ\demos::whilePlayingDemo();
         check(!(bot openCJ\demos::isPlayingDemo()) && !isDefined(bot.eventQueue["load"]),"load exits demo without loading a run save");
+        check(!bot.demoMenuOpened,"demo menu state cleared on exit");
+        check(bot.hudSpeed["curr"].hideWhenInMenu && !bot.hudSpeed["curr"].archived,"speedometer visibility restores on exit");
+        check(bot.hudTimeLimit.horzalign=="center" && bot.hudTimeLimit.y==-12,"timer returns to normal position");
+        check(!isDefined(bot.demoCaption),"display-only demo caption is cleaned up");
         check(bot.origin==origin,"playback restores exact original position");
         check(distanceSquared(bot getPlayerAngles(),angles)<0.01,"playback restores view angles");
         check(!bot.playerRuns_runPaused,"playback restores active run state");
@@ -271,4 +314,54 @@ presentationTest(bot)
     addFrameToDemo(a,bot.origin,bot getPlayerAngles(),1,8192|512,0,0,0,125,17,bot getEntityNumber());
     check(numberOfDemoFrames(a)==2,"detailed capture continues after truncation");
     destroyDemo(a);destroyDemo(b);
+}
+
+landingTest(bot)
+{
+    source=1800000023;recorded=1800000024;decoded=1800000025;
+    createDemo(source);createDemo(recorded);createDemo(decoded);
+    // OCJ3: idle, a concrete engine landing impact, idle. No weapon firing.
+    fixture="789cf377f63266664006279ca00ca55a064120c50197b161c00658f2f2f352716b9720a09dc1176101c97633000022fa0926";
+    check(demoDecodeChunk(source,fixture)==3,"landing payload decodes");
+    check(!isDefined(demoDecodeChunk(decoded,"789cf377f63266664006279ca00ca55a064120c50197b161c00658f2f2f352716b9720a09dc157927cbb190026f60937")),"out-of-range impact is rejected");
+    check(!isDefined(demoDecodeChunk(decoded,"789cf377f63266664006279ca00ca55a064120c50197b161c00658f2f2f352716b9720a09d210b6101c97633000029e30943")),"damaging landing event is rejected");
+    bot selectPlaybackDemo(source);bot skipPlaybackFrames(1);
+    bot demoBeginPresentation();
+    health=bot.health;
+    addFrameToDemo(recorded,bot.origin,bot getPlayerAngles(),1,8192|512,0,0,0,125,17,bot getEntityNumber());
+    check(bot demoPlayLanding(),"recorded landing emits a normal engine impact event");
+    addFrameToDemo(recorded,bot.origin,bot getPlayerAngles(),1,8192|512,0,0,0,125,17,bot getEntityNumber());
+    addFrameToDemo(recorded,bot.origin,bot getPlayerAngles(),1,8192|512,0,0,0,125,17,bot getEntityNumber());
+    bytes=demoEncodeChunk(recorded,0,3);
+    check(demoDecodeChunk(decoded,bytes)==3,"live landing event is captured and decoded");
+    check(sameBytes(bytes,demoEncodeChunk(decoded,0,3)),"landing impact survives compression roundtrip");
+    bot selectPlaybackDemo(decoded);bot skipPlaybackFrames(1);
+    check(bot demoPlayLanding(),"captured impact can be replayed");
+    bot skipPlaybackFrames(1);
+    check(!bot demoPlayLanding(),"same engine event is not captured twice");
+    wait 0.1;
+    check(bot.health==health,"landing playback cannot apply fall damage");
+    bot demoEndPresentation();
+    check(!bot demoPlayLanding(),"landing events stop with playback");
+    destroyDemo(source);destroyDemo(recorded);destroyDemo(decoded);
+    createDemo(source);
+    check(demoDecodeChunk(source,"789cf377f63266664006279ca00ca55a064120c50197b161c00658f2f2f352716b9722a09dc1176101c97633000023b60928")==3,"load-cut landing fixture decodes");
+    bot selectPlaybackDemo(source);bot skipPlaybackFrames(1);bot demoBeginPresentation();
+    check(!bot demoPlayLanding(),"loading does not replay an impact from the discarded attempt");
+    bot demoEndPresentation();destroyDemo(source);
+}
+
+checkpointSeekTest(bot)
+{
+    id=1800000030;createDemo(id);
+    for(i=0;i<12;i++)addFrameToDemo(id,(i,0,100),(0,0,0),1,8192,0,0,0,125,1+int(i/4));
+    completeDemo(id);bot selectPlaybackDemo(id);
+    check(bot demoSeekCheckpoint(1)==4,"next checkpoint selects transition frame");
+    bot skipPlaybackFrames(6);
+    check(bot demoSeekCheckpoint(-1)==0,"previous checkpoint skips the current jump and selects its predecessor");
+    bot skipPlaybackFrames(-2);
+    check(bot demoSeekCheckpoint(-1)==0,"previous at boundary selects preceding checkpoint");
+    bot skipPlaybackFrames(7);
+    check(bot demoSeekCheckpoint(1)==11,"next checkpoint clamps at recording end");
+    destroyDemo(id);
 }
