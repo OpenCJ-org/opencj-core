@@ -23,4 +23,4 @@ exec /workspace/cod4x-server/bin/cod4x18_dedrun \
     +set fs_basepath /game +set fs_homepath "$runtime" +set fs_game mods/opencj \
     +set dedicated 2 +set net_ip 0.0.0.0 +set net_port 28960 \
     +set sv_maxclients 4 +set com_hunkMegs 1024 +set sv_authorizemode 1 \
-    +set developer 1 +set g_gametype cj +exec opencj-dev.cfg +map "$START_MAP"
+    +set developer 1 +set g_gametype cj +exec opencj-dev.cfg +set sv_timeout 1800 +map "$START_MAP"
