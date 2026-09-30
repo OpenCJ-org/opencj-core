@@ -37,16 +37,35 @@ main()
     check(bot skipPlaybackKeyFrames(20)==40,"successful path crosses failed section");
     range=bot demoPlaybackStyle(2,0,1299);
     time=bot demoPlaybackTime(0,1299);
-    check(time[1]==89,"walkthrough trims a minute of setup to a short approach");
-    check(bot skipPlaybackKeyFrames(10)==1220,"walkthrough skips setup without touching run payload");
+    check(time[1]==79,"walkthrough trims a minute of setup to a short approach");
+    check(bot skipPlaybackFrames(0)==1220,"walkthrough begins after the last load and setup");
     check(bot skipPlaybackKeyFrames(20)==1240,"walkthrough retains the full successful jump");
     check(bot demoSeekCheckpoint(1)==1280,"next checkpoint follows edited timeline");
     bot skipPlaybackFrames(40);
-    check(bot demoSeekCheckpoint(-1)==0,"previous checkpoint follows edited timeline");
+    check(bot demoSeekCheckpoint(-1)==1220,"previous checkpoint follows edited timeline");
     check(bot skipPlaybackKeyFrames(-20)==1260,"reverse uses edited frame sequence");
     range=demoFindSegment(b,17,(0,0,100),0,1);
-    check(isDefined(range) && range[1]==1280,"successful checkpoint segment ends on landing");
+    check(isDefined(range) && range[1]==1289,"successful checkpoint segment includes grounded landing tail");
     destroyDemo(a);destroyDemo(b);
+
+    // A load at the next checkpoint must not erase the arrival of this jump.
+    a=1800000084;createDemo(a);
+    for(i=0;i<120;i++)
+    {
+        cp=17;if(i>=40)cp=18;
+        flags=8192;if(i>=20 && i<40)flags=0;
+        addFrameToDemo(a,(0,0,100),(0,0,0),1,flags,0,int(i==80),0,125,cp);
+    }
+    bot selectPlaybackDemo(a);
+    segment=demoFindSegment(a,17,(0,0,100),0,1);
+    check(segment[1]==49,"segment stops after arrival, before later load");
+    edited=bot demoPlaybackStyle(2,segment[0],segment[1]);
+    check(edited[1]==49,"walkthrough retains landing despite destination load");
+    current=bot skipPlaybackFrames(0);bot skipPlaybackFrames(edited[1]-current);
+    check((bot readPlaybackFrame_flags()&8192)!=0,"terminal frame is grounded");
+    edited=bot demoPlaybackStyle(2,40,119);
+    check(edited[0]>=80,"starting at destination still omits pre-load setup");
+    destroyDemo(a);
 
     // No ammo bytes are recorded. The renderer gets ammo only during playback.
     a=1800000083;
