@@ -44,7 +44,21 @@ testOpen()
 {
     self.fpsTestAttempts++;
     if (self.fpsTestAttempts == self.fpsTestSuccessAttempt)
-        self.fpsTestReportedFPS = "333";
+    {
+        if (isDefined(self.fpsTestRestoreDelay))
+        {
+            self.fpsTestReportedFPS = "999";
+            if (self.fpsTestRestoreDelay >= 0)
+                self thread testRestore();
+        }
+        else
+            self.fpsTestReportedFPS = "333";
+    }
+}
+testRestore()
+{
+    wait self.fpsTestRestoreDelay;
+    self.fpsTestReportedFPS = "333";
 }
 testMessage(message)
 {

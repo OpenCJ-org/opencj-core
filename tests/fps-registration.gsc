@@ -11,12 +11,39 @@ main()
     check(p openCJ\fpsRegistration::canStart(), "existing registration accepted");
     check(p.fpsTestAttempts == 0, "no menu for existing registration");
 
+    p = makePlayer("", 1);
+    started = getTime();
+    p openCJ\fpsRegistration::onConnected();
+    check(getTime() - started < 300, "first attempt has no fixed startup delay");
+    check(p openCJ\fpsRegistration::canStart(), "fast response accepted");
+    check(p.fpsTestAttempts == 1 && p.fpsTestCloses == 1, "one fast attempt");
+
+    p = makePlayer("", 1);
+    p.fpsTestRestoreDelay = 0.3;
+    p thread openCJ\fpsRegistration::onConnected();
+    wait 0.1;
+    check(!p openCJ\fpsRegistration::canStart(), "temporary 999 blocks spawn");
+    p openCJ\fpsRegistration::explainBlocked();
+    wait 0.4;
+    check(p openCJ\fpsRegistration::canStart(), "restored FPS promptly releases spawn");
+    check(p.fpsTestMessage == "^2FPS verified. Ready to play.", "waiting has success endpoint");
+
+    p = makePlayer("", 1);
+    p.fpsTestRestoreDelay = -1;
+    p thread openCJ\fpsRegistration::onConnected();
+    wait 0.1;
+    p openCJ\fpsRegistration::explainBlocked();
+    wait 1.1;
+    check(!p openCJ\fpsRegistration::canStart(), "stuck temporary FPS never enables start");
+    check(p.fpsTestAttempts == 1, "do not overwrite saved FPS with 999 on retry");
+    check(p.fpsTestMessage == "^1Cannot start run: FPS registration failed. Reconnect; contact an admin if it persists.", "pending message does not hide failure");
+
     p = makePlayer("", 2);
     p.fpsRegistrationSpawnPending = true;
     p thread openCJ\fpsRegistration::onConnected();
     wait 0.1;
     check(!p openCJ\fpsRegistration::canStart(), "pending blocks start");
-    wait 3.2;
+    wait 1.2;
     check(p openCJ\fpsRegistration::canStart(), "second attempt succeeds");
     check(p.fpsTestAttempts == 2 && p.fpsTestCloses == 2, "bounded success attempts");
     check(p.fpsTestSpawns == 1, "held spawn resumes once");
