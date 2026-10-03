@@ -19,6 +19,18 @@ main()
         origins[3]=(25766.7539,1881.37524,-27206.8047);
         origins[4]=(25333.9004,1882.79773,-27331.0879);
     }
+    if(getCvar("mapname")=="mp_blue2")
+    {
+        origin=(502.735,13191.3,-367.875);
+        points=openCJ\checkpointPlatform::detectLandingAt(origin);
+        check(isDefined(points),"cubby detected");
+        if(isDefined(points))
+        {
+            check(openCJ\checkpointArea::contains(points,origin,true),"cubby contains player");
+            check(!openCJ\checkpointArea::contains(points,(700,13191.3,-367.875),true),"cubby excludes neighboring floor");
+            check(!openCJ\checkpointArea::contains(points,(300,13191.3,-367.875),true),"cubby excludes opposite neighboring floor");
+        }
+    }
     for(i=0;i<origins.size;i++)testFace(origins[i],i);
     check(!isDefined(platformBrushFace((0,0,0),(0,0,-1))),"non-walkable normal rejected");
     check(!isDefined(platformBrushFace((131073,0,0),(0,0,1))),"out of range origin rejected");
