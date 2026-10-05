@@ -18,6 +18,19 @@ main()
     { logPrint("[BLUE2_TEST] FAIL flags undefined\n"); return; }
     if(!user.endeasy || !user.endinter || !user.endhard)
     { logPrint("[BLUE2_TEST] FAIL flags false\n"); return; }
-    logPrint("[BLUE2_TEST] PASS all three finishes, first and repeated trigger\n");
+
+
+    pickups = strTok("ak_1 ak_2 ak_3 ak_4 deagle_2 deagle_3 r700_1 r700_2 m40a3_1 m40a3_2 usp_1 usp_2 usp_3", " ");
+    for(i=0;i<pickups.size;i++)
+    {
+        trigger = getEnt(pickups[i], "targetname");
+        if(!isDefined(trigger)) { logPrint("[BLUE2_TEST] FAIL missing pickup " + pickups[i] + "\n"); return; }
+        // A non-player entity makes any residual player weapon handler fail.
+        trigger notify("trigger",user);
+        wait 0.1;
+        trigger notify("trigger",user);
+        wait 0.1;
+    }
+    logPrint("[BLUE2_TEST] PASS all finishes and 13 inert weapon pickups\n");
     user delete();
 }

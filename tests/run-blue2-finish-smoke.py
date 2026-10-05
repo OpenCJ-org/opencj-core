@@ -23,6 +23,21 @@ p = mod / "maps/mp/gametypes/cj.gsc"
 s = p.read_text()
 assert "main()\n{" in s
 p.write_text(s.replace("main()\n{", "main()\n{\n    thread openCJ" + chr(92) + "blue2test::main();", 1))
+# Suppress player event side effects in this isolated test; test code spawns the bot.
+p = mod / "maps/mp/gametypes/_callbacksetup.gsc"
+s = p.read_text()
+import re
+matches = list(re.finditer(r"CodeCallback_(?!StartGameType)[A-Za-z0-9_]+\([^)]*\)\s*\{", s))
+for match in reversed(matches):
+    start = match.end()
+    end = start
+    depth = 1
+    while depth:
+        if s[end] == "{": depth += 1
+        elif s[end] == "}": depth -= 1
+        end += 1
+    s = s[:start] + "\n" + s[end-1:]
+p.write_text(s)
 container = "opencj-" + tag
 args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "server",
         "/workspace/cod4x-server/bin/cod4x18_dedrun", "+set", "fs_basepath", "/game",
@@ -41,7 +56,7 @@ try:
         if "[BLUE2_TEST] FAIL" in text:
             raise RuntimeError(text)
         if "[BLUE2_TEST] PASS" in text:
-            print("PASS: actual Easy, Intermediate, Hard handlers; first and repeated trigger")
+            print("PASS: all three finishes and all 13 weapon pickups inert; first and repeated trigger")
             break
     else:
         raise RuntimeError("No test result; inspect " + str(smoke))
