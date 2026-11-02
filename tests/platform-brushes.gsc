@@ -3,6 +3,42 @@ main()
     wait 2;
     level.brushFailures=0;
     origins=[];
+    if(getCvar("mapname")=="mp_mystic_v2")
+    {
+        broken=openCJ\checkpointPlatform::detectLandingAt((17920.0742,-15336.875,-16783.875));
+        check(isDefined(broken),"notched frame bridge detected");
+        if(isDefined(broken))
+        {
+            check(openCJ\checkpointArea::contains(broken,(17345,-15336,-16783.875),true),"notched bridge reaches left side");
+            check(openCJ\checkpointArea::contains(broken,(18479,-15336,-16783.875),true),"notched bridge reaches right side");
+            check(!openCJ\checkpointArea::contains(broken,(17920,-15260,-16783.875),true),"notch stays excluded");
+            check(!openCJ\checkpointArea::contains(broken,(17920,-15000,-16783.875),true),"frame interior stays excluded");
+        }
+        left=openCJ\checkpointPlatform::detectLandingAt((19855.1,-13839.2,-14223.875));
+        right=openCJ\checkpointPlatform::detectLandingAt((20088.7,-13823.3,-14223.875));
+        check(isDefined(left) && isDefined(right),"broken symmetric platform halves detected");
+        if(isDefined(left) && isDefined(right))
+        {
+            check(openCJ\checkpointArea::contains(left,(19830,-13761,-14223.875),true),"left half reaches upper outer edge");
+            check(openCJ\checkpointArea::contains(left,(19830,-13887,-14223.875),true),"left half retains lower outer edge");
+            check(openCJ\checkpointArea::contains(right,(20100,-13761,-14223.875),true),"right half retains upper outer edge");
+            check(openCJ\checkpointArea::contains(right,(20100,-13887,-14223.875),true),"right half reaches lower outer edge");
+            check(!openCJ\checkpointArea::contains(left,(19890,-13830,-14223.875),true),"left cutout excluded");
+            check(!openCJ\checkpointArea::contains(right,(20050,-13830,-14223.875),true),"right cutout excluded");
+        }
+        rim=(12111,-24310,-14311.875);glass=(12088,-24332,-14311.875);
+        rimPoints=openCJ\checkpointPlatform::detectLandingAt(rim);
+        glassPoints=openCJ\checkpointPlatform::detectLandingAt(glass);
+        check(isDefined(rimPoints) && isDefined(glassPoints),"octagon detected from rim and glass");
+        if(isDefined(rimPoints) && isDefined(glassPoints))
+        {
+            check(rimPoints.size==8 && glassPoints.size==8,"frame and glass combine into eight outer corners");
+            check(openCJ\checkpointArea::contains(rimPoints,glass,true),"rim detection includes glass interior");
+            check(openCJ\checkpointArea::contains(glassPoints,rim,true),"glass detection includes outer rim");
+            check(!openCJ\checkpointArea::contains(rimPoints,(12053,-24297,-14311.875),true),"octagon clipped corner stays outside");
+            check(openCJ\checkpointArea::validate(rimPoints)=="","merged octagon valid");
+        }
+    }
     if(getCvar("mapname")=="mp_dark")
     {
         origins[0]=(4392.528320,4160.322266,-735.972107);
@@ -142,8 +178,11 @@ testFace(origin,index)
                 for(w=0;w<detected.size;w++)nearest=min(nearest,distanceSquared(expected,detected[w]));
                 if(nearest>0.01)retained=false;
             }
-            else if(nearest>1.25*1.25)retained=false;
+            // Joining brushes can make an old outer corner an interior point.
+            // It must remain covered, but need not remain a vertex of the union.
+            else if(nearest>1.25*1.25 && !openCJ\checkpointArea::contains(detected,points[v]+vectorScale(origin-points[v],0.001),true))retained=false;
         }
+    if(!retained && isDefined(detected))printf("SELFTEST EXTENTS raw="+openCJ\checkpointArea::encode(points)+" detected="+openCJ\checkpointArea::encode(detected)+"\n");
     check(retained,"editor retains brush extent around objects "+index);
     check(openCJ\checkpointArea::validate(openCJ\checkpointArea::decode(openCJ\checkpointArea::encode(points)))=="","native face "+index+" serializes");
     center=(0,0,0);for(j=0;j<points.size;j++)center+=points[j];center=vectorScale(center,1.0/points.size);

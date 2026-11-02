@@ -31,5 +31,34 @@ int main() {
     assert(run({box(0,70,45,80,true),box(45,70,100,80,false)})<7000); // Joined wall brushes.
     const double corner=run({box(70,70,100,100,true)});
     assert(corner>6900 && corner<7000); // Concavity becomes safe convex portion.
+    const Point up={{0,0,1}};
+    const auto full=box(0,0,100,100,false);
+    std::vector<Obstacle> frame={box(0,0,100,10,false),box(0,90,100,100,false),box(0,10,10,90,false),box(90,10,100,90,false)};
+    Obstacle hull={};assert(convexHull(frame,hull));
+    assert(!coveredHull(hull,frame,up)); // Empty frame must not fill air.
+    frame.push_back(box(10,10,90,90,false));assert(coveredHull(hull,frame,up));
+    std::vector<Obstacle> gap={box(0,0,49,100,false),box(50,0,100,100,false)};
+    assert(!coveredHull(full,gap,up));
+    std::vector<Obstacle> notch={box(0,0,100,40,false),box(0,40,40,100,false)};
+    assert(!coveredHull(full,notch,up));
+    std::vector<Obstacle> overlap={box(0,0,60,100,false),box(40,0,100,100,false)};
+    assert(coveredHull(full,overlap,up)); // Overlap cannot count twice to hide a hole.
+    // Equivalent notched frame gaps, partitioned and ordered differently.
+    // Both must retain the complete lower strip around the actual player seed.
+    const std::vector<Obstacle> partitions[]={
+        {box(10,30,90,100,true),box(40,20,60,30,true)},
+        {box(40,20,60,100,true),box(10,30,40,100,true),box(60,30,90,100,true)},
+        {box(60,30,90,100,true),box(10,30,40,100,true),box(40,20,60,100,true)}
+    };
+    for(const auto& gaps:partitions) {
+        SupportedRegion search={gaps,up,Point{{50,10,0}}};
+        search.search(full);
+        assert(search.best.count==4);
+        assert(std::abs(search.bestArea-1999)<0.01);
+        double minX=100,maxX=0;
+        for(int i=0;i<search.best.count;i++){minX=std::min(minX,search.best.points[i].x[0]);maxX=std::max(maxX,search.best.points[i].x[0]);}
+        assert(minX==0 && maxX==100);
+        assert(search.visits<4096);
+    }
     std::puts("PASS: isolated props, divider sides, attached wall chains, convex corner clipping, fail-closed overlap");
 }

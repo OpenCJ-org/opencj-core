@@ -2,7 +2,7 @@
 from pathlib import Path
 import shutil,subprocess,time,uuid,sys
 root=Path(__file__).resolve().parents[2]
-for mapname in sys.argv[1:] or ['mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
+for mapname in sys.argv[1:] or ['mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
     tag='platform-support-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
     mod=home/'mods/opencj';mod.mkdir(parents=True)
