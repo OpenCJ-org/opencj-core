@@ -639,7 +639,7 @@ discardAndFinishTests(points)
     check(editor.cpc.rows.size==2,"undo restores discarded confirmed checkpoint");
     editor.cpc.selected=0;editor.cpc.draft=openCJ\checkpointCreation::_decode(editor.cpc.rows[0]);
     editor openCJ\checkpointCreation::_action("discard");
-    check(editor.cpc.rows.size==1 && editor.cpc.selected==1,"discard targets latest checkpoint even when an older one is selected");
+    check(editor.cpc.rows.size==1 && editor.cpc.selected==1,"discard deletes the selected checkpoint");
     editor.cpc.sharedCount=1;
     editor openCJ\checkpointCreation::_action("discard");
     check(editor.cpc.rows.size==1,"discard never deletes shared opening");

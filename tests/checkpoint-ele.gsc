@@ -40,6 +40,24 @@ main()
     check(p openCJ\checkpoints::nextAllowsEle(),"alternative area preserves requirement");
     branch=spawnStruct();branch.isEleAllowed=false;cp.childs[2]=branch;
     check(!p openCJ\checkpoints::nextAllowsEle(),"ambiguous split does not leak exemption");
+    p.cpc=spawnStruct();p.cpc.route="easy";p.cpc.rows=[];
+    a=openCJ\checkpointCreation::_empty();
+    a.points[0]=(0,0,0);a.points[1]=(100,0,0);a.points[2]=(100,100,0);a.points[3]=(0,100,0);
+    p.cpc.rows[0]=openCJ\checkpointCreation::_encode(a);p.cpc.draft=openCJ\checkpointCreation::_empty();
+    level.checkpoints_checkpoints=[];
+    check(isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(a.points),"Checkpoint #1"),"detect warns about same-draft checkpoint");
+    shifted=[];for(i=0;i<a.points.size;i++)shifted[i]=a.points[i]+(0,0,100);
+    check(p openCJ\checkpointCreation::detectedCheckpointWarning(shifted)=="","different floor does not warn");
+    adjacent=[];for(i=0;i<a.points.size;i++)adjacent[i]=a.points[i]+(100,0,0);
+    check(p openCJ\checkpointCreation::detectedCheckpointWarning(adjacent)=="","touching boundary does not warn");
+    a.alternatives[0]=shifted;p.cpc.rows[0]=openCJ\checkpointCreation::_encode(a);
+    check(isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(shifted),"Checkpoint #1"),"detect warns about confirmed alternative");
+    p.cpc.rows=[];p.cpc.draft.alternatives[0]=a.points;
+    check(isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(a.points),"alternative area"),"detect warns about pending alternative");
+    p.cpc.draft=openCJ\checkpointCreation::_empty();published=spawnStruct();published.area=a.points;published.id=42;
+    published.routeInfo=spawnStruct();published.routeInfo.name="hard";level.checkpoints_checkpoints[0]=published;
+    check(isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(a.points),"Published checkpoint #42 (hard)"),"detect warns about published checkpoint");
+    check(p.cpc.rows.size==0 && p.cpc.draft.points.size==0,"warning does not change draft");
     printf("ELE SELFTEST COMPLETE failures="+level.eleFailures+"\n");
 }
 check(value,name)
