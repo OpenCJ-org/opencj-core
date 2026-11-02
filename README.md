@@ -14,3 +14,7 @@ Apply `migrations/010-shop-purchases.sql` before deploying the Shop menu. It add
 Apply `migrations/011-shop-equipment.sql` for transactional purchase handling and saved equipment. The initial catalogue in `server-gsc/opencj/shop.gsc` remains preview-only: every item is unavailable. Real items need a registered cosmetic resource and server-side availability before sales can be enabled.
 
 Shop purchase safety: `shopBuyOrEquip` serializes requests per player inside one transaction, checks the live database catalogue and challenge balance, and records ownership, paid price and equipment together. Its unique ownership key prevents duplicate charges across servers. Equipment is keyed by the base weapon (or `player` for player models), independently of display categories. Owned items remain usable if challenge thresholds or catalogue prices change. The server-ext MySQL wrapper must drain stored-procedure results before reusing connections.
+
+## Checkpoint layout migration
+
+Apply `migrations/012-checkpoint-retirement.sql` before deploying the default CPC migration scripts. This additive column keeps removed checkpoint IDs and their historical statistics while excluding them from the active graph. `!cp finalize` automatically migrates supported small standalone-route edits in one transaction, retains completed results, archives unfinished old-layout runs, and marks old demos `ready=2` without deleting their payloads. See `dev-tools/CHECKPOINTS.md` for the edit limits and backups.
