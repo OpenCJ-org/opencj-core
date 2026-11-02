@@ -83,6 +83,8 @@ Additional commands:
 | `!cp new` | Start a new checkpoint after the last confirmed one |
 | `!cp previous` / `!cp next` | Select a confirmed checkpoint |
 | `!cp undo` | Undo the last draft edit; up to 32 edits in this session |
+| `!cp replace` | Clear all areas in the selection while retaining this checkpoint's route position and requirements; Detect then Confirm applies the replacement |
+| `!cp delete area` | Remove only the currently selected/cycled area; Confirm applies it. Removing the last area leaves this checkpoint selected for replacement |
 | `!cp delete` | Delete the selected checkpoint from the draft; later checkpoints reconnect sequentially |
 | `!cp double` | Toggle double-RPG permission **while approaching this checkpoint**; Confirm applies it |
 | `!cp save` | Explicitly save the current draft, including unfinished corner placement |
@@ -113,12 +115,25 @@ inside its area. Equivalent next landing areas share that permission. An ambiguo
 the exception. Split-route allowance policy is deferred. Elevator and FPS
 exceptions are not exposed by this initial editor.
 
-Published checkpoint IDs are retained. A same-length route can be revised only
-while its checkpoints have no recorded statistics, saved positions, or finishes.
-Changing the number of published checkpoints or editing recorded checkpoints
-requires a later migration workflow. Draft edits remain possible. Publishing
-does not delete existing routes or records, and rejects an existing route name
-that was not created by this editor. All publication writes are transactional.
+Finalizing an edited standalone CPC route automatically replaces its layout while
+retaining completed times and low-RPG results. Start and finish must remain unchanged.
+Supported changes are one checkpoint's geometry/alternatives, or insertion/deletion
+of up to three consecutive ordinary checkpoints. Reorders, multiple independent
+edits, changed requirements, and shared route connections are refused; the draft remains.
+
+Unchanged checkpoints keep their IDs. Removed IDs and historical statistics remain
+stored with the checkpoint marked retired. Before migration the old geometry is
+saved beside the draft as `.before-migration-<time>.b`. The layout replacement and
+history changes share the publication transaction, so failures roll everything back.
+Unfinished old-layout runs are archived; their saves remain stored but cannot resume.
+Old demos and winner references remain stored (`ready=2`) but are excluded from
+playback and future winner comparison. A new recording can become the demo winner
+without beating the retained historical result. Other players must reset an open
+run on this route before it can be migrated. In-flight demo saves briefly block
+migration; retry finalizing after they finish.
+
+Apply `server-db/migrations/012-checkpoint-retirement.sql` before loading these
+scripts. Restarting alone does not apply database migrations.
 
 Editing and preview testing suppress normal checkpoint scoring. Starting or
 loading a run while the editor is active does not re-enable checkpoint scoring.
@@ -221,3 +236,44 @@ Migration 003 adds those fields and updates the database finish function; apply 
 as the database owner. Historical halfbeat use cannot be recovered and is treated
 conservatively as allowed. The regression suite uses transaction/rollback for
 synthetic normal and any% finishes, so no test results remain in the leaderboard.
+
+## Replace a multi-area checkpoint in the middle of a route
+
+Use `!cp edit <number>` (or `!cp edit` while standing in either area), then
+`!cp replace`. Move to the replacement landing, use `!cp detect`, and
+`!cp confirm`. This replaces all alternatives with one area in the same route
+position, preserving the preceding/following checkpoints and checkpoint
+properties. Until Confirm, the old confirmed geometry is retained. Undo
+restores the previous selection. Autosave also retains an unconfirmed replacement.
+
+`!cp area` only changes which alternative is selected. `!cp delete area` removes
+that area from the pending edit; bare `!cp delete` removes the entire checkpoint
+and returns to append mode. Do not use bare Delete to replace a middle checkpoint.
+
+## Reset a draft to the finalized route
+
+`!cpc reset hard` (also `!cp reset hard`) replaces your current-map Hard draft
+with the active finalized CPC route and opens it for editing. It restores all
+confirmed checkpoints, alternative areas, finish markers, requirements and route
+color. The previous draft snapshots are backed up beside the draft as
+`.before-reset-<revision>-<number>.a/.b`. It does not publish or change records.
+
+Missing routes, invalid geometry, legacy non-area routes, shared branch/network
+drafts, or failed backups are refused. This version supports standalone CPC
+routes; shared networks need a separate network-aware restore.
+
+### Num Del follows the selection
+
+While editing a confirmed checkpoint, Num Del / `!cp discard` now acts like
+`!cp delete`: it deletes the selected checkpoint and reconnects its neighbors.
+While appending, it discards unconfirmed new geometry first; only an empty new
+slot offers **Delete last**. The HUD labels these targets explicitly. Use
+`!cp replace` to change geometry without removing the checkpoint slot.
+
+### Listing current-map checkpoint work
+
+Use `!cpc list` (or `!cp list`) without entering the editor. Red entries are your
+private drafts or unpublished changes; green entries are finalized playable
+routes. A finalized route with pending changes appears in both states. Retained
+drafts matching the published checkpoints are not listed as unfinished. Shared
+network sections are grouped under their route names. The command is read-only.
