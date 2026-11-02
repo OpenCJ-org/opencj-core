@@ -4,7 +4,7 @@ main()
     if(getCvar("db_base")!="opencj_demo_test_20260924_cod")return;
     level.scoreboardTestFailures=0;
     check(openCJ\scoreboard::clean("bad\"\\\nname",32)=="badname","safe dvar transport");
-    p=spawnStruct();p.sessionState="playing";
+    p=spawnStruct();p.sessionState="playing";p.isFullyConnected=true;
     check(openCJ\scoreboard::status(p)=="Ready","idle player status");
     p.cpc=spawnStruct();check(openCJ\scoreboard::status(p)=="^5CPC","CPC priority");
     p.cpc=undefined;p.clipEdit=spawnStruct();check(openCJ\scoreboard::status(p)=="^5Clip editor","clip editor priority");p.clipEdit=undefined;
