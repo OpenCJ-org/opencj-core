@@ -2,7 +2,12 @@
 from pathlib import Path
 import shutil,subprocess,time,uuid,sys
 root=Path(__file__).resolve().parents[2]
-for mapname in sys.argv[1:] or ['mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
+fixture='platform-brushes.gsc'
+alternatives='--alternatives' in sys.argv
+if alternatives: fixture='checkpoint-alternatives.gsc'
+maps=[arg for arg in sys.argv[1:] if arg!='--alternatives']
+if alternatives and not maps: maps=['mp_dark']
+for mapname in maps or ['mp_mystic_v3','mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
     tag='platform-support-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
     mod=home/'mods/opencj';mod.mkdir(parents=True)
@@ -12,7 +17,7 @@ for mapname in sys.argv[1:] or ['mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_
     (home/'plugins').mkdir()
     (home/'plugins/libcod4_1_8x.so').symlink_to('/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so')
     (home/'steamclient.so').symlink_to('/game/steamclient.so')
-    shutil.copyfile(root/'dev-tools/tests/platform-brushes.gsc',mod/'opencj/platformtest.gsc')
+    shutil.copyfile(root/'dev-tools/tests'/fixture,mod/'opencj/platformtest.gsc')
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     name='opencj-'+tag

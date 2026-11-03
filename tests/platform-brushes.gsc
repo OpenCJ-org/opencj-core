@@ -3,6 +3,42 @@ main()
     wait 2;
     level.brushFailures=0;
     origins=[];
+    if(getCvar("mapname")=="mp_mystic_v3")
+    {
+        narrow=openCJ\checkpointPlatform::detectLandingAt((20785.1,23839.9,-6719.88));
+        check(isDefined(narrow),"narrow asymmetric frame detected");
+        gap=bulletTrace((20785,24178.5,-6718),(20785,24178.5,-6730),false,undefined);
+        check(gap["fraction"]==1,"one-unit frame gap is real empty space");
+        if(isDefined(narrow))
+        {
+            check(openCJ\checkpointArea::contains(narrow,(20785,24177,-6719.88),true),"narrow frame retains supported far edge");
+            check(!openCJ\checkpointArea::contains(narrow,(20785,24178.5,-6719.88),true),"narrow frame never bridges the one-unit gap");
+        }
+        mesh=openCJ\checkpointPlatform::detectLandingAt((20863.2,23418.8,-7283.88));
+        check(isDefined(mesh),"landing beside sloped collision mesh detected");
+        if(isDefined(mesh))
+        {
+            check(openCJ\checkpointArea::contains(mesh,(20626,23372,-7283.88),true),"mesh clipping preserves left landing edge");
+            check(openCJ\checkpointArea::contains(mesh,(21078,23490,-7283.88),true),"mesh clipping preserves full safe width");
+            check(!openCJ\checkpointArea::contains(mesh,(20800,23520,-7283.88),true),"sloped mesh interior excluded");
+            check(openCJ\checkpointArea::validate(mesh)=="","mesh-clipped polygon remains valid");
+            for(v=0;v<mesh.size;v++)check(mesh[v][1]<23493,"all corners stop before mesh wall");
+        }
+        positions=[];positions[0]=(-2739.52,-2051.97,2480.12);positions[1]=(-2739.52,379,2480.12);
+        for(i=0;i<positions.size;i++)
+        {
+            landing=openCJ\checkpointPlatform::detectLandingAt(positions[i]);
+            check(isDefined(landing),"glass-walled landing detected "+i);
+            if(isDefined(landing))
+            {
+                check(openCJ\checkpointArea::contains(landing,positions[i],true),"glass wall keeps supported position "+i);
+                blocked=(-2750,-2090,2480.12);safe=(-2750,-2076,2480.12);
+                if(i==1){blocked=(-2750,420,2480.12);safe=(-2750,402,2480.12);}
+                check(!openCJ\checkpointArea::contains(landing,blocked,true),"glass wall interior excluded "+i);
+                check(openCJ\checkpointArea::contains(landing,safe,true),"landing beside glass retained "+i);
+            }
+        }
+    }
     if(getCvar("mapname")=="mp_mystic_v2")
     {
         broken=openCJ\checkpointPlatform::detectLandingAt((17920.0742,-15336.875,-16783.875));
@@ -182,6 +218,29 @@ testFace(origin,index)
             // It must remain covered, but need not remain a vertex of the union.
             else if(nearest>1.25*1.25 && !openCJ\checkpointArea::contains(detected,points[v]+vectorScale(origin-points[v],0.001),true))retained=false;
         }
+    if(getCvar("mapname")=="mp_futile_fixed" && index<2 && isDefined(detected))
+    {
+        // These boundary strips are inside player-solid sloped clip brushes,
+        // not loose props. Verify the actual collision and exact clipped extent.
+        if(index==0)
+        {
+            trace=bulletTrace((40079,8282.22,-28399.5),(40079,8479,-28399.5),false,undefined);
+            retained=trace["fraction"]<1 && detected.size==4;
+            for(v=0;v<detected.size;v++)if(detected[v][1]>8478.4)retained=false;
+            retained=retained && openCJ\checkpointArea::contains(detected,(39105,8477,-28400),true) && openCJ\checkpointArea::contains(detected,(40597,8193,-28400),true);
+        }
+        else
+        {
+            trace=bulletTrace((42825.4,4663.34,-27877),(42921,4741,-27901.1),false,undefined);
+            expected=openCJ\checkpointArea::decode("42901.6,4742,-27896.8;42705.3,4742,-27847.6;42705.3,4646,-27847.6;42922.3,4646,-27902;42922.3,4737.84,-27902");
+            retained=trace["fraction"]<1 && detected.size==expected.size;
+            for(v=0;v<expected.size;v++)
+            {
+                nearest=999999;for(w=0;w<detected.size;w++)nearest=min(nearest,distanceSquared(expected[v],detected[w]));
+                if(nearest>0.1)retained=false;
+            }
+        }
+    }
     if(!retained && isDefined(detected))printf("SELFTEST EXTENTS raw="+openCJ\checkpointArea::encode(points)+" detected="+openCJ\checkpointArea::encode(detected)+"\n");
     check(retained,"editor retains brush extent around objects "+index);
     check(openCJ\checkpointArea::validate(openCJ\checkpointArea::decode(openCJ\checkpointArea::encode(points)))=="","native face "+index+" serializes");
