@@ -55,6 +55,30 @@ main()
         }
     }
     check(walls>0,"wall geometry exercised");
+    // Low wall hits above a supporting floor used to leave the feet embedded.
+    lowWalls=0;
+    probes=[];probes[0]=slope;probes[1]=floor;
+    probes[2]=(-4947.176758,-987.563171,-535.875);
+    probes[3]=(-554.897949,-46.286156,-697.875);
+    for(p=0;p<probes.size;p++)for(i=0;i<dirs.size;i++)
+    {
+        lowEye=probes[p]+(0,0,4);
+        end=lowEye+vectorScale(dirs[i],1000);
+        hit=bulletTrace(lowEye,end,false,undefined);
+        if(hit["fraction"]>=1 || abs(hit["normal"][2])>0.01)continue;
+        dest=aimTeleportDestination(lowEye,end,1023);
+        if(!isDefined(dest))continue;
+        if(dest[2]<=hit["position"][2]-34)continue;
+        supportHit=bulletTrace(dest+(0,0,1),dest-(0,0,4),false,undefined);
+        if(supportHit["fraction"]>=1 || supportHit["normal"][2]<0.7)continue;
+        delta=dest-hit["position"];
+        clearance=delta[0]*hit["normal"][0]+delta[1]*hit["normal"][1];
+        check(clearance>=15.9,"low wall keeps body outside wall");
+        check(dest[2]>=supportHit["position"][2],"low wall feet above supporting platform");
+        printf("TELEPORT SELFTEST low-wall fixture eye="+lowEye+" end="+end+" destination="+dest+"\n");
+        lowWalls++;
+    }
+    check(lowWalls>0,"low wall and supporting platform exercised");
     player=addTestClient();
     check(isDefined(player),"real test client created");
     if(isDefined(player))
