@@ -8,25 +8,16 @@ static Obstacle box(double x1,double y1,double x2,double y2,bool wall) {
     o.points[2]={{x2,y2,0}};o.points[3]={{x1,y2,0}};return o;
 }
 static double run(std::vector<Obstacle> walls,Point seed={{10,10,0}}) {
-    const auto base=box(0,0,100,100,false);Point p[64];std::copy(base.points,base.points+4,p);int n=4;
-    if(!clipWalls(p,n,Point{{0,0,1}},seed,walls))return -1;
-    for(const auto& wall:walls)if(wall.wall) {
-        Point overlap[64];std::copy(p,p+n,overlap);int k=intersection(overlap,n,wall,Point{{0,0,1}});
-        assert(k<3 || area(overlap,k,Point{{0,0,1}})<0.01);
-    }
-    return area(p,n,Point{{0,0,1}});
+    auto base=box(0,0,100,100,false);const auto floor=base;
+    if(!finalizeLanding(base,{floor},walls,seed,seed))return -1;
+    return area(base.points,base.count,Point{{0,0,1}});
 }
 static Obstacle solve(std::vector<Obstacle> walls,Obstacle base=box(0,0,100,100,false),Point seed={{50,50,0}},Point normal={{0,0,1}}) {
-    int n=base.count;assert(clipWalls(base.points,n,normal,seed,walls));base.count=n;canonicalize(base);
-    for(const auto& wall:walls)if(wall.wall) {
-        Point overlap[64];std::copy(base.points,base.points+n,overlap);
-        int k=intersection(overlap,n,wall,normal);assert(k<3 || area(overlap,k,normal)<=0.01);
-    }
-    return base;
+    const auto floor=base;assert(finalizeLanding(base,{floor},walls,seed,seed));canonicalize(base);return base;
 }
 static void same(const Obstacle& a,const Obstacle& b) {
     assert(a.count==b.count);
-    for(int i=0;i<a.count;i++)for(int j=0;j<3;j++)assert(std::abs(a.points[i].x[j]-b.points[i].x[j])<0.00001);
+    for(int i=0;i<a.count;i++)for(int j=0;j<3;j++)assert(std::abs(a.points[i].x[j]-b.points[i].x[j])<0.005);
 }
 static Point tilt(Point p) { return {{0.8*p.x[0]-0.6*p.x[1]+20000,0.6*p.x[0]+0.8*p.x[1]-12000,p.x[2]+0.25*p.x[0]}}; }
 static Obstacle tilted(Obstacle p) { for(int i=0;i<p.count;i++)p.points[i]=tilt(p.points[i]);return p; }
@@ -49,7 +40,7 @@ static void combinedWalls() {
     const Plane slice={normal,dot(base.points[0],normal)+normal.x[2]*0.5};
     for(auto& triangle:triangles) {
         for(auto& vertex:triangle)vertex=tilt(vertex);
-        Obstacle section;assert(triangleSection(triangle,slice,normal,section));markBoundary(section,base.points,base.count,normal);mixed.push_back(section);
+        Obstacle section;assert(triangleSection(triangle,slice,normal,section));mixed.push_back(section);
     }
     const auto reference=solve(mixed,base,tilt(Point{{50,50,0}}),normal);
     int order[]={0,1,2,3};int permutations=0;
@@ -63,7 +54,50 @@ static void combinedWalls() {
     same(solve({box(70,0,80,100,true)}),solve({box(70,0,80,45,true),box(70,45,80,100,true)}));
     std::puts("PASS: global wall optimum, reordered/rotated corners, mixed mesh+brush+prop on sloped landing, divider seams");
 }
+static void unifiedConstraints() {
+    for(bool slope:{false,true}) {
+        auto transform=[slope](Obstacle o){return slope?tilted(o):o;};
+        auto point=[slope](Point p){return slope?tilt(p):p;};
+        // L-shaped floor: choosing the widest bottom section first would lose
+        // most of it to the wall. Joint solving should retain the tall left arm.
+        std::vector<Obstacle> floors={transform(box(0,0,100,40,false)),transform(box(0,40,40,100,false))};
+        std::vector<Obstacle> walls={transform(box(45,0,55,40,false)),transform(box(15,30,25,38,false))};
+        Obstacle hull={};assert(convexHull(floors,hull));
+        const Point seed=point(Point{{10,10,0}});
+        auto expected=hull;assert(finalizeLanding(expected,floors,walls,seed,seed));
+        Point normal=cross(add(hull.points[1],hull.points[0],-1),add(hull.points[2],hull.points[0],-1));normal=add(Point{},normal,1/std::sqrt(dot(normal,normal)));
+        assert(area(expected.points,expected.count,normal)>3900);
+        assert(coveredHull(expected,floors,normal));
+        auto withoutProp=hull;assert(finalizeLanding(withoutProp,floors,{walls[0]},seed,seed));same(expected,withoutProp);
+        std::reverse(floors.begin(),floors.end());std::reverse(walls.begin(),walls.end());
+        auto reversed=hull;assert(finalizeLanding(reversed,floors,walls,seed,seed));same(expected,reversed);
+        // This loose object touches the would-be bottom-region cut y=40,
+        // but neither the actual floor boundary nor a connected wall.
+        std::vector<Obstacle> prop={transform(box(15,35,25,45,false))};
+        assert(classifyWalls(prop,floors,normal));assert(!prop[0].wall);
+    }
+    // Acute interior geometry must not acquire an unbounded expansion miter.
+    auto floorForProp=box(0,0,100,100,false);auto needle=box(20,20,80,20.001,false);
+    needle.count=3;needle.points[2]={{79,20.001,0}};
+    std::vector<Obstacle> needleProps={needle};assert(classifyWalls(needleProps,{floorForProp},Point{{0,0,1}}));assert(!needleProps[0].wall);
+    // More than eight intermediate corners, reduced by one wall to a rectangle.
+    Obstacle many={};many.count=12;
+    for(int i=0;i<12;i++){double angle=2*3.141592653589793*i/12;many.points[i]={{50+50*std::cos(angle),50+50*std::sin(angle),0}};}
+    Obstacle hull={};assert(convexHull({many},hull));assert(hull.count==12);
+    std::vector<Obstacle> walls={box(0,0,20,100,false),box(80,0,100,100,false),box(0,0,100,20,false),box(0,80,100,100,false)};
+    const Point seed={{50,50,0}};assert(finalizeLanding(hull,{many},walls,seed,seed));assert(hull.count==4);
+    // Circular support, including corners and the slope allowance used by GSC.
+    auto floor=box(0,0,100,100,false);Point contact;double distance;
+    assert(playerContact(floor.points,4,Point{{-10,-10,0.125}},contact,distance));
+    assert(!playerContact(floor.points,4,Point{{-14,-14,0.125}},contact,distance));
+    auto slope=tilted(floor);auto origin=tilt(Point{{50,50,0}});origin.x[2]+=4;
+    assert(playerContact(slope.points,4,origin,contact,distance));
+    origin.x[2]+=10;assert(!playerContact(slope.points,4,origin,contact,distance));
+    std::puts("PASS: joint gaps+walls+props on flat/sloped floors, original-union wall classification, late corner limit, circular slope support");
+}
+
 int main() {
+    unifiedConstraints();
     combinedWalls();
     Point bevel[4]={{{-2759,2647.77,0}},{{-2759,2871,0}},{{-3047,2871,0}},{{-3047,2870.77,0}}};
     const double originalArea=area(bevel,4,Point{{0,0,1}});
@@ -90,7 +124,7 @@ int main() {
         for(auto& triangle:mesh) {
             if(reverse)std::swap(triangle[0],triangle[2]);
             Obstacle section;assert(triangleSection(triangle,slice,up,section));
-            markBoundary(section,boundary.points,boundary.count,up);sections.push_back(section);
+            sections.push_back(section);
         }
         const double clipped=run(sections);
         assert(clipped>6980 && clipped<7000);

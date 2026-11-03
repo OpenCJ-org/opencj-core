@@ -9,7 +9,7 @@ if alternatives: fixture='checkpoint-alternatives.gsc'
 maps=[arg for arg in sys.argv[1:] if arg not in ['--moving','--alternatives']]
 if alternatives and not maps: maps=['mp_dark']
 if moving and not maps: maps=['mp_qube']
-for mapname in maps or ['mp_mystic_v3','mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
+for mapname in maps or ['mp_to_the_moon','mp_mystic_v3','mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
     tag='platform-support-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
     mod=home/'mods/opencj';mod.mkdir(parents=True)

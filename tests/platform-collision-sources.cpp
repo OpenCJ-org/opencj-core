@@ -36,8 +36,7 @@ struct Model {
 static Obstacle detect(Point origin) {
     Search search;search.origin=origin;search.normal={{0,0,1}};search.footprint=true;
     assert(search.triangleSupport() && search.count>=3);
-    mergeLanding(search.best,search.count,origin);
-    assert(trimWalls(search.best,search.count,origin));
+    assert(detectLanding(search.best,search.count,origin));
     Obstacle out={};out.count=search.count;std::copy(search.best,search.best+search.count,out.points);return out;
 }
 static void modelCombinations() {
@@ -91,4 +90,50 @@ static void terrainFloor() {
     for(int i=0;i<wall.count;i++){assert(wall.points[i].x[0]<70);for(int a=0;a<3;a++)assert(std::abs(wall.points[i].x[a]-wallAndProp.points[i].x[a])<0.00001);}
     cm={};
 }
-int main(){modelCombinations();terrainFloor();std::puts("PASS: rotated/scaled static collision models, sloped floors, leaning model walls, ignored model props, glass terrain floors, triangle ordering");}
+
+// Same geometric union with arbitrary internal subdivisions and brush order.
+// The starting brush extends into a small notch; preserving it in full must
+// not prevent selecting the larger supported strip through all its neighbors.
+static void brushAssemblies() {
+    for(int pieces:{3,8,32,128,256})for(bool reverse:{false,true})for(bool thin:{false,true}) {
+        const double width=thin?pieces*0.5:std::max(167,pieces*2), length=std::max(960,pieces*10);
+        std::vector<cbrush_t> brushes(pieces);std::vector<uint16_t> indices(pieces);
+        for(int i=0;i<pieces;i++) {
+            auto& b=brushes[i];b.contents=(i%2)?1:0x10;
+            b.mins[0]=double(i)*width/pieces;b.maxs[0]=double(i+1)*width/pieces;
+            b.mins[1]=(i==0)?6:0;b.maxs[1]=length;b.mins[2]=-6;b.maxs[2]=0;
+            indices[i]=reverse?pieces-1-i:i;
+        }
+        cLeaf_t leaf={};leaf.leafBrushNode=1;cLeafBrushNode_t nodes[2]={};
+        nodes[1].leafBrushCount=pieces;nodes[1].data.leaf.brushes=indices.data();
+        cm={};cm.numLeafs=1;cm.leafs=&leaf;cm.numBrushes=pieces;cm.brushes=brushes.data();cm.leafbrushNodesCount=2;cm.leafbrushNodes=nodes;
+        for(int start:{0,pieces/2,pieces-1}) {
+            Search search;search.origin={{(brushes[start].mins[0]+brushes[start].maxs[0])/2,500,0.125}};
+            search.normal={{0,0,1}};search.footprint=true;search.node(1);assert(search.count>=3);
+            assert(detectLanding(search.best,search.count,search.origin));
+            double lo=1000,hi=-1000;for(int i=0;i<search.count;i++){lo=std::min(lo,search.best[i].x[0]);hi=std::max(hi,search.best[i].x[0]);}
+            if(!(lo<0.02 && hi>width-0.02))std::fprintf(stderr,"pieces=%d reverse=%d start=%d lo=%f hi=%f width=%f\n",pieces,reverse,start,lo,hi,width);
+            assert(lo<0.02 && hi>width-0.02);
+            assert(area(search.best,search.count,{{0,0,1}})>(width-0.021)*(length-6.021));
+            Obstacle result={};result.count=search.count;std::copy(search.best,search.best+search.count,result.points);
+            std::vector<Obstacle> floors;
+            for(const auto& b:brushes){Obstacle f={};f.count=4;f.points[0]={{b.mins[0],b.mins[1],0}};f.points[1]={{b.maxs[0],b.mins[1],0}};f.points[2]={{b.maxs[0],b.maxs[1],0}};f.points[3]={{b.mins[0],b.maxs[1],0}};floors.push_back(f);}
+            assert(coveredHull(result,floors,{{0,0,1}}));
+        }
+    }
+    cm={};std::puts("PASS: 3/8/32/128/256 mixed solid+glass brushes, reversed enumeration, three seed brushes, real notch retained");
+}
+
+static void collectionLimit() {
+    cbrush_t brushes[2]={};
+    for(int i=0;i<2;i++){brushes[i].contents=1;brushes[i].mins[0]=i?10:0;brushes[i].maxs[0]=i?5000:10;brushes[i].maxs[1]=100;brushes[i].mins[2]=-5;}
+    cLeaf_t leaf={};leaf.leafBrushNode=1;cLeafBrushNode_t nodes[2]={};uint16_t indices[]={0,1};nodes[1].leafBrushCount=2;nodes[1].data.leaf.brushes=indices;
+    cm={};cm.numLeafs=1;cm.leafs=&leaf;cm.brushes=brushes;cm.numBrushes=2;cm.leafbrushNodes=nodes;cm.leafbrushNodesCount=2;
+    Search search;search.origin={{5,50,0.125}};search.footprint=true;search.node(1);assert(search.count==4);
+    // A connected face outside the spatial budget must reject, never return
+    // only the first brush as a seemingly complete platform.
+    assert(!detectLanding(search.best,search.count,search.origin));cm={};
+    std::puts("PASS: connected geometry beyond spatial budget fails instead of returning a partial platform");
+}
+
+int main(){collectionLimit();brushAssemblies();modelCombinations();terrainFloor();std::puts("PASS: rotated/scaled static collision models, sloped floors, leaning model walls, ignored model props, glass terrain floors, triangle ordering");}

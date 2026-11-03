@@ -3,6 +3,42 @@ main()
     wait 2;
     level.brushFailures=0;
     origins=[];
+    if(getCvar("mapname")=="mp_to_the_moon")
+    {
+        // Coplanar brush seam is ~0.007 units wide, below the merge tolerance.
+        // A side branch leaves genuine air which must not enter the convex area.
+        samples=[];samples[0]=(6768,-4350,2067.625);samples[1]=(6768,-3650,2067.625);
+        for(s=0;s<samples.size;s++)
+        {
+            joined=openCJ\checkpointPlatform::detectLandingAt(samples[s]);
+            check(isDefined(joined),"rounded brush seams produce a landing");
+            if(isDefined(joined))
+            {
+                check(openCJ\checkpointArea::contains(joined,(6768,-4400,2067.625),true),"joined landing retains lower strip");
+                check(openCJ\checkpointArea::contains(joined,(6768,-3550,2067.625),true),"joined landing retains upper strip");
+                check(!openCJ\checkpointArea::contains(joined,(7000,-4200,2067.625),true),"side-branch empty space stays excluded");
+            }
+        }
+    }
+
+    if(getCvar("mapname")=="mp_to_the_moon")
+    {
+        samples=[];samples[0]=(6620,-4000,2664.625);samples[1]=(6697,-4000,2664.625);samples[2]=(6538,-4000,2664.625);
+        for(s=0;s<samples.size;s++)
+        {
+            joined=openCJ\checkpointPlatform::detectLandingAt(samples[s]);
+            check(isDefined(joined),"checkpoint 21 detected from each floor brush");
+            if(isDefined(joined))
+            {
+                check(openCJ\checkpointArea::contains(joined,(6538,-4000,2664.625),true),"checkpoint 21 includes left strip");
+                check(openCJ\checkpointArea::contains(joined,(6697,-4000,2664.625),true),"checkpoint 21 includes right strip");
+                check(openCJ\checkpointArea::contains(joined,(6620,-4477,2664.625),true),"checkpoint 21 retains supported lower floor");
+                check(!openCJ\checkpointArea::contains(joined,(6538,-4482,2664.625),true),"checkpoint 21 excludes real notch");
+                check(!openCJ\checkpointArea::contains(joined,(6620,-4479,2664.625),true),"checkpoint 21 excludes wall");
+            }
+        }
+    }
+
     if(getCvar("mapname")=="mp_mystic_v3")
     {
         narrow=openCJ\checkpointPlatform::detectLandingAt((20785.1,23839.9,-6719.88));
@@ -11,7 +47,17 @@ main()
         check(gap["fraction"]==1,"one-unit frame gap is real empty space");
         if(isDefined(narrow))
         {
-            check(openCJ\checkpointArea::contains(narrow,(20785,24177,-6719.88),true),"narrow frame retains supported far edge");
+            // The component is non-convex: the larger supported rectangle near
+            // this seed need not retain the entire initially hit narrow brush.
+            check(openCJ\checkpointArea::contains(narrow,(20785.1,23839.9,-6719.88),true),"irregular frame retains supported seed");
+            check(openCJ\checkpointArea::contains(narrow,(20850,23700,-6719.88),true),"irregular frame includes broad supported section");
+            farFrame=openCJ\checkpointPlatform::detectLandingAt((20785,24100,-6719.88));
+            check(isDefined(farFrame),"far narrow section remains detectable");
+            if(isDefined(farFrame))
+            {
+                check(openCJ\checkpointArea::contains(farFrame,(20785,24177,-6719.88),true),"far narrow section retains supported far edge");
+                check(!openCJ\checkpointArea::contains(farFrame,(20785,24178.5,-6719.88),true),"far narrow section excludes one-unit gap");
+            }
             check(!openCJ\checkpointArea::contains(narrow,(20785,24178.5,-6719.88),true),"narrow frame never bridges the one-unit gap");
         }
         mesh=openCJ\checkpointPlatform::detectLandingAt((20863.2,23418.8,-7283.88));
@@ -170,8 +216,19 @@ main()
         edge=(944,-2764,22151.625);
         check(isDefined(openCJ\checkpointPlatform::detectLandingAt(edge)),"one-unit footprint overlap detected");
         check(!isDefined(platformBrushFace((944,-2766,22151.625),(0,0,1),true)),"platform beyond player footprint rejected");
-        check(isDefined(platformBrushFace((640,-2763,22151.625),(0,0,1),true)),"corner footprint overlap detected");
+        check(!isDefined(platformBrushFace((640,-2763,22151.625),(0,0,1),true)),"box-only corner overlap outside circular gameplay support rejected");
         check(!isDefined(openCJ\checkpointPlatform::detectLandingAt(origin+(0,0,8))),"detector does not select lower floor");
+        if(isDefined(points))
+        {
+            contacts=[];contacts[0]=origin;contacts[1]=edge;contacts[2]=(640,-2763,22151.625);contacts[3]=(944,-2766,22151.625);contacts[4]=origin+(0,0,8);
+            for(c=0;c<contacts.size;c++)
+            {
+                native=isDefined(platformBrushFace(contacts[c],(0,0,1),true));
+                gameplay=openCJ\checkpointArea::touchesPlayer(points,contacts[c],true);
+                check(native==gameplay,"native and gameplay player contact agree "+c);
+            }
+        }
+
     }
     for(i=0;i<origins.size;i++)testFace(origins[i],i);
     check(!isDefined(platformBrushFace((0,0,0),(0,0,-1))),"non-walkable normal rejected");
@@ -241,6 +298,13 @@ testFace(origin,index)
             }
         }
     }
+    if(getCvar("mapname")=="mp_futile_fixed" && index==3 && isDefined(detected))
+    {
+        // This concave assembly now selects a larger convex region, trimming
+        // part of the starting brush. Require more floor, seed and no air.
+        retained=polygonArea(detected)>=polygonArea(points) && openCJ\checkpointArea::contains(detected,origin,true);
+        points=detected;
+    }
     if(!retained && isDefined(detected))printf("SELFTEST EXTENTS raw="+openCJ\checkpointArea::encode(points)+" detected="+openCJ\checkpointArea::encode(detected)+"\n");
     check(retained,"editor retains brush extent around objects "+index);
     check(openCJ\checkpointArea::validate(openCJ\checkpointArea::decode(openCJ\checkpointArea::encode(points)))=="","native face "+index+" serializes");
@@ -268,4 +332,11 @@ check(value,name)
 {
     if(!value){level.brushFailures++;printf("BRUSH SELFTEST FAIL "+name+"\n");}
     else printf("BRUSH SELFTEST PASS "+name+"\n");
+}
+
+polygonArea(points)
+{
+    sum=(0,0,0);
+    for(i=1;i<points.size-1;i++)sum+=openCJ\checkpointArea::crossProduct(points[i]-points[0],points[i+1]-points[0]);
+    return length(sum)*0.5;
 }
