@@ -2,3 +2,6 @@
 local/
 __pycache__/
 *.pyc
+
+# Generated route-label research notes; not an executable regression fixture.
+/tests/challenge-route-evidence.json
