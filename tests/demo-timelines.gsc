@@ -2,12 +2,16 @@
 // Isolated in-memory demo tests; never modify live runs or stored demos.
 main()
 {
+    precacheItem("rpg_mp");
     wait 2;
-    if(getCvar("db_base") != "opencj_demo_test_20260924_cod") return;
+    if(getCvar("opencj_isolated_demo_test") != "1") return;
     level.demoTimelineFailures=0;
     bot=addTestClient();
     if(!isDefined(bot)){check(false,"create test viewer");return;}
     wait 1;
+    bot.sessionState="playing";
+    bot.sessionTeam="allies";
+    bot spawn((0,0,100),(0,0,0));
     a=1800000081;b=1800000082;
     createDemo(a);createDemo(b);
     for(i=0;i<1300;i++)
@@ -37,13 +41,12 @@ main()
     check(bot skipPlaybackKeyFrames(20)==40,"successful path crosses failed section");
     range=bot demoPlaybackStyle(2,0,1299);
     time=bot demoPlaybackTime(0,1299);
-    check(time[1]==79,"walkthrough trims a minute of setup to a short approach");
-    check(bot skipPlaybackFrames(0)==1220,"walkthrough begins after the last load and setup");
-    check(bot skipPlaybackKeyFrames(20)==1240,"walkthrough retains the full successful jump");
+    check(time[1]==1279,"walkthrough keeps positioning and removes only failed frames");
+    check(bot skipPlaybackFrames(0)==0,"walkthrough retains approach to save location");
+    check(bot skipPlaybackKeyFrames(20)==40,"walkthrough cuts only the failed attempt");
+    check(bot skipPlaybackKeyFrames(1200)==1240,"walkthrough retains successful jump");
     check(bot demoSeekCheckpoint(1)==1280,"next checkpoint follows edited timeline");
-    bot skipPlaybackFrames(40);
-    check(bot demoSeekCheckpoint(-1)==1220,"previous checkpoint follows edited timeline");
-    check(bot skipPlaybackKeyFrames(-20)==1260,"reverse uses edited frame sequence");
+    check(bot demoSeekCheckpoint(-1)==0,"previous checkpoint follows edited timeline");
     range=demoFindSegment(b,17,(0,0,100),0,1);
     check(isDefined(range) && range[1]==1289,"successful checkpoint segment includes grounded landing tail");
     destroyDemo(a);destroyDemo(b);
@@ -64,13 +67,85 @@ main()
     current=bot skipPlaybackFrames(0);bot skipPlaybackFrames(edited[1]-current);
     check((bot readPlaybackFrame_flags()&8192)!=0,"terminal frame is grounded");
     edited=bot demoPlaybackStyle(2,40,119);
-    check(edited[0]>=80,"starting at destination still omits pre-load setup");
+    check(edited[0]==40,"starting at destination preserves successful movement before saves");
     destroyDemo(a);
+
+    // Large platform: entry and setup can be far apart. Unrelated alternatives
+    // and airborne fly-bys must still not count as a nearby setup.
+    a=1800000085;createDemo(a);
+    for(i=0;i<40;i++)
+    {
+        cp=17;if(i>=30)cp=18;
+        flags=8192;if(i>=20 && i<30)flags=0;
+        addFrameToDemo(a,(i*50,0,100),(0,0,0),1,flags,0,0,0,125,cp);
+    }
+    check(isDefined(demoFindSegment(a,17,(900,0,100),0,1)),"large checkpoint setup matches beyond arrival radius");
+    check(!isDefined(demoFindSegment(a,17,(3000,0,100),0,1)),"distant alternative rejected");
+    check(!isDefined(demoFindSegment(a,17,(1400,0,100),0,1)),"airborne flyby is not a setup");
+    // Stale finish progress after noclip must not select the finish segment.
+    cp=spawnStruct();cp.id=17;cp.origin=(900,0,100);cp.radius=100;cp.onGround=true;
+    finish=spawnStruct();finish.id=18;finish.origin=(3000,0,100);finish.radius=100;finish.onGround=true;
+    level.checkpoints_checkpoints=[];level.checkpoints_checkpoints[0]=cp;level.checkpoints_checkpoints[1]=finish;
+    bot.checkpoints_checkpoint=finish;
+    bot setOrigin((900,0,100));
+    segment=bot openCJ\demos::segmentAtPosition(a,0,1);
+    check(isDefined(segment) && segment[0]==0,"physical checkpoint overrides stale finished run for lookup");
+    check(bot.checkpoints_checkpoint==finish,"lookup does not change run progress");
+    cp.ender="basic";finish.ender="hard";
+    bot.route=undefined;
+    check(bot openCJ\demos::routeAtPosition()=="basic","physical area infers route without an active run");
+    bot.route="hard";
+    check(bot openCJ\demos::routeAtPosition()=="basic","physical area overrides stale other route");
+    cp.hasChildren=true;cp.endCheckpoints=[];cp.endCheckpoints[0]=finish;
+    basicEnd=spawnStruct();basicEnd.ender="basic";cp.endCheckpoints[1]=basicEnd;
+    bot.route=undefined;
+    check(!isDefined(bot openCJ\demos::routeAtPosition()),"shared area without choice stays ambiguous");
+    bot.route="hard";
+    check(bot openCJ\demos::routeAtPosition()=="hard","shared area respects existing route choice");
+    destroyDemo(a);
+
+    // Idle pauses on either side of real movement are shortened independently.
+    a=1800000086;createDemo(a);
+    for(i=0;i<120;i++)
+    {
+        x=0;if(i>=50)x=i-49;if(i>=70)x=20;
+        addFrameToDemo(a,(x,0,100),(0,0,0),1,8192,0,0,0,125,17);
+    }
+    bot selectPlaybackDemo(a);bot demoPlaybackStyle(2,0,119);
+    time=bot demoPlaybackTime(0,119);
+    check(time[1]==26,"two long idle pauses shortened without removing repositioning");
+    check(bot skipPlaybackKeyFrames(2)==48,"first pause retains its end pose");
+    check(bot skipPlaybackKeyFrames(1)==49,"pause ends before movement");
+    check(bot skipPlaybackKeyFrames(1)==50,"first moving frame retained");
+    bot demoPlaybackStyle(0,0,119);time=bot demoPlaybackTime(0,119);
+    check(time[1]==119,"speedrun retains idle pauses");
+    bot demoPlaybackStyle(1,0,119);time=bot demoPlaybackTime(0,119);
+    check(time[1]==119,"low-RPG policy unchanged");
+    bot demoPlaybackStyle(2,25,90);time=bot demoPlaybackTime(25,90);
+    check(time[1]>0,"partial checkpoint segment retains range boundaries");
+    destroyDemo(a);
+    // Mouse aiming, slow positional drift, airborne motion and short rests stay.
+    for(test=0;test<4;test++)
+    {
+        a=1800000086;createDemo(a);
+        count=50;if(test==3)count=10;
+        for(i=0;i<count;i++)
+        {
+            x=0;yaw=0;flags=8192;
+            if(test==0)yaw=i*0.1;
+            if(test==1)x=i*0.005;
+            if(test==2)flags=0;
+            addFrameToDemo(a,(x,0,100),(0,yaw,0),1,flags,0,0,0,125,17);
+        }
+        bot selectPlaybackDemo(a);bot demoPlaybackStyle(2,0,count-1);time=bot demoPlaybackTime(0,count-1);
+        check(time[1]==count-1,"preserve aiming/drift/airborne/brief pause case "+test);
+        destroyDemo(a);
+    }
 
     // No ammo bytes are recorded. The renderer gets ammo only during playback.
     a=1800000083;
     createDemo(a);
-    rpg=level.weapons_rpgs["default"];
+    rpg="rpg_mp";
     bot giveWeapon(rpg);bot setSpawnWeapon(rpg);
     bot setWeaponAmmoClip(rpg,0);
     addFrameToDemo(a,bot.origin,bot getPlayerAngles(),1,8192|4096,0,0,0,125,17,bot getEntityNumber());
