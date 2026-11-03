@@ -86,6 +86,19 @@ static void unifiedConstraints() {
     Obstacle hull={};assert(convexHull({many},hull));assert(hull.count==12);
     std::vector<Obstacle> walls={box(0,0,20,100,false),box(80,0,100,100,false),box(0,0,100,20,false),box(0,80,100,100,false)};
     const Point seed={{50,50,0}};assert(finalizeLanding(hull,{many},walls,seed,seed));assert(hull.count==4);
+    // Final regions smaller than one unit remain valid after wall clipping,
+    // including rotated slopes at large coordinates.
+    for(bool sloped:{false,true})for(double width:{0.25,0.5,1.0}) {
+        auto transform=[sloped](Obstacle o){return sloped?tilted(o):o;};
+        auto base=transform(box(0,0,3,20,false));
+        auto wall=transform(box(0,0,3,20-width-0.125,false));
+        Point seed={{1.5,20-width/2,0}};if(sloped)seed=tilt(seed);
+        auto selected=base;assert(finalizeLanding(selected,{base},{wall},seed,seed));
+        Point normal=cross(add(base.points[1],base.points[0],-1),add(base.points[2],base.points[0],-1));normal=add(Point{},normal,1/std::sqrt(dot(normal,normal)));
+        assert(coveredHull(selected,{base},normal));assert(selected.count==4);
+    }
+    auto tinySquare=box(0,0,0.1,0.1,false);const auto tinyFloor=tinySquare;const Point tinySeed={{0.05,0.05,0}};
+    assert(finalizeLanding(tinySquare,{tinyFloor},{},tinySeed,tinySeed));assert(tinySquare.count==4);
     // Circular support, including corners and the slope allowance used by GSC.
     auto floor=box(0,0,100,100,false);Point contact;double distance;
     assert(playerContact(floor.points,4,Point{{-10,-10,0.125}},contact,distance));

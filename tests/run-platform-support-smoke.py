@@ -31,7 +31,8 @@ for mapname in maps or ['mp_to_the_moon','mp_mystic_v3','mp_mystic_v2','mp_galax
         for _ in range(45):
             time.sleep(1)
             log=subprocess.check_output(['docker','logs',name],stderr=subprocess.STDOUT,text=True)
-            if 'BRUSH SELFTEST COMPLETE' in log or 'script compile error' in log:break
+            if 'BRUSH SELFTEST COMPLETE' in log or 'script compile error' in log or 'script runtime error' in log:break
+        (home/'console.log').write_text(log)
         lines=[l for l in log.splitlines() if 'SELFTEST' in l or 'SUPPORT FACE' in l or 'script' in l.lower() and 'error' in l.lower()]
         print(mapname+'\n'+'\n'.join(lines),flush=True)
         assert 'BRUSH SELFTEST COMPLETE failures=0' in log,home

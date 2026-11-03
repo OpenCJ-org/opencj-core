@@ -2,6 +2,15 @@ main()
 {
     wait 2;
     level.brushFailures=0;
+    tinySquare=[];tinySquare[0]=(0,0,0);tinySquare[1]=(0.1,0,0);tinySquare[2]=(0.1,0.1,0);tinySquare[3]=(0,0.1,0);
+    check(openCJ\checkpointArea::validate(tinySquare)=="","tiny square remains a valid polygon");
+    check(openCJ\checkpointArea::contains(tinySquare,(0.05,0.05,0),true),"tiny square contains its center");
+    check(!openCJ\checkpointArea::contains(tinySquare,(0.15,0.05,0),true),"tiny square tolerance does not extend into air");
+    exact=[];exact[0]=(25766.7539,1881.37524,-27206.8047);exact[1]=(0.000123456789,-0.0123456789,131071.992);
+    decoded=openCJ\checkpointArea::decode(openCJ\checkpointArea::encode(exact));
+    for(i=0;i<exact.size;i++)for(a=0;a<3;a++)check(exact[i][a]==decoded[i][a],"coordinate serialization preserves exact float "+i+":"+a);
+
+
     origins=[];
     if(getCvar("mapname")=="mp_to_the_moon")
     {
@@ -36,6 +45,22 @@ main()
                 check(!openCJ\checkpointArea::contains(joined,(6538,-4482,2664.625),true),"checkpoint 21 excludes real notch");
                 check(!openCJ\checkpointArea::contains(joined,(6620,-4479,2664.625),true),"checkpoint 21 excludes wall");
             }
+        }
+    }
+
+    if(getCvar("mapname")=="mp_to_the_moon")
+    {
+        // Three-unit face with less than one unit left beside a slanted wall.
+        // The player can stand here with the center hanging over the edge.
+        tiny=openCJ\checkpointPlatform::detectLandingAt((11012,-2090,2855));
+        check(isDefined(tiny),"sub-unit ledge beside wall detected from overhanging feet");
+        if(isDefined(tiny))
+        {
+            check(openCJ\checkpointArea::validate(tiny)=="","sub-unit ledge passes editor validation");
+            check(openCJ\checkpointArea::touchesPlayer(tiny,(11012,-2090,2855),true),"sub-unit ledge triggers for supported player");
+            check(!openCJ\checkpointArea::contains(tiny,(11012,-2106,2854.625),true),"sub-unit ledge excludes neighboring wall");
+            check(!openCJ\checkpointArea::contains(tiny,(11012,-2104,2854.625),true),"sub-unit ledge does not expand into air");
+            check(openCJ\checkpointArea::validate(openCJ\checkpointArea::decode(openCJ\checkpointArea::encode(tiny)))=="","sub-unit ledge survives draft serialization");
         }
     }
 
@@ -156,7 +181,7 @@ main()
         check(isDefined(triangle),"triangle with sub-unit collision bevel detected");
         if(isDefined(triangle))
         {
-            check(triangle.size==3,"collision bevel reduced to three real corners");
+            check(triangle.size>=3 && triangle.size<=4,"triangle retains its small collision bevel when present");
             check(openCJ\checkpointArea::validate(triangle)=="","normalized triangle passes editor validation");
             check(openCJ\checkpointArea::contains(triangle,triangleOrigin,true),"triangle retains grounded player");
         }
