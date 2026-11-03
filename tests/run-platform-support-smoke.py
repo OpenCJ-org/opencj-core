@@ -6,7 +6,10 @@ moving='--moving' in sys.argv
 fixture='platform-moving.gsc' if moving else 'platform-brushes.gsc'
 alternatives='--alternatives' in sys.argv
 if alternatives: fixture='checkpoint-alternatives.gsc'
-maps=[arg for arg in sys.argv[1:] if arg not in ['--moving','--alternatives']]
+height='--height' in sys.argv
+if height: fixture='checkpoint-height.gsc'
+maps=[arg for arg in sys.argv[1:] if arg not in ['--moving','--alternatives','--height']]
+if height and not maps: maps=['mp_dark']
 if alternatives and not maps: maps=['mp_dark']
 if moving and not maps: maps=['mp_qube']
 for mapname in maps or ['mp_to_the_moon','mp_mystic_v3','mp_mystic_v2','mp_galaxy','mp_dark','mp_futile_fixed','mp_blue2']:
