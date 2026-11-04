@@ -14,6 +14,14 @@ main()
     changed=old;changed[1]=old[2];changed[2]=old[1];check(!isDefined(openCJ\checkpointMigration::plan(old,changed)),"reordering refused");
     changed=old;cp=openCJ\checkpointCreation::_decode(changed[2]);cp.allowEle=true;changed[2]=openCJ\checkpointCreation::_encode(cp);check(!isDefined(openCJ\checkpointMigration::plan(old,changed)),"requirement change refused");
     changed=old;changed[1]=row(250,false);changed[3]=row(650,false);check(!isDefined(openCJ\checkpointMigration::plan(old,changed)),"multiple edits refused");
+    legacy=[];legacy[0]="0:0:p2483.01,0,0;2583.01,0,0;2583.01,100,0;2483.01,100,0";
+    legacy[1]=old[1];legacy[2]=old[2];legacy[3]=old[3];legacy[4]=old[4];
+    precise=openCJ\checkpointMigration::canonicalRows(legacy);
+    cp=openCJ\checkpointCreation::_decode(precise[2]);cp.alternatives[0]=openCJ\checkpointArea::decode("500,0,0;600,0,0;600,100,0;500,100,0");precise[2]=openCJ\checkpointCreation::_encode(cp);
+    p=openCJ\checkpointMigration::plan(legacy,precise);
+    check(isDefined(p) && p.mapping[0]==0 && p.mapping[2]==2,"legacy precision does not turn alternative addition into whole-route edits");
+    p=openCJ\checkpointMigration::unusedPlan(old,removed);
+    check(p.mapping.size==removed.size && p.mapping[0]==0,"unused route preserves start identity during arbitrary replacement");
     printf("MIGRATION SELFTEST COMPLETE failures="+level.migrationFailures+"\n");
 }
 row(x,finish)

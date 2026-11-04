@@ -59,6 +59,26 @@ main()
     q("INSERT INTO checkpointConnections(cpID,childcpID) VALUES("+removed+","+external+")");
     check(!(editor openCJ\checkpointPublish::_writeSequentialRoute()),"shared route migration refused");
     check(scalar("SELECT COUNT(*) FROM checkpointAreas WHERE mapID="+level.mapid_mapID)==5,"refused route remains unchanged");
+    // A separate unused route can change endpoints and multiple requirements.
+    unused=spawnStruct();unused.cpc=spawnStruct();unused.cpc.route="unused";unused.cpc.routeHex="#ffffff";unused.cpc.path="migration-unused-fixture";unused.cpc.rows=original;
+    check(unused openCJ\checkpointPublish::_writeSequentialRoute(),"publish unused route fixture");
+    emptyIDs=q("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND routeName='unused' ORDER BY ordinal");
+    q("SAVEPOINT unused_layout");
+    unused.cpc.rows=[];unused.cpc.rows[0]=row(1000,false);unused.cpc.rows[1]=row(1200,false);unused.cpc.rows[2]=row(1400,true);
+    cp=openCJ\checkpointCreation::_decode(unused.cpc.rows[1]);cp.allowEle=true;cp.heightAbove=32;unused.cpc.rows[1]=openCJ\checkpointCreation::_encode(cp);
+    check(unused openCJ\checkpointPublish::_writeSequentialRoute(),"unused route allows arbitrary layout and requirement changes");
+    check(scalar("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND routeName='unused' AND ordinal=0")==int(emptyIDs[0][0]),"unused replacement retains route start identity");
+    check(scalar("SELECT COUNT(*) FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND routeName='unused'")==3,"unused replacement has requested area count");
+    q("ROLLBACK TO SAVEPOINT unused_layout");
+    q("INSERT INTO playerRuns(playerID,mapID) VALUES("+player+","+level.mapid_mapID+")");partial=scalar("SELECT LAST_INSERT_ID()");
+    q("INSERT INTO playerSaves(runID,saveNumber,alpha,beta,gamma,explosiveJumps,doubleExplosives,checkpointID,flags) VALUES("+partial+",1,0,0,0,0,0,"+emptyIDs[1][0]+",0)");
+    check(!(unused openCJ\checkpointPublish::_writeSequentialRoute()),"unfinished saved run prevents unrestricted replacement");
+    q("ROLLBACK TO SAVEPOINT unused_layout");
+    q("INSERT INTO playerRuns(playerID,mapID,finishcpID,finishTimeStamp) VALUES("+player+","+level.mapid_mapID+","+emptyIDs[4][0]+",NOW())");
+    check(!(unused openCJ\checkpointPublish::_writeSequentialRoute()),"completed finish reference prevents unrestricted replacement");
+    q("ROLLBACK TO SAVEPOINT unused_layout");
+    q("INSERT INTO checkpointConnections(cpID,childcpID) VALUES("+emptyIDs[2][0]+","+external+")");
+    check(!(unused openCJ\checkpointPublish::_writeSequentialRoute()),"unused route still protects shared connections");
     q("ROLLBACK");
     printf("MIGRATION SELFTEST COMPLETE failures="+level.migrationFailures+"\n");
 }
