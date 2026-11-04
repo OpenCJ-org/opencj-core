@@ -11,6 +11,24 @@ main()
     for(i=0;i<exact.size;i++)for(a=0;a<3;a++)check(exact[i][a]==decoded[i][a],"coordinate serialization preserves exact float "+i+":"+a);
 
 
+    if(getCvar("mapname")=="mp_blue2")
+    {
+        // The room floor continues through more than 8192 units of joined
+        // brushes. Collect complete faces, then clip at the actual room walls.
+        samples=[];samples[0]=(6425,-33,-2031.875);samples[1]=(6170,0,-2031.875);samples[2]=(6900,0,-2031.875);
+        for(s=0;s<samples.size;s++)
+        {
+            joined=openCJ\checkpointPlatform::detectLandingAt(samples[s]);
+            check(isDefined(joined),"large joined room floor detected "+s);
+            if(isDefined(joined))
+            {
+                check(openCJ\checkpointArea::contains(joined,(6500,0,-2032),true),"room floor retained "+s);
+                check(!openCJ\checkpointArea::contains(joined,(6920,0,-2032),true),"right room wall clips large floor "+s);
+                check(!openCJ\checkpointArea::contains(joined,(6150,0,-2032),true),"left room wall clips large floor "+s);
+            }
+        }
+    }
+
     origins=[];
     if(getCvar("mapname")=="mp_to_the_moon")
     {

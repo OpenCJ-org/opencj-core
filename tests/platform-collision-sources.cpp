@@ -124,16 +124,21 @@ static void brushAssemblies() {
     cm={};std::puts("PASS: 3/8/32/128/256 mixed solid+glass brushes, reversed enumeration, three seed brushes, real notch retained");
 }
 
-static void collectionLimit() {
+static void largeBrushFloors() {
     cbrush_t brushes[2]={};
-    for(int i=0;i<2;i++){brushes[i].contents=1;brushes[i].mins[0]=i?10:0;brushes[i].maxs[0]=i?5000:10;brushes[i].maxs[1]=100;brushes[i].mins[2]=-5;}
+    for(int i=0;i<2;i++){brushes[i].contents=1;brushes[i].mins[0]=i?8000:0;brushes[i].maxs[0]=i?16000:8000;brushes[i].maxs[1]=100;brushes[i].mins[2]=-5;}
     cLeaf_t leaf={};leaf.leafBrushNode=1;cLeafBrushNode_t nodes[2]={};uint16_t indices[]={0,1};nodes[1].leafBrushCount=2;nodes[1].data.leaf.brushes=indices;
     cm={};cm.numLeafs=1;cm.leafs=&leaf;cm.brushes=brushes;cm.numBrushes=2;cm.leafbrushNodes=nodes;cm.leafbrushNodesCount=2;
-    Search search;search.origin={{5,50,0.125}};search.footprint=true;search.node(1);assert(search.count==4);
-    // A connected face outside the spatial budget must reject, never return
-    // only the first brush as a seemingly complete platform.
-    assert(!detectLanding(search.best,search.count,search.origin));cm={};
-    std::puts("PASS: connected geometry beyond spatial budget fails instead of returning a partial platform");
+    for(double x:{5.0,7999.0,15995.0}) {
+        Search search;search.origin={{x,50,0.125}};search.footprint=true;search.node(1);assert(search.count==4);
+        assert(detectLanding(search.best,search.count,search.origin));
+        assert(search.count==4);
+        double lo=1e30,hi=-1e30;
+        for(int i=0;i<search.count;i++){lo=std::min(lo,search.best[i].x[0]);hi=std::max(hi,search.best[i].x[0]);}
+        assert(std::abs(lo)<0.01 && std::abs(hi-16000)<0.01);
+    }
+    cm={};
+    std::puts("PASS: complete large connected floor from either end and brush seam");
 }
 
-int main(){collectionLimit();brushAssemblies();modelCombinations();terrainFloor();std::puts("PASS: rotated/scaled static collision models, sloped floors, leaning model walls, ignored model props, glass terrain floors, triangle ordering");}
+int main(){largeBrushFloors();brushAssemblies();modelCombinations();terrainFloor();std::puts("PASS: rotated/scaled static collision models, sloped floors, leaning model walls, ignored model props, glass terrain floors, triangle ordering");}
