@@ -17,13 +17,15 @@ Add these settings to the game server configuration, then reload the map:
 
 ```text
 set opencj_checkpoint_editor 1
-set opencj_checkpoint_editor_playerid <your OpenCJ playerID>
 ```
 
-Admin level 40 also grants editor access. The player-ID setting grants only
-editor access, without promoting the account to an administrator. This is an
-OpenCJ database player ID, not an entity slot or Steam ID. Disable the editor
-on normal public servers. No client-mod rebuild is needed.
+A logged-in account needs admin level **20** or higher for checkpoint editing.
+Levels are cumulative: 20 = checkpoint editor, 40 = moderator (mute/unmute),
+60 = map administrator, 100 = uber-admin. These are permission levels, not
+achievement points. Set the account's playerInformation.adminLevel in the
+OpenCJ database; reconnect to reload the role. Per-player editor allowlists
+are no longer used. The editor still requires opencj_checkpoint_editor 1.
+Disable the editor on normal public servers. No client-mod rebuild is needed.
 
 ## Create a route
 
