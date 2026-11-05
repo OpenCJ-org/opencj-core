@@ -78,7 +78,7 @@ vote(args) //args[0] = map, extend, yes/no
     {
         // Vote cooldown
         canVoteIn = int(self.canVoteAt - (getTime() / 1000) + 0.5);
-        if (canVoteIn > 0)
+        if (canVoteIn > 0 && !openCJ\commands_base::isUberAdminLevel(self.adminLevel))
         {
             self iprintln("You can vote in another ^1" + canVoteIn + "^7 seconds");
             return;
@@ -124,13 +124,14 @@ onPlayerLogin()
         self _setMapVoteImage();
     }
 
-    // TODO: when server gets more popular, change back to 60-120
-    self _setVoteCooldown(5);
+    // New arrivals wait five minutes before starting a vote.
+    self _setVoteCooldown(5 * 60);
     self thread menuResponse();
 }
 
 _setVoteCooldown(seconds)
 {
+    if (openCJ\commands_base::isUberAdminLevel(self.adminLevel))seconds = 0;
     self.canVoteAt = (getTime() / 1000) + seconds;
 }
 
