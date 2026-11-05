@@ -1,4 +1,5 @@
-// OpenCJ: guard uninitialized map flags and disable map-granted weapons.
+// OpenCJ #209: immediate route teleports and safe map messages/HUD lifetime.
+// Preserve the earlier map flag guards and disabled map-granted weapons.
 // OpenCJ equipment remains authoritative; pickup platforms grant no weapons.
 #include maps\mp\_utility;
 #include maps\mp\gametypes\_hud_util;
@@ -51,6 +52,7 @@ fps(trigger, user)
 		for(;;)
 		{
 			trigger waittill("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			if(isDefined(user.fps))
 				continue;
@@ -74,209 +76,39 @@ fps(trigger, user)
 
 teleport_easy()
 {
-	tp1 = getent("easy","targetname");
-
-	while (1)
-	{
-		tp1 waittill ("trigger", user );
-
-		user.easy = newClientHudElem(user);
-		user.easy.x = 0;
-		user.easy.y = 0;
-		user.easy.alignX = "left";
-		user.easy.alignY = "top";
-		user.easy.horzAlign = "fullscreen";
-		user.easy.vertAlign = "fullscreen";
-		user.easy.alpha = 0;
-		user.easy.color = (0,0,0);
-		user.easy setshader("white", 640, 480);
-
-		wait 0.01;
-		user.easy.alpha = 0.1;
-		wait 0.01;
-		user.easy.alpha = 0.2;
-		wait 0.01;
-		user.easy.alpha = 0.3;
-		wait 0.01;
-		user.easy.alpha = 0.4;
-		wait 0.01;
-		user.easy.alpha = 0.5;
-		wait 0.01;
-		user.easy.alpha = 0.6;
-		wait 0.01;
-		user.easy.alpha = 0.7;
-		wait 0.01;
-		user.easy.alpha = 0.8;
-		wait 0.01;
-		user.easy.alpha = 0.9;
-		wait 0.01;
-		user.easy.alpha = 1;
-		wait 1;
-
-		et_org_1 = (476, 5737, -1589);
-		user setOrigin(et_org_1, 0.1);
-
-		wait 1;
-		user.easy.alpha = 0.9;
-		wait 0.01;
-		user.easy.alpha = 0.8;
-		wait 0.01;
-		user.easy.alpha = 0.7;
-		wait 0.01;
-		user.easy.alpha = 0.6;
-		wait 0.01;
-		user.easy.alpha = 0.5;
-		wait 0.01;
-		user.easy.alpha = 0.4;
-		wait 0.01;
-		user.easy.alpha = 0.3;
-		wait 0.01;
-		user.easy.alpha = 0.2;
-		wait 0.01;
-		user.easy.alpha = 0.1;
-		wait 0.01;
-		user.easy.alpha = 0;
-		wait 0.01;
-		user.easy destroy();
-	}
+    teleporter("easy", (476, 5737, -1589));
 }
 
 teleport_inter()
 {
-	tp2 = getent("inter","targetname");
-
-	while (1)
-	{
-		tp2 waittill ("trigger", user );
-
-		user.inter = newClientHudElem(user);
-		user.inter.x = 0;
-		user.inter.y = 0;
-		user.inter.alignX = "left";
-		user.inter.alignY = "top";
-		user.inter.horzAlign = "fullscreen";
-		user.inter.vertAlign = "fullscreen";
-		user.inter.alpha = 0;
-		user.inter.color = (0,0,0);
-		user.inter setshader("white", 640, 480);
-
-		wait 0.01;
-		user.inter.alpha = 0.1;
-		wait 0.01;
-		user.inter.alpha = 0.2;
-		wait 0.01;
-		user.inter.alpha = 0.3;
-		wait 0.01;
-		user.inter.alpha = 0.4;
-		wait 0.01;
-		user.inter.alpha = 0.5;
-		wait 0.01;
-		user.inter.alpha = 0.6;
-		wait 0.01;
-		user.inter.alpha = 0.7;
-		wait 0.01;
-		user.inter.alpha = 0.8;
-		wait 0.01;
-		user.inter.alpha = 0.9;
-		wait 0.01;
-		user.inter.alpha = 1;
-		wait 1;
-
-		et_org_2 = (25734, 11808, -2029);
-		user setOrigin(et_org_2, 0.1);
-
-		wait 1;
-		user.inter.alpha = 0.9;
-		wait 0.01;
-		user.inter.alpha = 0.8;
-		wait 0.01;
-		user.inter.alpha = 0.7;
-		wait 0.01;
-		user.inter.alpha = 0.6;
-		wait 0.01;
-		user.inter.alpha = 0.5;
-		wait 0.01;
-		user.inter.alpha = 0.4;
-		wait 0.01;
-		user.inter.alpha = 0.3;
-		wait 0.01;
-		user.inter.alpha = 0.2;
-		wait 0.01;
-		user.inter.alpha = 0.1;
-		wait 0.01;
-		user.inter.alpha = 0;
-		wait 0.01;
-		user.inter destroy();
-	}
+    teleporter("inter", (25734, 11808, -2029));
 }
 
 teleport_hard()
 {
-	tp3 = getent("hard","targetname");
+    teleporter("hard", (6387, -5, -2021));
+}
 
-	while (1)
-	{
-		tp3 waittill("trigger", user);
+teleporter(targetname, destination)
+{
+    trigger = getEnt(targetname, "targetname");
+    if (!isDefined(trigger)) return;
+    for (;;)
+    {
+        trigger waittill("trigger", player);
+        trigger teleportPlayer(player, destination);
+        wait 0.2;
+    }
+}
 
-		user.hard = newClientHudElem(user);
-		user.hard.x = 0;
-		user.hard.y = 0;
-		user.hard.alignX = "left";
-		user.hard.alignY = "top";
-		user.hard.horzAlign = "fullscreen";
-		user.hard.vertAlign = "fullscreen";
-		user.hard.alpha = 0;
-		user.hard.color = (0,0,0);
-		user.hard setshader("white", 640, 480);
-
-		wait 0.01;
-		user.hard.alpha = 0.1;
-		wait 0.01;
-		user.hard.alpha = 0.2;
-		wait 0.01;
-		user.hard.alpha = 0.3;
-		wait 0.01;
-		user.hard.alpha = 0.4;
-		wait 0.01;
-		user.hard.alpha = 0.5;
-		wait 0.01;
-		user.hard.alpha = 0.6;
-		wait 0.01;
-		user.hard.alpha = 0.7;
-		wait 0.01;
-		user.hard.alpha = 0.8;
-		wait 0.01;
-		user.hard.alpha = 0.9;
-		wait 0.01;
-		user.hard.alpha = 1;
-		wait 1;
-
-		et_org_3 = (6387, -5, -2021);
-		user setOrigin(et_org_3, 0.1);
-
-		wait 1;
-		user.hard.alpha = 0.9;
-		wait 0.01;
-		user.hard.alpha = 0.8;
-		wait 0.01;
-		user.hard.alpha = 0.7;
-		wait 0.01;
-		user.hard.alpha = 0.6;
-		wait 0.01;
-		user.hard.alpha = 0.5;
-		wait 0.01;
-		user.hard.alpha = 0.4;
-		wait 0.01;
-		user.hard.alpha = 0.3;
-		wait 0.01;
-		user.hard.alpha = 0.2;
-		wait 0.01;
-		user.hard.alpha = 0.1;
-		wait 0.01;
-		user.hard.alpha = 0;
-		wait 0.01;
-		user.hard destroy();
-	}
+teleportPlayer(player, destination)
+{
+    if (!isDefined(player) || !isPlayer(player) || !isDefined(destination)) return false;
+    if (!(player isTouching(self))) return false;
+    // No blackout delay or deferred player action. Keep the player's view and
+    // original destination; OpenCJ placement clears carried velocity/state.
+    player setOriginAndAngles(destination, player getPlayerAngles());
+    return true;
 }
 
 guid()
@@ -286,10 +118,12 @@ guid()
 	guid2 = "69b801c1025c7bf543468ab53b31043d";
 
 	guidtrig = getent("guid1","targetname");
+	if (!isDefined(guidtrig)) return;
 
 	while(1)
 	{
 		guidtrig waittill("trigger", player );
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		tempGuid = player getGUID();
 
@@ -331,63 +165,49 @@ guid()
 
 credits()
 {
-	trig = getEnt ("credits", "targetname");
+    trigger = getEnt("credits", "targetname");
+    if (!isDefined(trigger)) return;
+    for (;;)
+    {
+        trigger waittill("trigger", player);
+        if (!isDefined(player) || !isPlayer(player)) continue;
+        if (player useButtonPressed())
+            player thread showCredits();
+    }
+}
 
-	for(;;)
-	{
-		trig waittill ("trigger", user);
-
-		if(user useButtonPressed() && (!isDefined(user.free) || user.free))
-		{
-			user.free = false;
-			user.hud_clock = newClientHudElem(user);
-			user.hud_clock.alignX = "center";
-			user.hud_clock.alignY = "middle";
-			user.hud_clock.horzalign = "center";
-			user.hud_clock.vertalign = "middle";
-			user.hud_clock.alpha = 1;
-			user.hud_clock.x = 0;
-			user.hud_clock.y = 0;
-			user.hud_clock.font = "objective";
-			user.hud_clock.fontscale = 2;
-			user.hud_clock.glowalpha = 1;
-			user.hud_clock.glowcolor = (1,0,0);
-			user.hud_clock.label = &"Mp_Blue2, created by Chucky, have fun!";
-			user.hud_clock SetPulseFX( 40, 5400, 200 );
-			wait 6;
-			user.hud_clock = newClientHudElem(user);
-			user.hud_clock.alignX = "center";
-			user.hud_clock.alignY = "middle";
-			user.hud_clock.horzalign = "center";
-			user.hud_clock.vertalign = "middle";
-			user.hud_clock.alpha = 1;
-			user.hud_clock.x = 0;
-			user.hud_clock.y = 0;
-			user.hud_clock.font = "objective";
-			user.hud_clock.fontscale = 1.4;
-			user.hud_clock.glowalpha = 1;
-			user.hud_clock.glowcolor = (1,1,0);
-			user.hud_clock.label = &"Xfire: chucky3379";
-			user.hud_clock SetPulseFX( 40, 5400, 200 );
-			wait 6;
-			user.hud_clock = newClientHudElem(user);
-			user.hud_clock.alignX = "center";
-			user.hud_clock.alignY = "middle";
-			user.hud_clock.horzalign = "center";
-			user.hud_clock.vertalign = "middle";
-			user.hud_clock.alpha = 1;
-			user.hud_clock.x = 0;
-			user.hud_clock.y = 0;
-			user.hud_clock.font = "objective";
-			user.hud_clock.fontscale = 1.4;
-			user.hud_clock.glowalpha = 1;
-			user.hud_clock.glowcolor = (1,1,0);
-			user.hud_clock.label = &"^2Big thanks to ^3Tommy ^2for scripting help";
-			user.hud_clock SetPulseFX( 40, 5400, 200 );
-			wait 6;
-			user.free = true;
-		}
-	}
+showCredits()
+{
+    self endon("disconnect");
+    if (isDefined(self.blue2Credits)) return;
+    hud = newClientHudElem(self);
+    self.blue2Credits = hud;
+    hud.alignX = "center";
+    hud.alignY = "middle";
+    hud.horzAlign = "center";
+    hud.vertAlign = "middle";
+    hud.alpha = 1;
+    hud.x = 0;
+    hud.y = 0;
+    hud.font = "objective";
+    hud.fontScale = 2;
+    hud.glowAlpha = 1;
+    hud.glowColor = (1,0,0);
+    hud setText("Mp_Blue2, created by Chucky, have fun!");
+    hud setPulseFX(40, 5400, 200);
+    wait 6;
+    hud.fontScale = 1.4;
+    hud.glowColor = (1,1,0);
+    hud setText("Xfire: chucky3379");
+    hud setPulseFX(40, 5400, 200);
+    wait 6;
+    hud setText("^2Big thanks to ^3Tommy ^2for scripting help");
+    hud setPulseFX(40, 5400, 200);
+    wait 6;
+    hud destroy();
+    self.blue2Credits = undefined;
+    // On disconnect, the engine frees all client-owned HUDs and endon stops
+    // this thread before it can use the disconnected player or freed HUD.
 }
 
 start_easy_msg()
@@ -399,6 +219,7 @@ start_easy_msg()
 		while(true)
 		{
 			start_easy_msg waittill ("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			user.starteasy = true;
 			user iprintlnbold ("^5You've picked ^2Easy. ^5Good luck & have fun! ^3Map by ^2Chucky.");
@@ -416,6 +237,7 @@ start_inter_msg()
 		while(true)
 		{
 			msg_inter waittill ("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			user iprintlnbold ("^5You've picked ^2Intermediate. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
@@ -432,6 +254,7 @@ start_hard_msg()
 		while(true)
 		{
 			start_hard_msg waittill ("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			user iprintlnbold ("^5You've picked ^2Hard. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
@@ -448,6 +271,7 @@ end_easy_msg()
 		while(true)
 		{
 			end_easy_msg waittill ("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			if(!isDefined(user.endeasy) || !user.endeasy)
 			{
@@ -466,6 +290,7 @@ end_inter_msg()
 		while(true)
 		{
 			end_inter_msg waittill ("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			if(!isDefined(user.endinter) || !user.endinter)
 			{
@@ -484,6 +309,7 @@ end_hard_msg()
 		while(true)
 		{
 			end_hard_msg waittill ("trigger", user);
+			if (!isDefined(user) || !isPlayer(user)) continue;
 
 			if(!isDefined(user.endhard) || !user.endhard)
 			{

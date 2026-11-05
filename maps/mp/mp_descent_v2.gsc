@@ -1,4 +1,5 @@
-// OpenCJ: finish flags are undefined until a route has been completed.
+// OpenCJ #209: contact-checked teleports clear carried velocity; safe trigger actors.
+// OpenCJ owns timing; retain plain finish messages, duplicate guards and credits.
 /*                          __                          __          ___
    ____ ___  ____      ____/ /__  _____________  ____  / /_   _   _|__ \
   / __ `__ \/ __ \    / __  / _ \/ ___/ ___/ _ \/ __ \/ __/  | | / /_/ /
@@ -34,9 +35,7 @@ main()
 	setdvar("r_glowskybleedintensity0",".3");
 	setdvar("compassmaxrange","1800");
 
-	thread easyStart();
 	thread easyEnd();
-	thread hardStart();
 	thread hardEnd();
 	thread msg1();
 	thread msg2();
@@ -50,155 +49,34 @@ main()
 	thread teleport_loop();
 }
 
-easyStart()
-{
-	level endon("game_ended");
-
-	trigger = getent("easybegin", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing" || isDefined(player.startTimeEasy))
-			wait 0.05;
-		else
-			player.startTimeEasy = getTime();
-	}
-}
-
 easyEnd()
 {
-	level endon("game_ended");
-
-	trigger = getent("easyend", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing" || (isDefined(player.easyEnd) && player.easyEnd) || !isDefined(player.startTimeEasy))
-			wait 0.05;
-		else
-		{
-			number = getTime() - player.startTimeEasy;
-
-			if(number/1000/60 >= 1)
-				minutes = number/1000/60 - (number % 60000)/60/1000;
-			else
-				minutes = 0;
-			seconds = int((number % 60000)/1000);
-
-			if(seconds <= 9)
-				player iPrintLnBold("Congratulations, you finished ^5mp_descent_v2 ^2Easy ^7in ^3" + minutes + ":0" + seconds);
-			else
-				player iPrintLnBold("Congratulations, you finished ^5mp_descent_v2 ^2Easy ^7in ^3" + minutes + ":" + seconds);
-
-                        if(minutes <= 5)
-				iPrintLnBold("^3 " + player.name + " , WHY ARE YOU CHEATING?");
-                        else if(minutes <= 7)
-				player iPrintLnBold("^1GOD LIKE!!!!!!!!!!!!!!");
-                        else if(minutes <= 8)
-				player iPrintLnBold("^1RIDICULOUS!!!!!!!!");
-			else if(minutes <= 10)
-				player iPrintLnBold("^2SICK!!!!");
-                        else if(minutes <= 13)
-				player iPrintLnBold("^2Very Nice!!!");
-                        else if(minutes <= 15)
-				player iPrintLnBold("^5Great Job!!");
-                        else if(minutes <= 20)
-				player iPrintLnBold("^7Good ^7Time!");
-			else if(minutes <= 30)
-				player iPrintLnBold("^7Nice");
-                        else if(minutes <= 45)
-				player iPrintLnBold("^7Not Bad");
-                        else if(minutes > 150)
-			        iPrintLnBold("^6CHANGE THE MAP ALREADY!!");
-
-
-			player.easyEnd = true;
-		}
-	}
-}
-
-hardStart()
-{
-	level endon("game_ended");
-
-	trigger = getent("hardbegin", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing" || isDefined(player.startTimeHard))
-			wait 0.05;
-		else
-			player.startTimeHard = getTime();
-	}
+    level endon("game_ended");
+    trigger = getEnt("easyend", "targetname");
+    if (!isDefined(trigger)) return;
+    for (;;)
+    {
+        trigger waittill("trigger", player);
+        if (!isDefined(player) || !isPlayer(player)) continue;
+        if (player.sessionState != "playing" || (isDefined(player.easyEnd) && player.easyEnd)) continue;
+        player iPrintLnBold("Congratulations, you finished ^5mp_descent_v2 ^2Easy!");
+        player.easyEnd = true;
+    }
 }
 
 hardEnd()
 {
-	level endon("game_ended");
-
-	trigger = getent("hardend", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing" || (isDefined(player.hardEnd) && player.hardEnd) || !isDefined(player.startTimeHard))
-			wait 0.05;
-		else
-		{
-			number = getTime() - player.startTimeHard;
-
-			if(number/1000/60 >= 1)
-				minutes = number/1000/60 - (number % 60000)/60/1000;
-			else
-				minutes = 0;
-			seconds = int((number % 60000)/1000);
-
-			if(seconds <= 9)
-				iPrintLnBold("^5" + player.name + " ^7finished ^5mp_descent_v2 ^1Hard ^7in ^3" + minutes + ":0" + seconds);
-			else
-				iPrintLnBold("^5" + player.name + " ^7finished ^5mp_descent_v2 ^1Hard ^7in ^3" + minutes + ":" + seconds);
-
-                        if(minutes <= 5)
-				iPrintLnBold(" " + player.name + " ,^3WHY ARE YOU CHEATING?");
-                        else if(minutes <= 7)
-				iPrintLnBold("^1How the hell?");
-                        else if(minutes <= 8)
-				iPrintLnBold("^1INCONCEIVABLE!!!!!!!!!!!!!!");
-                        else if(minutes <= 9)
-				iPrintLnBold("^1GOD LIKE!!!!!");
-			else if(minutes <= 10)
-				iPrintLnBold("^2UNBELIEVABLE!!!!");
-                        else if(minutes <= 11)
-				iPrintLnBold("^2Insane!!!");
-                        else if(minutes <= 12)
-				iPrintLnBold("^5Incredible!!");
-                        else if(minutes <= 14)
-				iPrintLnBold("^5Pro ^7Time!");
-                        else if(minutes <= 16)
-				iPrintLnBold("^5Very ^7Nice!");
-			else if(minutes <= 19)
-				iPrintLnBold("^7Great Time");
-                        else if(minutes <= 24)
-				iPrintLnBold("^7Good Time");
-                        else if(minutes <= 29)
-				iPrintLnBold("^7Not Bad");
-                        else if(minutes <= 69)
-				iPrintLnBold("^7 ");
-                        else if(minutes <= 139)
-				iPrintLnBold("^7lol");
-                        else if(minutes >= 150)
-				iPrintLnBold("^6CHANGE THE MAP ALREADY!!");
-
-                        player.hardEnd = true;
-		}
-	}
+    level endon("game_ended");
+    trigger = getEnt("hardend", "targetname");
+    if (!isDefined(trigger)) return;
+    for (;;)
+    {
+        trigger waittill("trigger", player);
+        if (!isDefined(player) || !isPlayer(player)) continue;
+        if (player.sessionState != "playing" || (isDefined(player.hardEnd) && player.hardEnd)) continue;
+        iPrintLnBold("^5" + player.name + " ^7finished ^5mp_descent_v2 ^1Hard!");
+        player.hardEnd = true;
+    }
 }
 
 msg1()
@@ -206,10 +84,12 @@ msg1()
 	level endon("game_ended");
 
 	trigger = getent("msg1", "targetname");
+	if (!isDefined(trigger)) return;
 
 	while(1)
 	{
 		trigger waittill("trigger", player);
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		if(player.sessionstate != "playing")
 			wait 0.05;
@@ -226,10 +106,12 @@ msg2()
 	level endon("game_ended");
 
 	trigger = getent("msg2", "targetname");
+	if (!isDefined(trigger)) return;
 
 	while(1)
 	{
 		trigger waittill("trigger", player);
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		if(player.sessionstate != "playing")
 			wait 0.05;
@@ -247,10 +129,12 @@ msg3()
 	level endon("game_ended");
 
 	trigger = getent("msg3", "targetname");
+	if (!isDefined(trigger)) return;
 
 	while(1)
 	{
 		trigger waittill("trigger", player);
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		if(player.sessionstate != "playing")
 			wait 0.05;
@@ -267,10 +151,12 @@ msg4()
 	level endon("game_ended");
 
 	trigger = getent("msg4", "targetname");
+	if (!isDefined(trigger)) return;
 
 	while(1)
 	{
 		trigger waittill("trigger", player);
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		if(player.sessionstate != "playing")
 			wait 0.05;
@@ -287,10 +173,12 @@ msg5()
 	level endon("game_ended");
 
 	trigger = getent("msg5", "targetname");
+	if (!isDefined(trigger)) return;
 
 	while(1)
 	{
 		trigger waittill("trigger", player);
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		if(player.sessionstate != "playing")
 			wait 0.05;
@@ -307,10 +195,12 @@ msg6()
 	level endon("game_ended");
 
 	trigger = getent("msg6", "targetname");
+	if (!isDefined(trigger)) return;
 
 	while(1)
 	{
 		trigger waittill("trigger", player);
+		if (!isDefined(player) || !isPlayer(player)) continue;
 
 		if(player.sessionstate != "playing")
 			wait 0.05;
@@ -323,80 +213,44 @@ msg6()
 }
 teleport_top()
 {
-	level endon("game_ended");
-
-	trigger = getent("tele1", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing")
-			wait 0.05;
-		else
-		{
-			player setOrigin((38208, 3072, 61200), 0.01);
-			player setPlayerAngles((0, 270, 0));
-		}
-	}
+    teleporter("tele1", (38208, 3072, 61200), (0, 270, 0));
 }
 
 teleport_out()
 {
-	level endon("game_ended");
-
-	trigger = getent("tele2", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing")
-			wait 0.05;
-		else
-		{
-			player setOrigin((-84741, 75431, 11343), 0.01);
-			player setPlayerAngles((0, 270, 0));
-		}
-	}
+    teleporter("tele2", (-84741, 75431, 11343), (0, 270, 0));
 }
 
 teleport_in()
 {
-	level endon("game_ended");
-
-	trigger = getent("tele3", "targetname");
-
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing")
-			wait 0.05;
-		else
-		{
-			player setOrigin((407, 2581, 60889), 0.01);
-			player setPlayerAngles((0, 270, 0));
-		}
-	}
+    teleporter("tele3", (407, 2581, 60889), (0, 270, 0));
 }
 
 teleport_loop()
 {
-	level endon("game_ended");
+    teleporter("tele4", (407, 2581, 148229), (0, 290, 0));
+}
 
-	trigger = getent("tele4", "targetname");
+teleporter(targetname, destination, angles)
+{
+    level endon("game_ended");
+    trigger = getEnt(targetname, "targetname");
+    if (!isDefined(trigger)) return;
+    for (;;)
+    {
+        trigger waittill("trigger", player);
+        trigger teleportPlayer(player, destination, angles);
+        wait 0.2;
+    }
+}
 
-	while(1)
-	{
-		trigger waittill("trigger", player);
-
-		if(player.sessionstate != "playing")
-			wait 0.05;
-		else
-		{
-			player setOrigin((407, 2581, 148229), 0.01);
-			player setPlayerAngles((0, 290, 0));
-		}
-	}
+teleportPlayer(player, destination, angles)
+{
+    if (!isDefined(player) || !isPlayer(player)) return false;
+    if (!isDefined(destination) || !isDefined(angles)) return false;
+    if (!(player isTouching(self))) return false;
+    // Original destination/angle, applied immediately. Native placement also
+    // clears velocity and movement state, without a deferred action after load.
+    player setOriginAndAngles(destination, angles);
+    return true;
 }
