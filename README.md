@@ -111,26 +111,4 @@ the independently chosen published host port does not affect it. The Python
 dependency is constrained to discord.py 2.x; this bridge still needs a live test.
 `docker compose --profile discord down` stops all services while preserving data.
 
-## Validation and current limits
-
-Run `python3 -m unittest discover -s tests` for setup behavior checks.
-`python3 dev.py check` validates Compose configuration, lists services, and queries
-the running database's tables/routines. Check game logs for GSC errors, then
-connect using `/connect SERVER_IP:28961` and exercise spawn, save/load, and login.
-Container startup alone is not proof that the map or scripts initialized.
-
-The SQL repository contains structure without exported gameplay data. Expect
-missing checkpoint layouts, map rotation entries, and GeoIP records; a stock
-map provides an initial connection test, not a populated jumping environment.
-Backups and checkpoint authoring can be handled separately.
-
-Setup tests, the native GCC build, database import, libcod loading, and a local
-game-protocol query have passed on Ubuntu 24.04. Windows Mod Tools generated
-client assets successfully. Steam connected and master-server registration
-succeeded using the existing launch token. An actual player connection and
-in-game save/load test remain to be performed.
-Image tags receive upstream updates; this is not yet a digest-pinned toolchain.
-
-References: [Docker on Ubuntu](https://docs.docker.com/engine/install/ubuntu/),
-[VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh), and
-[Ubuntu's 32-bit MySQL development package](https://packages.ubuntu.com/noble/libmysqlclient-dev).
+## Map screenshots and preview assets

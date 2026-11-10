@@ -13,7 +13,10 @@ main()
     check(openCJ\commands_base::maxAdminLevel() == 100, "uber-admin is maximum role 100");
     check(level.commands["checkpoint"].minAdminLevel == 20, "CPC command requires editor rank 20");
     check(level.commands["maprestart"].minAdminLevel == 60, "editor rank does not grant map restart");
-    names = openCJ\maps::alphaMapNames();
+    rows = openCJ\alphaMapData::rows();
+    openCJ\maps::loadMapRows(rows);
+    names = [];
+    for (i = 0; i < rows.size; i++) names[i] = rows[i][0];
     check(names.size == 10, "exactly ten approved maps");
     for (i = 0; i < names.size; i++)
         check(openCJ\maps::canVoteMap(names[i], 0), "approved map installed and regular-votable: " + names[i]);
@@ -27,20 +30,19 @@ main()
     check(openCJ\maps::canVoteMap("mp_legacy", 100), "uber-admin can vote installed non-alpha map");
     check(!openCJ\maps::canVoteMap("mp_missing_opencj_209", 100), "uber-admin cannot vote a missing map");
 
-    rows = [];
-    rows[0] = []; rows[0][0] = "mp_legacy"; rows[0][1] = "2000-01-01";
-    rows[1] = []; rows[1][0] = "mp_missing_opencj_209"; rows[1][1] = undefined;
-    rows[2] = []; rows[2][0] = "mp_killhouse"; rows[2][1] = undefined;
+    rows[rows.size] = openCJ\alphaMapData::row("mp_legacy", "2000-01-01", "0", "Fixture mapper");
+    rows[rows.size] = openCJ\alphaMapData::row("mp_missing_opencj_209", undefined, "1", undefined);
+    rows[rows.size] = openCJ\alphaMapData::row("mp_killhouse", undefined, "0", undefined);
     openCJ\maps::loadMapRows(rows);
     normalMaps = openCJ\maps::voteMaps(0);
     adminMaps = openCJ\maps::voteMaps(100);
     check(normalMaps.size == 10 && adminMaps.size > 10, "catalogue provides ten regular choices and broader admin access");
     check(!isDefined(level.mapNames["mp_missing_opencj_209"]), "database-only missing map excluded");
-    check(isDefined(level.mapNames["mp_blue2"]), "installed map discovered without database metadata");
+    check(isDefined(level.mapNames["mp_blue2"]), "installed pool map included");
     openCJ\menus\endMapVote::fillRandomMaps();
     approved = level.endVote["maps"].size == 9;
     for (i = 0; i < level.endVote["maps"].size; i++)
-        if (!openCJ\maps::isAlphaMap(level.endVote["maps"][i]) || level.endVote["maps"][i] == "mp_dark") approved = false;
+        if (!openCJ\maps::isPoolMap(level.endVote["maps"][i]) || level.endVote["maps"][i] == "mp_dark") approved = false;
     check(approved, "automatic end vote contains nine other approved maps only");
 
     player = addTestClient();

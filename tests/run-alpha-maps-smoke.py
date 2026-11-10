@@ -62,6 +62,7 @@ for mapname in [a for a in sys.argv[1:] if a not in ['--prepared', '--menu-only'
     fixtures = {'mp_dark': 'alpha-maps.gsc', 'mp_bouncer_training': 'alpha-bouncer-training.gsc', 'mp_blue2': 'alpha-blue2.gsc', 'mp_descent_v2': 'alpha-descent-v2.gsc', 'mp_galaxy': 'alpha-galaxy.gsc', 'mp_mystic_v3': 'alpha-mystic-v3.gsc'}
     fixture = 'alpha-map-menu.gsc' if menu_only else fixtures[mapname]
     shutil.copyfile(root/'dev-tools/tests'/fixture,mod/'opencj/platformtest.gsc')
+    shutil.copyfile(root/'dev-tools/tests/alpha-map-data.gsc',mod/'opencj/alphamapdata.gsc')
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     # Test clients must not reach account/database callbacks in this isolated fixture.
