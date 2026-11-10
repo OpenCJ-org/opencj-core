@@ -157,7 +157,7 @@ getMapImage(mapName)
     {
         if (getCodVersion() == 4)
         {
-            return "loadscreen_" + mapName;
+            return openCJ\maps::previewImage(mapName);
         }
         switch(mapName)
         {
@@ -303,7 +303,7 @@ _findMapByName(string, recurse)
     else if (matches.size > 1)
         self sendLocalChatMessage("Available matches: " + arrayConcat(matches, ", "), true);
     else
-        self sendLocalChatMessage("Map not installed or unavailable for alpha voting", true);
+        self sendLocalChatMessage("Map not installed or unavailable for voting", true);
     return undefined;
 }
 

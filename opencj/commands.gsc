@@ -52,13 +52,13 @@ onPlayerDisconnect()
 
 _onCommandMapList(args)
 {
-    // level.maps is defined by endmapvote.gsc
+    maps = openCJ\maps::voteMaps(self.adminLevel);
     maxCharsPerLine = 100;
     mapStr = "";
     mapListNr = 1;
-    for (i = 0; i < level.maps.size; i++)
+    for (i = 0; i < maps.size; i++)
     {
-        mapName = level.maps[i]["name"];
+        mapName = maps[i]["name"];
         if ((mapStr.size + mapName.size) > maxCharsPerLine)
         {
             self sendLocalChatMessage("Maps (" + mapListNr + "): " + mapStr);

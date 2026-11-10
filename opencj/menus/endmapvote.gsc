@@ -83,7 +83,7 @@ onPlayerConnected()
         if (isDefined(level.endVote["maps"][i]))
         {
             mapName = level.endVote["maps"][i];
-            mapImage = "loadscreen_" + mapName;
+            mapImage = openCJ\maps::previewImage(mapName);
         }
         self setClientCvar(level.endVote["prefix"] + "mapname" + nr, mapName);
         self setClientCvar(level.endVote["prefix"] + "mapimage" + nr, mapImage);

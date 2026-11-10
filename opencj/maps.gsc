@@ -1,21 +1,18 @@
-// Alpha roster approved for #209. Bonus/secret routes are outside acceptance.
-alphaMapNames()
+isPoolMap(name)
 {
-    return strTok("mp_dark mp_cj_sky_bounce mp_all_in mp_bouncer_training mp_futile_fixed mp_blue2 mp_descent_v2 mp_to_the_moon mp_galaxy mp_mystic_v3", " ");
+    return isDefined(level.poolMapNames) && isDefined(level.poolMapNames[toLower(name)]);
 }
 
-isAlphaMap(name)
+previewImage(name)
 {
-    names = alphaMapNames();
-    for (i = 0; i < names.size; i++)
-        if (name == names[i]) return true;
-    return false;
+    if (isPoolMap(name)) return "loadscreen_" + toLower(name);
+    return "opencj_logo_nobg";
 }
 
 canVoteMap(name, adminLevel)
 {
     name = toLower(name);
-    if (!openCJ\commands_base::isUberAdminLevel(adminLevel) && !isAlphaMap(name))
+    if (!openCJ\commands_base::isUberAdminLevel(adminLevel) && !isPoolMap(name))
         return false;
     return opencjMapExists(name);
 }
@@ -24,53 +21,57 @@ onInit()
 {
     level.maps = [];
     level.mapNames = [];
+    level.poolMapNames = [];
     level thread fetchAllMaps();
 }
 
 fetchAllMaps()
 {
-    // Rotation flags are not the alpha allowlist. Preserve metadata for every
-    // installed map, including maps outside rotation that uber-admins can vote.
-    rows = openCJ\mysql::mysqlAsyncQuery("SELECT mapname, releaseDate FROM mapids ORDER BY mapname ASC");
+    // One shared pool for voting and the future download catalogue (#203).
+    // Keep metadata for installed maps outside the pool for uber-admin menus.
+    rows = openCJ\mysql::mysqlAsyncQuery("SELECT m.mapname, COALESCE(m.releaseDate, 'Unknown'), m.inRotation, COALESCE(GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', '), 'Unknown') FROM mapids m LEFT JOIN mapMappers mm ON mm.mapID = m.mapID LEFT JOIN mappers a ON a.mapperID = mm.mapperID GROUP BY m.mapID, m.mapname, m.releaseDate, m.inRotation ORDER BY m.mapname ASC");
     loadMapRows(rows);
+    printf("[OpenCJ] Map catalogue: " + level.maps.size + " installed, " + voteMaps(0).size + " in pool\n");
     thread openCJ\menus\endMapVote::fillRandomMaps();
 }
 
 loadMapRows(rows)
 {
-    level.maps = [];
-    level.mapNames = [];
+    // Build a complete snapshot before publishing it: discovery yields.
+    catalogue = spawnStruct();
+    catalogue.maps = [];
+    catalogue.names = [];
+    catalogue.pool = [];
     if (isDefined(rows))
     {
         for (i = 0; i < rows.size; i++)
         {
-            _addMap(toLower(rows[i][0]), rows[i][1]);
+            _addMap(catalogue, toLower(rows[i][0]), rows[i][1], rows[i][2], rows[i][3]);
             if (i % 100 == 99) wait 0.05;
         }
     }
-    // Installed custom maps need not already have a database/rotation entry.
-    _addUsermaps(getCvar("fs_basepath") + "/usermaps");
-    _addUsermaps(getCvar("fs_homepath") + "/usermaps");
-    // Stock maps may also be installed without database metadata.
-    _addStockMaps(getCvar("fs_basepath") + "/zone");
-    _addStockMaps(getCvar("fs_homepath") + "/zone");
-    // Preserve the approved roster even if metadata loading was unavailable.
-    names = alphaMapNames();
-    for (i = 0; i < names.size; i++) _addMap(names[i], undefined);
+    _addUsermaps(catalogue, getCvar("fs_basepath") + "/usermaps");
+    _addUsermaps(catalogue, getCvar("fs_homepath") + "/usermaps");
+    _addStockMaps(catalogue, getCvar("fs_basepath") + "/zone");
+    _addStockMaps(catalogue, getCvar("fs_homepath") + "/zone");
+    // No hard-coded fallback: unavailable/empty DB rows grant no pool access.
+    level.maps = catalogue.maps;
+    level.mapNames = catalogue.names;
+    level.poolMapNames = catalogue.pool;
 }
 
-_addUsermaps(path)
+_addUsermaps(catalogue, path)
 {
     entries = opencjScanDir(path);
     if (!isDefined(entries)) return;
     for (i = 0; i < entries.size; i++)
     {
-        _addMap(toLower(entries[i]), undefined);
+        _addMap(catalogue, toLower(entries[i]), undefined, undefined, undefined);
         if (i % 100 == 99) wait 0.05;
     }
 }
 
-_addStockMaps(path)
+_addStockMaps(catalogue, path)
 {
     directories = opencjScanDir(path);
     if (!isDefined(directories)) return;
@@ -85,23 +86,25 @@ _addStockMaps(path)
             filename = toLower(entries[j]);
             if (filename.size <= 6 || getSubStr(filename, 0, 3) != "mp_" ||
                 getSubStr(filename, filename.size - 3) != ".ff") continue;
-            _addMap(getSubStr(filename, 0, filename.size - 3), undefined);
+            _addMap(catalogue, getSubStr(filename, 0, filename.size - 3), undefined, undefined, undefined);
             if (j % 100 == 99) wait 0.05;
         }
     }
 }
 
-_addMap(name, date)
+_addMap(catalogue, name, date, inRotation, author)
 {
-    if (isDefined(level.mapNames[name]) || !opencjMapExists(name)) return;
+    if (isDefined(catalogue.names[name]) || !opencjMapExists(name)) return;
     entry = [];
     entry["name"] = name;
     entry["date"] = "Unknown";
     if (isDefined(date)) entry["date"] = date;
     entry["desc"] = "";
     entry["author"] = "Unknown";
-    level.maps[level.maps.size] = entry;
-    level.mapNames[name] = true;
+    if (isDefined(author) && author != "") entry["author"] = author;
+    catalogue.maps[catalogue.maps.size] = entry;
+    catalogue.names[name] = true;
+    if (isDefined(inRotation) && int(inRotation) == 1) catalogue.pool[name] = true;
 }
 
 voteMaps(adminLevel)

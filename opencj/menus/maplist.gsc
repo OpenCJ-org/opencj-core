@@ -288,7 +288,7 @@ _updateSelectionDvars(map)
         self setClientCvar(level.mapListDvarPrefix + "date", map["date"]);
         self setClientCvar(level.mapListDvarPrefix + "author", map["author"]);
         self setClientCvar(level.mapListDvarPrefix + "desc", map["desc"]);
-        self setClientCvar(level.mapListDvarPrefix + "loadimage", "loadscreen_" + map["name"]);
+        self setClientCvar(level.mapListDvarPrefix + "loadimage", openCJ\maps::previewImage(map["name"]));
     }
     else
     {
