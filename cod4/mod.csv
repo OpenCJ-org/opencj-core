@@ -366,3 +366,13 @@ menufile,ui_mp/scriptmenus/opencj_shop_confirm.menu
 menufile,ui_mp/scriptmenus/opencj_shop_inspect.menu
 
 sound,opencj_finish,,all_mp
+material,loadscreen_mp_dark
+material,loadscreen_mp_cj_sky_bounce
+material,loadscreen_mp_all_in
+material,loadscreen_mp_bouncer_training
+material,loadscreen_mp_blue2
+material,loadscreen_mp_descent_v2
+material,loadscreen_mp_to_the_moon
+material,loadscreen_mp_galaxy
+material,loadscreen_mp_mystic_v3
+material,loadscreen_mp_futile_fixed

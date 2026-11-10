@@ -1,0 +1,131 @@
+{
+  "description": "Map-list UI materials for existing loading artwork. This is an asset inventory, not pool membership; membership stays in mapids.inRotation.",
+  "maps": [
+    {
+      "map": "mp_dark",
+      "material": "loadscreen_mp_dark",
+      "image": "loadscreen_mp_dark",
+      "source": "mp_dark/mp_dark.iwd:images/loadscreen_mp_dark.iwi",
+      "imageSHA256": "7fac47be9f80959217a6d3d3205d660ef8dc82e1df7f1e53e2525bd4beaa39f9",
+      "sourceSHA256": "bb9eced36994cb6e46085fcd2b689cd95e005e36350738dc56ace777322194a3",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_cj_sky_bounce",
+      "material": "loadscreen_mp_cj_sky_bounce",
+      "image": "loadscreen_mp_cj_sky_bounce",
+      "source": "mp_cj_sky_bounce/mp_cj_sky_bounce.iwd:images/loadscreen_mp_cj_sky_bounce.iwi",
+      "imageSHA256": "43b5c804d92b72df0e7372732a5d2558f30bac06fbd30a85c1617651fea5a019",
+      "sourceSHA256": "7574cab5da9687d625346c7258f015c98ded1ffec492986c3c7529cef7a3f4ca",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_all_in",
+      "material": "loadscreen_mp_all_in",
+      "image": "loadscreen_mp_all_in",
+      "source": "mp_all_in/mp_all_in.iwd:images/loadscreen_mp_all_in.iwi",
+      "imageSHA256": "80d73948b3ec2b6f2aa7c43c7b7721fe9d75cb27f9b5b6d829138f0298c9e2c5",
+      "sourceSHA256": "a72546988ef1132a5f69ed1a1b10b17326c5d650b287feb426b105c88e91c378",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_bouncer_training",
+      "material": "loadscreen_mp_bouncer_training",
+      "image": "loadscreen_mp_bouncer_training",
+      "source": "mp_bouncer_training/mp_bouncer_training.iwd:images/loadscreen_mp_bouncer_training.iwi",
+      "imageSHA256": "26c891bd31328f551ca099589676b5215c79f35d13d170a44eedf06bebe72af7",
+      "sourceSHA256": "dd3d3035b9e62de56f780f771b4bd5b87cd13e9f2775206f4c2adc8fa2873edb",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_blue2",
+      "material": "loadscreen_mp_blue2",
+      "image": "loadscreen_mp_blue2",
+      "source": "mp_blue2/mp_blue2.iwd:images/loadscreen_mp_blue2.iwi",
+      "imageSHA256": "7ec41f1ec81fd924f619df60397a1200bb8fe090fbcfe19664ec8bb4210323bd",
+      "sourceSHA256": "c399d48286f00f5fd77d2cc58a43982c50c23172d5055daddf8552f83c3f5f1f",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_descent_v2",
+      "material": "loadscreen_mp_descent_v2",
+      "image": "loadscreen_mp_descent_v2",
+      "source": "mp_descent_v2/mp_descent_v2.iwd:images/loadscreen_mp_descent_v2.iwi",
+      "imageSHA256": "1fac0bd25a330afb587f30a1d7d15aaed25e625462efa1b03334e8dee09fcdc7",
+      "sourceSHA256": "9a26d6dcc5fd57540467aa6b203048c62611f56acdbcecbfb0c3e94a111675a5",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_to_the_moon",
+      "material": "loadscreen_mp_to_the_moon",
+      "image": "loadscreen_mp_to_the_moon",
+      "source": "mp_to_the_moon/mp_to_the_moon.iwd:images/loadscreen_mp_to_the_moon.iwi",
+      "imageSHA256": "2fe41deef2cdde4a6923c2113d705831ff37b138eeb5ac33ee61a749b3d303c3",
+      "sourceSHA256": "c476b3f25a719259bd0d4851f6cd6bdfb50a61666bb75c055befa8a13e29f0e7",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_galaxy",
+      "material": "loadscreen_mp_galaxy",
+      "image": "loadscreen_mp_galaxy",
+      "source": "mp_galaxy/mp_galaxy.iwd:images/loadscreen_mp_galaxy.iwi",
+      "imageSHA256": "aa64aad7367c3a9d9f805ee56e61d0e9eebf3fa2c81b18c0a332412fce22517b",
+      "sourceSHA256": "59cb7cd41e6ecd2d2b8238ab4bbf14be97b7355ecb6056ee07a7803373cde503",
+      "width": 1024,
+      "height": 1024,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_mystic_v3",
+      "material": "loadscreen_mp_mystic_v3",
+      "image": "loadscreen_mp_mystic_v3",
+      "source": "mp_mystic_v3/mp_mystic_v3.iwd:images/loadscreen_mp_mystic_v3.iwi",
+      "imageSHA256": "533fa0621dea22bce3310c94f2853b546a29e6163c03f890a630153374498ce6",
+      "sourceSHA256": "67775cd62a6e4c8a654091c26a0119db67b0a78e50810321f94a448bcc544170",
+      "width": 1024,
+      "height": 824,
+      "kind": "original_loading_screen"
+    },
+    {
+      "map": "mp_futile_fixed",
+      "material": "loadscreen_mp_futile_fixed",
+      "image": "loadscreen_mp_futile_fixed",
+      "source": "assets/map-previews/mp_futile_fixed-start.png",
+      "sourceSHA256": "544575e6c2da7e5f5f6446b62691de348fc89faeac6d41e89f1bd9644aebb198",
+      "imageSHA256": "8d6e8195ace5ac95dfeea264210078483ae601229990d03737e5c3065b15d829",
+      "width": 1024,
+      "height": 1024,
+      "kind": "starting_area_capture",
+      "capture": {
+        "map": "mp_futile_fixed",
+        "position": [
+          -600,
+          -1400,
+          1200
+        ],
+        "yaw": 45,
+        "mode": "local devmap dm, no HUD or weapon",
+        "crop": [
+          200,
+          280,
+          2350,
+          1430
+        ]
+      }
+    }
+  ]
+}
