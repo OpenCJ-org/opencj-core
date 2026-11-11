@@ -38,4 +38,9 @@ void gsc_mysql_append_longquery();
 void gsc_mysql_async_execute_longquery();
 
 
+void gsc_mysql_async_submit();
+void gsc_mysql_async_getstatus();
+void gsc_mysql_async_cancel();
+void gsc_mysql_async_newmap();
+void gsc_mysql_async_stats();
 #endif // _GSC_CUSTOM_MYSQL_H
