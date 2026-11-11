@@ -198,6 +198,7 @@
         focuscolor  COLOR_UNFOCUSED
         style       WINDOW_STYLE_EMPTY
         blurWorld   5.0
+        onClose { scriptMenuResponse "sql_close"; }
         onOpen
         {
             scriptMenuResponse "open_leaderboard"
