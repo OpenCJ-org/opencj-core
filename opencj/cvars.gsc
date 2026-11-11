@@ -13,6 +13,8 @@ onInit()
     }
     else
     {
+        // #200: send download switches in systeminfo before clients check files.
+        forceDLCvars();
         setCvar("bg_falldamageminheight", 100000000);
         setCvar("bg_falldamagemaxheight", 200000000);
         setCvar("jump_slowdownenable", 0);
