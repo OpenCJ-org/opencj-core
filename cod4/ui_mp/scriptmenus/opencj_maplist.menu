@@ -4,12 +4,10 @@
 #define ADDPREFIX(val)          OPENCJDVAR("maplist_")val
 
 // Exit button
-#define ACTION_COMMON           play "mouse_click"; close self
-#define EXITBTN_RUN             ACTION_COMMON; close opencj_ingame
 #define EXITBTN_ORG_X           (OUTER_FRAME_ORG_X + OUTER_FRAME_SIZE_X - EXITBTN_SIZE_X - 10)
 #define EXITBTN_ORG_Y           (OUTER_FRAME_ORG_Y + (H_SEP_ORG_Y / 2) - (EXITBTN_SIZE_Y / 2))
-#define EXITBTN_SIZE_X          100
-#define EXITBTN_SIZE_Y          20
+#define EXITBTN_SIZE_X          26
+#define EXITBTN_SIZE_Y          22
 
 #define SPACER                  10
 
@@ -123,8 +121,8 @@
         //Header text
         FIXED_RECT_TXTLEFT_SCALED("Maplist", 0.40, NO_COLOR, WHITE_COLOR, OUTER_FRAME_ORG_X, (OUTER_FRAME_ORG_Y), 300, 50)
 
-        //Return button
-        BUTTON_RECT_BORDER_TXT(exit, "Back", EXITBTN_RUN, BT_COLOR, WHITE_COLOR, UI_FONT_DEFAULT, 0.30, EXITBTN_ORG_X, EXITBTN_ORG_Y, EXITBTN_SIZE_X, EXITBTN_SIZE_Y,WHITE_TRANSPARENT_COLOR, 0.5)
+        //Exit button
+        OPENCJ_CLOSE_BUTTON(exit, close self; close opencj_ingame, EXITBTN_ORG_X, EXITBTN_ORG_Y)
 
         //Header Sep
         FIXED_RECT(BG_NAVSEP_COLOR, OUTER_FRAME_ORG_X, (OUTER_FRAME_ORG_Y + H_SEP_ORG_Y), OUTER_FRAME_SIZE_X, 1)

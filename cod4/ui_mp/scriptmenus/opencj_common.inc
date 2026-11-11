@@ -535,3 +535,17 @@
 #define FIXED_RECT_TXTCENTER_STYLED_WHEN(_visibility, _text, _txtScale, _backColor, _foreColor, orgX, orgY, sizeX, sizeY) \
     FIXED_RECT_TXT(when( _visibility), _text, UI_FONT_NORMAL, ITEM_TEXTSTYLE_SHADOWEDMORE, _txtScale, ITEM_ALIGN_MIDDLE_CENTER, 0, 0, _backColor, _foreColor, orgX, orgY, sizeX, sizeY)
 
+
+// Shared exit control, matching the existing shop's red X.
+#define OPENCJ_CLOSE_BUTTON(_name, _action, _x, _y) \
+    itemDef { \
+        name _name \
+        rect DEFAULT_RECT(_x _y 26 22) \
+        type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED \
+        backcolor .5 .04 .04 .9 forecolor .92 .96 .97 1 \
+        text "X" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER \
+        visible 1 \
+        mouseEnter { setitemcolor _name backcolor .08 .38 .44 1; } \
+        mouseExit { setitemcolor _name backcolor .5 .04 .04 .9; } \
+        action { play "mouse_click"; _action; } \
+    }
