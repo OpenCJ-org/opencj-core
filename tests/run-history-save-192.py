@@ -14,6 +14,7 @@ name = "opencj-" + tag
 created = granted = started = False
 private = mod / "history192.cfg"
 secrets = []
+pool_private = home / "pool.cfg"
 report = {"database": database, "schemaOnly": True, "productionWrites": False}
 
 def db(q, target=None):
@@ -84,10 +85,10 @@ try:
     # Delay delivery of one real SQL result; do not stub the database operation.
     p = mod / "opencj/mysql.gsc"
     source = p.read_text()
-    first = source.index("mysqlAsyncQuery(query)\n")
-    last = source.index("\nmysqlAsyncQueryNosave", first)
+    first = source.index("_request(query, policy, key, scope, deadline, save)\n")
+    last = source.index("\n_reportFailure", first)
     function = source[first:last]
-    needle = '    level waittill("mysqlQueryDone" + id, rows);\n'
+    needle = '    level waittill("mysqlQueryDone"+id, rows, outcome);\n'
     assert function.count(needle) == 1
     delay = '    if (isDefined(level.history192Delay) && level.history192Delay && isSubStr(query, "SELECT savePosition("))\n    {\n        self notify("history192_result_ready");\n        wait 0.2;\n    }\n'
     function = function.replace(needle, needle + delay)
@@ -101,6 +102,43 @@ try:
     assert any(database[:-1] in line for line in lines)
     private.write_text("\n".join(lines) + '\nset history192_database "' + database + '"\n')
     private.chmod(0o600)
+    if globals().get("SQL_ADAPTER_VERIFY"):
+        shutil.copyfile(ROOT / "dev-tools/tests/sql-adapter.gsc", mod / "opencj/sqladaptertest.gsc")
+        fixture = mod / "opencj/history192test.gsc"
+        fixture.write_text(fixture.read_text().replace("    extraSaveChecks();", "    extraSaveChecks();"))
+        test_source = fixture.read_text()
+        assert "    a extraSaveChecks();" in test_source
+        test_source=test_source.replace("    a extraSaveChecks();", "    a extraSaveChecks();\n    openCJ\\sqlAdapterTest::run(a,b);\n    openCJ\\sqlAdapterTest::queueForMapChange();")
+        test_source=test_source.replace("main()\n{", 'main()\n{\n    if(getCvarInt("sql_adapter_stage")==1){openCJ\\sqlAdapterTest::afterMap();return;}')
+        fixture.write_text(test_source)
+        values = {}
+        for line in lines:
+            match = re.match(r'\s*set(?:a)?\s+(db_\w+)\s+"?([^"]*)"?', line)
+            if match: values[match.group(1)] = match.group(2).strip()
+        pool_private.write_text("\n".join([values["db_host"],values["db_user"],values["db_pass"],database,values["db_port"]])+"\n")
+        pool_private.chmod(0o600)
+        build = ["docker","compose","run","--rm","--no-deps","--entrypoint","bash","server","-lc",
+                 "g++ -m32 -std=c++11 -O0 -g -pthread /workspace/dev-tools/tests/sql-adapter.cpp /workspace/server-ext/mysql_async_pool.cpp -lmysqlclient -o /workspace/dev-tools/local/sql-adapter/pool-test"]
+        compiled = subprocess.run(build,cwd=ROOT/"dev-tools",capture_output=True,text=True)
+        (home/"pool-build.log").write_text(compiled.stdout+compiled.stderr)
+        assert compiled.returncode==0,"Pool test compile failed"
+        command=["docker","compose","run","--rm","--no-deps","--entrypoint","/workspace/dev-tools/local/sql-adapter/pool-test","server",
+                 "/workspace/dev-tools/local/"+tag+"/pool.cfg"]
+        import os
+        if os.environ.get("OPENCJ_SKIP_POOL")=="1":
+            pool = subprocess.CompletedProcess(command,0,"SQLPOOL development iteration skipped\n","")
+        else:
+            pool = subprocess.run(command,cwd=ROOT/"dev-tools",capture_output=True,text=True,timeout=90)
+        (home/"pool.log").write_text(redact(pool.stdout+pool.stderr))
+        (home/"pool.log").chmod(0o600)
+        for line in pool.stdout.splitlines():
+            if line.startswith(("SQLPOOL METRIC","SQLPOOL COMPLETE","SQLPOOL FAILURE","SQLPOOL CHECK 0:")):print(line,flush=True)
+        assert pool.returncode==0,"Pool regression failed; inspect pool.log"
+        report["poolCompleted"]=os.environ.get("OPENCJ_SKIP_POOL")!="1"
+        if os.environ.get("OPENCJ_SKIP_POOL")!="1" or os.environ.get("OPENCJ_BENCH_ONLY")=="1":
+            import runpy
+            benchmark=runpy.run_path(str(ROOT/"dev-tools/tests/sql-adapter-benchmark.py"))
+            report["queueBenchmark"]=benchmark["run_benchmark"](ROOT,home,private,redact)
     cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "server",
            "/workspace/cod4x-server/bin/cod4x18_dedrun"]
     for key, val in [
@@ -113,10 +151,30 @@ try:
     subprocess.run(cmd, cwd=ROOT / "dev-tools", check=True, capture_output=True, text=True)
     started = True
     log = ""
+    map_changed = False
     for _ in range(100):
         time.sleep(1)
         proc = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
         log = redact(proc.stdout + proc.stderr)
+        if globals().get("SQL_ADAPTER_VERIFY") and "SQLPOOL_MAP_READY" in log and not map_changed:
+            import socket
+            sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);sock.settimeout(2)
+            sock.connect("/var/run/docker.sock")
+            sock.sendall(("POST /containers/"+name+"/attach?stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: tcp\r\nContent-Length: 0\r\n\r\n").encode())
+            header=b""
+            while b"\r\n\r\n" not in header:header+=sock.recv(4096)
+            assert b"101" in header.split(b"\r\n",1)[0] or b"200" in header.split(b"\r\n",1)[0]
+            sock.sendall(b"map mp_killhouse\n")
+            # Docker attach can discard buffered stdin if closed immediately.
+            # Keep the upgraded connection alive long enough to consume output.
+            deadline=time.monotonic()+2
+            try:
+                while time.monotonic()<deadline:
+                    sock.settimeout(max(0.01,deadline-time.monotonic()))
+                    if not sock.recv(65536):break
+            except socket.timeout:pass
+            finally:sock.close()
+            map_changed=True
         if any(word in log for word in ("HISTORY192 COMPLETE", "script compile error", "script runtime error")): break
     for line in log.splitlines():
         if line.startswith(("HISTORY192 COMPLETE", "HISTORY192 CHECK 0:")): print(line, flush=True)
@@ -128,6 +186,7 @@ try:
     report["binarySha256"] = hashlib.sha256((ROOT / "cod4x-server/bin/cod4x18_dedrun").read_bytes()).hexdigest()
     report["reconnectWarnings"] = log.count("MYSQL_OPT_RECONNECT")
     assert report["reconnectWarnings"] <= 5, "Reconnect options changed during healthy queries"
+    report["actualMapTransition"]=map_changed and "HISTORY192 CHECK 1: accepted write persists through an actual engine map change" in log
     report["checks"] = sum(line.startswith("HISTORY192 CHECK 1:") for line in log.splitlines())
     report["observations"] = {
         match.group(1): bool(int(match.group(2)))
@@ -143,6 +202,7 @@ finally:
         (home / "console.log").chmod(0o600)
         subprocess.run(["docker", "rm", "-f", name], check=True, capture_output=True)
     private.unlink(missing_ok=True)
+    pool_private.unlink(missing_ok=True)
     if granted: db("REVOKE ALL PRIVILEGES ON " + database + ".* FROM 'opencj'@'%';")
     if created: db("DROP DATABASE " + database + ";")
     report["disposableDatabaseRemoved"] = db("SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='" + database + "';") == "0"
