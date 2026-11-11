@@ -103,7 +103,7 @@ initialize()
     for(i=0;i<keys.size;i++){c=level.challenges[keys[i]];level.challengeTierPoints[c.tier]+=c.points;}
     if(!isDefined(openCJ\mySQL::mysqlSyncQuery(routeLinkSQL())))return;
     // Only proven, finalized run snapshots qualify, including existing players.
-    result=openCJ\mySQL::mysqlAsyncQuery(awardSQL(""));
+    result=openCJ\mySQL::mysqlAsyncBackground(awardSQL(""), "challenge-awards");
     if(!isDefined(result))return;
     level.challengesReady=true;
 }
@@ -137,10 +137,12 @@ connected()
     while(!level.challengesReady || !self openCJ\login::isLoggedIn())wait 0.25;
     self refresh();
 }
-refresh()
+refresh(menu)
 {
     id=self openCJ\login::getPlayerID();
-    rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT COALESCE(SUM(c.points),0) FROM challengeCompletions a JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 WHERE a.playerID="+id);
+    query="SELECT COALESCE(SUM(c.points),0) FROM challengeCompletions a JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 WHERE a.playerID="+id;
+    if (isDefined(menu) && menu) rows=self openCJ\mySQL::mysqlAsyncMenuQuery(query,"challenges");
+    else rows=self openCJ\mySQL::mysqlAsyncRead(query);
     if(!isDefined(rows) || !rows.size)return;
     self.challengePoints=int(rows[0][0]);self.challengeRank=rankForPoints(self.challengePoints);
 }
@@ -149,7 +151,7 @@ awardRun(runID)
     self endon("disconnect");
     if(!level.challengesReady)return;
     before=self.challengePoints;
-    result=self openCJ\mySQL::mysqlAsyncQuery(awardSQL("AND r.runID="+int(runID)));
+    result=self openCJ\mySQL::mysqlAsyncBackground(awardSQL("AND r.runID="+int(runID)), "run:"+runID);
     if(!isDefined(result))return;
     self refresh();
     if(self.challengePoints>before)self sendLocalChatMessage("Challenge complete! +"+(self.challengePoints-before)+" points. Total: "+self.challengePoints+" | Level "+self.challengeRank);
@@ -178,12 +180,15 @@ responses()
 }
 show()
 {
+    sqlToken=self openCJ\mySQL::beginMenuRead("challenges");
+    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
     self endon("disconnect");
     self notify("challenge_menu_refresh");self endon("challenge_menu_refresh");
     self setClientCvar("ocj_ch_busy",1);
     if(!level.challengesReady || !self openCJ\login::isLoggedIn())
     {self setClientCvar("ocj_ch_summary","Challenges are loading. Reopen in a moment.");return;}
-    self refresh();
+    self refresh(true);
+    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
     next="Maximum level";
     if(self.challengeRank<10)
     {
@@ -198,7 +203,9 @@ show()
     title="Competitive - Top 10";hint="All challenge points count. Ties share position.";
     if(tab==0)
     {
-        rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT p.playerName,COALESCE(SUM(c.points),0),p.playerID FROM playerInformation p LEFT JOIN challengeCompletions a ON a.playerID=p.playerID LEFT JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 GROUP BY p.playerID,p.playerName ORDER BY 2 DESC,p.playerID LIMIT 10");
+        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT p.playerName,COALESCE(SUM(c.points),0),p.playerID FROM playerInformation p LEFT JOIN challengeCompletions a ON a.playerID=p.playerID LEFT JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 GROUP BY p.playerID,p.playerName ORDER BY 2 DESC,p.playerID LIMIT 10", "challenges");
+        if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
+        if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
         total=0;if(isDefined(rows))total=rows.size;
         lastPoints=-1;position=0;
         for(i=0;i<total;i++)
@@ -215,7 +222,9 @@ show()
     {
         title="Tier "+tab+" challenges";
         hint="";
-        rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT c.challengeKey,c.mapName,c.routeLabel,c.points,c.maxTimeMs,c.maxRPG,c.routeName,COUNT(a.playerID),MAX(a.playerID="+self openCJ\login::getPlayerID()+"),c.fpsModes,c.allowedModes FROM challenges c LEFT JOIN challengeCompletions a ON a.challengeKey=c.challengeKey WHERE c.active=1 AND c.tier="+tab+" GROUP BY c.challengeKey ORDER BY c.challengeKey");
+        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.challengeKey,c.mapName,c.routeLabel,c.points,c.maxTimeMs,c.maxRPG,c.routeName,COUNT(a.playerID),MAX(a.playerID="+self openCJ\login::getPlayerID()+"),c.fpsModes,c.allowedModes FROM challenges c LEFT JOIN challengeCompletions a ON a.challengeKey=c.challengeKey WHERE c.active=1 AND c.tier="+tab+" GROUP BY c.challengeKey ORDER BY c.challengeKey", "challenges");
+        if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
+        if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
         count=0;if(isDefined(rows))count=rows.size;
         pages=int((count+15)/16);if(pages<1)pages=1;
         if(page>=pages)page=pages-1;
@@ -312,7 +321,7 @@ onRoutesPublished()
 }
 backfillPublishedRoutes()
 {
-    result=openCJ\mySQL::mysqlAsyncQuery(awardSQL(""));
+    result=openCJ\mySQL::mysqlAsyncBackground(awardSQL(""), "challenge-awards");
     if(!isDefined(result))return;
     players=getEntArray("player","classname");
     for(i=0;i<players.size;i++)

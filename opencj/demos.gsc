@@ -75,7 +75,7 @@ request(kind)
     order="d.timePlayed,d.explosiveJumps";
     if(kind=="lowrpg")order="d.explosiveJumps,d.timePlayed";
     query="SELECT d.runID,d.modeMask FROM demoWinners w JOIN demoRuns d ON d.runID=w.runID WHERE d.ready=1 AND w.mapID="+openCJ\mapID::getMapID()+" AND w.routeName="+dbStr(route)+" AND w.kind="+dbStr(kind)+" AND (w.modeMask & "+mask+")=w.modeMask AND w.FPSMode IN "+fpsFilter+" ORDER BY "+order+",BIT_COUNT(d.modeMask),FIELD(d.FPSMode,'125','mix','hax'),d.runID LIMIT 1";
-    rows=self openCJ\mySQL::mysqlAsyncQuery(query);
+    rows=self openCJ\mySQL::mysqlAsyncRead(query);
     if(!isDefined(rows)||!rows.size)
     {
         self sendLocalChatMessage("No matching demo is available for this route and these modes.",true);
@@ -108,7 +108,7 @@ playRun(id,full,kind)
     if(!self canWatch())return;
     self sendLocalChatMessage("Loading demo...");
     if(!isDefined(full))full=true;
-    meta=self openCJ\mySQL::mysqlAsyncQuery("SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerInformation p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID) FROM demoRuns WHERE ready=1 AND mapID="+openCJ\mapID::getMapID()+" AND runID="+id);
+    meta=self openCJ\mySQL::mysqlAsyncRead("SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerInformation p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID) FROM demoRuns WHERE ready=1 AND mapID="+openCJ\mapID::getMapID()+" AND runID="+id);
     if(!isDefined(meta)||!meta.size)
     {
         self sendLocalChatMessage("This run has no retained demo.",true);
@@ -233,7 +233,7 @@ _loadCache(id,expected)
         chunk=0;
         while(ok && numberOfDemoFrames(id)<expected)
         {
-            rows=openCJ\mySQL::mysqlAsyncQuery("SELECT chunkNum,HEX(payload) FROM demoChunks WHERE runID="+id+" AND chunkNum>="+chunk+" ORDER BY chunkNum LIMIT 32");
+            rows=openCJ\mySQL::mysqlAsyncRead("SELECT chunkNum,HEX(payload) FROM demoChunks WHERE runID="+id+" AND chunkNum>="+chunk+" ORDER BY chunkNum LIMIT 32");
             ok=isDefined(rows) && rows.size>0;
             for(i=0;ok && i<rows.size;i++)
             {

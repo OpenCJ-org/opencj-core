@@ -58,7 +58,7 @@ storeCheckpointPassed(runID, cpID, timePlayed)
     query = "SELECT checkpointPassed(" + runID + ", " + cpID + ", " + timePlayed + ", " + saveCount + ", " + loadCount + ", " + explosiveStr + filters + ", " + runInstance + ")";
     printf("Executing checkpointPassed query:\n" + query + "\n");  // Debug
 
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query);
+    rows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:"+runID);
     if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
     {
         message = self openCJ\runStorage::resultMessage(runID, runInstance, rows, "checkpoint progress");
@@ -74,7 +74,7 @@ _notifyCheckpointPassed(runID, cpID, timePlayed)
     self notify("checkpointNotify");
     self endon("checkpointNotify");
 
-    rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT MIN(cs.timePlayed) FROM checkpointStatistics cs INNER JOIN playerRuns pr ON pr.runID = cs.runID WHERE cs.cpID = " + cpID + " AND pr.runID != " + runID + " AND pr.finishcpID IS NOT NULL");
+    rows = self openCJ\mySQL::mysqlAsyncRead("SELECT MIN(cs.timePlayed) FROM checkpointStatistics cs INNER JOIN playerRuns pr ON pr.runID = cs.runID WHERE cs.cpID = " + cpID + " AND pr.runID != " + runID + " AND pr.finishcpID IS NOT NULL");
     if(isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
     {
         diff = timePlayed - int(rows[0][0]);

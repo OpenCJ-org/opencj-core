@@ -103,7 +103,8 @@ fetchUpdatedData()
     // Might remain useful for now to print the query
     printf("Runsboard query:\n" + query + "\n"); // Debug
 
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query);
+    rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "board");
+    if (!isDefined(rows)) return false;
 
     self.currentBoard["cols"] = []; // Hope this clears the previously used memory
 

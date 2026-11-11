@@ -2,6 +2,7 @@
 
 onInit()
 {
+    openCJ\commands_base::registerCommand("sqlstats", "Show SQL queue, latency and failure diagnostics.", openCJ\mySQL::showStats, 0, 0, 50);
     cmd = openCJ\commands_base::registerCommand("kick", "Kick a specific player. Usage: !kick <playerName|playerId> [reason]", ::_onCommandKick, 1, 2, 50); // TODO: correct admin level value
     cmd = openCJ\commands_base::registerCommand("ban", "Ban a specific player. Usage: !ban <playerName|playerId> [reason]", ::_onCommandBan, 1, 2, 70); // TODO: correct admin level value
 

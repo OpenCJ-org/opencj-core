@@ -11,13 +11,13 @@ historyLoad(runID)
     if (isDefined(self.cpc))return false;
     self endon("cpc_started");
     self endon("disconnect");
-    allowed=self openCJ\mySQL::mysqlAsyncQuery("SELECT runID FROM playerRuns WHERE runID="+runID+" AND archived=0");
+    allowed=self openCJ\mySQL::mysqlAsyncRead("SELECT runID FROM playerRuns WHERE runID="+runID+" AND archived=0");
     if(!isDefined(allowed)||!allowed.size)
     {
         self iprintlnbold("This run is archived and cannot be resumed. Start a new run.");
         return false;
     }
-    rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT historyLoad(" + openCJ\mapID::getMapID() + ", " + self openCJ\login::getPlayerID() + ", " + runID + ")");
+    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT historyLoad(" + openCJ\mapID::getMapID() + ", " + self openCJ\login::getPlayerID() + ", " + runID + ")", "run:"+runID);
     if(isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
     {
         instanceNumber = int(rows[0][0]);
@@ -38,11 +38,11 @@ _loadSavesFromDatabase(runID, instanceNumber)
     epoch=level.checkpointLayoutEpoch;
     query1 = "SELECT timePlayed, saveCount, loadCount, explosiveLaunches FROM playerRuns WHERE archived=0 AND runID = " + runID;
     //printf("DEBUG: executing historyLoad query1:\n" + query1 + "\n");
-    rowsRun = self openCJ\mySQL::mysqlAsyncQuery(query1);
+    rowsRun = self openCJ\mySQL::mysqlAsyncRead(query1);
 
     query2 = "SELECT x, y, z, alpha, beta, gamma, explosiveJumps, doubleExplosives, checkpointID, FPSMode, flags, entTargetName, numOfEnt FROM playerSaves WHERE runID = " + runID + " ORDER BY saveNumber DESC LIMIT 50";
     //printf("DEBUG: executing historyLoad query2:\n" + query2 + "\n");
-    rowsSaves = self openCJ\mySQL::mysqlAsyncQuery(query2);
+    rowsSaves = self openCJ\mySQL::mysqlAsyncRead(query2);
 
     if (!isDefined(rowsSaves) || !isDefined(rowsRun) || !isDefined(rowsRun[0]) || !isDefined(rowsRun[0][0]))
     {
@@ -174,7 +174,7 @@ saveToDatabase(origin, angles, entTargetName, numOfEnt, explosiveJumps, doubleEx
 
     query = "SELECT savePosition(" + runID + ", " + runInstance + ", " + x + ", " + y + ", " + z + ", " + alpha + ", " + beta + ", " + gamma + ", " + timePlayed + ", " + saveCount + ", " + loadCount + ", " + explosiveLaunches + ", " + explosiveJumps + ", " + doubleExplosives + ", " + checkpointID + ", " + FPSMode + ", " + flags + ", " + entTargetName + ", " + numOfEnt + ")";
     
-    rows = openCJ\mySQL::mysqlAsyncQuery(query);
+    rows = openCJ\mySQL::mysqlAsyncWrite(query, "run:"+runID);
     message = self openCJ\runStorage::resultMessage(runID, runInstance, rows, "this position");
     if (message != "") self iPrintLnBold(message);
 }

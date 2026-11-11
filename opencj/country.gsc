@@ -17,7 +17,7 @@ _countryQuery()
     query = "SELECT getCountry(INET_ATON('" + openCJ\mySQL::escapeString(self getIP()) + "'))";
     printf("Country query:\n" + query + "\n"); // Debug
 
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query);
+    rows = self openCJ\mySQL::mysqlAsyncRead(query);
     if(isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
     {
         self.country = getSubStr(rows[0][0], 0, 2);

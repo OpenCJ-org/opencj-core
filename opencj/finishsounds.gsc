@@ -1,7 +1,7 @@
 onRunFinished(runID)
 {
     self endon("disconnect");
-    rows = self openCJ\mySQL::mysqlAsyncQuery(recordQuery(runID));
+    rows = self openCJ\mySQL::mysqlAsyncRead(recordQuery(runID));
     self playLocalSound(soundForResult(rows));
 }
 

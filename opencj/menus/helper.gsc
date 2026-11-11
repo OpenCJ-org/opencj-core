@@ -15,6 +15,14 @@ onMenuResponse()
     {
         self waittill("menuresponse", menu, response);
 
+        if (response=="sql_close" || response=="close" || response=="close_commands")
+        {
+            self openCJ\mySQL::cancelMenuReads(menu);
+            if(self.currentMenu==menu)self.currentMenu="";
+        }
+        if (response=="open_leaderboard" || response=="open_runsboard" || response=="open_maplist" || response=="open_commands" || (response=="open" && menu!="opencj_clips" && menu!="opencj_challenges"))
+            self openCJ\mySQL::cancelMenuReads();
+
         currentMenu = self.currentMenu;
         menuOpened = false;
         if ((menu == "opencj_leaderboard") && (response == "open_leaderboard")) // Leaderboard was opened

@@ -29,7 +29,7 @@ fetchAllMaps()
 {
     // One shared pool for voting and the future download catalogue (#203).
     // Keep metadata for installed maps outside the pool for uber-admin menus.
-    rows = openCJ\mysql::mysqlAsyncQuery("SELECT m.mapname, COALESCE(m.releaseDate, 'Unknown'), m.inRotation, COALESCE(GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', '), 'Unknown') FROM mapids m LEFT JOIN mapMappers mm ON mm.mapID = m.mapID LEFT JOIN mappers a ON a.mapperID = mm.mapperID GROUP BY m.mapID, m.mapname, m.releaseDate, m.inRotation ORDER BY m.mapname ASC");
+    rows = openCJ\mysql::mysqlAsyncRead("SELECT m.mapname, COALESCE(m.releaseDate, 'Unknown'), m.inRotation, COALESCE(GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', '), 'Unknown') FROM mapids m LEFT JOIN mapMappers mm ON mm.mapID = m.mapID LEFT JOIN mappers a ON a.mapperID = mm.mapperID GROUP BY m.mapID, m.mapname, m.releaseDate, m.inRotation ORDER BY m.mapname ASC");
     loadMapRows(rows);
     printf("[OpenCJ] Map catalogue: " + level.maps.size + " installed, " + voteMaps(0).size + " in pool\n");
     thread openCJ\menus\endMapVote::fillRandomMaps();

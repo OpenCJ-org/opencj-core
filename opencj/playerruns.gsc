@@ -48,10 +48,10 @@ onRunFinished(cp, filterStr)
     runID = self getRunID();
     if (!isDefined(filterStr))
         filterStr = self finishSettings();
-    rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT runFinished(" + runID + ", " + cpID + ", " + filterStr + ", " + self getRunInstanceNumber() + ")");
+    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT runFinished(" + runID + ", " + cpID + ", " + filterStr + ", " + self getRunInstanceNumber() + ")", "run:"+runID);
     if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
     {
-        self iPrintLnBold("Could not save finish. Please reset; no leaderboard result was recorded");
+        self iPrintLnBold("Could not confirm that this finish was saved. Check your records before resetting.");
         return false;
     }
     self.playerRuns_runFinished = true;
@@ -209,7 +209,7 @@ saveRun(runLabel)
     query = "SELECT saveRun(" + runID + ", " + runInstanceNumber + ", " + dbStr(cleanedRunLabel) + ")";
     printf("DEBUG: executing saveRun query:\n" + query + "\n");
 
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query);
+    rows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:"+runID);
     if(!isDefined(self))
         return; //player disconnected during save command
     if (isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]) && (int(rows[0][0]) == runID))
@@ -248,7 +248,12 @@ archiveRun(runID)
                 playerIDSqlStr;
         printf("DEBUG: executing archiveRun query:\n" + query + "\n");
 
-        level thread openCJ\mySQL::mysqlAsyncQueryNosave(query);
+        stored=openCJ\mySQL::mysqlAsyncWrite(query, "run:"+runID);
+        if(!isDefined(stored))
+        {
+            if(isDefined(self))self sendLocalChatMessage("Could not confirm that the run was archived.",true);
+            return;
+        }
         if (isDefined(self))
         {
             self iprintln("^5Archived ^7run (" + runID + ")");
@@ -398,7 +403,7 @@ _createRunID()
 
     // Clear run variables
     _clearRunVars();
-    rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT createRunID(" + self openCJ\login::getPlayerID() + ", " + openCJ\mapID::getMapID() + ")");
+    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT createRunID(" + self openCJ\login::getPlayerID() + ", " + openCJ\mapID::getMapID() + ")", "player:"+self openCJ\login::getPlayerID());
 
     if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
     {
@@ -410,7 +415,7 @@ _createRunID()
 
         self iprintln("^5Created ^7new run (" + self.playerRuns_runID + ")");
 
-        rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT createRunInstance(" + self.playerRuns_runID + ")");
+        rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT createRunInstance(" + self.playerRuns_runID + ")", "run:"+self.playerRuns_runID);
         if(isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
         {
             self.runInstanceNumber = int(rows[0][0]);

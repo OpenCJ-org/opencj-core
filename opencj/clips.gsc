@@ -202,9 +202,9 @@ submit(description)
     for(slot=1;slot<=5;slot++)
     {
         query="INSERT IGNORE INTO demoClips(uploadToken,mapID,playerID,description,scopeKey,sessionID,slot,originX,originY,originZ,frameCount,recordedAt) VALUES("+dbStr(token)+","+map+","+owner+","+dbStr(openCJ\mySQL::escapeString(description))+","+dbStr(scope)+","+session+","+slot+","+origin[0]+","+origin[1]+","+origin[2]+","+(rec.last-rec.first+1)+","+dbStr(rec.date)+")";
-        result=self openCJ\mySQL::mysqlAsyncQuery(query);
+        result=self openCJ\mySQL::mysqlAsyncBackground(query, "clip-upload:"+token);
         if(!isDefined(result))break;
-        rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT clipID FROM demoClips WHERE uploadToken="+dbStr(token));
+        rows=self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips WHERE uploadToken="+dbStr(token));
         if(isDefined(rows) && rows.size){id=int(rows[0][0]);break;}
     }
     if(!isDefined(id))
@@ -212,13 +212,13 @@ submit(description)
     ok=true;
     for(chunk=0;chunk<payloads.size;chunk++)
     {
-        result=self openCJ\mySQL::mysqlAsyncQuery("INSERT INTO demoClipChunks VALUES("+id+","+chunk+",UNHEX("+dbStr(payloads[chunk])+"))");
+        result=self openCJ\mySQL::mysqlAsyncBackground("INSERT INTO demoClipChunks VALUES("+id+","+chunk+",UNHEX("+dbStr(payloads[chunk])+"))", "clip-upload:"+token);
         if(!isDefined(result)){ok=false;break;}
     }
-    if(ok)ok=isDefined(self openCJ\mySQL::mysqlAsyncQuery("UPDATE demoClips SET ready=1 WHERE clipID="+id));
+    if(ok)ok=isDefined(self openCJ\mySQL::mysqlAsyncBackground("UPDATE demoClips SET ready=1 WHERE clipID="+id, "clip-upload:"+token));
     if(!ok)
     {
-        self openCJ\mySQL::mysqlAsyncQuery("DELETE FROM demoClips WHERE clipID="+id+" AND ready=0");
+        self openCJ\mySQL::mysqlAsyncBackground("DELETE FROM demoClips WHERE clipID="+id+" AND ready=0", "clip-upload:"+token);
         rec.busy=false;self setClientCvar("opencj_clip_hint","Upload failed. Your clip is still open; try again.");return;
     }
     self.clipUploadToken=undefined;
@@ -231,7 +231,7 @@ remove(id)
     self endon("disconnect");
     if(!self available() || id<1)return;
     owner=self openCJ\login::getPlayerID();
-    rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT clipID FROM demoClips c WHERE clipID="+id+" AND playerID="+owner+" AND "+scopeFilter());
+    rows=self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips c WHERE clipID="+id+" AND playerID="+owner+" AND "+scopeFilter());
     if(!isDefined(rows) || !rows.size){self sendLocalChatMessage("No clip with that ID belongs to you.",true);return;}
     result=self openCJ\mySQL::mysqlAsyncQuery("DELETE FROM demoClips WHERE clipID="+id+" AND playerID="+owner);
     if(isDefined(result))self sendLocalChatMessage("Deleted clip #"+id+".");
@@ -254,14 +254,17 @@ nearby(args)
 
 browser()
 {
+    sqlToken=self openCJ\mySQL::beginMenuRead("clips");
+    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
     if(!self available())return;
     if(!isDefined(self.clipPage))self.clipPage=0;
     if(!isDefined(self.clipTab))self.clipTab="permanent";
     scope=level.clipSession;if(self.clipTab=="permanent")scope="permanent";
-    rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT c.clipID,c.description,p.playerName,c.frameCount,DATE_FORMAT(c.recordedAt,'%Y-%m-%d %H:%i:%s'),COUNT(*) OVER() FROM demoClips c JOIN playerInformation p ON c.playerID=p.playerID WHERE c.ready=1 AND c.mapID="+openCJ\mapID::getMapID()+" AND c.scopeKey="+dbStr(scope)+" ORDER BY c.clipID DESC LIMIT 4 OFFSET "+(self.clipPage*4));
+    rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.clipID,c.description,p.playerName,c.frameCount,DATE_FORMAT(c.recordedAt,'%Y-%m-%d %H:%i:%s'),COUNT(*) OVER() FROM demoClips c JOIN playerInformation p ON c.playerID=p.playerID WHERE c.ready=1 AND c.mapID="+openCJ\mapID::getMapID()+" AND c.scopeKey="+dbStr(scope)+" ORDER BY c.clipID DESC LIMIT 4 OFFSET "+(self.clipPage*4), "clips");
+    if (!isDefined(rows)) return;
     self.clipRows=rows;
     total=0;if(isDefined(rows) && rows.size)total=int(rows[0][5]);
-    if(!total && self.clipPage>0){self.clipPage=0;self browser();return;}
+    if(!total && self.clipPage>0){self.clipPage=0;self thread browser();return;}
     self.clipPages=int((total+3)/4);if(self.clipPages<1)self.clipPages=1;
     self setClientCvar("opencj_clips_page","Page "+(self.clipPage+1)+" / "+self.clipPages);
     label="Show: This map session";if(self.clipTab=="permanent")label="Show: Permanent clips";
@@ -304,7 +307,7 @@ play(id,preview)
     }
     if(!self openCJ\demos::canWatch())return;
     if(isDefined(self.demoPendingId))return;
-    rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT frameCount,description FROM demoClips c WHERE c.ready=1 AND c.clipID="+id+" AND c.mapID="+openCJ\mapID::getMapID()+" AND "+scopeFilter());
+    rows=self openCJ\mySQL::mysqlAsyncRead("SELECT frameCount,description FROM demoClips c WHERE c.ready=1 AND c.clipID="+id+" AND c.mapID="+openCJ\mapID::getMapID()+" AND "+scopeFilter());
     if(!isDefined(rows) || !rows.size){self sendLocalChatMessage("This clip is no longer available.",true);return;}
     if(isDefined(self.demoPendingId) || !self openCJ\demos::canWatch())return;
     native=demoCreateTransient();if(!isDefined(native))return;
@@ -313,7 +316,7 @@ play(id,preview)
     level.demoCache[""+native]=cache;self.demoPendingId=native;
     while(ok && numberOfDemoFrames(native)<expected)
     {
-        data=self openCJ\mySQL::mysqlAsyncQuery("SELECT chunkNum,HEX(payload) FROM demoClipChunks WHERE clipID="+id+" AND chunkNum>="+chunk+" ORDER BY chunkNum LIMIT 8");
+        data=self openCJ\mySQL::mysqlAsyncRead("SELECT chunkNum,HEX(payload) FROM demoClipChunks WHERE clipID="+id+" AND chunkNum>="+chunk+" ORDER BY chunkNum LIMIT 8");
         if(!isDefined(self.demoPendingId) || self.demoPendingId!=native)return;
         ok=isDefined(data) && data.size>0;
         for(i=0;ok && i<data.size;i++)
@@ -368,7 +371,7 @@ responses()
                 if(response=="session" || response=="permanent"){self.clipTab=response;self.clipPage=0;}
                 if(response=="next" && isDefined(self.clipPages) && self.clipPage+1<self.clipPages)self.clipPage++;
                 if(response=="previous" && isDefined(self.clipPage) && self.clipPage>0)self.clipPage--;
-                self browser();
+                self thread browser();
             }
             else if(getSubStr(response,0,4)=="row:")
             {
@@ -439,7 +442,7 @@ rename(id,name)
     // Reserve the cooldown before yielding, including unsuccessful requests.
     self.clipRenameAt=getTime();
     owner=self openCJ\login::getPlayerID();
-    rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT clipID FROM demoClips c WHERE ready=1 AND clipID="+id+" AND playerID="+owner+" AND "+scopeFilter());
+    rows=self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips c WHERE ready=1 AND clipID="+id+" AND playerID="+owner+" AND "+scopeFilter());
     if(!isDefined(rows) || !rows.size){self sendLocalChatMessage("No available clip with that ID belongs to you.",true);return;}
     result=self openCJ\mySQL::mysqlAsyncQuery("UPDATE demoClips SET description="+dbStr(openCJ\mySQL::escapeString(name))+" WHERE clipID="+id+" AND playerID="+owner);
     if(isDefined(result))self sendLocalChatMessage("Renamed clip #"+id+" to "+name+".");

@@ -267,8 +267,11 @@ onMenuResponse()
 
 updateBoard()
 {
+    sqlToken=self openCJ\mySQL::beginMenuRead("board");
+    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
     // Gets values and puts them in self vars
-    self [[self.currentBoard["updateFunc"]]]();
+    updated=self [[self.currentBoard["updateFunc"]]]();
+    if (isDefined(updated) && !updated) return;
 
     // Update all dvars
     self.currentBoard["page"]["max"] = max(1, ceil(self.currentBoard["nrTotalEntries"] / self.currentBoard["maxEntriesPerPage"]));

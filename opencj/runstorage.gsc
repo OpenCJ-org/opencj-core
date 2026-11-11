@@ -14,7 +14,7 @@ resultMessage(runID, instance, rows, subject)
     if (isDefined(rows[0][0])) return "";
 
     // NULL from a guarded routine can mean missing data, not just a takeover.
-    owner = self openCJ\mySQL::mysqlAsyncQuery("SELECT instanceNumber FROM playerRuns WHERE runID=" + runID);
+    owner = self openCJ\mySQL::mysqlAsyncRead("SELECT instanceNumber FROM playerRuns WHERE runID=" + runID);
     if (!self isCurrent(runID, instance)) return "";
     if (!isDefined(owner)) return failure;
     if (owner.size == 0) return "This run no longer exists. Start a new run.";

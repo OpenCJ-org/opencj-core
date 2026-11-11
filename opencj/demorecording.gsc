@@ -161,21 +161,21 @@ persist(id)
     if(!isDefined(level.demoPersisting))level.demoPersisting=0;
     level.demoPersisting++;
     query = "INSERT INTO demoRuns(runID,mapID,routeName,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount) SELECT r.runID,r.mapID,c.ender,r.FPSMode,r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS,s.timePlayed,s.explosiveJumps," + count + " FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE r.runID=" + id + " AND r.finishTimeStamp IS NOT NULL";
-    ok = isDefined(openCJ\mySQL::mysqlAsyncQuery(query));
+    ok = isDefined(openCJ\mySQL::mysqlAsyncBackground(query, "demo:"+id));
     for (first=0;ok && first<count;first+=64)
     {
         length = count-first;
         if (length>64) length=64;
         hex = demoEncodeChunk(id,first,length);
         if (!isDefined(hex)) {ok=false;break;}
-        ok = isDefined(openCJ\mySQL::mysqlAsyncQuery("INSERT INTO demoChunks VALUES(" + id + "," + int(first/64) + ",UNHEX('" + hex + "'))"));
+        ok = isDefined(openCJ\mySQL::mysqlAsyncBackground("INSERT INTO demoChunks VALUES(" + id + "," + int(first/64) + ",UNHEX('" + hex + "'))", "demo:"+id));
     }
     if (ok) ok = promote(id);
     if (!ok)
     {
         printf("OpenCJ: demo publication failed for run " + id + "; leaderboard result retained.\n");
         // Only our unpublished candidate can be removed here.
-        openCJ\mySQL::mysqlAsyncQuery("DELETE FROM demoRuns WHERE runID=" + id + " AND ready=0");
+        openCJ\mySQL::mysqlAsyncBackground("DELETE FROM demoRuns WHERE runID=" + id + " AND ready=0", "demo:"+id);
     }
     level.demoPersisting--;
     destroyDemo(id);
