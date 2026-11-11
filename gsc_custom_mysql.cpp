@@ -6,11 +6,15 @@
 */
 
 #include "gsc_custom_mysql.hpp"
-#include "shared.hpp"
 
 #include <mysql/mysql.h>
+#include <mysql/errmsg.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <strings.h>
+
+// Load library headers before engine headers that change structure packing.
+#include "shared.hpp"
 
 #define SQL_MAX_QUERY_SIZE  (10 * 1024)
 
@@ -21,6 +25,7 @@ struct mysql_async_task
     int id;
     MYSQL_RES *result;
     bool done;
+    bool failed;
     bool started;
     bool save;
     char query[SQL_MAX_QUERY_SIZE + 1];
@@ -37,42 +42,89 @@ struct mysql_async_connection
 mysql_async_connection *first_async_connection = NULL;
 mysql_async_task *first_async_task = NULL;
 MYSQL *cod_mysql_connection = NULL;
-pthread_mutex_t lock_async_mysql;
+// The GSC synchronous wrapper owns this connection between BEGIN and ROLLBACK/
+// COMMIT. Never reconnect halfway through that transaction.
+static bool sync_mysql_transaction = false;
+static bool sync_mysql_failed_transaction = false;
+pthread_mutex_t lock_async_mysql = PTHREAD_MUTEX_INITIALIZER;
+
+// Only connection probes may be repeated; the SQL statement is submitted once.
+// After a killed connection, the first probe can report the old connection's
+// loss before a subsequent probe can reconnect.
+static int mysql_prepare_new_statement(MYSQL *connection)
+{
+    int error = mysql_ping(connection);
+    if (error && (mysql_errno(connection) == CR_SERVER_LOST ||
+                  mysql_errno(connection) == CR_SERVER_GONE_ERROR))
+    {
+        // mysql_options(RECONNECT) emits a warning in newer clients; only
+        // change it during recovery, not on every healthy query.
+        bool reconnect = true;
+        mysql_options(connection, MYSQL_OPT_RECONNECT, &reconnect);
+        error = mysql_ping(connection);
+        if (error && (mysql_errno(connection) == CR_SERVER_LOST ||
+                      mysql_errno(connection) == CR_SERVER_GONE_ERROR))
+            error = mysql_ping(connection);
+        reconnect = false;
+        mysql_options(connection, MYSQL_OPT_RECONNECT, &reconnect);
+    }
+    return error;
+}
 
 // CALL returns a trailing status result even when it selects only one rowset.
 // Buffer the first rowset for GSC, then drain the rest before reusing the connection.
-static MYSQL_RES *mysql_store_first_result(MYSQL *connection)
+static MYSQL_RES *mysql_store_first_result(MYSQL *connection, bool *failed)
 {
     MYSQL_RES *first = mysql_store_result(connection);
-    while (mysql_more_results(connection))
+    *failed = mysql_errno(connection) != 0;
+    while (!*failed && mysql_more_results(connection))
     {
-        if (mysql_next_result(connection) != 0)
-        {
-            if (first) mysql_free_result(first);
-            return NULL;
-        }
+        int next = mysql_next_result(connection);
+        if (next > 0) { *failed = true; break; }
+        if (next < 0) break;
         MYSQL_RES *extra = mysql_store_result(connection);
+        *failed = mysql_errno(connection) != 0;
         if (extra) mysql_free_result(extra);
+    }
+    if (*failed && first)
+    {
+        mysql_free_result(first);
+        first = NULL;
     }
     return first;
 }
 
-void *mysql_async_execute_query(void *input_c) //cannot be called from gsc, is threaded.
+void *mysql_async_execute_query(void *input_c)
 {
     mysql_async_connection *c = (mysql_async_connection *) input_c;
-    int res = mysql_query(c->connection, c->task->query);
-    if(!res)
+    mysql_async_task *task = c->task;
+    // Connections are used by one worker at a time, but each new pthread still
+    // needs its own client-library thread state.
+    bool initialized = mysql_thread_init() == 0;
+    bool failed = !initialized;
+    if (!failed)
     {
-        MYSQL_RES *result = mysql_store_first_result(c->connection);
-        if(c->task->save) c->task->result = result;
-        else if(result) mysql_free_result(result);
+        // Reconnect before submitting a new statement, never replay a statement
+        // whose commit outcome is unknown after a connection failure.
+        failed = mysql_prepare_new_statement(c->connection) != 0;
+        if (!failed) failed = mysql_query(c->connection, task->query) != 0;
     }
-    else if(res)
+    MYSQL_RES *result = NULL;
+    if (!failed) result = mysql_store_first_result(c->connection, &failed);
+    if (!task->save && result)
     {
-        //mysql show error here?
+        mysql_free_result(result);
+        result = NULL;
     }
-    c->task->done = true;
+    if (initialized) mysql_thread_end();
+    // Publish the result/status together before the main thread can free the task
+    // or the scheduler can reuse this connection.
+    pthread_mutex_lock(&lock_async_mysql);
+    task->result = result;
+    task->failed = failed;
+    task->done = true;
     c->task = NULL;
+    pthread_mutex_unlock(&lock_async_mysql);
     return NULL;
 }
 
@@ -118,12 +170,15 @@ void *mysql_async_query_handler(void* input_nothing) //is threaded after initial
                 int error = pthread_create(&query_doer, NULL, mysql_async_execute_query, c);
                 if(error)
                 {
-					Shared_Printf("error: %i\n", error);
-                    Shared_Printf("Error detaching async handler thread\n");
-                    pthread_mutex_unlock(&lock_async_mysql);
-                    return NULL;
+                    // Fail this request and keep dispatching; one resource error
+                    // must not strand every current and future script waiter.
+                    q->failed = true;
+                    q->done = true;
+                    c->task = NULL;
+                    Shared_Printf("MySQL worker creation failed (%i)\n", error);
                 }
-                pthread_detach(query_doer);
+                else
+                    pthread_detach(query_doer);
                 c = c->next;
             }
             q = q->next;
@@ -136,6 +191,8 @@ void *mysql_async_query_handler(void* input_nothing) //is threaded after initial
 
 int mysql_async_query_initializer(char *sql, bool save) //cannot be called from gsc, helper function
 {
+    if (!first_async_connection || strlen(sql) > SQL_MAX_QUERY_SIZE)
+        return 0;
     static int id = 0;
     id++;
 
@@ -149,11 +206,12 @@ int mysql_async_query_initializer(char *sql, bool save) //cannot be called from 
 
     mysql_async_task *newtask = new mysql_async_task;
     newtask->id = id;
-    strncpy(newtask->query, sql, SQL_MAX_QUERY_SIZE);
+    memcpy(newtask->query, sql, strlen(sql) + 1);
     newtask->prev = current;
     newtask->result = NULL;
     newtask->save = save;
     newtask->done = false;
+    newtask->failed = false;
     newtask->next = NULL;
     newtask->started = false;
     if(current != NULL)
@@ -180,7 +238,8 @@ void gsc_mysql_async_create_query_nosave()
 		return;
 	}
 	int id = mysql_async_query_initializer(query, false);
-	stackPushInt(id);
+	if (id) stackPushInt(id);
+	else stackPushUndefined();
 }
 
 void gsc_mysql_async_create_query()
@@ -193,7 +252,8 @@ void gsc_mysql_async_create_query()
 		return;
 	}
 	int id = mysql_async_query_initializer(query, true);
-	stackPushInt(id);
+	if (id) stackPushInt(id);
+	else stackPushUndefined();
 }
 
 void gsc_mysql_async_getdone_list()
@@ -214,7 +274,8 @@ void gsc_mysql_async_getdone_list()
     pthread_mutex_unlock(&lock_async_mysql);
 }
 
-void gsc_mysql_async_getresult_and_free() //same as above, but takes the id of a function instead and returns 0 (not done), undefined (not found) or the mem address of result
+// Failed/not-ready/missing tasks return undefined; successful writes return 0.
+void gsc_mysql_async_getresult_and_free()
 {
 	int id = 0;
 	if (!stackGetParams("i", &id))
@@ -246,7 +307,11 @@ void gsc_mysql_async_getresult_and_free() //same as above, but takes the id of a
             c->prev->next = c->next;
         else
             first_async_task = c->next;
-        if (c->save)
+        if (c->failed)
+        {
+            stackPushUndefined();
+        }
+        else if (c->save)
         {
             int ret = (int)c->result;
             stackPushInt(ret);
@@ -268,74 +333,74 @@ void gsc_mysql_async_getresult_and_free() //same as above, but takes the id of a
     }
 }
 
-void gsc_mysql_async_initializer()//returns array with mysql connection handlers
+static void mysql_free_async_connections(mysql_async_connection *c)
 {
-    if (first_async_connection != NULL)
+    while (c)
     {
-		Shared_Printf("gsc_mysql_async_initializer() async mysql already initialized. Returning before adding additional connections\n");
-        stackPushUndefined();
-        return;
+        mysql_async_connection *next = c->next;
+        if (c->connection) mysql_close(c->connection);
+        delete c;
+        c = next;
     }
-    if (pthread_mutex_init(&lock_async_mysql, NULL) != 0)
+}
+
+void gsc_mysql_async_initializer()
+{
+    if (!first_async_connection)
     {
-		Shared_Printf("Async mutex initialization failed\n");
-        stackPushUndefined();
-        return;
-    }
-
-	int port = 0, connection_count= 0;
-	char *host = NULL, *user = NULL, *pass = NULL, *db = NULL;
-	if (!stackGetParams("ssssii", &host, &user, &pass, &db, &port, &connection_count))
-	{
-		stackError("gsc_mysql_async_initializer() one or more arguments is undefined or has a wrong type");
-		stackPushUndefined();
-		return;
-	}
-	if(connection_count <= 0)
-	{
-		stackError("gsc_mysql_async_initializer() need a positive connection_count in mysql_async_initializer");
-		stackPushUndefined();
-		return;
-	}
-
-	stackMakeArray();
-	mysql_async_connection *current = first_async_connection;
-	for(int i = 0; i < connection_count; i++)
-	{
-		mysql_async_connection *newconnection = new mysql_async_connection;
-		newconnection->next = NULL;
-		newconnection->connection = mysql_init(NULL);
-		newconnection->connection = mysql_real_connect((MYSQL*)newconnection->connection, host, user, pass, db, port, NULL, 0);
-		bool reconnect = true;
-		mysql_options(newconnection->connection, MYSQL_OPT_RECONNECT, &reconnect);
-		newconnection->task = NULL;
-		if (current == NULL)
-		{
-			newconnection->prev = NULL;
-			first_async_connection = newconnection;
-		}
-		else
-		{
-			while(current->next != NULL)
+        int port = 0, count = 0;
+        char *host = NULL, *user = NULL, *pass = NULL, *db = NULL;
+        if (!stackGetParams("ssssii", &host, &user, &pass, &db, &port, &count) || count <= 0)
+        {
+            stackPushUndefined();
+            return;
+        }
+        // Build privately; a partial failure must leave initialization retryable.
+        mysql_async_connection *head = NULL, *tail = NULL;
+        for (int i = 0; i < count; i++)
+        {
+            mysql_async_connection *c = new mysql_async_connection;
+            c->prev = tail;
+            c->next = NULL;
+            c->task = NULL;
+            c->connection = mysql_init(NULL);
+            unsigned timeout = 5;
+            if (c->connection)
+                mysql_options(c->connection, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+            if (!c->connection || !mysql_real_connect(c->connection, host, user, pass, db, port, NULL, 0))
             {
-				current = current->next;
+                // Do not log connection strings or credentials.
+                Shared_Printf("MySQL async connection initialization failed\n");
+                if (c->connection) mysql_close(c->connection);
+                delete c;
+                mysql_free_async_connections(head);
+                stackPushUndefined();
+                return;
             }
-			current->next = newconnection;
-			newconnection->prev = current;
-		}
-		current = newconnection;
-		stackPushInt((int)newconnection->connection);
-		stackPushArrayNext();
-	}
-
-	pthread_t async_handler;
-	if (pthread_create(&async_handler, NULL, mysql_async_query_handler, NULL) != 0)
-	{
-		stackError("gsc_mysql_async_initializer() error detaching async handler thread");
-		return;
-	}
-
-	pthread_detach(async_handler);
+            if (tail) tail->next = c;
+            else head = c;
+            tail = c;
+        }
+        first_async_connection = head;
+        pthread_t handler;
+        int error = pthread_create(&handler, NULL, mysql_async_query_handler, NULL);
+        if (error)
+        {
+            first_async_connection = NULL;
+            mysql_free_async_connections(head);
+            Shared_Printf("MySQL dispatcher creation failed (%i)\n", error);
+            stackPushUndefined();
+            return;
+        }
+        pthread_detach(handler);
+    }
+    // Reinitialization on map changes returns the existing pool.
+    stackMakeArray();
+    for (mysql_async_connection *c = first_async_connection; c; c = c->next)
+    {
+        stackPushInt((int)c->connection);
+        stackPushArrayNext();
+    }
 }
 
 void gsc_mysql_init()
@@ -377,8 +442,8 @@ void gsc_mysql_real_connect()
 	}
 
 	MYSQL *mysql = mysql_real_connect((MYSQL *)iMysql, host, user, pass, db, port, NULL, 0);
-	bool reconnect = true;
-	mysql_options((MYSQL*)mysql, MYSQL_OPT_RECONNECT, &reconnect);
+	bool reconnect = false;
+	if (mysql) mysql_options(mysql, MYSQL_OPT_RECONNECT, &reconnect);
 	if(cod_mysql_connection == NULL)
     {
 		cod_mysql_connection = (MYSQL*)mysql;
@@ -433,8 +498,14 @@ void gsc_mysql_close()
 		return;
 	}
 
-	mysql_close((MYSQL *)mysql);
-	stackPushInt(0);
+    if ((MYSQL *)mysql == cod_mysql_connection)
+    {
+        cod_mysql_connection = NULL;
+        sync_mysql_transaction = false;
+        sync_mysql_failed_transaction = false;
+    }
+    mysql_close((MYSQL *)mysql);
+    stackPushInt(0);
 }
 
 void gsc_mysql_query()
@@ -448,8 +519,33 @@ void gsc_mysql_query()
 		return;
 	}
 
-	int ret = mysql_query((MYSQL *)mysql, query);
-	stackPushInt(ret);
+    MYSQL *connection = (MYSQL *)mysql;
+    bool tracked = connection == cod_mysql_connection;
+    bool rollback = strcasecmp(query, "ROLLBACK") == 0;
+    if (tracked && sync_mysql_failed_transaction && !rollback)
+    {
+        stackPushInt(1);
+        return;
+    }
+    if (tracked && !sync_mysql_transaction && !sync_mysql_failed_transaction)
+    {
+        int ping = mysql_prepare_new_statement(connection);
+        if (ping) { stackPushInt(ping); return; }
+    }
+    int ret = mysql_query(connection, query);
+    if (tracked)
+    {
+        if (ret && sync_mysql_transaction) sync_mysql_failed_transaction = true;
+        // SELECT status is final only after its rowset has been consumed.
+        if (!ret && mysql_field_count(connection) == 0)
+            sync_mysql_transaction = (connection->server_status & SERVER_STATUS_IN_TRANS) != 0;
+        if (rollback)
+        {
+            sync_mysql_transaction = false;
+            sync_mysql_failed_transaction = false;
+        }
+    }
+    stackPushInt(ret);
 }
 
 void gsc_mysql_affected_rows()
@@ -476,8 +572,20 @@ void gsc_mysql_store_result()
 		return;
 	}
 
-	MYSQL_RES *result = mysql_store_first_result((MYSQL *)mysql);
-	stackPushInt((int) result);
+	bool failed = false;
+	MYSQL_RES *result = mysql_store_first_result((MYSQL *)mysql, &failed);
+    if (failed)
+    {
+        if ((MYSQL *)mysql == cod_mysql_connection && sync_mysql_transaction)
+            sync_mysql_failed_transaction = true;
+        stackPushUndefined();
+    }
+    else
+    {
+        if ((MYSQL *)mysql == cod_mysql_connection)
+            sync_mysql_transaction = (((MYSQL *)mysql)->server_status & SERVER_STATUS_IN_TRANS) != 0;
+        stackPushInt((int)result);
+    }
 }
 
 void gsc_mysql_num_rows()
@@ -616,9 +724,15 @@ void gsc_mysql_real_escape_string()
 	free(to);
 }
 
+struct mysql_long_query
+{
+    bool failed;
+    char text[SQL_MAX_QUERY_SIZE + 1];
+};
+
 void gsc_mysql_setup_longquery()
 {
-    char *longQuery = (char *)calloc(1, SQL_MAX_QUERY_SIZE);
+    mysql_long_query *longQuery = (mysql_long_query *)calloc(1, sizeof(mysql_long_query));
     if (longQuery)
     {
         stackPushInt((int)longQuery);
@@ -646,7 +760,7 @@ void gsc_mysql_free_longquery()
         stackPushBool(false);
         return;
     }
-    char *longQuery = (char *)ptr;
+    mysql_long_query *longQuery = (mysql_long_query *)ptr;
 
     free(longQuery);
     stackPushBool(true);
@@ -669,7 +783,7 @@ void gsc_mysql_append_longquery()
         stackPushBool(false);
         return;
     }
-    char *longQuery = (char *)ptr;
+    mysql_long_query *longQuery = (mysql_long_query *)ptr;
 
     char *toAppend = NULL;
     stackGetParamString(1, &toAppend);
@@ -688,14 +802,14 @@ void gsc_mysql_append_longquery()
         return;
     }
 
-    if (((int)strlen(longQuery) + lenToAppend) >= SQL_MAX_QUERY_SIZE)
+    if (longQuery->failed || (strlen(longQuery->text) + lenToAppend) > SQL_MAX_QUERY_SIZE)
     {
-        stackError("Query out of memory...");
+        longQuery->failed = true;
         stackPushBool(false);
         return;
     }
 
-    strncat(longQuery, toAppend, lenToAppend);
+    strcat(longQuery->text, toAppend);
     stackPushBool(true);
 }
 
@@ -724,10 +838,11 @@ void gsc_mysql_async_execute_longquery()
         stackGetParamInt(1, &save);
     }
 
-    char *longQuery = (char *)ptr;
+    mysql_long_query *longQuery = (mysql_long_query *)ptr;
     //printf("Executing long query: %s\n", longQuery);
-    int queryId = mysql_async_query_initializer(longQuery, (save > 0) ? true : false);
+    int queryId = longQuery->failed ? 0 : mysql_async_query_initializer(longQuery->text, save > 0);
     free(longQuery);
 
-    stackPushInt(queryId);
+    if (queryId) stackPushInt(queryId);
+    else stackPushUndefined();
 }
