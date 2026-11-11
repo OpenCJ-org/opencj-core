@@ -13,11 +13,13 @@ onInit()
     if(!isDefined(level.mySQL))
     {
         level.mySQL = mysql_init();
+        if (!isDefined(level.mySQL)) return;
         ret = mysql_real_connect(level.mySQL, level.database["host"], level.database["user"], level.database["pass"], level.database["name"], level.database["port"]);
-        if(!ret)
+        if(!isDefined(ret) || !ret)
         {
             printf("ERROR: MYSQL errno=" + mysql_errno(level.mySQL) + " error= " + mysql_error(level.mySQL) + "\n");
             mysql_close(level.mySQL);
+            level.mySQL = undefined;
             return;
         }
     }
@@ -58,8 +60,9 @@ _asyncMySQL()
 
 mysqlSyncQuery(query)
 {
+    if (!isDefined(level.mySQL)) return undefined;
     ret = mysql_query(level.mySQL, query);
-    if(!ret)
+    if(isDefined(ret) && !ret)
     {
         result = mysql_store_result(level.mySQL);
         rows = _getRowsAndFree(result);
@@ -71,10 +74,8 @@ mysqlSyncQuery(query)
 _getRowsAndFree(result)
 {
     rows = [];
-    if(!isDefined(result) || result == 0)
-    {
-        return rows;
-    }
+    if (!isDefined(result)) return undefined; // SQL failure, not an empty success.
+    if (result == 0) return rows; // Successful statement with no rowset.
     rowcount = mysql_num_rows(result);
     for(i = 0; i < rowcount; i++)
     {
@@ -107,6 +108,7 @@ mysqlAsyncLongQueryExecuteSave(queryID)
         self endon("disconnect");
     }
     id = mysql_async_execute_longquery(queryID, true);
+    if (!isDefined(id)) return undefined;
     level waittill("mysqlQueryDone" + id, rows);
     return rows;
 }
@@ -118,6 +120,7 @@ mysqlAsyncQueryNoRows(query)
         self endon("disconnect");
     }
     id = mysql_async_create_query(query);
+    if (!isDefined(id)) return undefined;
     level.asyncMySQLDontStoreRows[level.asyncMySQLDontStoreRows.size] = id;
     level waittill("mysqlQueryDoneNoRows" + id, result);
     return result;
@@ -129,6 +132,7 @@ mysqlAsyncLongQueryExecuteNosave(queryID)
         self endon("disconnect");
     }
     id = mysql_async_execute_longquery(queryID, false);
+    if (!isDefined(id)) return undefined;
     level waittill("mysqlQueryDone" + id, rows);
     return rows;
 }
@@ -140,6 +144,7 @@ mysqlAsyncQuery(query)
         self endon("disconnect");
     }
     id = mysql_async_create_query(query);
+    if (!isDefined(id)) return undefined;
     level waittill("mysqlQueryDone" + id, rows);
     return rows;
 }
@@ -151,7 +156,9 @@ mysqlAsyncQueryNosave(query)
         self endon("disconnect");
     }
     id = mysql_async_create_query_nosave(query);
-    level waittill("mysqlQueryDone" + id);
+    if (!isDefined(id)) return undefined;
+    level waittill("mysqlQueryDone" + id, rows);
+    return rows;
 }
 
 escapeString(string)

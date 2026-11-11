@@ -54,14 +54,15 @@ storeCheckpointPassed(runID, cpID, timePlayed)
     filters = "";
     if (getCodVersion() == 4)
         filters = ", '" + self openCJ\fps::getCurrentFPSMode() + "', " + int(self openCJ\elevate::hasUsedEle()) + ", " + int(self openCJ\anyPct::hasAnyPct()) + ", " + int(self openCJ\tas::hasHardTAS());
-    query = "SELECT checkpointPassed(" + runID + ", " + cpID + ", " + timePlayed + ", " + saveCount + ", " + loadCount + ", " + explosiveStr + filters + ", " + self openCJ\playerRuns::getRunInstanceNumber() + ")";
+    runInstance = self openCJ\playerRuns::getRunInstanceNumber();
+    query = "SELECT checkpointPassed(" + runID + ", " + cpID + ", " + timePlayed + ", " + saveCount + ", " + loadCount + ", " + explosiveStr + filters + ", " + runInstance + ")";
     printf("Executing checkpointPassed query:\n" + query + "\n");  // Debug
 
     rows = self openCJ\mySQL::mysqlAsyncQuery(query);
     if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
     {
-        self iPrintLnBold("This run was loaded by another instance of your account. Please reset. All progress will not be saved");
-        self openCJ\playerRuns::printRunIDandInstanceNumber();
+        message = self openCJ\runStorage::resultMessage(runID, runInstance, rows, "checkpoint progress");
+        if (message != "") self iPrintLnBold(message);
         return false;
     }
     return true;

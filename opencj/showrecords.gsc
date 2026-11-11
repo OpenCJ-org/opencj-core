@@ -230,6 +230,7 @@ _getRecords(checkpoints, persist, timems)
     printf("getRecords query:\n" + query + "\n"); // Debug
 
     rows = self openCJ\mySQL::mysqlAsyncQuery(query);
+    if (!isDefined(rows)) return;
 
     if(!self openCJ\playerRuns::isRunFinished())
     {

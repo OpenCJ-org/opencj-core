@@ -44,7 +44,7 @@ _loadSavesFromDatabase(runID, instanceNumber)
     //printf("DEBUG: executing historyLoad query2:\n" + query2 + "\n");
     rowsSaves = self openCJ\mySQL::mysqlAsyncQuery(query2);
 
-    if (!isDefined(rowsRun) || !isDefined(rowsRun[0]) || !isDefined(rowsRun[0][0]))
+    if (!isDefined(rowsSaves) || !isDefined(rowsRun) || !isDefined(rowsRun[0]) || !isDefined(rowsRun[0][0]))
     {
         printf("ERROR: rowsRuns undefined for runID: " + runID + "\n");
         return false;
@@ -173,12 +173,8 @@ saveToDatabase(origin, angles, entTargetName, numOfEnt, explosiveJumps, doubleEx
     FPSMode = "'" + FPSMode + "'";
 
     query = "SELECT savePosition(" + runID + ", " + runInstance + ", " + x + ", " + y + ", " + z + ", " + alpha + ", " + beta + ", " + gamma + ", " + timePlayed + ", " + saveCount + ", " + loadCount + ", " + explosiveLaunches + ", " + explosiveJumps + ", " + doubleExplosives + ", " + checkpointID + ", " + FPSMode + ", " + flags + ", " + entTargetName + ", " + numOfEnt + ")";
-    printf("savePosition query:\n" + query + "\n"); // Debug
     
     rows = openCJ\mySQL::mysqlAsyncQuery(query);
-    if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
-    {
-        //run has been loaded by another instance
-        self iPrintLnBold("This run was loaded by another instance of your account. Please reset. All progress will not be saved");
-    }
+    message = self openCJ\runStorage::resultMessage(runID, runInstance, rows, "this position");
+    if (message != "") self iPrintLnBold(message);
 }

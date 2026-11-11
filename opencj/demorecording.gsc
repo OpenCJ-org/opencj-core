@@ -190,8 +190,21 @@ promote(id)
     row=rows[0];
     if (!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION"))) return false;
     ok = isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT mapID FROM mapids WHERE mapID=" + row[0] + " FOR UPDATE"));
-    state=openCJ\mySQL::mysqlSyncQuery("SELECT ready FROM demoRuns WHERE runID="+id);
+    state=openCJ\mySQL::mysqlSyncQuery("SELECT ready,frameCount FROM demoRuns WHERE runID="+id+" FOR UPDATE");
     if(!ok || !isDefined(state) || !state.size || int(state[0][0])==2)
+    {
+        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        return false;
+    }
+    // Require every contiguous, non-empty chunk before changing winner references.
+    // Failed/partial candidates must never displace an existing playable demo.
+    expectedChunks = int(ceil(int(state[0][1]) / 64.0));
+    chunks = openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*),MIN(chunkNum),MAX(chunkNum),MIN(OCTET_LENGTH(payload)) FROM demoChunks WHERE runID=" + id);
+    complete = int(state[0][1]) >= 2 && isDefined(chunks) && chunks.size == 1 &&
+        int(chunks[0][0]) == expectedChunks && isDefined(chunks[0][1]) &&
+        int(chunks[0][1]) == 0 && int(chunks[0][2]) == expectedChunks - 1 &&
+        int(chunks[0][3]) > 0;
+    if (!complete)
     {
         openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
         return false;

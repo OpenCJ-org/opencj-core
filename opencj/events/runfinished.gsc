@@ -50,7 +50,7 @@ _notifyFinishedMap(runID, cpID, timePlayed)
     self notify("mapFinishNotify");
     self endon("mapFinishNotify");
     rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT MIN(cs.timePlayed) FROM checkpointStatistics cs INNER JOIN playerRuns pr ON pr.runID = cs.runID WHERE cs.cpID = " + cpID + " AND pr.finishcpID IS NOT NULL AND pr.runID != " + runID);
-    if(rows.size && isDefined(rows[0][0]))
+    if(isDefined(rows) && rows.size && isDefined(rows[0][0]))
     {
         diff = timePlayed - int(rows[0][0]);
         if(diff > 0)
