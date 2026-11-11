@@ -56,6 +56,7 @@ main()
     openCJ\menus\runsBoard::onInit(); // ^ this one too.
     openCJ\menus\ingame::onInit();
     openCJ\menus\quickMessages::onInit();
+    openCJ\menus\commands::onInit();
     openCJ\menus\mapList::onInit(); // Must be after maps::onInit
     openCJ\tas::onInit();
     openCJ\playerRuns::onInit();

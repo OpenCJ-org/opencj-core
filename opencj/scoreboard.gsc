@@ -8,7 +8,6 @@ onInit()
     if(getCvar("opencj_public_hostname")=="")setCvar("opencj_public_hostname","eu.opencj.org");
     precacheMenu("opencj_scoreboard_setup");
     precacheMenu("opencj_scoreboard_input");
-    openCJ\commands_base::registerCommand("scoreboard","!scoreboard",::command,0,0,0);
 }
 
 // A connecting client can exist before it has the "player" classname.
@@ -35,11 +34,6 @@ onPlayerConnected()
     self setClientCvar("opencj_sb_active",0);
     self thread watch();
     self thread scrollInput();
-}
-
-command(args)
-{
-    self sendLocalChatMessage("Hold scoreboard: exec ui_mp/opencj_scoreboard_keys.cfg in console (Tab).");
 }
 
 watch()

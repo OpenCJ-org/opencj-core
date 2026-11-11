@@ -3,13 +3,15 @@
 onInit()
 {
     level.commands = [];
-    cmd = registerCommand("help", "Shows all available commands or help for a specific function. Usage: !help [command] [subcommand] ..", ::_showHelp, 0, 1, 0);
+    cmd = registerCommand("help", "Browse commands, or show help for a command or alias. Usage: !help [command]", ::_showHelp, 0, 1, 0);
     addAlias(cmd, "commands");
 }
 
 registerCommand(name, help, func, minArgs, maxArgs, minAdminLevel, settingName)
 {
+    name = toLower(name);
     cmd = spawnStruct();
+    cmd.name = name;
     cmd.help = help;
     cmd.func = func;
     cmd.minArgs = minArgs;
@@ -21,13 +23,13 @@ registerCommand(name, help, func, minArgs, maxArgs, minAdminLevel, settingName)
     return level.commands[name];
 }
 
-addAlias(cmd, alias) // If we want specific help functions per alias, just change that here: add param help, create new struct for alias as if it's a new command.
+addAlias(cmd, alias)
 {
     // Just register a new command with the same variables. Can't re-use command, because any changes we do in here..
     // ..such as setting a flag that this is an alias, would apply to the original command as well
     aliasCmd = spawnStruct();
     aliasCmd.cmd = cmd;
-    level.commands[alias] = aliasCmd;
+    level.commands[toLower(alias)] = aliasCmd;
 }
 
 // Permission levels: editor 20, moderator 40, admin 60, uber-admin 100.
@@ -49,6 +51,8 @@ isUberAdminLevel(value)
 setAdminLevel(value)
 {
     self.adminLevel = value;
+    if (isDefined(self.currentMenu) && self.currentMenu == "opencj_commands")
+        self openCJ\menus\commands::refresh(false);
 }
 
 onPlayerCommand(fullArgs)
@@ -127,68 +131,97 @@ onPlayerCommand(fullArgs)
     return true;
 }
 
-_showHelp(args)
+// Read the live registry, including aliases registered after initialization.
+availableCommands(adminLevel, search)
 {
-    self thread _showHelpWithPacing(args);
+    if (!isDefined(adminLevel)) adminLevel = 0;
+    if (!isDefined(search)) search = "";
+    search = toLower(search);
+    names = sortedNames(getArrayKeys(level.commands));
+    entries = [];
+    partialEntries = [];
+    for (i = 0; i < names.size; i++)
+    {
+        cmd = level.commands[names[i]];
+        if (isDefined(cmd.cmd) || adminLevel < cmd.minAdminLevel) continue;
+        entry = spawnStruct();
+        entry.name = names[i];
+        entry.help = cmd.help;
+        if (!isDefined(entry.help) || entry.help == "") entry.help = "No description provided.";
+        entry.aliases = [];
+        entry.aliasText = "";
+        exactMatch = search == entry.name;
+        for (a = 0; a < names.size; a++)
+        {
+            alias = level.commands[names[a]];
+            if (!isDefined(alias.cmd) || alias.cmd != cmd) continue;
+            if (search == names[a]) exactMatch = true;
+            entry.aliases[entry.aliases.size] = names[a];
+            if (entry.aliasText != "") entry.aliasText += ", ";
+            entry.aliasText += "!" + names[a];
+        }
+        haystack = toLower(entry.name + " " + entry.aliasText);
+        if (exactMatch)
+            entries[entries.size] = entry;
+        else if (search == "" || isSubStr(haystack, search))
+            partialEntries[partialEntries.size] = entry;
+    }
+    // Stable groups: exact command/alias first, then alphabetical partial matches.
+    for (i = 0; i < partialEntries.size; i++)
+        entries[entries.size] = partialEntries[i];
+    return entries;
 }
 
-_showHelpWithPacing(args)
+helpText(name, adminLevel)
 {
-    self endon("disconnect");
-    if(isDefined(args) && (args.size > 0))
+    name = toLower(name);
+    cmd = level.commands[name];
+    if (!isDefined(cmd)) return "Command not found.";
+    heading = "!" + name;
+    if (isDefined(cmd.cmd))
     {
-        // Specific help: show help for command
-        value = args[0];
-        cmd = level.commands[value];
-        if(isDefined(cmd))
-        {
-            self sendLocalChatMessage(cmd.help);
-        }
-        else
-        {
-            self sendLocalChatMessage("Command not found");
-        }
+        cmd = cmd.cmd;
+        heading += " (alias for !" + cmd.name + ")";
     }
+    if (!isDefined(adminLevel) || adminLevel < cmd.minAdminLevel)
+        return "You do not have sufficient permissions to use this command.";
+    help = cmd.help;
+    if (!isDefined(help) || help == "") help = "No description provided.";
+    return heading + ": " + help;
+}
+
+sortedNames(names)
+{
+    // GSC does not compare strings with <; use the runtime's character codes.
+    for (i = 1; i < names.size; i++)
+    {
+        value = names[i];
+        j = i;
+        while (j > 0 && nameBefore(value, names[j - 1]))
+        {
+            names[j] = names[j - 1];
+            j--;
+        }
+        names[j] = value;
+    }
+    return names;
+}
+
+nameBefore(a, b)
+{
+    a = toLower(a);
+    b = toLower(b);
+    for (i = 0; i < min(a.size, b.size); i++)
+    {
+        if (a[i] != b[i]) return getAscii(a[i]) < getAscii(b[i]);
+    }
+    return a.size < b.size;
+}
+
+_showHelp(args)
+{
+    if (isDefined(args) && args.size > 0)
+        self sendLocalChatMessage(helpText(args[0], self.adminLevel));
     else
-    {
-        // Full help: show all commands
-        availableCommands = "";
-        keys = getArrayKeys(level.commands);
-        // Reverse order because earliest entries are at start
-        for(i = keys.size - 1; i > 0; i--)
-        {
-            cmd = level.commands[keys[i]];
-            if(isDefined(cmd.cmd))
-            {
-                // Don't list the aliases, that will take up too much text in the chat box
-                continue;
-            }
-
-            // Don't start with a space
-            tmpAvailableCommands = availableCommands;
-            if (i < (keys.size - 1))
-            {
-                tmpAvailableCommands += " ";
-            }
-            tmpAvailableCommands += "!" + keys[i];
-
-            // If the string becomes too long, then send before adding this command
-            if (tmpAvailableCommands.size > 80)
-            {
-                self sendLocalChatMessage(availableCommands);
-                availableCommands = "";
-                wait 2;
-            }
-            else
-            {
-                availableCommands = tmpAvailableCommands;
-            }
-        }
-
-        // There may be some commands that have not been sent, so send them now
-        if (availableCommands.size > 0)
-        {
-            self sendLocalChatMessage(availableCommands);
-        }
-    }
+        self openMenu("opencj_commands");
 }
