@@ -82,7 +82,7 @@ onPlayerCommand(fullArgs)
 
     fullMsg = arrayConcat(subArray(fullArgs, 1));
 
-    printf(self.name + " is trying to executing command: \"" + fullMsg + "\"\n");
+
     //self sendLocalChatMessage(fullMsg);
 
     // Is it even a command we support?
@@ -95,6 +95,9 @@ onPlayerCommand(fullArgs)
     {
         cmd = cmd.cmd; // Redirect alias commands to their real command counterpart
     }
+
+    if(isDefined(cmd.redactArgs) && cmd.redactArgs)printf("Player "+self openCJ\login::getPlayerID()+" used !"+cmd.name+" (arguments withheld)\n");
+    else printf(self.name+" is executing command: "+fullMsg+"\n");
 
     // Does the player have sufficient permissions?
     if(self.adminLevel < cmd.minAdminLevel)

@@ -260,7 +260,7 @@ browser()
     if(!isDefined(self.clipPage))self.clipPage=0;
     if(!isDefined(self.clipTab))self.clipTab="permanent";
     scope=level.clipSession;if(self.clipTab=="permanent")scope="permanent";
-    rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.clipID,c.description,p.playerName,c.frameCount,DATE_FORMAT(c.recordedAt,'%Y-%m-%d %H:%i:%s'),COUNT(*) OVER() FROM demoClips c JOIN playerInformation p ON c.playerID=p.playerID WHERE c.ready=1 AND c.mapID="+openCJ\mapID::getMapID()+" AND c.scopeKey="+dbStr(scope)+" ORDER BY c.clipID DESC LIMIT 4 OFFSET "+(self.clipPage*4), "clips");
+    rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.clipID,c.description,p.playerName,c.frameCount,DATE_FORMAT(c.recordedAt,'%Y-%m-%d %H:%i:%s'),COUNT(*) OVER() FROM demoClips c JOIN playerDisplayNames p ON c.playerID=p.playerID WHERE c.ready=1 AND c.mapID="+openCJ\mapID::getMapID()+" AND c.scopeKey="+dbStr(scope)+" ORDER BY c.clipID DESC LIMIT 4 OFFSET "+(self.clipPage*4), "clips");
     if (!isDefined(rows)) return;
     self.clipRows=rows;
     total=0;if(isDefined(rows) && rows.size)total=int(rows[0][5]);

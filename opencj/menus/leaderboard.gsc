@@ -109,7 +109,7 @@ fetchUpdatedData()
                     " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
                     " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] +
                     " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
-                " ) a INNER JOIN playerInformation b ON a.playerID = b.playerID " +
+                " ) a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
                 "WHERE a.rn = 1 ORDER BY " + sortStr +
                 " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
                 " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);

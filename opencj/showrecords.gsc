@@ -166,6 +166,7 @@ _hideRecords(force)
     }
     self.showRecords_nameString = "";
     self.showRecords_timeString = "";
+    self.showRecords_visibleClient=undefined;
     self.showRecordsHighlight.alpha = 0;
 }
 
@@ -206,10 +207,10 @@ _getRecords(checkpoints, persist, timems)
     //  - finding runs by matching runID between playerRuns and checkpointStatistics to get the necessary information
     //  - verifying that the runs are finished by checking finishcpID having a value
     //  - verifying that it is not the current run by comparing runID
-    //  - grabbing the player name by matching playerID between playerRuns and playerInformation
+    //  - resolving the current record name through playerDisplayNames
     //  - only selecting one best run per player (that's what the @prev is for, it compares it to the previous entry as it's sorted by playerID)
 
-    query = "SELECT COUNT(*) OVER() AS totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount FROM (" +
+    query = "SELECT COUNT(*) OVER() AS totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.playerID FROM (" +
                 "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, pr.FPSMode, pr.ele, pr.anyPct, pr.hb, pr.hardTas, cs.runID, cs.saveCount, (" +
                     "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY playerID, " + sortStr +
                 ")) AS rn " +
@@ -223,7 +224,7 @@ _getRecords(checkpoints, persist, timems)
                 " AND pr.hb <= " + self openCJ\halfBeat::isHalfBeatAllowed() +
                 " AND pr.hardTAS <= " + self openCJ\tas::hasHardTAS() +
                 " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self openCJ\fps::getCurrentFPSMode()) +
-            " ) a INNER JOIN playerInformation b ON a.playerID = b.playerID " +
+            " ) a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
             "WHERE a.rn = 1 ORDER BY " + sortStr +
             " LIMIT " + level.nrRecords;
 
@@ -343,6 +344,9 @@ _updateRecords(client, rows, overrideTime, force)
         return;
     }
 
+    self.showRecords_visibleClient=client;
+    self.showRecords_visibleRows=rows;
+    self.showRecords_visibleTime=overrideTime;
     nameString = "";
     timeString = "";
     explosiveJumpsString = "";
@@ -386,7 +390,9 @@ _updateRecords(client, rows, overrideTime, force)
     }
 
     ownNum = i;
+    // The highlighted row represents the live player, not a stored record.
     rows[i][1] = client.name;
+    rows[i][5] = client openCJ\login::getPlayerID();
     rows[i][2] = timePlayed;
     rows[i][3] = explosiveJumps;
     rows[i][4] = loads;
@@ -407,7 +413,9 @@ _updateRecords(client, rows, overrideTime, force)
         {
             nameString += (i + 1) + ". ";
         }
-        nameString += rows[i][1] + "^7\n";
+        recordName=rows[i][1];
+        if(i!=ownNum && isDefined(rows[i][5]))recordName=openCJ\playerNames::recordName(int(rows[i][5]),recordName);
+        nameString += recordName + "^7\n";
         extraInfo = rows[i][3]; // By default, add RPGs as extra info
         if (sortType == "loads")
         {
@@ -447,5 +455,16 @@ whileAlive()
     for(i = 0; i < specs.size; i++)
     {
         specs[i] _updateRecords(self, self.showRecords_rows, undefined, false);
+    }
+}
+
+onRecordNameChanged()
+{
+    players=getEntArray("player","classname");
+    for(i=0;i<players.size;i++)
+    {
+        player=players[i];
+        if(isDefined(player.showRecords_visibleClient))
+            player _updateRecords(player.showRecords_visibleClient,player.showRecords_visibleRows,player.showRecords_visibleTime,true);
     }
 }

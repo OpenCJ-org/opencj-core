@@ -107,7 +107,7 @@ playRun(id,full,kind)
     if(!self canWatch())return;
     self sendLocalChatMessage("Loading demo...");
     if(!isDefined(full))full=true;
-    meta=self openCJ\mySQL::mysqlAsyncRead("SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerInformation p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID) FROM demoRuns WHERE ready=1 AND mapID="+openCJ\mapID::getMapID()+" AND runID="+id);
+    meta=self openCJ\mySQL::mysqlAsyncRead("SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerDisplayNames p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID) FROM demoRuns WHERE ready=1 AND mapID="+openCJ\mapID::getMapID()+" AND runID="+id);
     if(!isDefined(meta)||!meta.size)
     {
         self sendLocalChatMessage("This run has no retained demo.",true);

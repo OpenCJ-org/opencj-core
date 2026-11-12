@@ -203,7 +203,7 @@ show()
     title="Competitive - Top 10";hint="All challenge points count. Ties share position.";
     if(tab==0)
     {
-        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT p.playerName,COALESCE(SUM(c.points),0),p.playerID FROM playerInformation p LEFT JOIN challengeCompletions a ON a.playerID=p.playerID LEFT JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 GROUP BY p.playerID,p.playerName ORDER BY 2 DESC,p.playerID LIMIT 10", "challenges");
+        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT p.playerName,COALESCE(SUM(c.points),0),p.playerID FROM playerDisplayNames p LEFT JOIN challengeCompletions a ON a.playerID=p.playerID LEFT JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 GROUP BY p.playerID,p.playerName ORDER BY 2 DESC,p.playerID LIMIT 10", "challenges");
         if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
         if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
         total=0;if(isDefined(rows))total=rows.size;

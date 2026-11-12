@@ -32,7 +32,7 @@ _tryLogin()
     loginSuccess = self _getPlayerInformation(uid);
     if(loginSuccess)
     {
-        self thread openCJ\mySQL::mysqlAsyncQueryNosave("CALL setName(" + self.login_playerID + ", '" + openCJ\mySQL::escapeString(self.name) + "')");
+        self thread openCJ\playerNames::_storeNewName(self.name);
         self openCJ\settings::loadSettingsFromDatabase();
     }
     else
@@ -56,6 +56,7 @@ _getPlayerInformation(uid)
     if(hasResult(rows))
     {
         self.login_playerID = int(rows[0][0]);
+        self openCJ\playerNames::onAccountIdentified();
         self openCJ\commands_base::setAdminLevel(int(rows[0][1]));
         if(isDefined(rows[0][2])) //muted until [seconds] into future
         {
