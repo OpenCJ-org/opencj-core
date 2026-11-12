@@ -1,5 +1,8 @@
 #ifndef __FUNCTIONS_HPP_
 #define __FUNCTIONS_HPP_
+#ifdef COD4
+{"strafeTransition", Gsc_Movement_StrafeTransition, 0},
+#endif
 
 {"opencjscandir", Gsc_Utils_ScanDir, 0},
 #ifdef COD4

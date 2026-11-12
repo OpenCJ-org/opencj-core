@@ -10,5 +10,6 @@
 #include "opencj_discord.hpp"
 
 #include "opencj_fps.hpp"
+#include "opencj_movement.hpp"
 
 #endif // __INCLUDES_HPP_
