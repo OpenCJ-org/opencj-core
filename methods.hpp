@@ -38,7 +38,9 @@
 {"SV_GameSendServerCommand", Gsc_Player_SV_GameSendServerCommand, 0},
 {"getqueuedreliablemessages", Gsc_Player_GetQueuedReliableMessages, 0},
 #ifdef COD4
+{"setHalfbeatCorrection", Gsc_Movement_SetHalfbeatCorrection, 0},
 {"resetStrafeTracking", Gsc_Movement_Reset, 0},
+{"getHalfbeatStats", Gsc_Movement_GetHalfbeatStats, 0},
 {"getPingVariation", Gsc_Player_GetPingVariation, 0},
 #endif
 {"clearfpsfilter", Gsc_Player_ClearFPSFilter, 0},
