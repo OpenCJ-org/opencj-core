@@ -6,7 +6,7 @@ onInit()
     clearAllDemos();
     level.demoCache = [];
     openCJ\demoRecording::onInit();
-    cmd = openCJ\commands_base::registerCommand("demo", "!demo [wt|sr|rpg|stop|pause|resume|speed <1|2|4|-1|-2|-4>|next|previous]", ::_onCommandPlayback, 0, 2, 0);
+    cmd = openCJ\commands_base::registerCommand("demo", "!demo [wt|sr|rpg|stop|pause|resume|speed <0.25|0.5|1|2|4>|forward|reverse|next|previous]", ::_onCommandPlayback, 0, 2, 0);
     openCJ\commands_base::addAlias(cmd,"playback");
     setting = openCJ\settings::addSettingBool("demoloop", true, "Loop demo playback");
     openCJ\commands_base::addAlias(setting,"loop");
@@ -23,16 +23,15 @@ _onCommandPlayback(args)
     if(self isPlayingDemo() && args.size)
     {
         action=toLower(args[0]);
-        if(action=="pause" || action=="resume" || action=="speed" || action=="next" || action=="previous")
+        if(action=="pause" || action=="resume" || action=="speed" || action=="forward" || action=="reverse" || action=="next" || action=="previous")
         {
             if(action=="pause")self.playbackPaused=true;
             if(action=="resume")self.playbackPaused=false;
             if(action=="speed" && args.size>1)
             {
-                speed=int(args[1]);
-                if(speed==1 || speed==2 || speed==4 || speed==-1 || speed==-2 || speed==-4)
-                {self.demoRate=speed;self.playbackPaused=false;}
+                self setDemoSpeed(args[1]);
             }
+            if(action=="forward" || action=="reverse")self setDemoDirection(action);
             if(action=="next")self.demoCheckpointRequest=1;
             if(action=="previous")self.demoCheckpointRequest=-1;
             return;
@@ -297,7 +296,8 @@ startDemo(demoID)
     self.demoPreviousStance=state.stance;self.demoPreviousState="none";
     self.demoPreviousFPS=undefined;self.demoPreviousOnGround=true;
     self.demoFirstFrame=true;self.demoLastPresentedFrame=undefined;self.demoLoopPending=false;
-    self.demoRate=1;self.demoControlButtons=0;self.demoCheckpointRequest=0;
+    self.demoFPSCacheKey=undefined;self.demoFPSCache=[];self.demoFPSCacheFrames=[];
+    self.demoRate=1;self.demoStepRemainder=0;self.demoStepRate=1;self.demoMenuRate=undefined;self.demoControlButtons=0;self.demoCheckpointRequest=0;
     self.demoMenuOpened=false;
     self demoDisplayStart();
     self.maxSpeed=0;
@@ -485,13 +485,9 @@ whilePlayingDemo()
         self demoApplyPresentation();
         return;
     }
-    isInterpolatedFrame=false;
-    if(self.demoFirstFrame)
-    {
-        self.demoFirstFrame=false;
-        currFrame=_getDemoFrame(0,false);
-    }
-    else currFrame=_getDemoFrame(self.demoRate,self.demoStyle!=0);
+    currFrame=self advanceDemoFrame();
+    isInterpolatedFrame=currFrame.interpolated;
+    self syncDemoFPSHistory(currFrame.number);
 
     self.demoLinker.origin = currFrame.origin;
     self setPlayerAngles(currFrame.angles);
@@ -515,7 +511,6 @@ whilePlayingDemo()
             if (isDefined(sound))self playLocalSound(sound);
         }
     }
-    fpsHistorySequential=!isDefined(self.demoLastPresentedFrame) || currFrame.number==self.demoLastPresentedFrame+1;
     if (!isInterpolatedFrame)self.demoLastPresentedFrame = currFrame.number;
     if(!isDefined(self.clipEdit))
         self openCJ\huds\hudOnScreenKeyboard::showKeyboardDemo(currFrame.forward, currFrame.back, currFrame.left, currFrame.right, currFrame.jump, currFrame.sprint);
@@ -533,7 +528,6 @@ whilePlayingDemo()
         self.demoPreviousState = currFrame.state;
     }
 
-    self openCJ\huds\hudFPSHistory::onDemoFrame(currFrame,fpsHistorySequential && self.demoRate>0,isInterpolatedFrame);
     
     // Check if demo ended.
     self demoUpdateOverlay();
@@ -547,8 +541,8 @@ _endOfDemo()
 {
     if(self.demoRate<0)
     {
-        self.demoRate=1;
         self.playbackPaused=true;
+        self.demoStepRemainder=0;
         self demoUpdateOverlay();
         return;
     }
@@ -611,6 +605,7 @@ stopDemo(loadClipSave)
     self openCJ\huds\hudFPSHistory::restoreLiveHistory(state);
     self openCJ\halfBeat::syncPolicy();
     self.demoID=undefined;self.demoReturn=undefined;
+    self.demoFPSCacheKey=undefined;self.demoFPSCache=[];self.demoFPSCacheFrames=[];
     releaseCache(id);
     if(returnToSave && isDefined(self openCJ\savePosition::getSavedPosition(0)))
     {
@@ -651,14 +646,184 @@ demoControls()
     buttons=int(self leftButtonPressed())+2*int(self rightButtonPressed())+4*int(self leanLeftButtonPressed())+8*int(self leanRightButtonPressed());
     pressed=buttons & ~self.demoControlButtons;
     self.demoControlButtons=buttons;
-    rates=[];rates[0]=-4;rates[1]=-2;rates[2]=-1;rates[3]=1;rates[4]=2;rates[5]=4;
-    index=3;
-    for(i=0;i<rates.size;i++)if(rates[i]==self.demoRate)index=i;
+    rates=[];rates[0]=.25;rates[1]=.5;rates[2]=1;rates[3]=2;rates[4]=4;
+    index=2;rate=abs(self.demoRate);
+    for(i=0;i<rates.size;i++)if(rates[i]==rate)index=i;
     if((pressed&1) && index>0)index--;
-    if((pressed&2) && index<5)index++;
-    if(pressed&3)self.demoRate=rates[index];
+    if((pressed&2) && index<4)index++;
+    if(pressed&3)self setDemoSpeed(""+rates[index]);
     if(pressed&4)self.demoCheckpointRequest=-1;
     if(pressed&8)self.demoCheckpointRequest=1;
+}
+
+// Signed rate is kept internally; the menu controls direction and speed
+// independently. Changing either leaves an explicitly paused demo paused.
+setDemoSpeed(value)
+{
+    if(value!="0.25" && value!="0.5" && value!="1" && value!="2" && value!="4")return false;
+    rate=float(value);
+    if(self.demoRate<0)rate=0-rate;
+    self.demoRate=rate;self.demoStepRemainder=0;self.demoStepRate=rate;
+    return true;
+}
+
+setDemoDirection(direction)
+{
+    reverse=self.demoRate<0;
+    if(direction=="toggle")reverse=!reverse;
+    else if(direction=="reverse")reverse=true;
+    else if(direction=="forward")reverse=false;
+    else return false;
+    rate=abs(self.demoRate);if(reverse)rate=0-rate;
+    self.demoRate=rate;self.demoStepRemainder=0;self.demoStepRate=rate;
+    self.demoLoopPending=false;
+    return true;
+}
+
+advanceDemoFrame()
+{
+    if(self.demoFirstFrame)
+    {
+        self.demoFirstFrame=false;self.demoStepRemainder=0;
+        frame=self _getDemoFrame(0,false);frame.interpolated=false;
+        return frame;
+    }
+    step=self demoFrameStep();
+    frame=self _getDemoFrame(step,self.demoStyle!=0);frame.interpolated=step==0;
+    if(self.demoStepRemainder>0)
+    {
+        direction=1;if(self.demoRate<0)direction=-1;
+        next=self _getDemoFrame(direction,self.demoStyle!=0);
+        // Peeking must leave native presentation, events and time on the anchor.
+        self skipPlaybackFrames(frame.number-next.number);
+        if(canBlendDemoFrames(frame,next))
+        {
+            fraction=self.demoStepRemainder;
+            frame.origin=frame.origin+(next.origin-frame.origin)*fraction;
+            frame.angles=(blendDemoAngle(frame.angles[0],next.angles[0],fraction),
+                blendDemoAngle(frame.angles[1],next.angles[1],fraction),
+                blendDemoAngle(frame.angles[2],next.angles[2],fraction));
+        }
+    }
+    return frame;
+}
+
+canBlendDemoFrames(a,b)
+{
+    if(abs(a.number-b.number)!=1)return false;
+    later=b;if(a.number>b.number)later=a;
+    if(later.loadNow)return false;
+    // Legacy recordings have no explicit map-portal marker. Large single-sample
+    // jumps stay discrete rather than drawing a path through the map.
+    return distance(a.origin,b.origin)<=256;
+}
+
+blendDemoAngle(a,b,fraction)
+{
+    delta=b-a;
+    if(delta>180)delta-=360;else if(delta<(-180))delta+=360;
+    return a+delta*fraction;
+}
+
+// FPS history follows recorded chronology, independently of displayed rate.
+// Cache rendered strings (not mutable event structs) for bounded reverse/seek
+// reuse. The live event builder remains at demoFPSStateFrame.
+syncDemoFPSHistory(target)
+{
+    key=self.demoID+":"+self.demoStyle+":"+self.demoBegin+":"+self.demoEnd;
+    if(!isDefined(self.demoFPSCacheKey) || self.demoFPSCacheKey!=key)
+    {
+        self.demoFPSCacheKey=key;self.demoFPSCache=[];self.demoFPSCacheFrames=[];
+        self.demoFPSStateFrame=undefined;
+    }
+    if(isDefined(self.demoFPSCache[target]))
+    {
+        self showDemoFPSCache(target);
+        return;
+    }
+    self.fpsHistoryBatch=true;
+    if(isDefined(self.demoFPSStateFrame) && target>self.demoFPSStateFrame && target-self.demoFPSStateFrame<=4)
+    {
+        cached=self.demoFPSCache[self.demoFPSStateFrame];
+        self.fpsHistoryText=cached.compact;self.fpsHistoryDetailedText=cached.detailed;
+        self skipPlaybackFrames(self.demoFPSStateFrame-(self skipPlaybackFrames(0)));
+        previous=self.demoFPSStateFrame;
+        while(previous<target)
+        {
+            frame=self _getDemoFrame(1,self.demoStyle!=0);
+            if(frame.number<=previous)break;
+            self openCJ\huds\hudFPSHistory::onDemoFrame(frame,frame.number==previous+1,false);
+            self cacheDemoFPS(frame.number);
+            previous=frame.number;
+        }
+    }
+    else
+    {
+        frames=[];frame=self _getDemoFrame(0,false);frames[0]=frame;
+        // At most 512 samples (~25 seconds), keeping both CPU and memory bounded.
+        while(frames.size<512 && frame.number>self.demoBegin)
+        {
+            previous=frame.number;
+            frame=self _getDemoFrame(-1,self.demoStyle!=0);
+            if(frame.number>=previous)break;
+            frames[frames.size]=frame;
+        }
+        self.demoFPSCache=[];self.demoFPSCacheFrames=[];
+        previous=undefined;
+        for(i=frames.size-1;i>=0;i--)
+        {
+            frame=frames[i];
+            sequential=isDefined(previous) && frame.number==previous+1;
+            self openCJ\huds\hudFPSHistory::onDemoFrame(frame,sequential,false);
+            if(!isDefined(previous) && frame.number>self.demoBegin && !frame.onGround && frames.size==512)
+            {
+                self.fpsHistoryTruncated=true;
+                self openCJ\huds\hudFPSHistory::_refresh();
+            }
+            self cacheDemoFPS(frame.number);previous=frame.number;
+        }
+    }
+    self.demoFPSStateFrame=target;
+    self skipPlaybackFrames(target-(self skipPlaybackFrames(0)));
+    self.fpsHistoryBatch=false;
+    self showDemoFPSCache(target);
+}
+
+cacheDemoFPS(frame)
+{
+    cached=spawnStruct();cached.compact=self.fpsHistoryText;cached.detailed=self.fpsHistoryDetailedText;
+    self.demoFPSCache[frame]=cached;self.demoFPSCacheFrames[self.demoFPSCacheFrames.size]=frame;
+    if(self.demoFPSCacheFrames.size>512)
+    {
+        kept=[];
+        for(i=0;i<self.demoFPSCacheFrames.size;i++)
+        {
+            if(i<64)self.demoFPSCache[self.demoFPSCacheFrames[i]]=undefined;
+            else kept[kept.size]=self.demoFPSCacheFrames[i];
+        }
+        self.demoFPSCacheFrames=kept;
+    }
+}
+
+showDemoFPSCache(frame)
+{
+    cached=self.demoFPSCache[frame];
+    if(!isDefined(cached))return;
+    self.fpsHistoryText=cached.compact;self.fpsHistoryDetailedText=cached.detailed;
+    self openCJ\huds\hudFPSHistory::_publish();
+}
+
+demoFrameStep()
+{
+    if(!isDefined(self.demoStepRate) || self.demoStepRate!=self.demoRate || !isDefined(self.demoStepRemainder))
+    {
+        self.demoStepRate=self.demoRate;self.demoStepRemainder=0;
+    }
+    self.demoStepRemainder+=abs(self.demoRate);
+    step=int(self.demoStepRemainder);
+    self.demoStepRemainder-=step;
+    if(self.demoRate<0)step=0-step;
+    return step;
 }
 
 demoTime(frame)
@@ -674,10 +839,17 @@ demoUpdateOverlay()
     status="PLAY";if(self.demoRate<0)status="REVERSE";
     if(self.playbackPaused)status="PAUSED";
     rate=self.demoRate;if(rate<0)rate=0-rate;
+    if(!isDefined(self.demoMenuRate) || self.demoMenuRate!=self.demoRate)
+    {
+        self.demoMenuRate=self.demoRate;
+        self setClientCvar("opencj_demo_reverse",int(self.demoRate<0));
+        self setClientCvar("opencj_demo_speed",rate);
+    }
     elapsed=frame-self.demoBegin;duration=self.demoEnd-self.demoBegin;
     timing=self demoPlaybackTime(self.demoBegin,self.demoEnd);
     if(isDefined(timing)){elapsed=timing[0];duration=timing[1];}
-    text=status+" "+rate+"x   "+demoTime(elapsed)+" / "+demoTime(duration);
+    text=demoTime(elapsed)+" / "+demoTime(duration);
+    if(self.playbackPaused)text="Paused  "+text;
     if(isDefined(self.clipEdit))
     {
         count=numberOfDemoFrames(self.demoID);
@@ -713,14 +885,13 @@ demoMenuResponses()
         else if(response=="resume")self.playbackPaused=false;
         else if(response=="previous")self.demoCheckpointRequest=-1;
         else if(response=="next")self.demoCheckpointRequest=1;
+        else if(response=="direction")self setDemoDirection("toggle");
         else
         {
             args=strTok(response,"_");
             if(args.size==2 && args[0]=="speed")
             {
-                speed=int(args[1]);
-                if(speed==1 || speed==2 || speed==4 || speed==-1 || speed==-2 || speed==-4)
-                {self.demoRate=speed;self.playbackPaused=false;}
+                self setDemoSpeed(args[1]);
             }
         }
     }

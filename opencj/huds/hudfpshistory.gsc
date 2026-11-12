@@ -300,6 +300,7 @@ _refresh()
 
 _publish()
 {
+    if(isDefined(self.fpsHistoryBatch) && self.fpsHistoryBatch)return;
     if(self openCJ\demos::isPlayingDemo()){self _render(self);return;}
     if(self.sessionState!="playing")return;
     spectators=self getSpectatorList(false);
@@ -510,7 +511,7 @@ _setDemoFPSHistory(text)
 _clearDemoFPSHistory()
 {
     self _resetHistory();
-    self _hide();
+    if(!isDefined(self.fpsHistoryBatch) || !self.fpsHistoryBatch)self _hide();
 }
 clearAndSetDemoFPS(text){self _clearDemoFPSHistory();self _setDemoFPSHistory(text);}
 addDemoFPSHistory(text)
