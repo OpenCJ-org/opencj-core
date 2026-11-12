@@ -56,3 +56,8 @@ void Gsc_Demo_PlaybackTime(int client);
 void Gsc_Demo_CreateTransient();
 void Gsc_Demo_KeepLast();
 void Gsc_Demo_ClipInfo();
+
+// Used by snapshot visibility to keep playback bodies private.
+bool OpenCJ_Demo_IsPresentationActive(int client);
+// Reapply presentation after frozen/linked movement chooses an idle body pose.
+void OpenCJ_Demo_ApplyBody(int client);

@@ -7,6 +7,7 @@
  **************************************************************************/
 
 #include "shared.hpp"
+#include "opencj_demo.hpp"
 
 #include <string.h>
 
@@ -210,7 +211,16 @@ void Gsc_Vis_UpdatePlayerVisibility()
             gentity_t *willBeHidden = &g_entities[j];
             if (!willBeHidden->client || (svs.clients[j].state != CS_ACTIVE)) continue;
 
-            if(svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR)
+            // A demo uses the viewer's own body for third-person rendering.
+            // Only that viewer (skipped above) and spectators following them
+            // may see it; ordinary visibility settings must not reveal it.
+            if(OpenCJ_Demo_IsPresentationActive(j))
+            {
+                bool following=svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR &&
+                    SV_GameClientNum(i)->clientNum==j;
+                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, !following);
+            }
+            else if(svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR)
             {
                 setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
             }

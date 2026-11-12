@@ -19,6 +19,12 @@
 extern "C" {
 #include "../cod4x-server/src/filesystem.h"
 #include "../cod4x-server/src/bg.h"
+#include "../cod4x-server/src/bg_public.h"
+// Animation selection only: no Pmove, weapon simulation or gameplay events.
+void BG_AnimUpdatePlayerStateConditions(pmove_t *);
+int BG_AnimScriptAnimation(playerState_t *, int, int, int);
+int BG_AnimScriptEvent(playerState_t *, int, int, int);
+void BG_SetConditionValue(int, int, unsigned long long);
 }
 #endif
 #ifdef COD4
@@ -58,6 +64,14 @@ static playerState_t *demoReturnVisual[MAX_CLIENTS];
 static int demoPresentedWeapon[MAX_CLIENTS];
 static int demoPresentedFrame[MAX_CLIENTS];
 static qboolean demoReturnFrozen[MAX_CLIENTS];
+struct DemoBody {
+    bool valid;
+    int legs, torso, legsDuration, torsoDuration, direction;
+    int event, eventFrame, eventWeapon, eventDuration;
+    int eventLegs, eventTorso, eventLegsDuration, eventTorsoDuration;
+};
+static DemoBody demoPresentedBody[MAX_CLIENTS];
+
 static_assert(__builtin_offsetof(gclient_t, bFrozen)==0x3080, "CoD4 freeze-controls layout mismatch");
 static const char *demoWeaponName(unsigned weapon)
 {
@@ -1287,6 +1301,147 @@ void Gsc_Demo_FindSegment()
     stackPushInt(shots);stackPushArrayNext();stackPushInt(frames);stackPushArrayNext();
 }
 
+bool OpenCJ_Demo_IsPresentationActive(int client)
+{
+#ifdef COD4
+    return client>=0 && client<MAX_CLIENTS && demoReturnVisual[client]!=nullptr;
+#else
+    return false;
+#endif
+}
+
+void OpenCJ_Demo_ApplyBody(int client)
+{
+#ifdef COD4
+    if(!OpenCJ_Demo_IsPresentationActive(client) || !demoPresentedBody[client].valid)return;
+    const DemoBody &body=demoPresentedBody[client];
+    playerState_t &ps=*SV_GameClientNum(client);
+    ps.legsAnim=body.legs;ps.torsoAnim=body.torso;
+    ps.legsTimer=0;ps.torsoTimer=0;
+    ps.legsAnimDuration=body.legsDuration;ps.torsoAnimDuration=body.torsoDuration;
+    ps.movementDir=body.direction;
+    g_entities[client].s.legsAnim=body.legs;
+    g_entities[client].s.torsoAnim=body.torso;
+    g_entities[client].s.lerp.u.player.movementDir=body.direction;
+#endif
+}
+
+#ifdef COD4
+static void applyDemoBodyEvent(DemoBody &body, playerState_t &pose, int event, int frame, int elapsed)
+{
+    if(body.event!=event || body.eventFrame!=frame || body.eventWeapon!=int(pose.weapon))
+    {
+        playerState_t transition=pose;
+        int duration=BG_AnimScriptEvent(&transition,event,0,1);
+        // Some stock weapon sets omit direct stand/prone transitions.
+        // Their crouch/prone transition still supplies the raising/lowering motion.
+        if(duration<=0 && (event==15 || event==16))
+            duration=BG_AnimScriptEvent(&transition,event==15?11:12,0,1);
+        body.event=event;body.eventFrame=frame;body.eventWeapon=pose.weapon;body.eventDuration=duration;
+        body.eventLegs=transition.legsAnim;body.eventTorso=transition.torsoAnim;
+        body.eventLegsDuration=transition.legsAnimDuration;body.eventTorsoDuration=transition.torsoAnimDuration;
+    }
+    // Choose a variant once per transition. Repeated calls otherwise reroll
+    // the stock animation script's random selection and flicker between poses.
+    if(body.eventDuration>elapsed)
+    {
+        pose.legsAnim=body.eventLegs;pose.torsoAnim=body.eventTorso;
+        pose.legsAnimDuration=body.eventLegsDuration;pose.torsoAnimDuration=body.eventTorsoDuration;
+    }
+}
+static void applyDemoBody(int client, const sDemo_t &demo, int index)
+{
+    const sDemoFrame_t &frame=demo.pDemoFrames[index];
+    playerState_t &ps=*SV_GameClientNum(client);
+    DemoBody &body=demoPresentedBody[client];
+    // Older demos never stored body animation indices. Select stock locomotion
+    // from recorded motion, stance and keys, independently of the frozen viewer.
+    // Retain the animation toggle bits across ticks so loops do not restart.
+    playerState_t pose=ps;
+    pose.clientNum=client;pose.pm_type=0;
+    pose.legsAnim=body.legs;pose.torsoAnim=body.torso;
+    pose.legsTimer=0;pose.torsoTimer=0;
+    pose.legsAnimDuration=body.legsDuration;pose.torsoAnimDuration=body.torsoDuration;
+    pose.pm_flags=(frame.flags&2048)?1:(frame.flags&1024)?2:0;
+    if(frame.flags&256)pose.pm_flags|=8;
+    pose.eFlags &= ~0x300; // Never inherit the viewer's mounted-weapon state.
+    float vx=0,vy=0,vz=0;
+    if(frame.visual.valid)
+    {
+        vx=frame.visual.velocity[0]/4.0f;vy=frame.visual.velocity[1]/4.0f;
+        vz=frame.visual.velocity[2]/4.0f;
+    }
+    else if(index>0 && !frame.loadNow)
+    {
+        const sDemoFrame_t &before=demo.pDemoFrames[index-1];
+        float dx=frame.origin[0]-before.origin[0],dy=frame.origin[1]-before.origin[1];
+        if(dx*dx+dy*dy<256*256){vx=dx*20;vy=dy*20;vz=(frame.origin[2]-before.origin[2])*20;}
+    }
+    const float speed=std::sqrt(vx*vx+vy*vy);
+    const int forward=((frame.flags&4)?1:0)-((frame.flags&8)?1:0);
+    const int right=((frame.flags&2)?1:0)-((frame.flags&1)?1:0);
+    const bool backward=forward<0,grounded=frame.flags&8192;
+    const bool moving=speed>5 && (forward || right);
+    const bool crouch=frame.flags&1024,prone=frame.flags&2048;
+    // Values are the stock animMoveTypesStr order in _bg_animation_mp.asm.
+    int movement=prone?3:crouch?2:1; // idle, idlecr, idleprone
+    if(frame.flags&256)movement=vz<0?19:18; // climb down/up
+    else if(frame.flags&128)movement=21; // mantle root
+    else if(moving)
+    {
+        bool walk=speed<std::max(1,ps.speed)*0.6f || frame.visual.ads>0;
+        movement=prone?8:crouch?(walk?6:12):(walk?4:10);
+        if(backward)++movement;
+        if(!prone && !crouch && (frame.flags&64))movement=20;
+    }
+    pmove_t pm={};pm.ps=&pose;
+    bgs_s *previousBgs=bgs;bgs=&level_bgs;
+    BG_AnimUpdatePlayerStateConditions(&pm);
+    BG_SetConditionValue(client,8,forward==0?(right<0?1:right>0?2:0):0);
+    BG_AnimScriptAnimation(&pose,0,movement,0);
+    if(!grounded && !(frame.flags&(128|256)))
+        applyDemoBodyEvent(body,pose,backward?4:3,-1,0); // Pose only; no jump/physics event.
+    else if(grounded && !(frame.flags&(128|256)))
+    {
+        // Reconstruct short landing/stance transitions by source-frame time,
+        // including when seeking or reversing. Never carry one across a load.
+        for(int i=index;i>0 && index-i<80;--i)
+        {
+            const auto &now=demo.pDemoFrames[i],&before=demo.pDemoFrames[i-1];
+            if(now.loadNow)break;
+            int event=-1;
+            if((now.flags&8192) && !(before.flags&(8192|128|256)))event=5; // land
+            int stance=now.flags&(1024|2048),oldStance=before.flags&(1024|2048);
+            if(stance!=oldStance)
+            {
+                if(stance==2048)event=oldStance==1024?11:15;
+                else if(oldStance==2048)event=stance==1024?12:16;
+                else event=stance==1024?13:14;
+            }
+            if(event>=0)
+            {
+                applyDemoBodyEvent(body,pose,event,i,(index-i)*50);
+                break;
+            }
+        }
+    }
+    bgs=previousBgs;
+    // Temporary locomotion selection before a jump/landing must not flip the
+    // restart bit on every tick. Only a real final-animation change toggles it.
+    int legs=pose.legsAnim&511,torso=pose.torsoAnim&511;
+    body.legs=legs==(body.legs&511)?body.legs:legs|((body.legs^512)&512);
+    body.torso=torso==(body.torso&511)?body.torso:torso|((body.torso^512)&512);
+    body.valid=true;
+    body.legsDuration=pose.legsAnimDuration;body.torsoDuration=pose.torsoAnimDuration;
+    float direction=0;
+    if(grounded && moving)
+        direction=std::remainder(std::atan2(vy,vx)*180.0f/3.14159265f-frame.angles[1]+(backward?180:0),360.0f);
+    body.direction=std::max(-90,std::min(90,int(direction)));
+    // Publish now and reapply at the player-to-entity copy after linked Pmove.
+    OpenCJ_Demo_ApplyBody(client);
+}
+#endif
+
 // Presentation only: never replay input through weapon simulation or spawn missiles.
 void Gsc_Demo_BeginPresentation(int client)
 {
@@ -1296,6 +1451,7 @@ void Gsc_Demo_BeginPresentation(int client)
     demoReturnVisual[client]=new(std::nothrow) playerState_t(*SV_GameClientNum(client));
     demoPresentedWeapon[client]=-1;
     demoPresentedFrame[client]=-1;
+    demoPresentedBody[client]={};
     demoReturnFrozen[client]=g_entities[client].client->bFrozen;
     stackPushBool(demoReturnVisual[client]!=nullptr);
 #else
@@ -1311,7 +1467,7 @@ void Gsc_Demo_ApplyPresentation(int client)
     if(!demoReturnVisual[client] || !play.pDemo){stackPushBool(false);return;}
     const sDemoFrame_t &frame=play.pDemo->pDemoFrames[play.selectedFrame];
     const DemoVisual &v=frame.visual;
-    if(!v.valid){stackPushBool(false);return;}
+    if(!v.valid){applyDemoBody(client,*play.pDemo,play.selectedFrame);stackPushBool(false);return;}
     playerState_t &ps=*SV_GameClientNum(client);
     if(v.weapon>=128){stackPushBool(false);return;}
     if(demoPresentedFrame[client]!=play.selectedFrame)
@@ -1375,6 +1531,7 @@ void Gsc_Demo_ApplyPresentation(int client)
     ps.sprintState.lastSprintEnd=(frame.flags&64)?ps.sprintState.lastSprintStart-1:ps.commandTime;
     ps.mantleState.timer=v.mantleTimer;ps.mantleState.yaw=v.mantleYaw*360.0f/65536;
     ps.mantleState.transIndex=v.mantleTransition;ps.mantleState.flags=v.mantleFlags;
+    applyDemoBody(client,*play.pDemo,play.selectedFrame);
     stackPushBool(true);
 #else
     stackPushBool(false);
@@ -1473,6 +1630,12 @@ void Gsc_Demo_EndPresentation(int client)
     ps.groundEntityNum=saved->groundEntityNum;ps.jumpTime=saved->jumpTime+elapsed;ps.jumpOriginZ=saved->jumpOriginZ;
     ps.sprintState=saved->sprintState;ps.sprintState.lastSprintStart+=elapsed;ps.sprintState.lastSprintEnd+=elapsed;
     ps.mantleState=saved->mantleState;
+    ps.legsAnim=saved->legsAnim;ps.torsoAnim=saved->torsoAnim;
+    ps.legsTimer=saved->legsTimer;ps.torsoTimer=saved->torsoTimer;
+    ps.legsAnimDuration=saved->legsAnimDuration;ps.torsoAnimDuration=saved->torsoAnimDuration;
+    ps.movementDir=saved->movementDir;
+    g_entities[client].s.legsAnim=ps.legsAnim;g_entities[client].s.torsoAnim=ps.torsoAnim;
+    g_entities[client].s.lerp.u.player.movementDir=ps.movementDir;
     delete saved;demoReturnVisual[client]=nullptr;
 #endif
 }
