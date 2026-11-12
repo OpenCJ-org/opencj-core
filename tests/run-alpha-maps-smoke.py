@@ -2,8 +2,9 @@
 from pathlib import Path
 import shutil,subprocess,time,uuid,sys
 root=Path(__file__).resolve().parents[2]
-menu_only='--menu-only' in sys.argv
-for mapname in [a for a in sys.argv[1:] if a not in ['--prepared', '--menu-only']] or ['mp_dark']:
+routes='--routes' in sys.argv
+menu_only='--menu-only' in sys.argv or routes
+for mapname in [a for a in sys.argv[1:] if a not in ['--menu-only', '--routes']] or ['mp_dark']:
     assert mapname in ['mp_dark', 'mp_bouncer_training', 'mp_blue2', 'mp_descent_v2', 'mp_galaxy', 'mp_mystic_v3'], 'No acceptance fixture for this map'
     tag='alpha-maps-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
@@ -63,6 +64,14 @@ for mapname in [a for a in sys.argv[1:] if a not in ['--prepared', '--menu-only'
     fixture = 'alpha-map-menu.gsc' if menu_only else fixtures[mapname]
     shutil.copyfile(root/'dev-tools/tests'/fixture,mod/'opencj/platformtest.gsc')
     shutil.copyfile(root/'dev-tools/tests/alpha-map-data.gsc',mod/'opencj/alphamapdata.gsc')
+    if routes:
+        subprocess.run([sys.executable,str(root/'dev-tools/tests/check-map-routes.py'),str(home)],check=True)
+        shutil.copyfile(home/'maproutecataloguedata.gsc',mod/'opencj/maproutecataloguedata.gsc')
+        shutil.copyfile(root/'dev-tools/tests/map-routes.gsc',mod/'opencj/maproutestest.gsc')
+        test=mod/'opencj/platformtest.gsc'
+        source=test.read_text().replace('    finish();\n}', '    openCJ\\mapRoutesTest::run(player);\n    finish();\n}',1)
+        test.write_text(source)
+
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     # Test clients must not reach account/database callbacks in this isolated fixture.
