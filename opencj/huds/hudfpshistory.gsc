@@ -247,7 +247,7 @@ renderHistory(events,detailed,truncated)
         else
         {
             fps=event.fps;
-            if(previousKind=="move" && fps.size>0 && previousFPS==fps[0])fps=getSubStr(fps,1);
+            if(!event.switched && previousKind=="move" && fps.size>0 && previousFPS==fps[0])fps=getSubStr(fps,1);
             part+=fps;
         }
         parts[parts.size]=part;
