@@ -5,7 +5,7 @@ main()
     precacheItem("rpg_mp");
     wait 2;
     if(getCvar("opencj_isolated_demo_test") != "1") return;
-    level.demoTimelineFailures=0;
+    level.demoTimelineFailures=0;level.demoTimelineChecks=0;
     bot=addTestClient();
     if(!isDefined(bot)){check(false,"create test viewer");return;}
     wait 1;
@@ -91,17 +91,6 @@ main()
     segment=bot openCJ\demos::segmentAtPosition(a,0,1);
     check(isDefined(segment) && segment[0]==0,"physical checkpoint overrides stale finished run for lookup");
     check(bot.checkpoints_checkpoint==finish,"lookup does not change run progress");
-    cp.ender="basic";finish.ender="hard";
-    bot.route=undefined;
-    check(bot openCJ\demos::routeAtPosition()=="basic","physical area infers route without an active run");
-    bot.route="hard";
-    check(bot openCJ\demos::routeAtPosition()=="basic","physical area overrides stale other route");
-    cp.hasChildren=true;cp.endCheckpoints=[];cp.endCheckpoints[0]=finish;
-    basicEnd=spawnStruct();basicEnd.ender="basic";cp.endCheckpoints[1]=basicEnd;
-    bot.route=undefined;
-    check(!isDefined(bot openCJ\demos::routeAtPosition()),"shared area without choice stays ambiguous");
-    bot.route="hard";
-    check(bot openCJ\demos::routeAtPosition()=="hard","shared area respects existing route choice");
     destroyDemo(a);
 
     // Idle pauses on either side of real movement are shortened independently.
@@ -156,9 +145,11 @@ main()
     bot demoEndPresentation();
     check(bot getWeaponAmmoClip(rpg)==0,"leaving playback restores exact original ammo");
     destroyDemo(a);
-    printf("DEMO TIMELINE COMPLETE failures="+level.demoTimelineFailures+"\n");
+    bot openCJ\demoSelectionTest::run();
+    printf("DEMO TIMELINE COMPLETE failures="+level.demoTimelineFailures+" checks="+level.demoTimelineChecks+"\n");
 }
 check(ok,label)
 {
+    level.demoTimelineChecks++;
     if(!ok){level.demoTimelineFailures++;printf("DEMO TIMELINE FAIL: "+label+"\n");}
 }
