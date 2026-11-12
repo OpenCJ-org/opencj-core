@@ -8,6 +8,7 @@ onInit()
     openCJ\demoRecording::onInit();
     cmd = openCJ\commands_base::registerCommand("demo", "!demo [wt|sr|rpg|stop|pause|resume|speed <0.25|0.5|1|2|4>|forward|reverse|next|previous]", ::_onCommandPlayback, 0, 2, 0);
     openCJ\commands_base::addAlias(cmd,"playback");
+    openCJ\commands_base::registerCommand("srdemo", "Watch the fastest compatible demo at your checkpoint or nearby area. Usage: !srdemo", ::_onCommandSpeedrun, 0, 0, 0);
     setting = openCJ\settings::addSettingBool("demoloop", true, "Loop demo playback");
     openCJ\commands_base::addAlias(setting,"loop");
 }
@@ -50,20 +51,44 @@ _onCommandPlayback(args)
     self thread request(kind);
 }
 
+_onCommandSpeedrun(args)
+{
+    self thread request("speedrun");
+}
+
 request(kind)
 {
     self cancelRequest();
     self endon("demo_request");
     self endon("disconnect");
     if (!self canWatch()) return;
-    route=self routeAtPosition();
-    if(!isDefined(route))
+    location=self selectionLocation();
+    if(!location.checkpoints.size && kind!="speedrun")
     {
-        self sendLocalChatMessage("Choose a route first, then use !demo.",true);
+        self sendLocalChatMessage("Stand in a checkpoint to watch its demo.",true);
         return;
     }
     fps=self openCJ\fps::getCurrentFPSMode();
     mask=int(self openCJ\anyPct::hasAnyPct())+2*int(self openCJ\elevate::hasUsedEle())+4*int(self openCJ\halfBeat::isHalfBeatAllowed())+8*int(self openCJ\tas::hasHardTAS());
+    rows=self openCJ\mySQL::mysqlAsyncRead(candidateQuery(location,kind,fps,mask,openCJ\mapID::getMapID()));
+    if(!isDefined(rows))
+    {
+        self sendLocalChatMessage("Could not look up demos. Please try again.",true);
+        return;
+    }
+    if(rows.size)self sendLocalChatMessage("Finding a demo for this location...");
+    selected=self selectCandidate(rows,location,kind);
+    if(!isDefined(selected))
+    {
+        self sendLocalChatMessage("No matching demo is available here for these modes.",true);
+        return;
+    }
+    self playRun(selected.id,false,kind,selected.range);
+    self releaseSelection();
+}
+
+candidateQuery(location,kind,fps,mask,mapID)
+{
     if(kind=="walkthrough")
     {
         mask=0;
@@ -71,16 +96,112 @@ request(kind)
         fpsFilter="("+dbStr(fps)+")";
     }
     else fpsFilter=openCJ\menus\board_base::getFPSModeStr(fps);
+    routes=getArrayKeys(location.routes);
+    routeFilter="";
+    if(routes.size)
+    {
+        names="";
+        for(i=0;i<routes.size;i++)
+        {
+            if(i)names+=",";
+            names+=dbStr(routes[i]);
+        }
+        routeFilter=" AND w.routeName IN ("+names+")";
+    }
     order="d.timePlayed,d.explosiveJumps";
     if(kind=="lowrpg")order="d.explosiveJumps,d.timePlayed";
-    query="SELECT d.runID,d.modeMask FROM demoWinners w JOIN demoRuns d ON d.runID=w.runID WHERE d.ready=1 AND w.mapID="+openCJ\mapID::getMapID()+" AND w.routeName="+dbStr(route)+" AND w.kind="+dbStr(kind)+" AND (w.modeMask & "+mask+")=w.modeMask AND w.FPSMode IN "+fpsFilter+" ORDER BY "+order+",BIT_COUNT(d.modeMask),FIELD(d.FPSMode,'125','mix','hax'),d.runID LIMIT 1";
-    rows=self openCJ\mySQL::mysqlAsyncRead(query);
-    if(!isDefined(rows)||!rows.size)
+    return "SELECT d.runID,d.modeMask,d.frameCount FROM demoWinners w JOIN demoRuns d ON d.runID=w.runID WHERE d.ready=1 AND w.mapID="+mapID+routeFilter+" AND w.kind="+dbStr(kind)+" AND (w.modeMask & "+mask+")=w.modeMask AND w.FPSMode IN "+fpsFilter+" ORDER BY "+order+",BIT_COUNT(d.modeMask),FIELD(d.FPSMode,'125','mix','hax'),d.runID";
+}
+
+// Capture physical context once. A finished run or a stale route after noclip
+// must neither hide a valid shared-start demo nor select an unrelated lesson.
+selectionLocation()
+{
+    location=spawnStruct();location.origin=self.origin;
+    location.checkpoints=[];location.routes=[];
+    groundEntity=self getGroundEntity();
+    for(i=0;i<level.checkpoints_checkpoints.size;i++)
     {
-        self sendLocalChatMessage("No matching demo is available for this route and these modes.",true);
-        return;
+        cp=level.checkpoints_checkpoints[i];
+        if(!self openCJ\checkpoints::touchesArea(cp,true,groundEntity))continue;
+        if(isDefined(cp.bigBrother))cp=cp.bigBrother;
+        location.checkpoints[""+cp.id]=cp.id;
+        ends=openCJ\checkpoints::getEndCheckpoints(cp);
+        if(!isDefined(ends))continue;
+        for(j=0;j<ends.size;j++)
+            if(isDefined(ends[j].ender))location.routes[ends[j].ender]=true;
     }
-    self playRun(int(rows[0][0]),false,kind);
+    return location;
+}
+
+segmentAtLocation(id,any,skipFails,location)
+{
+    keys=getArrayKeys(location.checkpoints);
+    best=undefined;
+    for(i=0;i<keys.size;i++)
+    {
+        range=demoFindSegment(id,location.checkpoints[keys[i]],location.origin,any,skipFails,1);
+        if(isDefined(range) && betterLesson(range,best))best=range;
+    }
+    if(keys.size)return best;
+    // Only speedrun requests reach this spatial fallback. Strict matching
+    // rejects the legacy Any% fallback to an unrelated complete recording.
+    return demoFindSegment(id,0,location.origin,1,skipFails,1);
+}
+
+betterLesson(range,best)
+{
+    if(!isDefined(best))return true;
+    if(range[2]!=best[2])return range[2]<best[2];
+    return range[3]<best[3];
+}
+
+// The winner query is already ordered by full-run time/RPG policy. Walkthrough
+// choices instead compare the actual matching jump, not the length of its route.
+selectCandidate(rows,location,kind)
+{
+    best=undefined;
+    for(i=0;i<rows.size;i++)
+    {
+        id=int(rows[i][0]);
+        if(!self acquireCache(id,int(rows[i][2])))continue;
+        range=segmentAtLocation(id,int(rows[i][1])&1,int(kind!="speedrun"),location);
+        previousRange=undefined;
+        if(isDefined(best))previousRange=best.range;
+        if(isDefined(range) && (kind!="walkthrough" || betterLesson(range,previousRange)))
+        {
+            self releaseSelection();
+            self.demoSelectionId=id;self.demoPendingId=undefined;
+            best=spawnStruct();best.id=id;best.range=range;
+            if(kind!="walkthrough")break;
+        }
+        else self releasePending();
+    }
+    return best;
+}
+
+acquireCache(id,expected)
+{
+    key=""+id;load=false;
+    if(!isDefined(level.demoCache[key]))
+    {
+        cache=spawnStruct();cache.loading=true;cache.ready=false;cache.refs=0;
+        level.demoCache[key]=cache;load=true;
+    }
+    cache=level.demoCache[key];cache.refs++;self.demoPendingId=id;
+    if(load)level thread _loadCache(id,expected);
+    while(cache.loading)wait 0.05;
+    if(!cache.ready){self releasePending();return false;}
+    return true;
+}
+
+releaseSelection()
+{
+    if(isDefined(self.demoSelectionId))
+    {
+        releaseCache(self.demoSelectionId);
+        self.demoSelectionId=undefined;
+    }
 }
 
 canWatch()
@@ -100,7 +221,7 @@ canWatch()
 }
 
 // Called by leaderboard row selection. Explicit rows always play the full run.
-playRun(id,full,kind)
+playRun(id,full,kind,selectedRange)
 {
     self endon("disconnect");
     self endon("demo_request");
@@ -116,29 +237,17 @@ playRun(id,full,kind)
     // Leaderboard rows can also be the walkthrough winner. Explicit requests
     // retain their requested style, even when the same recording wins both.
     if(!isDefined(kind))kind=leaderboardKind(int(meta[0][2])!=0);
-    key=""+id;
-    load=false;
-    if(!isDefined(level.demoCache[key]))
+    if(!self acquireCache(id,int(meta[0][0])))
     {
-        cache=spawnStruct();cache.loading=true;cache.ready=false;cache.refs=0;
-        level.demoCache[key]=cache;
-        load=true;
-    }
-    cache=level.demoCache[key];
-    cache.refs++;
-    self.demoPendingId=id;
-    if(load)level thread _loadCache(id,int(meta[0][0]));
-    while(cache.loading)wait 0.05;
-    if(!cache.ready || !self canWatch())
-    {
-        if(!cache.ready)self sendLocalChatMessage("The recording could not be loaded.",true);
-        self releasePending();
+        self sendLocalChatMessage("The recording could not be loaded.",true);
         return;
     }
+    if(!self canWatch()){self releasePending();return;}
     range=[];range[0]=0;range[1]=numberOfDemoFrames(id)-1;
     if(!full)
     {
-        range=self segmentAtPosition(id,int(meta[0][1])&1,int(kind!="speedrun"));
+        range=selectedRange;
+        if(!isDefined(range))range=self segmentAtPosition(id,int(meta[0][1])&1,int(kind!="speedrun"));
         if(!isDefined(range))
         {
             self sendLocalChatMessage("No matching demo segment is available at this checkpoint.",true);
@@ -158,36 +267,6 @@ playRun(id,full,kind)
     self.demoBegin=range[0];self.demoEnd=range[1];
     self.demoCheckpointed=(int(meta[0][1])&1)==0;
     self startDemo(id);
-}
-
-// Infer from physical areas before consulting run state, which may still
-// describe a finished run or a different route after noclip.
-routeAtPosition()
-{
-    routes=[];touching=false;
-    groundEntity=self getGroundEntity();
-    for(i=0;i<level.checkpoints_checkpoints.size;i++)
-    {
-        cp=level.checkpoints_checkpoints[i];
-        if(!self openCJ\checkpoints::touchesArea(cp,true,groundEntity))continue;
-        touching=true;
-        if(isDefined(cp.bigBrother))cp=cp.bigBrother;
-        ends=openCJ\checkpoints::getEndCheckpoints(cp);
-        if(!isDefined(ends))continue;
-        for(j=0;j<ends.size;j++)
-            if(isDefined(ends[j].ender))routes[ends[j].ender]=true;
-    }
-    names=getArrayKeys(routes);
-    if(names.size==1)return names[0];
-    if(touching)
-    {
-        if(isDefined(self.route) && isDefined(routes[self.route]))return self.route;
-        return undefined;
-    }
-    if(isDefined(self.route))return self.route;
-    names=getArrayKeys(level.routeEnders);
-    if(names.size==1)return names[0];
-    return undefined;
 }
 
 // Looking up a lesson must not depend on, or change, the viewer's run progress.
@@ -621,6 +700,7 @@ onDisconnect()
     self demoEndPresentation();
     self.demoStyle=undefined;
     self releasePending();
+    self releaseSelection();
     if(self isPlayingDemo())releaseCache(self.demoID);
     if(isDefined(self.demoLinker))self.demoLinker delete();
 }
@@ -639,6 +719,7 @@ cancelRequest()
 {
     self notify("demo_request");
     self releasePending();
+    self releaseSelection();
 }
 
 demoControls()
