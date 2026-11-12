@@ -15,6 +15,7 @@ _onSettingHalfBeat(newVal)
     else
     {
         self.allowHalfBeat = newVal;
+        self resetTracking();
     }
 }
 
@@ -22,26 +23,26 @@ onPlayerConnected()
 {
     self.allowHalfBeat = false;
     self.hbMessagePrinted = false;
-    self.prevForwardOrBackButtonPressed = false;
-    self.prevStrafeButtonPressed = false;
+    self disableCorrection();
+    self.hbLastCorrection=0;
     thread _detectHalfBeat();
 }
 
 onLoadPosition()
 {
-    self.hbMessagePrinted = false;
+    self resetTracking();
 }
 
 onRunStarted()
 {
     self.allowHalfBeat = self openCJ\settings::getSetting("allowhalfbeat");
-    self.hbMessagePrinted = false;
+    self resetTracking();
 }
 
 onRunRestored()
 {
     // The load position that occurs will properly set whether or not halfbeat is allowed
-    self.hbMessagePrinted = false;
+    self resetTracking();
 }
 
 isHalfBeatAllowed()
@@ -53,72 +54,50 @@ setAllowHalfBeat(val)
 {
     // If saved position allowed halfbeat, it'll be enforced
     self.allowHalfBeat = val;
+    self resetTracking();
+}
+
+// Detection and correction now run at the engine's air-acceleration step.
+// This lightweight loop synchronizes run policy and reports the first correction.
+syncPolicy()
+{
+    enabled=self isPlayerReady(true) && self openCJ\playerRuns::modeDetectionActive() && !self isHalfBeatAllowed();
+    if(!isDefined(self.hbCorrectionEnabled) || self.hbCorrectionEnabled!=enabled)
+    {
+        self setHalfbeatCorrection(int(enabled));
+        self.hbCorrectionEnabled=enabled;
+    }
+}
+
+disableCorrection()
+{
+    self setHalfbeatCorrection(0);
+    self.hbCorrectionEnabled=false;
+    self resetStrafeTracking();
+}
+
+resetTracking()
+{
+    self.hbMessagePrinted=false;
+    self resetStrafeTracking();
+    stats=self getHalfbeatStats();
+    self.hbLastCorrection=stats[0];
+    self syncPolicy();
 }
 
 _detectHalfBeat()
 {
     self endon("disconnect");
-
-    while (true)
+    while(true)
     {
-        if (!self openCJ\playerRuns::modeDetectionActive())
+        self syncPolicy();
+        stats=self getHalfbeatStats();
+        if(isDefined(self.hbLastCorrection) && stats[0]>self.hbLastCorrection && !self.hbMessagePrinted)
         {
-            self.hbPrevVel = undefined;
-            self.prevForwardOrBackButtonPressed = false;
-            self.prevStrafeButtonPressed = false;
-            wait .1;
-            continue;
+            self iprintln("Limited halfbeat acceleration (^5!allowhalfbeat^7)");
+            self.hbMessagePrinted=true;
         }
-        if (self isHalfBeatAllowed())
-        {
-            wait .05;
-            continue;
-        }
-
-        velocity = self getVelocity();
-        strafeButtonPressed = self leftButtonPressed() || self rightButtonPressed();
-        fwdOrBackButtonPressed = self forwardButtonPressed() || self backButtonPressed();
-        if (!self isSpectator() && self isPlayerReady(true) && !self openCJ\playerRuns::isRunPaused() && !self openCJ\playerRuns::isRunFinished() && !self isOnGround())
-        {
-            // User doesn't allow halfbeat, so start monitoring for it
-            if (!fwdOrBackButtonPressed && !self.prevForwardOrBackButtonPressed && strafeButtonPressed)
-            {
-                minSpeedThreshold = 250; // Don't apply reduction factor when lower than this x or y velocity
-                minSpeedGainThreshold = 10; // Don't apply reduction factor when gaining speed less than this number.
-                // ^ this is to ensure a normal hold A tech is not or barely affected, while a halfbeat hold A tech is punished.
-                if (isDefined(self.hbPrevVel) && ((abs(velocity[0]) >= minSpeedThreshold) || (abs(velocity[1]) >= minSpeedThreshold)))
-                {
-                    reductionFactor = 0.10;
-                    speedGainX = abs(velocity[0]) - abs(self.hbPrevVel[0]);
-                    speedGainY = abs(velocity[1]) - abs(self.hbPrevVel[1]);
-                    newVelX = velocity[0];
-                    newVelY = velocity[1];
-
-                    shouldChangeVel = false;
-                    if ((speedGainX > minSpeedGainThreshold) || (speedGainY > minSpeedGainThreshold))
-                    {
-                        newVelX *= (1 - reductionFactor);
-                        newVelY *= (1 - reductionFactor);
-                        shouldChangeVel = true;
-                    }
-
-                    if (shouldChangeVel)
-                    {
-                        velocity = (newVelX, newVelY, velocity[2]);
-                        self setVelocity(velocity);
-                        if (!self.hbMessagePrinted)
-                        {
-                            self iprintln("Reduced acceleration (^5!allowhalfbeat^7)");
-                            self.hbMessagePrinted = true;
-                        }
-                    }
-                }
-            }
-        }
-        self.hbPrevVel = velocity;
-        self.prevForwardOrBackButtonPressed = fwdOrBackButtonPressed;
-        self.prevStrafeButtonPressed = strafeButtonPressed;
-        wait .1;
+        self.hbLastCorrection=stats[0];
+        wait .05;
     }
 }
-

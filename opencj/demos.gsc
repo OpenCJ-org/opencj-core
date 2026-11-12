@@ -287,6 +287,7 @@ startDemo(demoID)
     self.demoReturn=state;
     self.checkpointContact=undefined;
     self.playingDemo=true;
+    self openCJ\halfBeat::disableCorrection();
     self.demoExitRequested=false;
     self hide();
     self.playerRuns_runPaused=true;
@@ -608,6 +609,7 @@ stopDemo(loadClipSave)
     self openCJ\huds\hudProgressBar::onSpawnPlayer();
     self openCJ\huds\hudRunInfo::onSpawnPlayer();
     self openCJ\huds\hudFPSHistory::restoreLiveHistory(state);
+    self openCJ\halfBeat::syncPolicy();
     self.demoID=undefined;self.demoReturn=undefined;
     releaseCache(id);
     if(returnToSave && isDefined(self openCJ\savePosition::getSavedPosition(0)))

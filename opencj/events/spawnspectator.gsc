@@ -2,6 +2,7 @@
 
 main()
 {
+    self openCJ\halfBeat::disableCorrection();
     self openCJ\mapBoost::cancel();
     self openCJ\shop::stopInspect();
     if (self.sessionState == "spectator")

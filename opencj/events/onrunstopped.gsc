@@ -1,5 +1,6 @@
 main()
 {
+    self openCJ\halfBeat::disableCorrection();
     self openCJ\playTime::pauseTimer();
     self openCJ\elevate::_updateAllowEle();
     self openCJ\statistics::onRunStopped();

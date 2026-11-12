@@ -55,6 +55,7 @@ onRunFinished(cp, filterStr)
         return false;
     }
     self.playerRuns_runFinished = true;
+    self openCJ\halfBeat::disableCorrection();
     return true;
 }
 

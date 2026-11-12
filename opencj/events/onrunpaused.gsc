@@ -2,6 +2,7 @@
 
 main()
 {
+    self openCJ\halfBeat::disableCorrection();
     self openCJ\playTime::pauseTimer();
     self openCJ\huds\hudRunInfo::onRunPaused();
     self openCJ\huds\hudProgressBar::onRunPaused();

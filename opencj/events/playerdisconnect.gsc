@@ -2,6 +2,7 @@
 
 main() // Threaded
 {
+    self openCJ\halfBeat::disableCorrection();
     self openCJ\mySQL::cancelMenuReads();
     self openCJ\mapBoost::cancel();
     self openCJ\scoreboard::onPlayerDisconnected();
