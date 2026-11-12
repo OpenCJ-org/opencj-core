@@ -1197,13 +1197,14 @@ void Gsc_Demo_FindSegment()
 {
     int id,cp,any;vec3_t origin;
     int args=Scr_GetNumParam();
-    if(args!=4 && args!=5){stackPushUndefined();return;}
+    if(args!=4 && args!=5 && args!=6){stackPushUndefined();return;}
     if(!Base_Gsc_GetValidDemoId(&id,args))return;
     stackGetParamInt(1,&cp);stackGetParamVector(2,origin);stackGetParamInt(3,&any);
     sDemo_t *demo=findDemoById(id);
     if(!demo || demo->size<2){stackPushUndefined();return;}
-    int skipFails=0;
-    if(Scr_GetNumParam()>4)stackGetParamInt(4,&skipFails);
+    int skipFails=0,strict=0;
+    if(args>4)stackGetParamInt(4,&skipFails);
+    if(args>5)stackGetParamInt(5,&strict);
     int first=-1,last=-1;
     float nearest=256.0f*256.0f;
     if(!any)
@@ -1268,11 +1269,22 @@ void Gsc_Demo_FindSegment()
                 begin=i;grounded=0;airborne=false;distance=256.0f*256.0f;
             }
         }
-        // No nearby passage: play the whole route.
-        if(first<0){first=0;last=demo->size-1;}
+        // Older explicit callers retain their whole-route fallback. Automatic
+        // location selection must reject a recording with no nearby passage.
+        if(first<0 && !strict){first=0;last=demo->size-1;}
     }
     if(first<0 || last<=first){stackPushUndefined();return;}
+    // Keep the original range fields; append local RPG usage and successful
+    // sample count so shared-route choices compare this jump, not whole runs.
+    int shots=0,frames=0;
+    for(int i=first;i<=last;++i)
+    {
+        const auto &f=demo->pDemoFrames[i];
+        if(skipFails && !f.isKeyFrame)continue;
+        ++frames;if(f.rpgNow)++shots;
+    }
     stackMakeArray();stackPushInt(first);stackPushArrayNext();stackPushInt(last);stackPushArrayNext();
+    stackPushInt(shots);stackPushArrayNext();stackPushInt(frames);stackPushArrayNext();
 }
 
 // Presentation only: never replay input through weapon simulation or spawn missiles.
