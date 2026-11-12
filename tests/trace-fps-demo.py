@@ -1,6 +1,7 @@
 """Replay an existing exported demo through the HUD, logging actions and displayed text.
 
 Usage: python3 tests/trace-fps-demo.py <run-id> before
+       python3 tests/trace-fps-demo.py clip:<clip-id> before
 Or pass an exported JSON file with runID and [chunkNum, hexPayload] chunks.
 A numeric argument reads that demo's chunks from the OpenCJ DB using SELECT.
 No production writes, network ports, or human clients are used.
@@ -8,14 +9,19 @@ No production writes, network ports, or human clients are used.
 from pathlib import Path
 import sys,json,subprocess,shutil,time,re,uuid,hashlib
 root=Path(__file__).resolve().parents[2]
-if sys.argv[1].isdigit():
-    run_id=int(sys.argv[1])
-    query="SELECT chunkNum,HEX(payload) FROM demoChunks WHERE runID="+str(run_id)+" ORDER BY chunkNum;"
+is_clip=sys.argv[1].startswith("clip:") and sys.argv[1][5:].isdigit()
+if sys.argv[1].isdigit() or is_clip:
+    run_id=int(sys.argv[1][5:] if is_clip else sys.argv[1])
+    table="demoClipChunks" if is_clip else "demoChunks"
+    key="clipID" if is_clip else "runID"
+    query="SELECT chunkNum,HEX(payload) FROM "+table+" WHERE "+key+"="+str(run_id)+" ORDER BY chunkNum;"
     cmd=["docker","exec","-i","opencj-dev-db-1","sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4']
     result=subprocess.run(cmd,input=query,text=True,capture_output=True)
     assert result.returncode==0,"Read-only demo export failed"
     recording={"runID":run_id,"chunks":[line.split("\t") for line in result.stdout.splitlines()]}
     assert recording["chunks"],"No stored chunks found for this run"
+    recording["style"]=0 if is_clip else 2
+    if is_clip:recording["clipID"]=run_id
 else:
     recording=json.loads(Path(sys.argv[1]).read_text())
 label=sys.argv[2]
@@ -66,7 +72,7 @@ main()
     createDemo(id);
     LOAD_CHUNKS
     completeDemo(id);player selectPlaybackDemo(id);
-    range=player demoPlaybackStyle(2,0,numberOfDemoFrames(id)-1);
+    range=player demoPlaybackStyle(PLAYBACK_STYLE,0,numberOfDemoFrames(id)-1);
     player.demoBegin=range[0];player.demoEnd=range[1];
     first=true;previous=-2;tick=0;
     while(true)
@@ -80,6 +86,11 @@ main()
         {
             printf("FPS DETAILED HUD\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+player.fpsHistoryDetailedText+"\n");
             player.fpsTraceDetailed=player.fpsHistoryDetailedText;
+        }
+        if(!isDefined(player.fpsTraceCompact) || player.fpsTraceCompact!=player.fpsHistoryText)
+        {
+            printf("FPS COMPACT HUD\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+player.fpsHistoryText+"\n");
+            player.fpsTraceCompact=player.fpsHistoryText;
         }
         if(frame.number>=player.demoEnd)break;
         first=false;previous=frame.number;tick++;
@@ -107,7 +118,7 @@ loader=r"""
     }
     FS_FClose(file);
 """
-fixture=fixture.replace("RUN_ID",str(int(recording["runID"]))).replace("LOAD_CHUNKS",loader)
+fixture=fixture.replace("RUN_ID",str(int(recording["runID"]))).replace("PLAYBACK_STYLE",str(int(recording.get("style",2)))).replace("LOAD_CHUNKS",loader)
 (mod/"opencj/platformtest.gsc").write_text(fixture)
 name="opencj-"+tag
 args=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
@@ -121,7 +132,7 @@ try:
         if any(x in log for x in ["FPS LIVE TRACE COMPLETE","script runtime error","script compile error","FPS LIVE DECODE ERROR","Received signal:","script runtime warning"]):break
     assert "FPS LIVE TRACE COMPLETE" in log,log[-4000:]
     assert "script runtime error" not in log and "script compile error" not in log
-    actions=[];detailed=[]
+    actions=[];detailed=[];compact=[]
     for line in log.splitlines():
         if "FPS LIVE ACTION\t" in line:
             x=line[line.index("FPS LIVE ACTION\t"):].split("\t")
@@ -129,7 +140,10 @@ try:
         if "FPS DETAILED HUD\t" in line:
             x=line[line.index("FPS DETAILED HUD\t"):].split("\t")
             detailed.append({"frame":int(x[1]),"ms":int(x[2]),"text":x[3]})
-    result={"runID":recording["runID"],"label":label,"sourceSha256":hashlib.sha256((root/"server-gsc/opencj/huds/hudfpshistory.gsc").read_bytes()).hexdigest(),"actions":actions,"detailedChanges":detailed}
+        if "FPS COMPACT HUD\t" in line:
+            x=line[line.index("FPS COMPACT HUD\t"):].split("\t")
+            compact.append({"frame":int(x[1]),"ms":int(x[2]),"text":x[3]})
+    result={"runID":recording["runID"],"label":label,"sourceSha256":hashlib.sha256((root/"server-gsc/opencj/huds/hudfpshistory.gsc").read_bytes()).hexdigest(),"actions":actions,"detailedChanges":detailed,"compactChanges":compact}
     (home/"trace.json").write_text(json.dumps(result,indent=2)+"\n")
     print(json.dumps({"path":str(home/"trace.json"),"actions":len(actions),"detailedChanges":len(detailed),"switches":sum(a["switch"] for a in actions),"rawNeutralActions":sum(a["keys"]=="None" and a["kind"]=="move" for a in actions)},indent=2))
 finally:

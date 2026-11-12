@@ -1,16 +1,22 @@
 """Run FPS history regression fixtures on isolated servers; no database or live players."""
 from pathlib import Path
-import shutil,subprocess,time,uuid,sys,hashlib,json
+import shutil,subprocess,time,uuid,sys,hashlib,json,argparse
 root=Path(__file__).resolve().parents[2]
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('maps',nargs='*',default=['mp_killhouse'])
+parser.add_argument('--binary',default='/workspace/cod4x-server/bin/cod4x18_dedrun')
+options=parser.parse_args()
+binary=root/options.binary.removeprefix('/workspace/')
+assert options.binary.startswith('/workspace/') and binary.is_file()
 native=root/'dev-tools/local/strafe-history-92'
 native.mkdir(parents=True,exist_ok=True)
-build=subprocess.run(['docker','compose','run','--rm','--no-deps','--entrypoint','bash','server','-lc',
-    'cd /workspace/cod4x-server && make DEBUG=true -j2 && g++ -m32 -std=c++11 -msse2 -mfpmath=sse -fPIC -shared -DCOD4 /workspace/dev-tools/tests/strafe-engine.cpp -o /workspace/dev-tools/local/strafe-history-92/strafe_engine.so'],
+build=subprocess.run(['docker','compose','run','--rm','--no-deps','build','bash','-lc',
+    'g++ -m32 -std=c++11 -msse2 -mfpmath=sse -fPIC -shared -DCOD4 /workspace/dev-tools/tests/strafe-engine.cpp -o /workspace/dev-tools/local/strafe-history-92/strafe_engine.so'],
     cwd=root/'dev-tools',capture_output=True,text=True)
 (native/'build.log').write_text(build.stdout+build.stderr)
 if build.returncode:
     print((build.stdout+build.stderr)[-10000:]);sys.exit(build.returncode)
-for mapname in sys.argv[1:] or ['mp_killhouse']:
+for mapname in options.maps or ['mp_killhouse']:
     tag='fps-history-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
     mod=home/'mods/opencj';mod.mkdir(parents=True)
@@ -39,7 +45,7 @@ for mapname in sys.argv[1:] or ['mp_killhouse']:
         source=source[:start]+'\n'+source[end-1:]
     callback.write_text(source)
     name='opencj-'+tag
-    args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
+    args=['docker','compose','run','-d','--no-deps','--name',name,'server',options.binary]
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28966'),('sv_maxclients','2'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj')]:args+=['+set',k,v]
     args+=['+loadplugin','libcod4_1_8x','+loadplugin','strafe_engine','+map',mapname]
     try:
@@ -54,7 +60,7 @@ for mapname in sys.argv[1:] or ['mp_killhouse']:
         print(mapname+'\n'+'\n'.join(lines),flush=True)
         assert 'FPS HISTORY SELFTEST COMPLETE failures=0' in log,home
         assert 'STRAFE NATIVE COMPLETE failures=0' in log,home
-        (home/'result.json').write_text(json.dumps({'map':mapname,'native_sha256':hashlib.sha256((root/'cod4x-server/bin/cod4x18_dedrun').read_bytes()).hexdigest(),'summaries':[l for l in lines if 'COMPLETE' in l]},indent=2)+'\n')
+        (home/'result.json').write_text(json.dumps({'map':mapname,'native_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'summaries':[l for l in lines if 'COMPLETE' in l]},indent=2)+'\n')
         for error in ['script compile error','script runtime error','Reliable command is too long','MSG_WriteString: MAX_STRING_CHARS','EXE_SERVERCOMMANDOVERFLOW']:
             assert error not in log,(error,home)
     finally:

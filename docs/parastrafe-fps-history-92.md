@@ -7,7 +7,8 @@ Use `!specfps detailed` (default), `!specfps compact` or
 the viewer's choice and adds it to command help automatically.
 
 Structured phases replace the earlier special-case `332` insertion. Opening
-parastrafe appears as `332` or `WA 3 > WD 32` once the new phase is confirmed.
+parastrafe appears as `32` in Compact and `WA 3 > WD 32` in Detailed once the
+new phase is confirmed.
 
 ## Implementation
 
@@ -78,9 +79,10 @@ From `dev-tools`:
 
 `python3 tests/run-fps-history-smoke.py`
 
-The runner builds the debug server and an isolated test plugin, starts two test
-clients without database callbacks or exposed ports, runs GSC/native checks,
-then removes its test container. The plugin is never loaded into the runtime.
+The runner builds an isolated test plugin and uses the current server executable
+(or a supplied `--binary` candidate), starts two test clients without database
+callbacks or exposed ports, runs GSC/native checks, then removes its test
+container. It does not rebuild or replace the live executable. The plugin is never loaded into the runtime.
 
 - `tests/fps-history.gsc`: real native-to-GSC input callback; modes, colors and
   fade state; phase labels and exclusions; history/command bounds; demo seeks,
@@ -211,3 +213,10 @@ are unchanged. The deployed GSC/native files still exactly match the prior
 passed the player guard (operator only), restored mp_to_the_moon and produced no
 script errors. Matching client menu installed with a backup and no game control
 or process restart. User visual recheck remains pending; no commit authorized.
+
+
+## Bounce-exit grouping (2026-11-13)
+
+See [the bounce boundary investigation](fps-bounce-boundaries.md) for the
+150 ms exit grouping, retained FPS transitions, exact Moon clip evidence and
+regressions. Both views use the same projection; raw recorded actions remain intact.
