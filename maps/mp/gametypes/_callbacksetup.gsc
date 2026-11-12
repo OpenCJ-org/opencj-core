@@ -151,3 +151,8 @@ CodeCallback_FragButton()
 {
     self openCJ\buttonPress::onFragButton();
 }
+
+CodeCallback_MovementState(forward, right, time, onGround)
+{
+    self openCJ\huds\hudFPSHistory::onMovementState(forward, right, time, onGround);
+}

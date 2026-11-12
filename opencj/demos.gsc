@@ -277,7 +277,11 @@ startDemo(demoID)
     state.stance=self getStance();state.weapon=self getCurrentWeapon();state.health=self.health;
     state.paused=self.playerRuns_runPaused;state.time=self openCJ\playTime::getTimePlayed();
     state.timerRunning=!isDefined(self.stopTime);
+    self openCJ\huds\hudFPSHistory::_flushPendingInput();
     state.fpshistory=self.fpshistory;state.fpsHistoryText=self.fpsHistoryText;
+    state.fpsHistoryShortFPS=self.fpshistory["shortfps"];
+    state.fpsHistoryEvents=self.fpsHistoryEvents;state.fpsHistoryTruncated=self.fpsHistoryTruncated;
+    state.fpsHistoryStyle=self.fpsHistoryStyle;
     state.speed=self.currSpeed;state.maxSpeed=self.maxSpeed;
     state.started=getTime();
     self.demoReturn=state;
@@ -510,6 +514,7 @@ whilePlayingDemo()
             if (isDefined(sound))self playLocalSound(sound);
         }
     }
+    fpsHistorySequential=!isDefined(self.demoLastPresentedFrame) || currFrame.number==self.demoLastPresentedFrame+1;
     if (!isInterpolatedFrame)self.demoLastPresentedFrame = currFrame.number;
     if(!isDefined(self.clipEdit))
         self openCJ\huds\hudOnScreenKeyboard::showKeyboardDemo(currFrame.forward, currFrame.back, currFrame.left, currFrame.right, currFrame.jump, currFrame.sprint);
@@ -527,36 +532,7 @@ whilePlayingDemo()
         self.demoPreviousState = currFrame.state;
     }
 
-    if(self.demoPreviousOnGround != currFrame.onGround) //onground fps history hud should be called before fps changes
-    {
-        if(!currFrame.onGround)
-        {
-            self openCJ\huds\hudFpsHistory::onDemoLeaveGround(openCJ\fps::getShortFPS(currFrame.FPS));
-        }
-        else
-        {
-            self openCJ\huds\hudFpsHistory::onDemoLand();
-        }
-        self.demoPreviousOnGround = currFrame.onGround;
-    }
-
-    if(currFrame.bounce && !isInterpolatedFrame)
-    {
-        self openCJ\huds\hudFpsHistory::onDemoBounce(openCJ\fps::getShortFPS(currFrame.FPS));
-    }
-
-    if(!isDefined(self.demoPreviousFPS) || self.demoPreviousFPS != currFrame.FPS)
-    {
-        if(currFrame.onGround)
-        {
-            self openCJ\huds\hudFpsHistory::clearAndSetDemoFPS(openCJ\fps::getShortFPS(currFrame.FPS));
-        }
-        else
-        {
-            self openCJ\huds\hudFpsHistory::addDemoFPSHistory(openCJ\fps::getShortFPS(currFrame.FPS));
-        }
-        self.demoPreviousFPS = currFrame.FPS;
-    }
+    self openCJ\huds\hudFPSHistory::onDemoFrame(currFrame,fpsHistorySequential && self.demoRate>0,isInterpolatedFrame);
     
     // Check if demo ended.
     self demoUpdateOverlay();
@@ -631,8 +607,7 @@ stopDemo(loadClipSave)
     self openCJ\huds\hudStatistics::onSpawnPlayer();
     self openCJ\huds\hudProgressBar::onSpawnPlayer();
     self openCJ\huds\hudRunInfo::onSpawnPlayer();
-    self.fpshistory=state.fpshistory;self.fpsHistoryText=state.fpsHistoryText;
-    self.hud[level.fpsHistoryHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(state.fpsHistoryText,self,false);
+    self openCJ\huds\hudFPSHistory::restoreLiveHistory(state);
     self.demoID=undefined;self.demoReturn=undefined;
     releaseCache(id);
     if(returnToSave && isDefined(self openCJ\savePosition::getSavedPosition(0)))
