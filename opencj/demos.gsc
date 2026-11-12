@@ -368,6 +368,9 @@ startDemo(demoID)
     self openCJ\halfBeat::disableCorrection();
     self.demoExitRequested=false;
     self hide();
+    // The local body is needed by the third-person camera. Native visibility
+    // keeps this playback body hidden from unrelated players.
+    if(getCodVersion()==4)self showToPlayer(self);
     self.playerRuns_runPaused=true;
     self openCJ\playTime::pauseTimer();
     self.eventQueue=[];

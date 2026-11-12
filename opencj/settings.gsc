@@ -42,6 +42,8 @@ loadSettingsFromDatabase()
             name = tolower(rows[i][0]);
             if(isInArray(name, availableSettings))
             {
+                if(isDefined(level.settings[name].sessionOnly) && level.settings[name].sessionOnly)
+                    continue;
                 value = parseSettingValue(level.settings[name], rows[i][1]);
                 if(!isDefined(value))
                 {
@@ -300,7 +302,8 @@ onSetting(name, args, changedByScript)
     }
 
     // Write updated setting to database
-    self thread writePlayerSettingToDb(name, self.settingValues[name]);
+    if(!isDefined(setting.sessionOnly) || !setting.sessionOnly)
+        self thread writePlayerSettingToDb(name, self.settingValues[name]);
 }
 
 addSettingString(name, minLen, maxLen, defaultVal, help, updateFunc)

@@ -49,6 +49,7 @@ main()
     openCJ\fps::onInit();
     openCJ\vote::onInit();
     openCJ\graphics::onInit();
+    openCJ\camera::onInit();
     openCJ\playerNames::onInit();
     openCJ\playerCollision::onInit();
     openCJ\menus\endMapVote::onInit();
