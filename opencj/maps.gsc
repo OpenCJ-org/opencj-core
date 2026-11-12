@@ -23,6 +23,7 @@ onInit()
     level.mapNames = [];
     level.poolMapNames = [];
     level thread fetchAllMaps();
+    openCJ\mapRoutes::onInit();
 }
 
 fetchAllMaps()

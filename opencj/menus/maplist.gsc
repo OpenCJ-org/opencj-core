@@ -287,7 +287,7 @@ _updateSelectionDvars(map)
         self setClientCvar(level.mapListDvarPrefix + "selectedname", map["name"]);
         self setClientCvar(level.mapListDvarPrefix + "date", map["date"]);
         self setClientCvar(level.mapListDvarPrefix + "author", map["author"]);
-        self setClientCvar(level.mapListDvarPrefix + "desc", map["desc"]);
+        self _updateRouteDvars(map["name"]);
         self setClientCvar(level.mapListDvarPrefix + "loadimage", openCJ\maps::previewImage(map["name"]));
     }
     else
@@ -296,7 +296,25 @@ _updateSelectionDvars(map)
         self setClientCvar(level.mapListDvarPrefix + "selectedname", "");
         self setClientCvar(level.mapListDvarPrefix + "date", "");
         self setClientCvar(level.mapListDvarPrefix + "author", "");
-        self setClientCvar(level.mapListDvarPrefix + "desc", "");
+        self _updateRouteDvars(undefined);
         self setClientCvar(level.mapListDvarPrefix + "loadimage", "");
+    }
+}
+
+_updateRouteDvars(mapName)
+{
+    self.mapListRouteMap=mapName;
+    view=openCJ\mapRoutes::overview(mapName);
+    self.mapListRouteView=view;
+    prefix=level.mapListDvarPrefix;
+    self setClientCvar(prefix+"routetitle",view.title);
+    self setClientCvar(prefix+"routemessage",view.message);
+    self setClientCvar(prefix+"routecount",view.rows.size);
+    for(i=0;i<10;i++)
+    {
+        text="";palette=0;
+        if(i<view.rows.size){text=view.rows[i].label;palette=view.rows[i].palette;}
+        self setClientCvar(prefix+"route"+i,text);
+        self setClientCvar(prefix+"route"+i+"_color",palette);
     }
 }

@@ -80,6 +80,7 @@ validationError(rows)
 activate()
 {
     openCJ\checkpoints::onInit();
+    level thread openCJ\mapRoutes::refresh();
     self openCJ\challenges::onRoutesPublished();
     players = getEntArray("player", "classname");
     for (i = 0; i < players.size; i++)
