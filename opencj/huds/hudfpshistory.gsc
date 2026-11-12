@@ -148,7 +148,7 @@ _confirmPendingInput()
     {
         self.fpsHistoryAnchorForward=forward;self.fpsHistoryAnchorRight=right;
     }
-    self _action("move",pending.fps,(flags&1)!=0);
+    self _action("move",pending.fps,(flags&1)!=0,pending.time,pending.firstFPSChange);
 }
 
 onFPSChanged(newFPS)
@@ -169,7 +169,7 @@ _beginHistory(fps)
     self _action("move",fps,false);
 }
 
-_action(kind,fps,switched)
+_action(kind,fps,switched,inputTime,firstFPSChange)
 {
     if(kind!="move" && isDefined(self.fpsHistoryPending))
     {
@@ -178,6 +178,7 @@ _action(kind,fps,switched)
         // a continuing strafe when no further key event arrives after a bounce.
         self _appendRecordedFPS(self.fpsHistoryPending.fps);
         self.fpsHistoryPending.fps=self.fpshistory["shortfps"];
+        self.fpsHistoryPending.firstFPSChange=undefined;
     }
     if(!isDefined(self.fpsHistoryEvents))self.fpsHistoryEvents=[];
     count=self.fpsHistoryEvents.size;
@@ -187,6 +188,14 @@ _action(kind,fps,switched)
     event.keys=inputLabel(self.fpsHistoryAcceptedForward,self.fpsHistoryAcceptedRight);
     event.forward=self.fpsHistoryAcceptedForward;event.right=self.fpsHistoryAcceptedRight;
     event.switched=switched;event.started=now;
+    event.inputTime=now;if(isDefined(inputTime))event.inputTime=inputTime;
+    event.firstFPSChange=firstFPSChange;
+    if(kind=="bounce")
+    {
+        event.incomingFPS=self.fpshistory["shortfps"];
+        self.fpsHistoryBounceDisplayAt=now+150;
+        if(!self openCJ\demos::isPlayingDemo())self thread _waitBounceDisplay();
+    }
     self.fpsHistoryEvents[count]=event;
     if(self.fpsHistoryEvents.size>64)
     {
@@ -207,7 +216,10 @@ _recordFPS(fps)
     self.fpshistory["shortfps"]=fps;
     if(isDefined(self.fpsHistoryPending))
     {
-        self.fpsHistoryPending.fps=mergeActionFPS(self.fpsHistoryPending.fps,fps);
+        previous=self.fpsHistoryPending.fps;
+        self.fpsHistoryPending.fps=mergeActionFPS(previous,fps);
+        if(previous.size==1 && self.fpsHistoryPending.fps.size>1)
+            self.fpsHistoryPending.firstFPSChange=self historyTime();
         return;
     }
     self _appendRecordedFPS(fps);
@@ -224,6 +236,7 @@ _appendRecordedFPS(fps)
     if(event.kind!="move"){self _action("move",fps,false);return;}
     merged=mergeActionFPS(event.fps,fps);
     if(merged==event.fps)return;
+    if(event.fps.size==1 && merged.size>1)event.firstFPSChange=self historyTime();
     event.fps=merged;
     self _refresh();
 }
@@ -247,7 +260,8 @@ renderHistory(events,detailed,truncated)
         else
         {
             fps=event.fps;
-            if(!event.switched && previousKind=="move" && fps.size>0 && previousFPS==fps[0])fps=getSubStr(fps,1);
+            // Compact describes FPS transitions, independent of strafe phases.
+            if(previousKind=="move" && fps.size>0 && previousFPS==fps[0])fps=getSubStr(fps,1);
             part+=fps;
         }
         parts[parts.size]=part;
@@ -290,11 +304,63 @@ renderDetailed(actions,truncated)
     return result;
 }
 
+// Only the first 150 ms after a bounce may be attached to the new strafe.
+// Keep raw source actions intact: this is a shared display projection, not a
+// sampling blackout. Every distinct FPS change remains in the projected string.
+bounceDisplayEvents(events,now,pending)
+{
+    result=[];
+    for(i=0;i<events.size;i++)
+    {
+        event=events[i];
+        if(event.kind!="bounce"){result[result.size]=event;continue;}
+        result[result.size]=event;
+        if(i+1>=events.size || events[i+1].kind!="move")continue;
+        first=events[i+1];
+        // Briefly buffer the bounce exit. A candidate beginning in the window
+        // must still pass the existing 150 ms input-duration test before grouping.
+        waiting=now<event.started+150 && (!isDefined(event.displayReady) || !event.displayReady);
+        if(isDefined(pending) && pending.time<=event.started+150)waiting=true;
+        if(waiting)break;
+        copy=spawnStruct();copy.kind="move";copy.fps=first.fps;
+        copy.keys=first.keys;copy.forward=first.forward;copy.right=first.right;
+        copy.switched=first.switched;copy.started=first.started;
+        // A carry-over value already shown before the bounce is not a new FPS
+        // step. Remove only that leading value, only when its first change is
+        // inside the window. Rapid changes after it (e.g. 3->2->3) all survive.
+        if(isDefined(event.incomingFPS) && copy.fps.size>1 && copy.fps[0]==event.incomingFPS &&
+           isDefined(first.firstFPSChange) && first.firstFPSChange<=event.started+150)
+            copy.fps=getSubStr(copy.fps,1);
+        i++;
+        if(i+1<events.size && events[i+1].kind=="move")
+        {
+            next=events[i+1];
+            if(isDefined(next.inputTime) && next.inputTime<=event.started+150 && next.switched)
+            {
+                copy.fps=mergePhaseFPS(copy.fps,next.fps);
+                copy.keys=next.keys;copy.forward=next.forward;copy.right=next.right;
+                copy.switched=false;i++;
+            }
+        }
+        result[result.size]=copy;
+    }
+    return result;
+}
+
+_waitBounceDisplay()
+{
+    self endon("disconnect");self endon("fpshistory_clear");
+    wait .15;
+    self.fpsHistoryBounceDisplayAt=undefined;
+    self _refresh();
+}
+
 _refresh()
 {
-    self.fpsHistoryText=renderHistory(self.fpsHistoryEvents,false,self.fpsHistoryTruncated);
-    if(!isDefined(self.fpsHistoryStyle))self.fpsHistoryStyle=inferStrafeStyle(self.fpsHistoryEvents);
-    self.fpsHistoryDetailedText=renderDetailed(phaseActions(self.fpsHistoryEvents,self.fpsHistoryStyle),self.fpsHistoryTruncated);
+    displayed=bounceDisplayEvents(self.fpsHistoryEvents,self historyTime(),self.fpsHistoryPending);
+    self.fpsHistoryText=renderHistory(displayed,false,self.fpsHistoryTruncated);
+    if(!isDefined(self.fpsHistoryStyle))self.fpsHistoryStyle=inferStrafeStyle(displayed);
+    self.fpsHistoryDetailedText=renderDetailed(phaseActions(displayed,self.fpsHistoryStyle),self.fpsHistoryTruncated);
     self _publish();
 }
 
@@ -468,6 +534,7 @@ _onBhopThread(){self _separator("bhop");}
 _resetHistory()
 {
     self notify("fpshistory_clear");
+    self.fpsHistoryBounceDisplayAt=undefined;
     self _cancelPendingInput();
     self.fpsHistoryAcceptedForward=self.fpsHistoryForward;self.fpsHistoryAcceptedRight=self.fpsHistoryRight;
     self.fpsHistoryEvents=[];self.fpsHistoryTruncated=false;
@@ -529,7 +596,12 @@ _onDemoBounceThread(text)
     self endon("disconnect");self endon("fpshistory_clear");
     if(self.fpsHistoryText=="")return;
     self _action("bounce","",false);
-    self endon("fpshistory_fpschanged");wait 0.15;self _recordFPS(text);
+    marker=self.fpsHistoryEvents[self.fpsHistoryEvents.size-1];
+    self endon("fpshistory_fpschanged");wait 0.15;
+    // Legacy helper has already waited in wall time; it does not advance the
+    // recorded clock used by onDemoFrame.
+    marker.displayReady=true;
+    self _recordFPS(text);
 }
 onDemoLand()
 {
@@ -585,6 +657,11 @@ onDemoFrame(frame,sequential,interpolated)
             if(self.fpshistory["shortfps"]!=fps)self notify("fpshistory_fpschanged");
             self _recordFPS(fps);
         }
+    }
+    if(isDefined(self.fpsHistoryBounceDisplayAt) && self.fpsHistoryDemoTime>=self.fpsHistoryBounceDisplayAt)
+    {
+        self.fpsHistoryBounceDisplayAt=undefined;
+        self _refresh();
     }
     self.demoPreviousOnGround=frame.onGround;self.demoPreviousFPS=frame.FPS;
 }
