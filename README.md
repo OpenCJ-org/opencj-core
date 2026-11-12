@@ -37,3 +37,48 @@ An empty/failed catalogue read exposes no maps to regular players.
 Release provenance and the future download authorization design are documented
 in `dev-tools/docs/proposals/alpha-map-pool.md` and
 `dev-tools/docs/proposals/203-map-download-authorization.md`.
+
+## Preferred names and name moderation
+
+Apply `migrations/017-preferred-names.sql` before the corresponding scripts.
+It adds account-linked preferred names, a case-insensitive unique constraint,
+a shared write lock for name claims, and private moderation-rule tables.
+No existing player records or names are rewritten. Preferred names contain
+3–15 printable ASCII characters and no color codes, matching the existing
+visible engine-name budget. Changes and resets share a persistent one-hour
+cooldown. `playerDisplayNames` resolves the preferred name with the existing
+account name as fallback.
+
+Rule data is operational data, not source code. Never commit database exports
+containing real rule entries, raw submitted names, or private seed lists.
+The matcher normalizes case, color codes, separators, common substitutions and
+repeated letters. Rules are SHA-256 hashes of those normalized forms, with
+whole-name/contained matching and rule-specific full-name exceptions. Hashing
+avoids displaying terms; it is not encryption or a secrecy guarantee against
+dictionary guessing. Administrators still control access to the database.
+
+`tools/manage-name-rules.py` reads new terms with a hidden terminal prompt:
+- `python3 tools/manage-name-rules.py --add`
+- `python3 tools/manage-name-rules.py --add --mode contains`
+- `python3 tools/manage-name-rules.py --exception 12`
+- `python3 tools/manage-name-rules.py --disable 12`
+- `python3 tools/manage-name-rules.py --list` shows numeric IDs and metadata only.
+- `python3 tools/manage-name-rules.py --seed` imports the pinned English source's
+  severity-4 entries. Use `--dry-run` first; seeding preserves existing disabled
+  rules and never prints or saves the downloaded plaintext list.
+
+The starter source is [dsojevic/profanity-list](https://github.com/dsojevic/profanity-list)
+at commit `c27924319aa9bd6f917e3782b4f4b6604a50b652`, MIT licensed.
+Its level-3 entries are largely unclassified defaults, so the starter selection
+uses only explicitly severe entries. It is a limited starting policy, not a
+complete or authoritative classification of abusive language. Other operators
+can use their own data. See the upstream
+[license](https://github.com/dsojevic/profanity-list/blob/c27924319aa9bd6f917e3782b4f4b6604a50b652/LICENSE).
+Server-side name checks never send player names to an external service.
+
+After changing rules, use `!reloadnamerules` (admin 60), or change maps normally.
+A failed reload retains the last valid snapshot. A server starting without a
+valid snapshot uses temporary names rather than accepting unchecked changes.
+`!frename` and `!resetprefname` require moderator level 40. Existing prefname
+entries are not silently bulk-deleted when rules change: moderators can reset
+the relevant account by playerID. Review false positives with rule exceptions.
