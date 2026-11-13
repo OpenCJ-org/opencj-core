@@ -36,8 +36,7 @@ _asyncMySQL()
         for(i = 0; i < list.size; i++)
         {
             outcome = mysql_async_getstatus(list[i]);
-            result = mysql_async_getresult_and_free(list[i]);
-            rows = _getRowsAndFree(result);
+            rows = mysql_async_getrows_and_free(list[i]);
             level notify("mysqlQueryDone" + list[i], rows, outcome);
         }
         wait 0.05;
@@ -268,4 +267,14 @@ defaultWriteKey()
     if (!isPlayer(self)) return "";
     if (isDefined(self.login_playerID)) return "player:"+self.login_playerID;
     return "slot:"+self getEntityNumber();
+}
+
+// Native demo/clip transfers return the usual small receipt. No payload bytes
+// are copied into script variables, including while the caller waits for SQL.
+awaitNative(id)
+{
+    if(isPlayer(self))self endon("disconnect");
+    if(!isDefined(id) || id<=0)return undefined;
+    level waittill("mysqlQueryDone"+id,rows,outcome);
+    return rows;
 }

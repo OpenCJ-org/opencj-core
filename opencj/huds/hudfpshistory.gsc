@@ -34,9 +34,24 @@ _onModeChanged(value)
         self sendLocalChatMessage("Use !specfps off, compact or detailed",true);
         return false;
     }
+    if(isDefined(self.fpsHistoryMode) && self.fpsHistoryMode==value)return true;
     self.fpsHistoryMode=value;
-    if(isDefined(self.fpsHistorySource))self _render(self.fpsHistorySource);
-    else self _hide();
+    self _hide();
+    if(self openCJ\demos::isPlayingDemo())
+    {
+        self demoFPSReset();self.demoFPSCacheKey=undefined;
+        self _clearDemoFPSHistory();
+        self.demoFPSWaiting=value!="off";
+        flags=self readPlaybackFrame_flags();
+        self.demoFPSWaitGround=isDefined(flags) && (flags & 8192)!=0;
+    }
+    else
+    {
+        self.fpsHistoryWaitSource=self.fpsHistorySource;
+        self.fpsHistoryWaitJump=0;
+        if(isDefined(self.fpsHistorySource) && isDefined(self.fpsHistorySource.fpsHistoryJumpSerial))
+            self.fpsHistoryWaitJump=self.fpsHistorySource.fpsHistoryJumpSerial;
+    }
     return true;
 }
 
@@ -162,6 +177,7 @@ onFPSChanged(newFPS)
 
 _beginHistory(fps)
 {
+    self markNextJump();
     self _resetHistory();
     self.fpshistory["shortfps"]=fps;
     self.fpsHistoryAnchorForward=self.fpsHistoryForward;
@@ -375,11 +391,18 @@ _publish()
 
 _render(source)
 {
+    if(!self openCJ\demos::isPlayingDemo() && isDefined(self.fpsHistoryWaitJump))
+    {
+        serial=0;if(isDefined(source.fpsHistoryJumpSerial))serial=source.fpsHistoryJumpSerial;
+        if((!isDefined(self.fpsHistoryWaitSource) || self.fpsHistoryWaitSource==source) && serial==self.fpsHistoryWaitJump)
+        {self _hide();return;}
+        self.fpsHistoryWaitJump=undefined;self.fpsHistoryWaitSource=undefined;
+    }
     self.fpsHistorySource=source;
     mode=self.fpsHistoryMode;if(!isDefined(mode))mode="detailed";
-    if(mode=="off" || !isDefined(source.fpsHistoryText) || source.fpsHistoryText==""){self _hide();return;}
     text=source.fpsHistoryText;
     if(mode=="detailed" && isDefined(source.fpsHistoryDetailedText))text=source.fpsHistoryDetailedText;
+    if(mode=="off" || !isDefined(text) || text==""){self _hide();return;}
     self.hud[level.fpsHistoryHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(text,self,false);
     self openCJ\huds\base::enableHUD(level.fpsHistoryHudName);
 }
@@ -529,7 +552,7 @@ _onOnGroundThread(onGround)
         self _onBhopThread();
     else self _beginHistory(openCJ\fps::getShortFPS(self openCJ\fps::getCurrentFPS()));
 }
-_onBhopThread(){self _separator("bhop");}
+_onBhopThread(){self markNextJump();self _separator("bhop");}
 
 _resetHistory()
 {
@@ -692,4 +715,10 @@ restoreLiveHistory(state)
         self.fpsHistoryDetailedText=self.fpsHistoryText;
         self _publish();
     }
+}
+
+markNextJump()
+{
+    if(!isDefined(self.fpsHistoryJumpSerial))self.fpsHistoryJumpSerial=0;
+    self.fpsHistoryJumpSerial++;
 }

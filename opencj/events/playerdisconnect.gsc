@@ -11,6 +11,7 @@ main() // Threaded
     self openCJ\clips::onDisconnect();
     self openCJ\demos::onDisconnect();
     self openCJ\demoRecording::onDisconnect();
+    self savePosition_initClient();
     self openCJ\checkpointCreation::onDisconnect();
 
     // Call functions that need to use 'self' before the next frame

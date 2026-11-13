@@ -24,7 +24,6 @@ main() // Threaded
     self openCJ\huds\hudJumpSlowdown::onPlayerConnect();
     self openCJ\huds\hudSpeedometer::onPlayerConnect();
     self openCJ\huds\hudProgressBar::onPlayerConnect();
-    self openCJ\huds\hudSpeedometer::onPlayerConnect();
     self openCJ\huds\hudPosition::onPlayerConnect();
     self openCJ\huds\hudTimeLimit::onPlayerConnect();
     self openCJ\huds\hudRunInfo::onPlayerConnect();

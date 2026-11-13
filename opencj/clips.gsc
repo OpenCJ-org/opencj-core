@@ -179,20 +179,15 @@ scopeFilter()
 submit(description)
 {
     if(!isDefined(self.clipEdit) || self.clipEdit.busy)return;
+    if(isDefined(self.clipUploadToken) || isDefined(self.clipUploadNative))
+    {self setClientCvar("opencj_clip_hint","Your previous clip is still uploading. Try again when it finishes.");return;}
     rec=self.clipEdit;
     if(!validDescription(description))
     {self setClientCvar("opencj_clip_hint","Use 1-32 letters, numbers and spaces only.");return;}
     rec.busy=true;
-    // Capture the selected payload before yielding to SQL. Exit/load may restore
-    // the run and release native playback while publication is in flight.
-    payloads=[];
-    for(first=rec.first;first<=rec.last;first+=64)
-    {
-        count=rec.last-first+1;if(count>64)count=64;
-        payload=demoEncodeChunk(rec.id,first,count);
-        if(!isDefined(payload)){rec.busy=false;self setClientCvar("opencj_clip_hint","Could not encode this clip.");return;}
-        payloads[payloads.size]=payload;
-    }
+    // Hold the native recording while SQL yields, even if the editor closes.
+    if(!demoPin(rec.id)){rec.busy=false;return;}
+    self.clipUploadNative=rec.id;
     owner=self openCJ\login::getPlayerID();map=openCJ\mapID::getMapID();
     scope=level.clipSession;session=dbStr(scope);
     if(rec.permanent){scope="permanent";session="NULL";}
@@ -208,21 +203,27 @@ submit(description)
         if(isDefined(rows) && rows.size){id=int(rows[0][0]);break;}
     }
     if(!isDefined(id))
-    {rec.busy=false;self setClientCvar("opencj_clip_hint","No slot available (limit 5 per storage type). Use !deleteclip <id>.");return;}
+    {self releaseUpload();self.clipUploadToken=undefined;rec.busy=false;self setClientCvar("opencj_clip_hint","No slot available (limit 5 per storage type). Use !deleteclip <id>.");return;}
     ok=true;
-    for(chunk=0;chunk<payloads.size;chunk++)
+    chunk=0;
+    for(first=rec.first;first<=rec.last;first+=64)
     {
-        result=self openCJ\mySQL::mysqlAsyncBackground("INSERT INTO demoClipChunks VALUES("+id+","+chunk+",UNHEX("+dbStr(payloads[chunk])+"))", "clip-upload:"+token);
+        count=rec.last-first+1;if(count>64)count=64;
+        result=self openCJ\mySQL::awaitNative(demoUploadChunk(rec.id,id,1,first,count,chunk));
         if(!isDefined(result)){ok=false;break;}
+        chunk++;
     }
+    self releaseUpload();
     if(ok)ok=isDefined(self openCJ\mySQL::mysqlAsyncBackground("UPDATE demoClips SET ready=1 WHERE clipID="+id, "clip-upload:"+token));
     if(!ok)
     {
         self openCJ\mySQL::mysqlAsyncBackground("DELETE FROM demoClips WHERE clipID="+id+" AND ready=0", "clip-upload:"+token);
-        rec.busy=false;self setClientCvar("opencj_clip_hint","Upload failed. Your clip is still open; try again.");return;
+        self.clipUploadToken=undefined;rec.busy=false;self setClientCvar("opencj_clip_hint","Upload failed. Your clip is still open; try again.");return;
     }
     self.clipUploadToken=undefined;
-    self openCJ\demos::stopDemo();
+    // Publication can outlive the editor. Leave a subsequently opened demo alone.
+    if(self openCJ\demos::isPlayingDemo() && self.demoID==rec.id)
+        self openCJ\demos::stopDemo();
     self sendLocalChatMessage("Clip #"+id+" submitted: "+description+". Remove it with !deleteclip "+id+".");
 }
 
@@ -316,13 +317,10 @@ play(id,preview)
     level.demoCache[""+native]=cache;self.demoPendingId=native;
     while(ok && numberOfDemoFrames(native)<expected)
     {
-        data=self openCJ\mySQL::mysqlAsyncRead("SELECT chunkNum,HEX(payload) FROM demoClipChunks WHERE clipID="+id+" AND chunkNum>="+chunk+" ORDER BY chunkNum LIMIT 8");
+        data=self openCJ\mySQL::awaitNative(demoLoadChunks(native,id,1,chunk));
         if(!isDefined(self.demoPendingId) || self.demoPendingId!=native)return;
-        ok=isDefined(data) && data.size>0;
-        for(i=0;ok && i<data.size;i++)
-        {
-            ok=int(data[i][0])==chunk && isDefined(demoDecodeChunk(native,data[i][1]));chunk++;
-        }
+        ok=isDefined(data) && data.size>0 && data[0][0]>chunk;
+        if(ok)chunk=data[0][0];
     }
     cache.loading=false;
     if(!ok || numberOfDemoFrames(native)!=expected){self openCJ\demos::releasePending();return;}
@@ -351,6 +349,7 @@ onPlaybackStopped()
 
 onDisconnect()
 {
+    self releaseUpload();
     if(isDefined(self.clipUploadToken))level thread openCJ\mySQL::mysqlAsyncQuery("DELETE FROM demoClips WHERE ready=0 AND uploadToken="+dbStr(self.clipUploadToken));
     self cancelRecording();
 }
@@ -477,4 +476,10 @@ numericCvars(values)
     }
     if(command!="v"){self SV_GameSendServerCommand(command,true);sent++;}
     return sent;
+}
+
+releaseUpload()
+{
+    if(!isDefined(self.clipUploadNative))return;
+    demoUnpin(self.clipUploadNative);self.clipUploadNative=undefined;
 }

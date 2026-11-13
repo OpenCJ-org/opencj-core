@@ -5,7 +5,9 @@ onInit()
     underlyingCmd = openCJ\settings::addSettingBool("poshud", false, "Turn on/off position hud. Usage: !poshud [on/off]", undefined);
 }
 
-onPlayerConnect()
+onPlayerConnect(){}
+
+_createPositionHud()
 {
     if (!isDefined(self.hudPos))
     {
@@ -28,7 +30,8 @@ onStartDemo()
 
 onSpawnPlayer()
 {
-    self _setPosHudAlpha(1);
+    if(self openCJ\settings::getSetting("poshud"))
+    {self _createPositionHud();self _setPosHudAlpha(1);}
 }
 
 onSpawnSpectator()
@@ -40,12 +43,13 @@ whileAlive()
 {
     if (self openCJ\settings::getSetting("poshud"))
     {
+        self _createPositionHud();
         self _updatePosHudValues();
         self _setPosHudAlpha(1);
     }
     else
     {
-        self _setPosHudAlpha(0);
+        self _destroyPositionHud();
     }
 }
 
@@ -70,6 +74,7 @@ _updatePosHudValues()
 
 _setPosHudAlpha(val)
 {
+    if(!isDefined(self.hudPos))return;
     self.hudPos["x"].alpha = val;
     self.hudPos["y"].alpha = val;
     self.hudPos["z"].alpha = val;
@@ -94,4 +99,12 @@ _initPosHud(name, colors, yOffset)
         self.hudPos[name].archived = false;
         self.hudPos[name].hideWhenInMenu = true;
     }
+}
+
+_destroyPositionHud()
+{
+    if(!isDefined(self.hudPos))return;
+    keys=getArrayKeys(self.hudPos);
+    for(i=0;i<keys.size;i++)self.hudPos[keys[i]] destroy();
+    self.hudPos=undefined;
 }

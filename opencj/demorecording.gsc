@@ -4,9 +4,15 @@ onInit()
 {
     // Do not enable recording against an unmigrated database.
     level.demoStorageReady = isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT runID FROM demoRuns LIMIT 0"));
+    level.demoPublicationReady=false;
+    if(level.demoStorageReady)
+    {
+        schema=openCJ\mySQL::mysqlSyncQuery("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='demoPublications'),EXISTS(SELECT 1 FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='publishDemo' AND routine_type='PROCEDURE')");
+        level.demoPublicationReady=isDefined(schema) && schema.size==1 && int(schema[0][0])==1 && int(schema[0][1])==1;
+    }
     // Reclaim abandoned uploads after crashes, with a generous grace period
     // so another server's active publication cannot be mistaken for an orphan.
-    if(level.demoStorageReady)
+    if(level.demoPublicationReady)
         level thread openCJ\mySQL::mysqlAsyncQueryNosave("DELETE FROM demoRuns WHERE ready=0 AND createdAt < NOW() - INTERVAL 7 DAY");
 }
 
@@ -17,7 +23,7 @@ onConnect()
 
 onRunStarted()
 {
-    if (!level.demoStorageReady || getCodVersion() != 4)
+    if (!isDefined(level.demoPublicationReady) || !level.demoPublicationReady || getCodVersion() != 4)
         return;
     id = self openCJ\playerRuns::getRunID();
     if (!isDefined(id) || isDefined(self.demoRecordings["" + id]))
@@ -122,6 +128,7 @@ onRunFinished()
     if (!isDefined(rec) || rec.failed || rec.finishing) return;
     if (rec.failed) return;
     rec.finishing = true;
+    rec.saves = []; // No further rewind/save lookup is possible for a finished run.
     completeDemo(rec.id);
     level thread persist(rec.id);
 }
@@ -166,12 +173,12 @@ persist(id)
     {
         length = count-first;
         if (length>64) length=64;
-        hex = demoEncodeChunk(id,first,length);
-        if (!isDefined(hex)) {ok=false;break;}
-        ok = isDefined(openCJ\mySQL::mysqlAsyncBackground("INSERT INTO demoChunks VALUES(" + id + "," + int(first/64) + ",UNHEX('" + hex + "'))", "demo:"+id));
+        ok = isDefined(openCJ\mySQL::awaitNative(demoUploadChunk(id,id,0,first,length,int(first/64))));
     }
     if (ok) ok = promote(id);
-    if (!ok)
+    if (!isDefined(ok))
+        printf("OpenCJ: demo publication outcome uncertain for run " + id + "; candidate retained for reconciliation.\n");
+    else if (!ok)
     {
         printf("OpenCJ: demo publication failed for run " + id + "; leaderboard result retained.\n");
         // Only our unpublished candidate can be removed here.
@@ -181,51 +188,41 @@ persist(id)
     destroyDemo(id);
 }
 
-// No yields inside this transaction; the map lock serializes winner changes
-// across game servers. A single payload may hold several category references.
+// A stored procedure owns the entire transaction on one worker connection.
+// One publication lane avoids tying up several workers on the same map lock;
+// the database lock also serializes publishers on separate game servers.
 promote(id)
 {
-    rows = openCJ\mySQL::mysqlSyncQuery("SELECT mapID,routeName,FPSMode,modeMask,timePlayed,explosiveJumps FROM demoRuns WHERE runID=" + id);
-    if (!isDefined(rows) || rows.size!=1) return false;
-    row=rows[0];
-    if (!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION"))) return false;
-    ok = isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT mapID FROM mapids WHERE mapID=" + row[0] + " FOR UPDATE"));
-    state=openCJ\mySQL::mysqlSyncQuery("SELECT ready,frameCount FROM demoRuns WHERE runID="+id+" FOR UPDATE");
-    if(!ok || !isDefined(state) || !state.size || int(state[0][0])==2)
+    uncertain=false;
+    for(attempt=0;attempt<3;attempt++)
     {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        return false;
+        result=openCJ\mySQL::_request("CALL publishDemo("+id+")",2,"demo-publication","",30000,true);
+        if(result.status==0)
+        {
+            if(isDefined(result.rows) && result.rows.size==1 && result.rows[0].size==2)
+                return int(result.rows[0][0])==1;
+            return undefined; // A malformed receipt cannot justify deletion.
+        }
+        if(result.status==3)
+        {
+            uncertain=true;
+            // A lost reply may follow a successful commit, including a loser
+            // whose payload was removed. Its durable receipt survives cleanup.
+            receipt=openCJ\mySQL::_request("SELECT runID FROM demoPublications WHERE runID="+id,1,"","",10000,true);
+            if(receipt.status!=0 || !isDefined(receipt.rows))return undefined;
+            if(receipt.rows.size==1)return true;
+            // Replaying is safe: the procedure rechecks the receipt under the
+            // map lock, including if the first call has not finished yet.
+        }
+        else if(result.status!=1 || (result.error!=1205 && result.error!=1213))
+        {
+            if(uncertain)return undefined;
+            return false;
+        }
+        if(attempt<2)wait 0.05*(attempt+1);
     }
-    // Require every contiguous, non-empty chunk before changing winner references.
-    // Failed/partial candidates must never displace an existing playable demo.
-    expectedChunks = int(ceil(int(state[0][1]) / 64.0));
-    chunks = openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*),MIN(chunkNum),MAX(chunkNum),MIN(OCTET_LENGTH(payload)) FROM demoChunks WHERE runID=" + id);
-    complete = int(state[0][1]) >= 2 && isDefined(chunks) && chunks.size == 1 &&
-        int(chunks[0][0]) == expectedChunks && isDefined(chunks[0][1]) &&
-        int(chunks[0][1]) == 0 && int(chunks[0][2]) == expectedChunks - 1 &&
-        int(chunks[0][3]) > 0;
-    if (!complete)
-    {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        return false;
-    }
-    kinds=[];kinds[0]="speedrun";kinds[1]="lowrpg";
-    if (int(row[3])==0 && row[2]!="hax") kinds[2]="walkthrough";
-    for (i=0;ok && i<kinds.size;i++)
-    {
-        where = "w.mapID="+row[0]+" AND w.routeName="+dbStr(row[1])+" AND w.FPSMode="+dbStr(row[2])+" AND w.modeMask="+row[3]+" AND w.kind="+dbStr(kinds[i]);
-        old = openCJ\mySQL::mysqlSyncQuery("SELECT d.timePlayed,d.explosiveJumps FROM demoWinners w JOIN demoRuns d ON d.runID=w.runID WHERE d.ready=1 AND "+where);
-        if (!isDefined(old)) {ok=false;break;}
-        better = old.size==0;
-        if (!better) better = isBetter(kinds[i],int(row[4]),int(row[5]),int(old[0][0]),int(old[0][1]));
-        if (better)
-            ok = isDefined(openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoWinners VALUES("+row[0]+","+dbStr(row[1])+","+dbStr(row[2])+","+row[3]+","+dbStr(kinds[i])+","+id+") ON DUPLICATE KEY UPDATE runID=VALUES(runID)"));
-    }
-    if (ok) ok = isDefined(openCJ\mySQL::mysqlSyncQuery("UPDATE demoRuns SET ready=1 WHERE runID="+id));
-    if (ok) ok = isDefined(openCJ\mySQL::mysqlSyncQuery("DELETE d FROM demoRuns d LEFT JOIN demoWinners w ON w.runID=d.runID WHERE d.mapID="+row[0]+" AND d.ready=1 AND w.runID IS NULL"));
-    if (ok) ok = isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT"));
-    if (!ok) openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-    return ok;
+    if(uncertain)return undefined;
+    return false;
 }
 
 isBetter(kind,time,rpgs,oldTime,oldRpgs)

@@ -311,13 +311,9 @@ _loadCache(id,expected)
         chunk=0;
         while(ok && numberOfDemoFrames(id)<expected)
         {
-            rows=openCJ\mySQL::mysqlAsyncRead("SELECT chunkNum,HEX(payload) FROM demoChunks WHERE runID="+id+" AND chunkNum>="+chunk+" ORDER BY chunkNum LIMIT 32");
-            ok=isDefined(rows) && rows.size>0;
-            for(i=0;ok && i<rows.size;i++)
-            {
-                if(int(rows[i][0])!=chunk || !isDefined(demoDecodeChunk(id,rows[i][1])))ok=false;
-                chunk++;
-            }
+            rows=openCJ\mySQL::awaitNative(demoLoadChunks(id,id,0,chunk));
+            ok=isDefined(rows) && rows.size>0 && rows[0][0]>chunk;
+            if(ok)chunk=rows[0][0];
         }
         if(ok)ok=numberOfDemoFrames(id)==expected;
         if(ok)completeDemo(id);
@@ -378,7 +374,7 @@ startDemo(demoID)
     self.demoPreviousStance=state.stance;self.demoPreviousState="none";
     self.demoPreviousFPS=undefined;self.demoPreviousOnGround=true;
     self.demoFirstFrame=true;self.demoLastPresentedFrame=undefined;self.demoLoopPending=false;
-    self.demoFPSCacheKey=undefined;self.demoFPSCache=[];self.demoFPSCacheFrames=[];
+    self.demoFPSCacheKey=undefined;self demoFPSReset();self.demoFPSFloor=undefined;self.demoFPSWaiting=false;
     self.demoRate=1;self.demoStepRemainder=0;self.demoStepRate=1;self.demoMenuRate=undefined;self.demoControlButtons=0;self.demoCheckpointRequest=0;
     self.demoMenuOpened=false;
     self demoDisplayStart();
@@ -687,7 +683,7 @@ stopDemo(loadClipSave)
     self openCJ\huds\hudFPSHistory::restoreLiveHistory(state);
     self openCJ\halfBeat::syncPolicy();
     self.demoID=undefined;self.demoReturn=undefined;
-    self.demoFPSCacheKey=undefined;self.demoFPSCache=[];self.demoFPSCacheFrames=[];
+    self.demoFPSCacheKey=undefined;self demoFPSReset();self.demoFPSFloor=undefined;self.demoFPSWaiting=false;
     releaseCache(id);
     if(returnToSave && isDefined(self openCJ\savePosition::getSavedPosition(0)))
     {
@@ -705,6 +701,7 @@ onDisconnect()
     self releasePending();
     self releaseSelection();
     if(self isPlayingDemo())releaseCache(self.demoID);
+    self demoFPSReset();
     if(isDefined(self.demoLinker))self.demoLinker delete();
 }
 
@@ -814,13 +811,24 @@ blendDemoAngle(a,b,fraction)
 // reuse. The live event builder remains at demoFPSStateFrame.
 syncDemoFPSHistory(target)
 {
-    key=self.demoID+":"+self.demoStyle+":"+self.demoBegin+":"+self.demoEnd;
+    mode=self.fpsHistoryMode;if(!isDefined(mode))mode="detailed";
+    if(mode=="off")return;
+    if(isDefined(self.demoFPSWaiting) && self.demoFPSWaiting)
+    {
+        ground=(self readPlaybackFrame_flags() & 8192)!=0;
+        departed=isDefined(self.demoFPSWaitGround) && self.demoFPSWaitGround && !ground;
+        self.demoFPSWaitGround=ground;
+        if(!departed)return;
+        self.demoFPSWaiting=false;self.demoFPSFloor=target;
+    }
+    key=self.demoID+":"+self.demoStyle+":"+self.demoBegin+":"+self.demoEnd+":"+mode;
     if(!isDefined(self.demoFPSCacheKey) || self.demoFPSCacheKey!=key)
     {
-        self.demoFPSCacheKey=key;self.demoFPSCache=[];self.demoFPSCacheFrames=[];
+        self.demoFPSCacheKey=key;self demoFPSReset();
         self.demoFPSStateFrame=undefined;
     }
-    if(isDefined(self.demoFPSCache[target]))
+    text=self demoFPSRead(target);
+    if(isDefined(text))
     {
         self showDemoFPSCache(target);
         return;
@@ -828,46 +836,39 @@ syncDemoFPSHistory(target)
     self.fpsHistoryBatch=true;
     if(isDefined(self.demoFPSStateFrame) && target>self.demoFPSStateFrame && target-self.demoFPSStateFrame<=4)
     {
-        cached=self.demoFPSCache[self.demoFPSStateFrame];
-        self.fpsHistoryText=cached.compact;self.fpsHistoryDetailedText=cached.detailed;
+        // Cached reverse display never changes the event builder. Restore its
+        // current text from those events before processing new source samples.
+        self openCJ\huds\hudFPSHistory::_refresh();
         self skipPlaybackFrames(self.demoFPSStateFrame-(self skipPlaybackFrames(0)));
         previous=self.demoFPSStateFrame;
-        while(previous<target)
-        {
-            frame=self _getDemoFrame(1,self.demoStyle!=0);
-            if(frame.number<=previous)break;
-            self openCJ\huds\hudFPSHistory::onDemoFrame(frame,frame.number==previous+1,false);
-            self cacheDemoFPS(frame.number);
-            previous=frame.number;
-        }
     }
     else
     {
-        frames=[];frame=self _getDemoFrame(0,false);frames[0]=frame;
-        // At most 512 samples (~25 seconds), keeping both CPU and memory bounded.
-        while(frames.size<512 && frame.number>self.demoBegin)
+        self demoFPSReset();
+        // Walk to the oldest relevant native sample, then process forward one
+        // sample at a time. Never retain an array of 512 full GSC frame structs.
+        frame=self _getDemoFrame(-511,self.demoStyle!=0);
+        floor=self.demoBegin;
+        if(isDefined(self.demoFPSFloor) && self.demoFPSFloor>floor)floor=self.demoFPSFloor;
+        if(target<floor){self skipPlaybackFrames(target-(self skipPlaybackFrames(0)));self.fpsHistoryBatch=false;self openCJ\huds\hudFPSHistory::_hide();return;}
+        if(frame.number<floor){self skipPlaybackFrames(floor-frame.number);frame=self _getDemoFrame(0,false);}
+        self openCJ\huds\hudFPSHistory::onDemoFrame(frame,false,false);
+        if(frame.number>floor && !frame.onGround)
         {
-            previous=frame.number;
-            frame=self _getDemoFrame(-1,self.demoStyle!=0);
-            if(frame.number>=previous)break;
-            frames[frames.size]=frame;
+            self.fpsHistoryTruncated=true;
+            self openCJ\huds\hudFPSHistory::_refresh();
         }
-        self.demoFPSCache=[];self.demoFPSCacheFrames=[];
-        previous=undefined;
-        for(i=frames.size-1;i>=0;i--)
-        {
-            frame=frames[i];
-            sequential=isDefined(previous) && frame.number==previous+1;
-            self openCJ\huds\hudFPSHistory::onDemoFrame(frame,sequential,false);
-            if(!isDefined(previous) && frame.number>self.demoBegin && !frame.onGround && frames.size==512)
-            {
-                self.fpsHistoryTruncated=true;
-                self openCJ\huds\hudFPSHistory::_refresh();
-            }
-            self cacheDemoFPS(frame.number);previous=frame.number;
-        }
+        self cacheDemoFPS(frame.number);previous=frame.number;
     }
-    self.demoFPSStateFrame=target;
+    while(previous<target)
+    {
+        frame=self _getDemoFrame(1,self.demoStyle!=0);
+        if(frame.number<=previous)break;
+        self openCJ\huds\hudFPSHistory::onDemoFrame(frame,frame.number==previous+1,false);
+        self cacheDemoFPS(frame.number);
+        previous=frame.number;
+    }
+    self.demoFPSStateFrame=target;self.demoFPSFloor=undefined;
     self skipPlaybackFrames(target-(self skipPlaybackFrames(0)));
     self.fpsHistoryBatch=false;
     self showDemoFPSCache(target);
@@ -875,25 +876,16 @@ syncDemoFPSHistory(target)
 
 cacheDemoFPS(frame)
 {
-    cached=spawnStruct();cached.compact=self.fpsHistoryText;cached.detailed=self.fpsHistoryDetailedText;
-    self.demoFPSCache[frame]=cached;self.demoFPSCacheFrames[self.demoFPSCacheFrames.size]=frame;
-    if(self.demoFPSCacheFrames.size>512)
-    {
-        kept=[];
-        for(i=0;i<self.demoFPSCacheFrames.size;i++)
-        {
-            if(i<64)self.demoFPSCache[self.demoFPSCacheFrames[i]]=undefined;
-            else kept[kept.size]=self.demoFPSCacheFrames[i];
-        }
-        self.demoFPSCacheFrames=kept;
-    }
+    text=self.fpsHistoryText;
+    if(!isDefined(self.fpsHistoryMode) || self.fpsHistoryMode=="detailed")text=self.fpsHistoryDetailedText;
+    self demoFPSStore(frame,text);
 }
 
 showDemoFPSCache(frame)
 {
-    cached=self.demoFPSCache[frame];
-    if(!isDefined(cached))return;
-    self.fpsHistoryText=cached.compact;self.fpsHistoryDetailedText=cached.detailed;
+    text=self demoFPSRead(frame);if(!isDefined(text))return;
+    if(!isDefined(self.fpsHistoryMode) || self.fpsHistoryMode=="detailed")self.fpsHistoryDetailedText=text;
+    else self.fpsHistoryText=text;
     self openCJ\huds\hudFPSHistory::_publish();
 }
 

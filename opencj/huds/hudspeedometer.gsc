@@ -35,6 +35,7 @@ onPlayerConnect()
 {
     self.showSpeedometer = false;
     self _resetSpeed();
+    if(isDefined(self.hudSpeed))return;
     self.hudSpeed = [];
     self _initSpeedHud("curr", (1.0, 1.0, 1.0), -80);
     self _initSpeedHud("max", (1.0, 0.3, 0.3), -60); // Has to be above progress bar and time limit
