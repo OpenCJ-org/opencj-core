@@ -82,3 +82,20 @@ valid snapshot uses temporary names rather than accepting unchecked changes.
 `!frename` and `!resetprefname` require moderator level 40. Existing prefname
 entries are not silently bulk-deleted when rules change: moderators can reset
 the relevant account by playerID. Review false positives with rule exceptions.
+
+## Asynchronous demo publication
+
+Apply migrations/018-demo-publication.sql before deploying the corresponding
+recording scripts. It adds publishDemo(runID) and a small demoPublications
+receipt table; existing recordings and winners are preserved. The existing
+four-worker SQL pool executes each call as one background job on one connection.
+
+Publication locks the map row before reading mutable candidate/winner data,
+matching checkpoint publication and route rename/retirement. It validates all
+chunks, updates category winners, marks the recording ready, removes unreferenced
+published payloads and records success in one transaction. Errors roll back.
+The receipt survives payload cleanup so repeated calls and lost commit replies
+cannot republish an obsolete candidate. It is removed only when its parent
+player run is deleted. Receipts do not make a retired recording playable.
+
+See dev-tools/docs/sql-capacity-190.md for concurrency and workload verification.
