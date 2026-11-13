@@ -240,7 +240,9 @@ strafeHistory(player,viewer)
     heldInput(player,0,1);
     check(player.fpsHistoryText=="32" && player.fpsHistoryDetailedText=="^6WA ^73 ^7> ^2WD ^732","Detailed groups landing adjustment within its strafe phase");
     viewer openCJ\huds\hudFPSHistory::_onModeChanged("compact");
-    check(viewer.hud[level.fpsHistoryHudName].lastText=="32","compact mode omits key labels");
+    check(viewer.hud[level.fpsHistoryHudName].alpha==0,"switching live spectator mode hides the current jump");
+    startMovement(player,1,-1);player openCJ\fps::onFPSChange(250);
+    check(viewer.hud[level.fpsHistoryHudName].lastText=="32","Compact starts on the next jump without key labels");
     viewer openCJ\huds\hudFPSHistory::_onModeChanged("off");
     player openCJ\fps::onFPSChange(333);
     check(viewer.hud[level.fpsHistoryHudName].alpha==0,"Off stays hidden while source updates");
@@ -641,6 +643,9 @@ playbackSampling(player)
     check(isSubStr(reference[110],"BOUNCE") && isSubStr(reference[121],"BHOP"),
         "source reference includes bounce and bhop markers");
     rates=[];rates[0]="0.25";rates[1]="0.5";rates[2]="1";rates[3]="2";rates[4]="4";
+    for(modeIndex=0;modeIndex<2;modeIndex++)
+    {
+    player.fpsHistoryMode="detailed";if(modeIndex)player.fpsHistoryMode="compact";
     for(i=0;i<rates.size;i++)
     {
         player openCJ\demos::setDemoDirection("forward");
@@ -654,8 +659,8 @@ playbackSampling(player)
         {
             frame=player openCJ\demos::advanceDemoFrame();
             player openCJ\demos::syncDemoFPSHistory(frame.number);
-            if(!sameText(player.fpsHistoryDetailedText,reference[frame.number]) ||
-                !sameText(player.fpsHistoryText,compact[frame.number]))matched=false;
+            if(player.fpsHistoryMode=="detailed" && !sameText(player.fpsHistoryDetailedText,reference[frame.number]))matched=false;
+            if(player.fpsHistoryMode=="compact" && !sameText(player.fpsHistoryText,compact[frame.number]))matched=false;
             if(abs(frame.origin[0]-tick*float(rates[i]))>.001)smooth=false;
             if(player skipPlaybackFrames(0)!=frame.number)cursor=false;
             if(tick%40==0)wait .05;
@@ -671,8 +676,8 @@ playbackSampling(player)
         for(tick=1;tick<=ticks;tick++)
         {
             frame=player openCJ\demos::advanceDemoFrame();player openCJ\demos::syncDemoFPSHistory(frame.number);
-            if(!sameText(player.fpsHistoryDetailedText,reference[frame.number]) ||
-                !sameText(player.fpsHistoryText,compact[frame.number]))matched=false;
+            if(player.fpsHistoryMode=="detailed" && !sameText(player.fpsHistoryDetailedText,reference[frame.number]))matched=false;
+            if(player.fpsHistoryMode=="compact" && !sameText(player.fpsHistoryText,compact[frame.number]))matched=false;
             if(abs(frame.origin[0]-(128-tick*float(rates[i])))>.001)smooth=false;
             if(player skipPlaybackFrames(0)!=frame.number)cursor=false;
             if(tick%40==0)wait .05;
@@ -682,6 +687,8 @@ playbackSampling(player)
         check(player openCJ\demos::setDemoSpeed(""+float(rates[i])),
             "keyboard speed formatting remains accepted "+rates[i]);
     }
+    }
+    player.fpsHistoryMode="detailed";
     // Fresh seeks must rebuild without feeding backwards samples into the HUD.
     player.demoFPSCacheKey=undefined;
     player skipPlaybackFrames(121-(player skipPlaybackFrames(0)));
@@ -689,7 +696,7 @@ playbackSampling(player)
     check(sameText(player.fpsHistoryDetailedText,reference[121]) && player skipPlaybackFrames(0)==121,
         "uncached seek rebuilds complete chronological history and restores presentation cursor");
     player openCJ\demos::syncDemoFPSHistory(80);
-    check(player.fpsHistoryText=="","cached grounded frame shows expired history");
+    check(player.fpsHistoryDetailedText=="","cached grounded frame shows expired history");
     player skipPlaybackFrames(122-(player skipPlaybackFrames(0)));
     player openCJ\demos::syncDemoFPSHistory(122);
     check(sameText(player.fpsHistoryDetailedText,reference[122]),
@@ -697,14 +704,33 @@ playbackSampling(player)
     player.demoFPSCacheKey=undefined;
     player skipPlaybackFrames(699-(player skipPlaybackFrames(0)));
     player openCJ\demos::syncDemoFPSHistory(699);
-    check(player.demoFPSCacheFrames.size==512 && player skipPlaybackFrames(0)==699 &&
+    check((player demoFPSStats())[1]==512 && player skipPlaybackFrames(0)==699 &&
         getSubStr(player.fpsHistoryDetailedText,0,6)=="^7... ",
         "far airborne seek bounds rebuild and displays truncation");
     player.demoBegin=690;
     player openCJ\demos::syncDemoFPSHistory(699);
-    check(player.demoFPSCacheFrames.size==10 && !player.fpsHistoryTruncated,
+    check((player demoFPSStats())[1]==10 && !player.fpsHistoryTruncated,
         "clip range change invalidates the cached chronology");
 
+    player.demoBegin=0;
+    player openCJ\huds\hudFPSHistory::_onModeChanged("compact");
+    check((player demoFPSStats())[1]==0,"changing mode discards all previous mode text");
+    player openCJ\demos::syncDemoFPSHistory(699);
+    check(player.demoFPSWaiting && (player demoFPSStats())[1]==0,"mode switch waits through the current airborne jump");
+    player skipPlaybackFrames(40-(player skipPlaybackFrames(0)));
+    player openCJ\demos::syncDemoFPSHistory(40);
+    player skipPlaybackFrames(100-(player skipPlaybackFrames(0)));
+    player openCJ\demos::syncDemoFPSHistory(100);
+    check(!player.demoFPSWaiting && (player demoFPSStats())[1]==1 && player.fpsHistoryText=="2",
+        "selected mode begins afresh on the next takeoff");
+    player skipPlaybackFrames(16-(player skipPlaybackFrames(0)));
+    player openCJ\demos::syncDemoFPSHistory(16);
+    check(player skipPlaybackFrames(0)==16 && isDefined(player demoFPSRead(16)),
+        "after the new jump starts the selected mode can seek earlier normally");
+    player openCJ\huds\hudFPSHistory::_onModeChanged("off");
+    player openCJ\demos::syncDemoFPSHistory(100);
+    check((player demoFPSStats())[1]==0 && player.fpsHistoryEvents.size==0,"Off retains no demo FPS display history");
+    player.fpsHistoryMode="detailed";player.demoFPSFloor=undefined;player.demoFPSWaiting=false;
     a=spawnStruct();b=spawnStruct();
     a.number=0;b.number=1;a.origin=(0,0,0);b.origin=(10,0,0);a.loadNow=false;b.loadNow=false;
     check(openCJ\demos::canBlendDemoFrames(a,b) && openCJ\demos::canBlendDemoFrames(b,a),
