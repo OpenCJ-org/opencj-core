@@ -9,6 +9,8 @@ extern "C" {
 
 void gsc_saveposition_initclient(int id);
 void gsc_saveposition_save(int id);
+void gsc_saveposition_addolder(int id);
+void gsc_saveposition_historyinfo(int id);
 void gsc_saveposition_selectwithoutflag(int id);
 void gsc_saveposition_selectsave(int id);
 void gsc_saveposition_getangles(int id);
