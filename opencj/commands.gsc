@@ -159,6 +159,7 @@ _onCmdResumeRun(args)
     {
         if (self openCJ\savePosition::canLoadError(backwardsCount) == 0)
         {
+            self openCJ\savePosition::resetBackwardsCount();
             self openCJ\events\eventHandler::onLoadPositionRequest(backwardsCount);
             failed = false;
         }
@@ -166,7 +167,13 @@ _onCmdResumeRun(args)
 
     if (failed)
     {
-        self sendLocalChatMessage("Could not find last safe position. Consider resetting your run.", true);
+        info=self savePosition_historyInfo();
+        if(self openCJ\historySave::maybePrefetch(info[0]-1))
+        {
+            self sendLocalChatMessage("Loading older saves. Try again shortly.");
+            return;
+        }
+        self sendLocalChatMessage("Could not find a safe position in the available save history.", true);
     }
 }
 

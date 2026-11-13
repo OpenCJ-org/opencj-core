@@ -106,12 +106,15 @@ createFlags()
 
 onRunCreated()
 {
+    self openCJ\historySave::cancelPendingPage();
+    self.historySaves=undefined;
     self savePosition_initClient();
     self resetBackwardsCount();
 }
 
 canSaveError()
 {
+    if(self openCJ\historySave::isLoadingInitial())return 4;
     if(self.sessionState != "playing")
     {
         return 1;
@@ -136,6 +139,11 @@ printCanSaveError(error)
 {
     switch(error)
     {
+        case 4:
+        {
+            self iprintln("Wait until your run has loaded.");
+            break;
+        }
         case 2:
         {
             self iprintln("^1Cannot save in air");
@@ -175,9 +183,14 @@ canLoadError(backwardsCount)
     {
         error = 998;
     }
+    else if(self openCJ\historySave::isLoadingInitial())
+    {
+        error = 3;
+    }
     else if (isDefined(backwardsCount)) // Sometimes we don't want to select any save
     {
         error = self savePosition_selectSave(backwardsCount);
+        if(self openCJ\historySave::maybePrefetch(backwardsCount) && error!=0)error=3;
     }
 
     if (error != 0) // Useful for debugging
@@ -196,9 +209,23 @@ printCanLoadError(error)
             self iprintln("^1No save available");
             break;
         }
+        case 3:
+        {
+            self iprintln("Loading older saves...");
+            info=self savePosition_historyInfo();
+            if(info[0]>0 && self.savePosition_backwardsCount>=info[0])
+                self.savePosition_backwardsCount=info[0]-1;
+            break;
+        }
         case 2:
         {
-            self iprintln("^1Failed loading secondary position");
+            info=self savePosition_historyInfo();
+            if(info[0]>=info[3])self iprintln("Only the "+info[3]+" most recent saves are available.");
+            else if(isDefined(self.historySaves) && self.historySaves.failed)
+                self iprintln("^1Could not read older saves. Try again.");
+            else self iprintln("No older saved position available.");
+            if(self.savePosition_backwardsCount>=info[0] && info[0]>0)
+                self.savePosition_backwardsCount=info[0]-1;
             break;
         }
     }
@@ -254,6 +281,7 @@ setSavedPosition()
 getSavedPosition(backwardsCount)
 {
     error = self savePosition_selectSave(backwardsCount);
+    self openCJ\historySave::maybePrefetch(backwardsCount);
     if (error == 0) // No error
     {
         save = spawnStruct();
@@ -292,6 +320,9 @@ incrementBackwardsCount(amount)
     else
     {
         self.savePosition_backwardsCount += amount;
+        info=self savePosition_historyInfo();
+        if(self.savePosition_backwardsCount>info[3])self.savePosition_backwardsCount=info[3];
+        if(self.savePosition_backwardsCount<0)self.savePosition_backwardsCount=0;
     }
     return self.savePosition_backwardsCount;
 }

@@ -423,6 +423,7 @@ _start(route, hex)
         self sendLocalChatMessage("Network draft files exist but cannot be read; preserved for recovery.", true);
         return;
     }
+    self openCJ\historySave::cancelPendingPage();
     self notify("cpc_started");
     self.cpc = spawnStruct();
     self.cpc.route = route;

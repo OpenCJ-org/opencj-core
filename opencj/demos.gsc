@@ -360,6 +360,7 @@ startDemo(demoID)
     state.started=getTime();
     self.demoReturn=state;
     self.checkpointContact=undefined;
+    self openCJ\historySave::cancelPendingPage();
     self.playingDemo=true;
     self openCJ\halfBeat::disableCorrection();
     self.demoExitRequested=false;
