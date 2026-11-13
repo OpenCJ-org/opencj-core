@@ -7,6 +7,7 @@
 
 #include "gsc_custom_mysql.hpp"
 #include "mysql_async_pool.hpp"
+#include "opencj_demo.hpp"
 
 #include <mysql/mysql.h>
 #include <mysql/errmsg.h>
@@ -99,15 +100,18 @@ void gsc_mysql_async_submit()
 }
 void gsc_mysql_async_getdone_list()
 {
-    int ids[64];int count=sqlPoolDone(ids,64);
+    int ids[512];int count=sqlPoolDone(ids,512),published=0;
+    long long deadline=OpenCJ_Demo_SQLClock()+4;
     stackMakeArray();
-    for(int i=0;i<count;i++){stackPushInt(ids[i]);stackPushArrayNext();}
+    for(int i=0;i<count && published<64;i++)if(OpenCJ_Demo_SQLReady(ids[i],deadline))
+    {stackPushInt(ids[i]);stackPushArrayNext();++published;}
 }
 void gsc_mysql_async_getstatus()
 {
     int id=0;SqlCompletion c;
     if(!stackGetParams("i",&id) || !sqlPoolStatus(id,&c)){stackPushUndefined();return;}
     stackMakeArray();
+    OpenCJ_Demo_SQLStatus(id,&c);
     int values[]={c.outcome,c.error,c.waitMs,c.executionMs};
     for(int i=0;i<4;i++){stackPushInt(values[i]);stackPushArrayNext();}
 }
@@ -129,7 +133,7 @@ void gsc_mysql_async_cancel()
 }
 void gsc_mysql_async_newmap()
 {
-    sqlPoolNewMap();stackPushInt(1);
+    OpenCJ_Demo_SQLNewMap();sqlPoolNewMap();stackPushInt(1);
 }
 void gsc_mysql_async_stats()
 {
@@ -593,4 +597,23 @@ void gsc_mysql_async_execute_longquery()
 
     if (queryId) stackPushInt(queryId);
     else stackPushUndefined();
+}
+
+// Collect regular rowsets or small native-transfer receipts through one path.
+// Binary demo payloads are decoded before this function becomes eligible.
+void gsc_mysql_async_getrows_and_free() {
+    int id;if(!stackGetParams("i",&id)){stackPushUndefined();return;}
+    if(OpenCJ_Demo_SQLTake(id))return;
+    SqlCompletion c;MYSQL_RES *result=nullptr;
+    if(!sqlPoolTake(id,&result,&c)){stackPushUndefined();return;}
+    if(c.outcome!=SQL_OK){if(result)mysql_free_result(result);stackPushUndefined();return;}
+    stackMakeArray();
+    if(!result)return;
+    MYSQL_ROW row;unsigned fields=mysql_num_fields(result);
+    while((row=mysql_fetch_row(result))) {
+        stackMakeArray();
+        for(unsigned i=0;i<fields;i++){if(row[i])stackPushString(row[i]);else stackPushUndefined();stackPushArrayNext();}
+        stackPushArrayNext();
+    }
+    mysql_free_result(result);
 }

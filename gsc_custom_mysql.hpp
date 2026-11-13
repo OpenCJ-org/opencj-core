@@ -44,3 +44,4 @@ void gsc_mysql_async_cancel();
 void gsc_mysql_async_newmap();
 void gsc_mysql_async_stats();
 #endif // _GSC_CUSTOM_MYSQL_H
+void gsc_mysql_async_getrows_and_free();

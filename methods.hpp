@@ -83,4 +83,8 @@
 {"readPlaybackFrame_weapon", Gsc_Demo_ReadFrame_Weapon, 0},
 {"readPlaybackFrame_rpgSound", Gsc_Demo_ReadFrame_RPGSound, 0},
 
+{"demoFPSReset", Gsc_Demo_FPSReset, 0},
+{"demoFPSStore", Gsc_Demo_FPSStore, 0},
+{"demoFPSRead", Gsc_Demo_FPSRead, 0},
+{"demoFPSStats", Gsc_Demo_FPSStats, 0},
 #endif // __METHODS_HPP_

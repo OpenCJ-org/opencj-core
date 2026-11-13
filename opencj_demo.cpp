@@ -6,6 +6,9 @@
  * Includes                                                               *
  **************************************************************************/
 
+#include "opencj_demo_fps.hpp"
+#include "mysql_async_pool.hpp"
+#include <chrono>
 #include "shared.hpp"
 
 #include <cstring>
@@ -175,6 +178,9 @@ typedef struct
     int currentFrame;           // Index of the last frame of this demo (actively updated)
     int lastKeyFrame;           // To remember which demo frame is the current last key frame
     int captureEventSequence, captureTime, captureTeleportBit;
+    unsigned long long generation;
+    unsigned pins;
+    bool releasePending;
 } sDemo_t;
 
 typedef struct
@@ -196,6 +202,8 @@ static std::map<uint32_t, uint16_t> opencj_demoIdToIdx;
 static sDemoPlayback_t opencj_playback[MAX_CLIENTS];
 // Per-viewer edit lists share the original recording; no duplicate DB payloads.
 static std::vector<int> demoPlaybackTimeline[MAX_CLIENTS];
+static DemoFPSText demoFPSText[MAX_CLIENTS];
+static unsigned long long demoGeneration=0;
 
 /**************************************************************************
  * Local functions                                                        *
@@ -243,7 +251,8 @@ static void clearDemoById(int demoId)
         {
             if (opencj_playback[i].pDemo == pDemo)
             {
-                demoPlaybackTimeline[i].clear();
+                std::vector<int>().swap(demoPlaybackTimeline[i]);
+                demoFPSText[i].clear();
                 memset(&opencj_playback[i], 0, sizeof(opencj_playback[i]));
             }
         }
@@ -253,6 +262,7 @@ static void clearDemoById(int demoId)
 
 static void clearAllDemos()
 {
+    for(int i=0;i<MAX_CLIENTS;++i){demoFPSText[i].clear();std::vector<int>().swap(demoPlaybackTimeline[i]);}
     printf("Clearing all demos\n");
 #ifdef COD4
     for(int i=0;i<MAX_CLIENTS;++i){delete demoReturnVisual[i];demoReturnVisual[i]=nullptr;}
@@ -293,6 +303,7 @@ static sDemo_t *createDemo(int demoId)
 
         pDemo->magic = DEMO_MAGIC_NUMBER;
         pDemo->id = demoId;
+        pDemo->generation=++demoGeneration;
 
         pDemo->nrAllocatedFrames = 1024;
         pDemo->pDemoFrames = new (std::nothrow) sDemoFrame_t[pDemo->nrAllocatedFrames]();
@@ -592,7 +603,9 @@ void Gsc_Demo_DestroyDemo()
     if (!Base_Gsc_GetValidDemoId(&demoId, 1)) return;
 
     printf("Destroying demo with id %d\n", demoId);
-    clearDemoById(demoId);
+    sDemo_t *demo=findDemoById(demoId);
+    if(demo && demo->pins)demo->releasePending=true;
+    else clearDemoById(demoId);
 }
 
 void Gsc_Demo_AddFrame()
@@ -758,7 +771,8 @@ void Gsc_Demo_SelectPlaybackDemo(int playerId)
     // Clear the player's current playback state
     sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     pPlayback->selectedFrame = 0;
-    demoPlaybackTimeline[playerId].clear();
+    std::vector<int>().swap(demoPlaybackTimeline[playerId]);
+    demoFPSText[playerId].clear();
     pPlayback->pDemo = findDemoById(demoId);
     if (!pPlayback->pDemo)
     {
@@ -962,14 +976,9 @@ static const int demoWireFrameSize = 27;
 static const int demoVisualWireSize = 31;
 static const int demoChunkBufferSize = 8192;
 
-void Gsc_Demo_EncodeChunk()
+static bool encodeDemoChunk(sDemo_t *demo,int first,int count,std::string &output)
 {
-    int id, first, count;
-    if (!Base_Gsc_GetValidDemoId(&id, 3)) return;
-    stackGetParamInt(1, &first); stackGetParamInt(2, &count);
-    sDemo_t *demo=findDemoById(id);
-    if (!demo || first<0 || count<1 || count>demoChunkFrames || first>demo->size-count)
-    { stackPushUndefined(); return; }
+    if(!demo || first<0 || count<1 || count>demoChunkFrames || first>demo->size-count)return false;
     unsigned char raw[demoChunkBufferSize] = {'O','C','J','4'};
     size_t used=8;uint16_t previousWeapon=0;bool haveWeapon=false;
     putDemoInt(raw+4,count,4);
@@ -1000,7 +1009,7 @@ void Gsc_Demo_EncodeChunk()
             q[29]=v.mantleTransition;q[30]=v.mantleFlags;
             const char *name=(!haveWeapon||previousWeapon!=v.weapon)?demoWeaponName(v.weapon):"";
             size_t length=strlen(name);
-            if(length>63 || used+1+length>sizeof(raw)){stackPushUndefined();return;}
+            if(length>63 || used+1+length>sizeof(raw)){return false;}
             raw[used++]=length;memcpy(raw+used,name,length);used+=length;
             previousWeapon=v.weapon;haveWeapon=true;
             if(v.landingEvent)
@@ -1010,11 +1019,20 @@ void Gsc_Demo_EncodeChunk()
     }
     unsigned char packed[demoChunkBufferSize]; uLongf size=sizeof(packed);
     if (compress2(packed,&size,raw,used,6)!=Z_OK)
-    { stackPushUndefined(); return; }
-    const char *digits="0123456789abcdef";
-    char hex[demoChunkBufferSize*2+1];
-    for (uLongf i=0;i<size;++i) {hex[2*i]=digits[packed[i]>>4];hex[2*i+1]=digits[packed[i]&15];}
-    hex[2*size]=0; stackPushString(hex);
+    { return false; }
+    output.assign(reinterpret_cast<const char*>(packed),size);return true;
+}
+static std::string demoHex(const std::string &packed) {
+    const char *digits="0123456789abcdef";std::string hex(packed.size()*2,'0');
+    for(size_t i=0;i<packed.size();++i){unsigned char c=packed[i];hex[2*i]=digits[c>>4];hex[2*i+1]=digits[c&15];}
+    return hex;
+}
+void Gsc_Demo_EncodeChunk()
+{
+    int id,first,count;if(!Base_Gsc_GetValidDemoId(&id,3))return;
+    stackGetParamInt(1,&first);stackGetParamInt(2,&count);std::string packed;
+    if(!encodeDemoChunk(findDemoById(id),first,count,packed)){stackPushUndefined();return;}
+    stackPushString(demoHex(packed).c_str());
 }
 static int demoHexDigit(char c)
 {
@@ -1023,40 +1041,28 @@ static int demoHexDigit(char c)
     if(c>='A'&&c<='F')return c-'A'+10;
     return -1;
 }
-void Gsc_Demo_DecodeChunk()
+static int decodeDemoChunk(sDemo_t *demo,const unsigned char *packed,size_t length)
 {
-    int id; const char *hex;
-    if (!Base_Gsc_GetValidDemoId(&id,2)) return;
-    stackGetParamString(1,&hex);
-    sDemo_t *demo=findDemoById(id);
-    size_t length=strlen(hex);
-    if (!demo || demo->isComplete || !length || length>demoChunkBufferSize*2 || length%2)
-    { stackPushUndefined(); return; }
-    unsigned char packed[demoChunkBufferSize],raw[demoChunkBufferSize];
-    for(size_t i=0;i<length;i+=2)
-    {
-        int a=demoHexDigit(hex[i]),b=demoHexDigit(hex[i+1]);
-        if(a<0||b<0){stackPushUndefined();return;}
-        packed[i/2]=(a<<4)|b;
-    }
+    if(!demo || demo->isComplete || !length || length>demoChunkBufferSize)return 0;
+    unsigned char raw[demoChunkBufferSize];
     uLongf size=sizeof(raw);
-    if(uncompress(raw,&size,packed,length/2)!=Z_OK || size<8 || (memcmp(raw,"OCJ1",4) && memcmp(raw,"OCJ2",4) && memcmp(raw,"OCJ3",4) && memcmp(raw,"OCJ4",4)))
-    {stackPushUndefined();return;}
+    if(uncompress(raw,&size,packed,length)!=Z_OK || size<8 || (memcmp(raw,"OCJ1",4) && memcmp(raw,"OCJ2",4) && memcmp(raw,"OCJ3",4) && memcmp(raw,"OCJ4",4)))
+    {return 0;}
     uint32_t count=getDemoInt(raw+4,4);
     bool modern=raw[3]!='1';size_t used=8;uint16_t weapon=0;bool haveWeapon=false;
     if(!count || count>demoChunkFrames || (!modern && size!=8+count*demoWireFrameSize))
-    {stackPushUndefined();return;}
+    {return 0;}
     sDemoFrame_t frames[demoChunkFrames] = {};
     for(uint32_t i=0;i<count;++i)
     {
-        if(used+demoWireFrameSize>size){stackPushUndefined();return;}
+        if(used+demoWireFrameSize>size){return 0;}
         unsigned char *p=raw+used;used+=demoWireFrameSize;
         sDemoFrame_t &frame=frames[i];
         for(int axis=0;axis<3;++axis)
         {
             uint32_t bits=getDemoInt(p+axis*4,4);memcpy(&frame.origin[axis],&bits,4);
             if(!std::isfinite(frame.origin[axis]) || fabs(frame.origin[axis])>131072)
-            {stackPushUndefined();return;}
+            {return 0;}
             frame.angles[axis]=getDemoInt(p+12+axis*2,2)*360.0f/65536.0f;
         }
         frame.flags=getDemoInt(p+18,2);frame.fps=getDemoInt(p+20,2);
@@ -1065,7 +1071,7 @@ void Gsc_Demo_DecodeChunk()
         frame.isKeyFrame=raw[3]!='4' || !(p[26]&32);
         if(modern && (p[26]&8))
         {
-            if(used+demoVisualWireSize+1>size){stackPushUndefined();return;}
+            if(used+demoVisualWireSize+1>size){return 0;}
             unsigned char *q=raw+used;used+=demoVisualWireSize;
             DemoVisual &v=frame.visual;v.valid=true;
             v.weaponTime=getDemoInt(q,2);v.weaponDelay=getDemoInt(q+2,2);v.animation=getDemoInt(q+4,2);
@@ -1075,29 +1081,42 @@ void Gsc_Demo_DecodeChunk()
             v.mantleTransition=q[29];v.mantleFlags=q[30];
             unsigned length=raw[used++];
             if(length>63 || used+length>size || (!length&&!haveWeapon) || v.viewHeight<0 || v.viewHeight>100 || v.weaponState>32)
-            {stackPushUndefined();return;}
+            {return 0;}
 #ifdef COD4
             if(length)
             {
                 char name[64];memcpy(name,raw+used,length);name[length]=0;
-                if(strlen(name)!=length){stackPushUndefined();return;}
+                if(strlen(name)!=length){return 0;}
                 weapon=!strcmp(name,"none")?0:G_GetWeaponIndexForName(name);haveWeapon=true;
             }
 #endif
             used+=length;v.weapon=weapon;
             if(raw[3]>='3' && (p[26]&16))
             {
-                if(used+2>size){stackPushUndefined();return;}
+                if(used+2>size){return 0;}
                 v.landingEvent=raw[used++];v.landingImpact=raw[used++];
                 if(v.landingEvent<77 || v.landingEvent>105 || !v.landingImpact || v.landingImpact>24)
-                {stackPushUndefined();return;}
+                {return 0;}
             }
         }
     }
-    if(used!=size){stackPushUndefined();return;}
+    if(used!=size){return 0;}
     for(uint32_t i=0;i<count;++i)
-        if(!appendDemoFrame(demo,frames[i])) {stackPushUndefined();return;}
-    stackPushInt(count);
+        if(!appendDemoFrame(demo,frames[i])) {return 0;}
+    return count;
+}
+void Gsc_Demo_DecodeChunk()
+{
+    int id;const char *hex;if(!Base_Gsc_GetValidDemoId(&id,2))return;
+    stackGetParamString(1,&hex);size_t length=strlen(hex);
+    if(!length || length>demoChunkBufferSize*2 || length%2){stackPushUndefined();return;}
+    unsigned char packed[demoChunkBufferSize];
+    for(size_t i=0;i<length;i+=2) {
+        int a=demoHexDigit(hex[i]),b=demoHexDigit(hex[i+1]);
+        if(a<0 || b<0){stackPushUndefined();return;}packed[i/2]=(a<<4)|b;
+    }
+    int count=decodeDemoChunk(findDemoById(id),packed,length/2);
+    if(count)stackPushInt(count);else stackPushUndefined();
 }
 void Gsc_Demo_MarkFailedSince()
 {
@@ -1148,7 +1167,11 @@ void Gsc_Demo_PlaybackStyle(int client)
     if(!demo || style<0 || style>2 || begin<0 || end>=demo->size || begin>end)
     {stackPushUndefined();return;}
     auto &timeline=demoPlaybackTimeline[client];
-    timeline.clear();
+    std::vector<int>().swap(timeline);
+    if(style==0) {
+        opencj_playback[client].selectedFrame=begin;
+        stackMakeArray();stackPushInt(begin);stackPushArrayNext();stackPushInt(end);stackPushArrayNext();return;
+    }
     for(int i=0;i<demo->size;++i)
         if(style==0 || demo->pDemoFrames[i].isKeyFrame)timeline.push_back(i);
     if(style==2)
@@ -1182,7 +1205,12 @@ void Gsc_Demo_PlaybackTime(int client)
     if(!stackGetParams("ii",&begin,&end))return;
     const auto &timeline=demoPlaybackTimeline[client];
     int frame=opencj_playback[client].selectedFrame;
-    if(timeline.empty()){stackPushUndefined();return;}
+    if(timeline.empty()){
+        const sDemo_t *demo=opencj_playback[client].pDemo;
+        if(!demo || begin<0 || end<begin || end>=demo->size){stackPushUndefined();return;}
+        stackMakeArray();stackPushInt(std::max(0,std::min(end,frame)-begin));stackPushArrayNext();
+        stackPushInt(end-begin);stackPushArrayNext();return;
+    }
     auto a=std::lower_bound(timeline.begin(),timeline.end(),begin);
     auto b=std::upper_bound(timeline.begin(),timeline.end(),end);
     auto c=std::lower_bound(a,b,frame);
@@ -1637,6 +1665,7 @@ void Gsc_Demo_EndPresentation(int client)
     g_entities[client].s.legsAnim=ps.legsAnim;g_entities[client].s.torsoAnim=ps.torsoAnim;
     g_entities[client].s.lerp.u.player.movementDir=ps.movementDir;
     delete saved;demoReturnVisual[client]=nullptr;
+    std::vector<int>().swap(demoPlaybackTimeline[client]);demoFPSText[client].clear();
 #endif
 }
 
@@ -1732,4 +1761,120 @@ void Gsc_Demo_ClipInfo()
     stackMakeArray();
     for(int event:cells){stackPushInt(event);stackPushArrayNext();}
     stackPushArrayNext();
+}
+
+void Gsc_Demo_FPSReset(int client) {
+    if(Base_Gsc_IsValidClientNum(client))return;
+    demoFPSText[client].clear();
+}
+void Gsc_Demo_FPSStore(int client) {
+    if(Base_Gsc_IsValidClientNum(client))return;
+    int frame;char *text=nullptr;
+    if(!stackGetParams("is",&frame,&text) || frame<0 || strlen(text)>1023){stackPushUndefined();return;}
+    demoFPSText[client].put(frame,text);stackPushBool(true);
+}
+void Gsc_Demo_FPSRead(int client) {
+    if(Base_Gsc_IsValidClientNum(client))return;
+    int frame;if(!stackGetParams("i",&frame)){stackPushUndefined();return;}
+    const char *text=demoFPSText[client].get(frame);
+    if(text)stackPushString(text);else stackPushUndefined();
+}
+void Gsc_Demo_FPSStats(int client) {
+    if(Base_Gsc_IsValidClientNum(client))return;
+    stackMakeArray();stackPushInt(demoFPSText[client].changes.size());stackPushArrayNext();
+    stackPushInt(demoFPSText[client].samples.size());stackPushArrayNext();
+}
+
+// All transfer bookkeeping is main-thread owned. SQL workers own only queries
+// and MYSQL_RES until completion; binary payload bytes never enter GSC.
+struct DemoSQLRead {
+    int nativeId,nextChunk,error;unsigned long long generation;bool done,abandoned;
+};
+static std::map<int,DemoSQLRead> demoSQLReads;
+long long OpenCJ_Demo_SQLClock() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+void Gsc_Demo_LoadChunks() {
+    int nativeId,storedId,clip,first;
+    if(!stackGetParams("iiii",&nativeId,&storedId,&clip,&first) || storedId<=0 || first<0 || (clip!=0 && clip!=1))
+    {stackPushInt(-SQL_INVALID);return;}
+    sDemo_t *demo=findDemoById(nativeId);
+    if(!demo || demo->isComplete){stackPushInt(-SQL_INVALID);return;}
+    char query[256];
+    snprintf(query,sizeof(query),"SELECT chunkNum,payload FROM %s WHERE %s=%d AND chunkNum>=%d ORDER BY chunkNum LIMIT 32",
+        clip?"demoClipChunks":"demoChunks",clip?"clipID":"runID",storedId,first);
+    int id=sqlPoolSubmit(query,true,SQL_READ,"","",10000);
+    if(id>0)demoSQLReads[id]={nativeId,first,0,demo->generation,false,false};
+    stackPushInt(id);
+}
+bool OpenCJ_Demo_SQLReady(int id,long long deadline) {
+    auto it=demoSQLReads.find(id);if(it==demoSQLReads.end())return true;
+    DemoSQLRead &read=it->second;MYSQL_RES *result=nullptr;SqlCompletion c;
+    if(!sqlPoolPeek(id,&result,&c))return false;
+    auto d=opencj_demoIdToIdx.find(read.nativeId);
+    bool missing=d==opencj_demoIdToIdx.end() || opencj_demos[d->second].generation!=read.generation;
+    if(read.abandoned) {
+        sqlPoolTake(id,&result,&c);if(result)mysql_free_result(result);
+        demoSQLReads.erase(it);return false;
+    }
+    if(missing){read.error=SQL_CANCELLED;read.done=true;return true;}
+    if(read.done)return true;
+    if(c.outcome!=SQL_OK){read.done=true;return true;}
+    if(!result || mysql_num_fields(result)!=2 || !mysql_num_rows(result) || mysql_num_rows(result)>32)
+    {read.error=SQL_INVALID;read.done=true;return true;}
+    sDemo_t *demo=&opencj_demos[d->second];
+    // Limit main-thread decode time, not the number of concurrent viewers.
+    while(OpenCJ_Demo_SQLClock()<deadline) {
+        MYSQL_ROW row=mysql_fetch_row(result);
+        if(!row){read.done=true;return true;}
+        unsigned long *lengths=mysql_fetch_lengths(result);char *end=nullptr;
+        long chunk=row[0]?strtol(row[0],&end,10):-1;
+        if(!row[0] || !end || *end || chunk!=read.nextChunk || !row[1] || !lengths ||
+           !decodeDemoChunk(demo,reinterpret_cast<unsigned char*>(row[1]),lengths[1])) {
+            read.error=SQL_INVALID;read.done=true;return true;
+        }
+        ++read.nextChunk;
+    }
+    return false;
+}
+void OpenCJ_Demo_SQLStatus(int id,SqlCompletion *c) {
+    auto it=demoSQLReads.find(id);if(it!=demoSQLReads.end() && it->second.error)c->outcome=it->second.error;
+}
+bool OpenCJ_Demo_SQLTake(int id) {
+    auto it=demoSQLReads.find(id);if(it==demoSQLReads.end())return false;
+    MYSQL_RES *result=nullptr;SqlCompletion c;
+    if(!it->second.done || !sqlPoolTake(id,&result,&c)){stackPushUndefined();return true;}
+    if(result)mysql_free_result(result);
+    if(c.outcome!=SQL_OK || it->second.error)stackPushUndefined();
+    else {stackMakeArray();stackMakeArray();stackPushInt(it->second.nextChunk);stackPushArrayNext();stackPushArrayNext();}
+    demoSQLReads.erase(it);return true;
+}
+void OpenCJ_Demo_SQLNewMap() {
+    // Old loaders have no remaining GSC waiter. Drain their native results as
+    // they finish, without decoding into a reused demo ID on the next map.
+    for(auto &entry:demoSQLReads)entry.second.abandoned=true;
+}
+void Gsc_Demo_UploadChunk() {
+    int nativeId,storedId,clip,first,count,chunk;
+    if(!stackGetParams("iiiiii",&nativeId,&storedId,&clip,&first,&count,&chunk) ||
+       storedId<=0 || chunk<0 || (clip!=0 && clip!=1)){stackPushInt(-SQL_INVALID);return;}
+    std::string packed;
+    if(!encodeDemoChunk(findDemoById(nativeId),first,count,packed)){stackPushInt(-SQL_INVALID);return;}
+    std::string key=(clip?"clip:":"demo:")+std::to_string(storedId);
+    std::string query="INSERT INTO "+std::string(clip?"demoClipChunks":"demoChunks")+
+        " VALUES("+std::to_string(storedId)+","+std::to_string(chunk)+",UNHEX('"+demoHex(packed)+"'))";
+    stackPushInt(sqlPoolSubmit(query.c_str(),false,SQL_BACKGROUND,key.c_str(),"",30000));
+}
+void Gsc_Demo_Pin() {
+    int id;if(!stackGetParams("i",&id)){stackPushBool(false);return;}
+    sDemo_t *demo=findDemoById(id);if(!demo || demo->releasePending){stackPushBool(false);return;}
+    ++demo->pins;stackPushBool(true);
+}
+void Gsc_Demo_Unpin() {
+    int id;if(!stackGetParams("i",&id))return;
+    auto it=opencj_demoIdToIdx.find(id);if(it==opencj_demoIdToIdx.end())return;
+    sDemo_t *demo=&opencj_demos[it->second];
+    if(demo->pins)--demo->pins;
+    if(!demo->pins && demo->releasePending)clearDemoById(id);
 }

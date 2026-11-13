@@ -17,6 +17,8 @@ int sqlPoolSubmit(const char*,bool,int,const char*,const char*,int);
 int sqlPoolDone(int*,int);
 bool sqlPoolStatus(int,SqlCompletion*);
 bool sqlPoolTake(int,MYSQL_RES**,SqlCompletion*);
+// Main-thread consumers may inspect completed native payloads before taking ownership.
+bool sqlPoolPeek(int,MYSQL_RES**,SqlCompletion*);
 void sqlPoolCancel(const char*,bool,bool);
 void sqlPoolNewMap();
 SqlPoolStats sqlPoolStats();

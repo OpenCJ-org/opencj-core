@@ -80,4 +80,9 @@
 {"demoTruncate", Gsc_Demo_Truncate, 0},
 {"demoFindSegment", Gsc_Demo_FindSegment, 0},
 
+{"mysql_async_getrows_and_free", gsc_mysql_async_getrows_and_free, 0},
+{"demoLoadChunks", Gsc_Demo_LoadChunks, 0},
+{"demoUploadChunk", Gsc_Demo_UploadChunk, 0},
+{"demoPin", Gsc_Demo_Pin, 0},
+{"demoUnpin", Gsc_Demo_Unpin, 0},
 #endif // __FUNCTIONS_HPP_

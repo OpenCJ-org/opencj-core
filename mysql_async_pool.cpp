@@ -170,7 +170,7 @@ static void *workerMain(void *arg) {
                 if(error)outcome=lost(error) && !read?SQL_UNKNOWN:SQL_ERROR;
             }
             // A job cannot leak a transaction into the next independent job.
-            // Multi-statement transactions use the separate synchronous wrapper.
+            // A transactional stored procedure must commit/rollback before returning.
             if(w->db->server_status & SERVER_STATUS_IN_TRANS) {
                 mysql_query(w->db,"ROLLBACK");
                 if(result){mysql_free_result(result);result=NULL;}
@@ -257,6 +257,13 @@ bool sqlPoolStatus(int id,SqlCompletion *c) {
     pthread_mutex_lock(&mutex);
     bool found=false;
     for(Job *p=head;p;p=p->next)if(p->id==id && p->state==2){*c=p->completion;found=true;break;}
+    pthread_mutex_unlock(&mutex);return found;
+}
+bool sqlPoolPeek(int id,MYSQL_RES **result,SqlCompletion *c) {
+    pthread_mutex_lock(&mutex);bool found=false;
+    for(Job *p=head;p;p=p->next)if(p->id==id && p->state==2) {
+        *c=p->completion;*result=p->result;found=true;break;
+    }
     pthread_mutex_unlock(&mutex);return found;
 }
 bool sqlPoolTake(int id,MYSQL_RES **result,SqlCompletion *c) {
