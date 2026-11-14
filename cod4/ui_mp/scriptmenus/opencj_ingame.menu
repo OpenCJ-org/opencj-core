@@ -310,7 +310,19 @@
         FIXED_RECT(IG_DIVIDER_COLOR, RIGHT_FRAME_ORG_X, RIGHT_FRAME_ORG_Y, 1, RIGHT_FRAME_SIZE_Y)
 
         // Icon: rank
-        SEL_DVARSHADER_RECT(rank_icon, ADDPREFIX("rank"), RANK_ICON_ORG_X, RANK_ICON_ORG_Y, RANK_ICON_SIZE_X, RANK_ICON_SIZE_Y)
+        itemDef
+        {
+            name rank_icon
+            rect DEFAULT_RECT(RANK_ICON_ORG_X RANK_ICON_ORG_Y RANK_ICON_SIZE_X RANK_ICON_SIZE_Y)
+            type ITEM_TYPE_BUTTON style WINDOW_STYLE_SHADER
+            background "opencj_rank_1"
+            exp material ("opencj_rank_" + dvarString("ocj_ch_rank"))
+            forecolor WHITE_COLOR
+            visible 1
+            mouseEnter { setitemcolor rank_icon forecolor HIGHLIGHT_COLOR; play "mouse_over"; }
+            mouseExit { setitemcolor rank_icon forecolor WHITE_COLOR; }
+            action { play "mouse_click"; close self; open opencj_challenges; }
+        }
 
         // Button: controls
         BUTTON_RECT_TXT_ACTION(btn_controls, "", play "mouse_click"; close self; open main_controls, NO_COLOR, WHITE_COLOR, UI_FONT_NORMAL, 0.24, BTN_CONTROLS_ORG_X, BTN_CONTROLS_ORG_Y, 20, 20)
