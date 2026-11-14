@@ -72,6 +72,7 @@
 
 
 
+{"demoCopyHistory", Gsc_Demo_CopyHistory, 0},
 {"demoRangeInfo", Gsc_Demo_RangeInfo, 0},
 
 {"demoEncodeChunk", Gsc_Demo_EncodeChunk, 0},

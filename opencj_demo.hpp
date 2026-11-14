@@ -79,6 +79,7 @@ void Gsc_Demo_Pin();
 void Gsc_Demo_Unpin();
 
 
+void Gsc_Demo_CopyHistory();
 void Gsc_Demo_RangeInfo();
 
 void Gsc_Demo_ReadFrame_Checkpoint(int client);

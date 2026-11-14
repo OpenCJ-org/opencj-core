@@ -286,7 +286,16 @@ static void clearAllDemos()
     }
 }
 
-static sDemo_t *createDemo(int demoId)
+// Bound all allocations, including fixed history copies, on the 32-bit server.
+static const size_t demoMemoryLimit = 128 * 1024 * 1024;
+static size_t allocatedDemoBytes()
+{
+    size_t bytes=0;
+    for(int i=0;i<MAX_NR_DEMOS_PER_MAP;++i)
+        bytes+=opencj_demos[i].nrAllocatedFrames*sizeof(sDemoFrame_t);
+    return bytes;
+}
+static sDemo_t *createDemo(int demoId,int capacity=1024)
 {
     if (findDemoById(demoId) != NULL)
     {
@@ -296,6 +305,8 @@ static sDemo_t *createDemo(int demoId)
 
     printf("Creating demo with id %d\n", demoId);
 
+    if(capacity<1 || size_t(capacity)>demoMemoryLimit/sizeof(sDemoFrame_t) ||
+       allocatedDemoBytes()+size_t(capacity)*sizeof(sDemoFrame_t)>demoMemoryLimit)return NULL;
     sDemo_t *pDemo = NULL;
     for (int i = 0; i < (int)(sizeof(opencj_demos) / sizeof(opencj_demos[0])); i++)
     {
@@ -317,7 +328,7 @@ static sDemo_t *createDemo(int demoId)
         pDemo->id = demoId;
         pDemo->generation=++demoGeneration;
 
-        pDemo->nrAllocatedFrames = 1024;
+        pDemo->nrAllocatedFrames = capacity;
         pDemo->pDemoFrames = new (std::nothrow) sDemoFrame_t[pDemo->nrAllocatedFrames]();
         if (!pDemo->pDemoFrames)
         {
@@ -329,8 +340,6 @@ static sDemo_t *createDemo(int demoId)
     return pDemo;
 }
 
-// Bound process-wide playback/recording memory on the 32-bit server.
-static const size_t demoMemoryLimit = 128 * 1024 * 1024;
 static bool appendDemoFrame(sDemo_t *demo, const sDemoFrame_t &frame)
 {
     if (demo->isComplete) return false;
@@ -1712,13 +1721,33 @@ void Gsc_Demo_ReadFrame_RPGSound(int client)
 }
 
 // Clip handles occupy unused native IDs; database clip IDs remain independent.
+static int transientDemoId()
+{
+    static int next=2147483647;
+    while(next>0 && findDemoById(next))--next;
+    return next>0?next--:0;
+}
 void Gsc_Demo_CreateTransient()
 {
-    static int next = 2147483647;
-    while(next>0 && findDemoById(next))--next;
-    if(next<=0){stackPushUndefined();return;}
-    int id=next--;
-    if(!createDemo(id)){stackPushUndefined();return;}
+    int id=transientDemoId();
+    if(!id || !createDemo(id)){stackPushUndefined();return;}
+    stackPushInt(id);
+}
+
+// Called on the game thread: capture cannot append or rewind during this copy.
+void Gsc_Demo_CopyHistory()
+{
+    int source;
+    if(!stackGetParams("i",&source)){stackPushUndefined();return;}
+    sDemo_t *original=findDemoById(source);
+    if(!original || original->size<2 || original->releasePending){stackPushUndefined();return;}
+    int id=transientDemoId();
+    sDemo_t *copy=id?createDemo(id,original->size):nullptr;
+    if(!copy){stackPushUndefined();return;}
+    memcpy(copy->pDemoFrames,original->pDemoFrames,original->size*sizeof(sDemoFrame_t));
+    copy->size=original->size;copy->currentFrame=copy->size-1;
+    copy->lastKeyFrame=original->lastKeyFrame;
+    copy->isComplete=true;copy->isFirstFrameFilled=true;
     stackPushInt(id);
 }
 
