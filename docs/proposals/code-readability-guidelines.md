@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.10 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.11 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -295,19 +295,75 @@ Discussion decision, 2026-11-14: the user approved behavior-focused tests by
 default, readable scenarios and failure reports, and focused asset checks
 where appropriate with their limits stated. All guidelines remain inactive.
 
-### R10. Keep changes understandable in review
+### R10. Make the purpose and effects of every change reviewable
 
-Keep formatting-only cleanup separate from behavior changes where practical.
-Explain any necessary mixed change. Show the behavioral reason for changes and
-the relevant verification, including limitations.
+Revised proposal, 2026-11-14: pending discussion. This rule concerns the scope
+and explanation of a change, not statement formatting or runtime safety.
+Check the actual diff against these concrete criteria before handing it over:
 
-Do not add speculative fallback paths, compatibility layers, configuration,
-or abstractions without an actual requirement. Do not remove useful validation
-or comments in pursuit of fewer lines. Prefer the smallest coherent change a
-human can inspect and explain.
+1. Every changed logical block must have a current purpose: implement the
+   requested outcome, support a necessary dependency, verify or document that
+   outcome, or improve readability within the deliberately edited block. Defer
+   unrelated cleanup to separately planned work. A change spanning several
+   files or repositories can still have one coherent purpose.
+2. Identify each change to behavior or data handling, including defaults,
+   limits, validation, failure responses, state updates, initialization,
+   ownership, and stored data. Describe the relevant trigger and result. A
+   title such as "cleanup" or "refactor" is not enough when those things change.
+3. Each added option, fallback, compatibility path, or abstraction must serve
+   an identifiable current requirement. Do not add one only because a future
+   caller might need it. Keep necessary integration and regression checks with
+   the feature they support.
+4. Keep mechanical cleanup separate from functional changes where practical.
+   When they need to stay together, identify the functional changes explicitly
+   and explain the connection. Do not split tightly connected fixes merely to
+   meet a commit, file, or line-count target.
+5. Report the relevant verification actually performed and its result. Make
+   unverified behavior and material limits explicit. Inspection of a diff is
+   not a runtime test; a test command that was not run must not be reported as
+   passing. Use appropriate existing checks rather than requiring a new test
+   for every small edit.
+
+The practical review questions are: Can each edited block be tied to the
+current task? Are all meaningful changes to behavior/data handling disclosed?
+Does each new mechanism have a present use? Are verification claims supported?
+An unexplained extra change or unsupported claim means the handoff is not ready.
+
+### R11. Validate before use and leave predictable results on failure
+
+New proposal, 2026-11-14: pending discussion. This rule covers avoiding invalid
+memory access, uninitialized or unintended results, and partially applied
+state changes. It is separate from presenting a change clearly for review.
+
+For introduced or modified operations, check these concrete requirements:
+
+- Before dereferencing a pointer, indexing a collection, or using parsed input,
+  establish that the value is valid for that operation. Check both lower and
+  upper bounds where relevant. Use the actual collection or engine limits.
+- When an operation can fail, check its result before using outputs that are
+  only valid on success. Every value read or returned must have been assigned
+  a valid value for that path. Zero-initialization alone does not prove that
+  input parsing succeeded or that zero is a meaningful result.
+- Keep resources valid until their last use. After a resource is released,
+  prevent callers, stored references, or asynchronous work from using it.
+- Validate a complete input before replacing valid shared state where a rejected
+  input must leave that state intact. If partial changes are necessary, make
+  cleanup, rollback, or partial-success behavior explicit.
+- Define what happens when data is missing, invalid, or unavailable. Use the
+  established error, exception, or missing-result contract. Do not silently
+  turn failure into invented successful data or return an unrelated old value.
+- For relevant failure paths, identify an existing check or perform appropriate
+  validation, including bounds and missing/invalid data where applicable.
+  State what was actually verified and what remains unverified.
+
+Validate at the appropriate boundary or rely on an established, visible caller
+or type guarantee. Do not add repeated checks at every layer when that guarantee
+already exists. Do not add speculative fallback behavior or catch-all error
+handling simply to hide an invalid state.
 
 Future cleanup of existing AI-added code remains a separate, user-directed
-activity. This proposal does not authorize it.
+activity. These revised proposals do not authorize code cleanup or activate
+any guideline. Rules 10 and 11 still need discussion and agreement.
 
 ## What "self-explanatory" would mean in review
 
