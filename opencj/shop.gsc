@@ -89,7 +89,7 @@ show()
     if(!level.challengesReady || !self openCJ\login::isLoggedIn())
     {self setClientCvar("ocj_shop_error","Your account is loading. Reopen the shop in a moment.");return;}
     id=self openCJ\login::getPlayerID();
-    totals=self openCJ\mySQL::mysqlAsyncQuery("SELECT (SELECT COALESCE(SUM(c.points),0) FROM challengeCompletions a JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 WHERE a.playerID="+id+"),(SELECT COALESCE(SUM(pointsSpent),0) FROM shopPurchases WHERE playerID="+id+")");
+    totals=self openCJ\mySQL::mysqlAsyncQuery("SELECT (SELECT COALESCE(SUM(pointsAwarded),0) FROM challengeCompletions WHERE playerID="+id+"),(SELECT COALESCE(SUM(pointsSpent),0) FROM shopPurchases WHERE playerID="+id+")");
     owned=self openCJ\mySQL::mysqlAsyncQuery("SELECT itemKey FROM shopPurchases WHERE playerID="+id);
     if(!isDefined(totals) || !totals.size || !isDefined(owned))
     {self setClientCvar("ocj_shop_error","Shop data is unavailable. Please try again later.");return;}

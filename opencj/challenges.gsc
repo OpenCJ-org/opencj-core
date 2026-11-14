@@ -113,7 +113,7 @@ initialize()
 awardSQL(extra)
 {
     mask="(r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS)";
-    return "INSERT IGNORE INTO challengeCompletions(playerID,challengeKey,runID) SELECT r.playerID,c.challengeKey,MIN(r.runID) FROM challenges c JOIN playerRuns r ON r.mapID=c.mapID JOIN checkpoints cp ON cp.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE c.active=1 AND c.routeID IS NOT NULL AND cp.finishRouteID=c.routeID AND r.finishTimeStamp IS NOT NULL AND FIND_IN_SET(r.FPSMode,c.fpsModes)>0 AND ("+mask+" & c.allowedModes)="+mask+" AND ("+mask+" & c.requiredModes)=c.requiredModes AND (c.maxTimeMs=0 OR s.timePlayed<=c.maxTimeMs) AND (c.maxRPG<0 OR s.explosiveJumps<=c.maxRPG) "+extra+" GROUP BY r.playerID,c.challengeKey";
+    return "INSERT IGNORE INTO challengeCompletions(playerID,challengeKey,runID,pointsAwarded) SELECT r.playerID,c.challengeKey,MIN(r.runID),c.points FROM challenges c JOIN playerRuns r ON r.mapID=c.mapID JOIN checkpoints cp ON cp.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE c.active=1 AND c.routeID IS NOT NULL AND cp.finishRouteID=c.routeID AND r.finishTimeStamp IS NOT NULL AND FIND_IN_SET(r.FPSMode,c.fpsModes)>0 AND ("+mask+" & c.allowedModes)="+mask+" AND ("+mask+" & c.requiredModes)=c.requiredModes AND (c.maxTimeMs=0 OR s.timePlayed<=c.maxTimeMs) AND (c.maxRPG<0 OR s.explosiveJumps<=c.maxRPG) "+extra+" GROUP BY r.playerID,c.challengeKey";
 }
 rankForPoints(points)
 {
