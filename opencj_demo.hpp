@@ -77,3 +77,8 @@ void Gsc_Demo_LoadChunks();
 void Gsc_Demo_UploadChunk();
 void Gsc_Demo_Pin();
 void Gsc_Demo_Unpin();
+
+
+void Gsc_Demo_RangeInfo();
+
+void Gsc_Demo_ReadFrame_Checkpoint(int client);

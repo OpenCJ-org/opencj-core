@@ -77,6 +77,7 @@
 
 {"demoBeginPresentation", Gsc_Demo_BeginPresentation, 0},
 {"demoApplyPresentation", Gsc_Demo_ApplyPresentation, 0},
+{"readPlaybackFrame_checkpoint", Gsc_Demo_ReadFrame_Checkpoint, 0},
 {"demoPlaybackStyle", Gsc_Demo_PlaybackStyle, 0},
 {"demoPlaybackTime", Gsc_Demo_PlaybackTime, 0},
 {"demoSeekCheckpoint", Gsc_Demo_SeekCheckpoint, 0},

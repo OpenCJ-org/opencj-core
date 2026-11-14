@@ -71,6 +71,9 @@
 {"constructMessage", Gsc_Utils_constructMessage, 0},
 
 
+
+{"demoRangeInfo", Gsc_Demo_RangeInfo, 0},
+
 {"demoEncodeChunk", Gsc_Demo_EncodeChunk, 0},
 {"demoDecodeChunk", Gsc_Demo_DecodeChunk, 0},
 {"demoCreateTransient", Gsc_Demo_CreateTransient, 0},

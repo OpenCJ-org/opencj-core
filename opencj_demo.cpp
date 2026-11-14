@@ -158,6 +158,7 @@ typedef struct
     bool saveNow;		// if this was a frame on which the player saved
     bool loadNow;		// if this was a frame on which the player loaded
     bool rpgNow;		// if this was a frame on which the player rpg'd
+    bool eleKnown, eleUsed; // Actual elevation event; unknown in legacy recordings.
     bool isKeyFrame;    // Is this frame a 'key' frame, i.e. did the player's complete run contain this frame?
                         // This may change during the demo, if the player loads back to before this frame
     int prevKeyFrame;   // When skipping backwards through demos
@@ -204,6 +205,17 @@ static sDemoPlayback_t opencj_playback[MAX_CLIENTS];
 static std::vector<int> demoPlaybackTimeline[MAX_CLIENTS];
 static DemoFPSText demoFPSText[MAX_CLIENTS];
 static unsigned long long demoGeneration=0;
+
+static bool Base_Gsc_IsValidClientNum(int clientNum);
+
+void Gsc_Demo_ReadFrame_Checkpoint(int client)
+{
+    if(Base_Gsc_IsValidClientNum(client))return;
+    const sDemoPlayback_t &play=opencj_playback[client];
+    if(!play.pDemo || !play.pDemo->size){stackPushUndefined();return;}
+    stackPushInt(play.pDemo->pDemoFrames[play.selectedFrame].checkpointId);
+}
+
 
 /**************************************************************************
  * Local functions                                                        *
@@ -611,7 +623,7 @@ void Gsc_Demo_DestroyDemo()
 void Gsc_Demo_AddFrame()
 {
     const int nrExpectedArgs = Scr_GetNumParam();
-    if (nrExpectedArgs != 9 && nrExpectedArgs != 10 && nrExpectedArgs != 11)
+    if (nrExpectedArgs != 9 && nrExpectedArgs != 10 && nrExpectedArgs != 11 && nrExpectedArgs != 12)
     {
         stackPushUndefined();
         stackError("AddFrame expects 9 arguments: demoId, origin, angles, isKeyFrame, flags, saveNow, loadNow, rpgNow, fps");
@@ -720,7 +732,7 @@ void Gsc_Demo_AddFrame()
     frame.rpgNow = rpgNow != 0;
     if (nrExpectedArgs >= 10) stackGetParamInt(9, &frame.checkpointId);
 #ifdef COD4
-    if(nrExpectedArgs==11)
+    if(nrExpectedArgs>=11)
     {
         int client;stackGetParamInt(10,&client);
         if(client<0 || client>=MAX_CLIENTS || !g_entities[client].client)
@@ -734,6 +746,7 @@ void Gsc_Demo_AddFrame()
         pDemo->captureTeleportBit=ps.eFlags&2;
     }
 #endif
+    if(nrExpectedArgs>=12){int ele=0;stackGetParamInt(11,&ele);frame.eleKnown=true;frame.eleUsed=ele!=0;}
     if (appendDemoFrame(pDemo, frame)) stackPushInt(demoId);
     else stackPushUndefined();
 }
@@ -979,7 +992,7 @@ static const int demoChunkBufferSize = 8192;
 static bool encodeDemoChunk(sDemo_t *demo,int first,int count,std::string &output)
 {
     if(!demo || first<0 || count<1 || count>demoChunkFrames || first>demo->size-count)return false;
-    unsigned char raw[demoChunkBufferSize] = {'O','C','J','4'};
+    unsigned char raw[demoChunkBufferSize] = {'O','C','J','5'};
     size_t used=8;uint16_t previousWeapon=0;bool haveWeapon=false;
     putDemoInt(raw+4,count,4);
     for (int i=0; i<count; ++i)
@@ -995,7 +1008,7 @@ static bool encodeDemoChunk(sDemo_t *demo,int first,int count,std::string &outpu
         putDemoInt(p+18,uint16_t(frame.flags),2);
         putDemoInt(p+20,uint16_t(frame.fps),2);
         putDemoInt(p+22,frame.checkpointId,4);
-        p[26]=(frame.saveNow?1:0)|(frame.loadNow?2:0)|(frame.rpgNow?4:0)|(frame.isKeyFrame?0:32);
+        p[26]=(frame.saveNow?1:0)|(frame.loadNow?2:0)|(frame.rpgNow?4:0)|(frame.isKeyFrame?0:32)|(frame.eleKnown?64:0)|(frame.eleUsed?128:0);
 #ifdef COD4
         if(frame.visual.valid)
         {
@@ -1046,7 +1059,7 @@ static int decodeDemoChunk(sDemo_t *demo,const unsigned char *packed,size_t leng
     if(!demo || demo->isComplete || !length || length>demoChunkBufferSize)return 0;
     unsigned char raw[demoChunkBufferSize];
     uLongf size=sizeof(raw);
-    if(uncompress(raw,&size,packed,length)!=Z_OK || size<8 || (memcmp(raw,"OCJ1",4) && memcmp(raw,"OCJ2",4) && memcmp(raw,"OCJ3",4) && memcmp(raw,"OCJ4",4)))
+    if(uncompress(raw,&size,packed,length)!=Z_OK || size<8 || (memcmp(raw,"OCJ1",4) && memcmp(raw,"OCJ2",4) && memcmp(raw,"OCJ3",4) && memcmp(raw,"OCJ4",4) && memcmp(raw,"OCJ5",4)))
     {return 0;}
     uint32_t count=getDemoInt(raw+4,4);
     bool modern=raw[3]!='1';size_t used=8;uint16_t weapon=0;bool haveWeapon=false;
@@ -1068,7 +1081,8 @@ static int decodeDemoChunk(sDemo_t *demo,const unsigned char *packed,size_t leng
         frame.flags=getDemoInt(p+18,2);frame.fps=getDemoInt(p+20,2);
         frame.checkpointId=getDemoInt(p+22,4);
         frame.saveNow=p[26]&1;frame.loadNow=p[26]&2;frame.rpgNow=p[26]&4;
-        frame.isKeyFrame=raw[3]!='4' || !(p[26]&32);
+        frame.isKeyFrame=raw[3]<'4' || !(p[26]&32);
+        frame.eleKnown=raw[3]>='5' && (p[26]&64);frame.eleUsed=frame.eleKnown && (p[26]&128);
         if(modern && (p[26]&8))
         {
             if(used+demoVisualWireSize+1>size){return 0;}
@@ -1706,6 +1720,28 @@ void Gsc_Demo_CreateTransient()
     int id=next--;
     if(!createDemo(id)){stackPushUndefined();return;}
     stackPushInt(id);
+}
+
+// [RPG shots, FPS category (-1=no airborne samples,0=125,1=mix,2=hax), elevation (-1=unknown,0=no,1=yes)]
+void Gsc_Demo_RangeInfo()
+{
+    int id,first,last;
+    if(!stackGetParams("iii",&id,&first,&last)){stackPushUndefined();return;}
+    sDemo_t *demo=findDemoById(id);
+    if(!demo || first<0 || last<first || last>=demo->size){stackPushUndefined();return;}
+    int shots=0,fps=-1;bool known=true,ele=false;
+    for(int i=first;i<=last;++i)
+    {
+        const sDemoFrame_t &f=demo->pDemoFrames[i];
+        shots+=f.rpgNow;known=known && f.eleKnown;ele=ele || f.eleUsed;
+        if(!(f.flags&8192)){
+            if(f.fps!=125 && f.fps!=250 && f.fps!=333)fps=2;
+            else if(f.fps!=125 && fps<1)fps=1;
+            else if(fps<0)fps=0;
+        }
+    }
+    stackMakeArray();stackPushInt(shots);stackPushArrayNext();
+    stackPushInt(fps);stackPushArrayNext();stackPushInt(ele?1:known?0:-1);stackPushArrayNext();
 }
 
 void Gsc_Demo_KeepLast()
