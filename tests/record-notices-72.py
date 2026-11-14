@@ -16,7 +16,8 @@ def cases():
     def add(name,others=(),current=None,server=None,personal=None,empty=False):
         runs=[current or run(100,pid=10,time=8000,rpg=8)]+list(others)
         fixtures=[cte('playerRuns',cols,[x['values'] for x in runs]),
-          cte('checkpoints',['cpID','ender','retired'],[[1,'easy',0],[2,'easy',0],[3,'hard',0],[4,'easy',1]]),
+          cte('checkpoints',['cpID','finishRouteID','retired'],[[1,1,0],[2,1,0],[3,2,0],[4,1,1]]),
+          cte('routes',['routeID','routeName'],[[1,'easy'],[2,'hard']]),
           cte('checkpointStatistics',['runID','cpID','timePlayed','explosiveJumps'],[[x['values'][0],x['values'][3],x['time'],x['rpg']] for x in runs if x['stats']] or [[0,0,0,0]]),
           cte('playerDisplayNames',['playerID','playerName'],[[i,'Fixture '+str(i)] for i in sorted({x['values'][1] for x in runs})])]
         result.append((name,'WITH '+','.join(fixtures)+','+query[5:]+';',server,personal,empty))

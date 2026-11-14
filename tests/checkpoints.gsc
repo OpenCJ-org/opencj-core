@@ -191,9 +191,9 @@ main()
     check(ok, "publish transaction");
     if (!ok)
         printf("CPC TEST DETAIL: " + editor.cpc.status + "\n");
-    rows = openCJ\mySQL::mysqlSyncQuery("SELECT vertices,allowDoubleRPG FROM checkpointAreas WHERE routeName='cpc_selftest' AND mapID=" + openCJ\mapID::getMapID());
+    rows = openCJ\mySQL::mysqlSyncQuery("SELECT vertices,allowDoubleRPG FROM checkpointAreas WHERE draftName='cpc_selftest' AND mapID=" + openCJ\mapID::getMapID());
     check(isDefined(rows) && rows.size == 1 && int(rows[0][1]) == 1, "published geometry and approach allowance");
-    colors = openCJ\mySQL::mysqlSyncQuery("SELECT colorRGB FROM routes r JOIN checkpointAreas a ON a.cpID=r.cpID WHERE a.routeName='cpc_selftest' AND a.mapID=" + openCJ\mapID::getMapID());
+    colors = openCJ\mySQL::mysqlSyncQuery("SELECT colorRGB FROM routes r JOIN checkpointAreas a ON a.cpID=r.cpID WHERE a.draftName='cpc_selftest' AND a.mapID=" + openCJ\mapID::getMapID());
     check(isDefined(colors) && colors.size == 1 && int(colors[0][0]) == 1223663, "route stores one exact packed RGB color at its start");
     openCJ\checkpoints::onInit();
     published = undefined;
@@ -218,7 +218,7 @@ main()
     }
     openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
     openCJ\checkpoints::onInit();
-    rows = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName='cpc_selftest' AND mapID=" + openCJ\mapID::getMapID());
+    rows = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName='cpc_selftest' AND mapID=" + openCJ\mapID::getMapID());
     check(isDefined(rows) && rows.size == 0, "publication rollback");
     alternativeTests(points);
     finalizationTests(points);
@@ -399,7 +399,7 @@ alternativeTests(points)
     check(ok, "publish alternative group and shared successor");
     if (ok)
     {
-        rows = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName='cpc_selftest' AND mapID=" + openCJ\mapID::getMapID() + " ORDER BY ordinal");
+        rows = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName='cpc_selftest' AND mapID=" + openCJ\mapID::getMapID() + " ORDER BY ordinal");
         check(rows.size == 5, "three-way alternative produces five physical areas across three steps");
         check(editor openCJ\checkpointPublish::_writeRoute(), "republish preserves alternative grouping and IDs");
         openCJ\checkpoints::onInit();
@@ -425,6 +425,9 @@ alternativeTests(points)
         check(player openCJ\checkpoints::hasPassedCheckpoint(primary), "either alternative marks the group passed");
         check(!player openCJ\checkpoints::_checkAnyPctTriggered(primary, preceding.childs) && !player openCJ\checkpoints::_checkAnyPctTriggered(alternate, preceding.childs), "either branch is valid without any-percent penalty");
         check(!player openCJ\checkpoints::_checkAnyPctTriggered(merged, alternate.childs), "alternate branch reconnects without any-percent penalty");
+        playerRow=openCJ\mySQL::mysqlSyncQuery("SELECT MIN(playerID) FROM playerInformation");
+        historyRun=openCJ\mySQL::mysqlSyncQuery("SELECT createRunID("+playerRow[0][0]+","+openCJ\mapID::getMapID()+")");
+        openCJ\mySQL::mysqlSyncQuery("INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives) VALUES("+historyRun[0][0]+","+preceding.id+",1000,0,0,0,0,0)");
         editor.cpc.rows[0] = openCJ\checkpointCreation::_encode(cp);
         editor.cpc.rows[1] = openCJ\checkpointCreation::_encode(start);
         check(!(editor openCJ\checkpointPublish::_writeRoute()), "republish rejects changed grouping even with equal area count");
@@ -532,7 +535,7 @@ branchTests(points)
     ok=editor openCJ\checkpointPublish::_writeRoute();
     check(ok,"publish first branch and shared opening");
     if(!ok)printf("CPC BRANCH DETAIL "+editor.cpc.status+"\n");
-    shared=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND routeName='cpc_split_common' ORDER BY ordinal");
+    shared=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND draftName='cpc_split_common' ORDER BY ordinal");
     if(isDefined(shared)&&shared.size==2)
     {
         // Existing statistics on shared checkpoints must not block the second branch.
@@ -546,7 +549,7 @@ branchTests(points)
         check(editor openCJ\checkpointPublish::_writeRoute(),"republishing branch preserves shared connections");
         edges=openCJ\mySQL::mysqlSyncQuery("SELECT childcpID FROM checkpointConnections WHERE cpID="+shared[1][0]);
         check(isDefined(edges)&&edges.size==2,"one shared fork has exactly two branches without duplicate edges");
-        count=openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*) FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND routeName IN ('cpc_split_common','cpc_split_easy','cpc_split_hard')");
+        count=openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*) FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND draftName IN ('cpc_split_common','cpc_split_easy','cpc_split_hard')");
         check(int(count[0][0])==4,"shared opening is stored once rather than once per route");
         openCJ\checkpoints::onInit();
         fork=openCJ\checkpoints::getCheckpointByID(int(shared[1][0]));
@@ -615,7 +618,7 @@ manyAlternativeTests(points)
     openCJ\mySQL::mysqlSyncQuery("START TRANSACTION");
     cp.finish=true;editor.cpc.rows[0]=openCJ\checkpointCreation::_encode(cp);
     check(editor openCJ\checkpointPublish::_writeRoute(),"publish eight alternative areas as one checkpoint");
-    rows=openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*) FROM checkpointAreas WHERE routeName='cpc_many_areas' AND mapID="+openCJ\mapID::getMapID());
+    rows=openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='cpc_many_areas' AND mapID="+openCJ\mapID::getMapID());
     check(int(rows[0][0])==8,"all eight areas stored");
     openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
     FS_Remove("checkpoints/many_alternatives_test.b");
@@ -649,7 +652,7 @@ discardAndFinishTests(points)
     editor openCJ\checkpointCreation::_action("finish");
     editor openCJ\checkpointCreation::_action("confirm");
     edited=openCJ\checkpointCreation::_decode(editor.cpc.rows[0]);
-    check(editor.cpc.rows.size==1 && edited.finish && edited.points[0]==points[0],"previous, Finish, Confirm edits existing checkpoint without adding another");
+    check(editor.cpc.rows.size==1 && edited.finish && openCJ\checkpointCreation::_center(edited.points)==openCJ\checkpointCreation::_center(points),"previous, Finish, Confirm edits existing checkpoint without adding another");
     check(openCJ\checkpointPublish::validationError(editor.cpc.rows)=="","edited finish is eligible for finalization");
     FS_Remove("checkpoints/discard_test.a");FS_Remove("checkpoints/discard_test.b");
 }
@@ -701,9 +704,12 @@ networkTests(points)
     editor.cpc=part;editor.cpc.network=restored;
     check(editor openCJ\checkpointNetwork::publish(),"merged three-route network publishes atomically");
     openCJ\checkpoints::onInit();
-    rows=openCJ\mySQL::mysqlSyncQuery("SELECT routeName,COUNT(*) FROM checkpointAreas WHERE routeName IN ('net_easy','net_hard','net_inter') GROUP BY routeName");
+    rows=openCJ\mySQL::mysqlSyncQuery("SELECT draftName,COUNT(*) FROM checkpointAreas WHERE draftName IN ('net_easy','net_hard','net_inter') GROUP BY draftName");
     check(isDefined(rows)&&rows.size==3,"all three routes published");
-    areas=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName='net_hard' ORDER BY ordinal");
+    links=openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*) FROM checkpointRoutes cr JOIN checkpointAreas a ON a.cpID=cr.cpID WHERE a.draftName='net_root'");
+    check(isDefined(links) && int(links[0][0])==3,"shared opening links to all three permanent routes");
+
+    areas=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName='net_hard' ORDER BY ordinal");
     if(isDefined(areas)&&areas.size==3)
     {
         middle=openCJ\checkpoints::getCheckpointByID(int(areas[1][0]));
@@ -713,10 +719,10 @@ networkTests(points)
         check(player openCJ\checkpoints::_checkAnyPctTriggered(middle,children),"wrong original route triggers any-percent even at a graph successor");
     }
     // Only synthetic fixture names on the isolated database.
-    openCJ\mySQL::mysqlSyncQuery("DELETE FROM routes WHERE routeName IN ('net_root','net_easy','net_hard','net_inter')");
-    ids=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName IN ('net_root','net_easy','net_hard','net_inter')");
-    openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpointAreas WHERE routeName IN ('net_root','net_easy','net_hard','net_inter')");
+    ids=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName IN ('net_root','net_easy','net_hard','net_inter')");
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpointAreas WHERE draftName IN ('net_root','net_easy','net_hard','net_inter')");
     for(i=0;i<ids.size;i++)openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpoints WHERE cpID="+int(ids[i][0]));
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM routes WHERE routeName IN ('net_root','net_easy','net_hard','net_inter')");
     openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpointSectionColors WHERE sectionName LIKE 'net\\_%'");
     openCJ\checkpoints::onInit();
 }
@@ -730,7 +736,7 @@ readNetworkSectionForTest(name)
 
 networkCommandTest(points)
 {
-    bot=addTestClient();if(!isDefined(bot)){check(false,"spawn network editor client");return;}
+    bot=addTestClient();if(isDefined(bot))bot openCJ\settings::onPlayerConnect();if(!isDefined(bot)){check(false,"spawn network editor client");return;}
     wait 1;
     player=openCJ\mySQL::mysqlSyncQuery("SELECT MIN(playerID) FROM playerInformation");
     bot.login_playerID=int(player[0][0]);bot.isFullyConnected=true;bot.startTime=getTime();bot.stopTime=undefined;bot.speedModeNow=false;bot.playerRuns_runPaused=false;
@@ -762,13 +768,13 @@ networkCommandTest(points)
     check(isDefined(bot.cpc.restoreOrigin),"empty branch restores the last shared landing");
     bot openCJ\checkpointCreation::stop(true);
     bot.login_playerID=int(player[0][0]);
-    kick(bot getEntityNumber());
+    bot.sessionState="spectator"; // Retain synthetic slots until fixture shutdown; no slot reuse.
 }
 
 
 networkDiscoveryTest(points)
 {
-    bot=addTestClient();if(!isDefined(bot)){check(false,"spawn discovery workflow client");return;}
+    bot=addTestClient();if(isDefined(bot))bot openCJ\settings::onPlayerConnect();if(!isDefined(bot)){check(false,"spawn discovery workflow client");return;}
     wait 1;
     player=openCJ\mySQL::mysqlSyncQuery("SELECT MIN(playerID) FROM playerInformation");
     bot.login_playerID=int(player[0][0]);bot.isFullyConnected=true;bot.startTime=getTime();bot.stopTime=undefined;bot.speedModeNow=false;bot.playerRuns_runPaused=false;
@@ -791,7 +797,7 @@ networkDiscoveryTest(points)
     for(i=0;i<root.rows.size;i++)published.rows[published.rows.size]=root.rows[i];
     for(i=0;i<original.rows.size;i++)published.rows[published.rows.size]=original.rows[i];
     bot.cpc=published;check(bot openCJ\checkpointPublish::_writeRoute(),"publish Easy before discovering merge");bot.cpc=original;
-    ids=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName='flow_easy' ORDER BY ordinal");
+    ids=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName='flow_easy' ORDER BY ordinal");
     run=openCJ\mySQL::mysqlSyncQuery("SELECT createRunID("+player[0][0]+","+openCJ\mapID::getMapID()+")");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives) VALUES("+run[0][0]+","+ids[0][0]+",123,0,0,0,0,0)");
     before=published.rows[1];changed=openCJ\checkpointCreation::_decode(before);
@@ -837,7 +843,7 @@ networkDiscoveryTest(points)
     bot openCJ\checkpointNetwork::trackSharedLanding(joining,true);
     check(bot.cpc.selected==0,"returning to a shared landing automatically selects it");
     bot.cpc.drawCommands=0;bot openCJ\checkpointCreation::_draw();
-    check(isSubStr(bot.cpc.huds[0].lastText,"Standing on existing #1"),"HUD identifies the recognized shared landing");
+    check(isSubStr(bot.cpc.huds[1].lastText,"Follow shared landings"),"HUD explains traversal of recognized shared landings");
 
     originalRow=bot.cpc.rows[0];
     for(j=0;j<points.size;j++)bot.cpc.draft.points[j]=points[j]+(600,300,0);
@@ -845,11 +851,41 @@ networkDiscoveryTest(points)
     check(bot.cpc.selected==0 && openCJ\checkpointCreation::_encode(bot.cpc.draft)==originalRow && bot.cpc.rows[0]==originalRow,"off-path detection preserves last shared landing and its geometry");
 
 
+    // #174: existing completed runs, demos and challenge rewards follow IDs.
+    routeRows=openCJ\mySQL::mysqlSyncQuery("SELECT routeID FROM routes WHERE mapID="+openCJ\mapID::getMapID()+" AND routeName='flow_easy'");
+    routeID=int(routeRows[0][0]);
+    finishID=ids[ids.size-1][0];
+    openCJ\mySQL::mysqlSyncQuery("UPDATE playerRuns SET finishcpID="+finishID+",finishTimeStamp=NOW() WHERE runID="+run[0][0]);
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives) VALUES("+run[0][0]+","+finishID+",123,0,0,0,0,0) ON DUPLICATE KEY UPDATE timePlayed=123");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount,ready) VALUES("+run[0][0]+","+openCJ\mapID::getMapID()+","+routeID+",'mix',0,123,0,2,1)");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoChunks VALUES("+run[0][0]+",0,'rename fixture')");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoWinners(mapID,routeID,FPSMode,modeMask,kind,runID) VALUES("+openCJ\mapID::getMapID()+","+routeID+",'mix',0,'speedrun',"+run[0][0]+")");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges(challengeKey,tier,points,mapName,routeLabel,routeHint,routeID) VALUES('rename.fixture',1,10,'"+getCvar("mapname")+"','Old label','flow_easy',"+routeID+")");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO challengeCompletions(playerID,challengeKey,runID) VALUES("+player[0][0]+",'rename.fixture',"+run[0][0]+")");
     check(bot openCJ\checkpointNetwork::rename("flow_root","flow_combined"),"rename shared opening succeeds");
     n=bot openCJ\checkpointNetwork::load();check(n.root=="flow_combined"&&isDefined(n.paths["flow_easy"])&&isDefined(n.paths["flow_hard"]),"opening rename leaves separate route names unchanged");
     check(bot openCJ\checkpointNetwork::rename("flow_easy","flow_regular"),"rename recorded route succeeds");
-    renamed=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName='flow_regular' ORDER BY ordinal");
+    renamed=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName='flow_regular' ORDER BY ordinal");
     check(renamed.size==ids.size&&renamed[0][0]==ids[0][0],"rename retains published checkpoint IDs");
+    routeRows=openCJ\mySQL::mysqlSyncQuery("SELECT routeID FROM routes WHERE mapID="+openCJ\mapID::getMapID()+" AND routeName='flow_regular'");
+    check(routeRows.size==1 && int(routeRows[0][0])==routeID,"rename preserves permanent route ID");
+    openCJ\mySQL::mysqlSyncQuery(openCJ\challenges::routeLinkSQL());
+    linked=openCJ\mySQL::mysqlSyncQuery("SELECT r.routeName,c.routeID,d.routeID,w.routeID,cp.finishRouteID FROM routes r JOIN challenges c ON c.routeID=r.routeID JOIN demoRuns d ON d.routeID=r.routeID JOIN demoWinners w ON w.runID=d.runID JOIN playerRuns p ON p.runID=d.runID JOIN checkpoints cp ON cp.cpID=p.finishcpID JOIN challengeCompletions a ON a.challengeKey=c.challengeKey AND a.runID=p.runID WHERE c.challengeKey='rename.fixture'");
+    check(linked.size==1 && linked[0][0]=="flow_regular","rename updates demo, winner, challenge and completed run display together");
+    records=openCJ\mySQL::mysqlSyncQuery(openCJ\recordNotices::finishQuery(run[0][0]));
+    check(isDefined(records) && records.size==4 && records[0][2]=="flow_regular","record comparison uses stable route identity and current display name");
+    sounds=openCJ\mySQL::mysqlSyncQuery(openCJ\finishSounds::recordQuery(run[0][0]));
+    check(isDefined(sounds) && sounds.size==1,"finish ranking query remains valid after rename");
+    location=spawnStruct();location.routes=[];location.routes[""+routeID]=true;
+    candidates=openCJ\mySQL::mysqlSyncQuery(openCJ\demos::candidateQuery(location,"speedrun","mix",0,openCJ\mapID::getMapID()));
+    check(isDefined(candidates) && candidates.size==1 && candidates[0][0]==run[0][0],"renamed route still selects its existing speedrun demo");
+    result=openCJ\mySQL::mysqlSyncQuery("CALL publishDemo("+run[0][0]+")");
+    check(isDefined(result) && result.size==1 && int(result[0][0])==1,"demo publication procedure accepts route IDs");
+    check(int(linked[0][1])==routeID && int(linked[0][2])==routeID && int(linked[0][3])==routeID && int(linked[0][4])==routeID,"all historical route links and earned award survive rename");
+    openCJ\checkpoints::onInit();
+    renamedFinish=openCJ\checkpoints::getCheckpointByID(int(finishID));
+    check(renamedFinish.ender=="flow_regular" && renamedFinish.finishRouteID==routeID,"runtime reload uses canonical renamed route");
+    check(!(bot openCJ\checkpointNetwork::rename("flow_regular","flow_hard")),"rename refuses an existing route name");
     // Detecting a later shared platform selects it instead of overwriting the current one.
     for(j=0;j<points.size;j++)bot.cpc.draft.points[j]=points[j]+(900,0,0);
     check(bot openCJ\checkpointNetwork::selectDetectedShared(),"detect selects an existing shared landing");
@@ -865,18 +901,22 @@ networkDiscoveryTest(points)
     check(bot openCJ\checkpointNetwork::merge(args),"new Hard branch can rejoin the existing finish");
     finish=openCJ\checkpointCreation::_decode(bot.cpc.rows[0]);check(finish.finish,"rejoining a shared finish keeps Finish enabled");
     check(bot openCJ\checkpointNetwork::publish(),"publish discovered merges while retaining Easy records");
-    renamed=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName='flow_regular' ORDER BY ordinal");
+    renamed=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName='flow_regular' ORDER BY ordinal");
     same=renamed.size==ids.size;for(i=0;i<renamed.size;i++)if(renamed[i][0]!=ids[i][0])same=false;
     check(same,"merge/split publication preserves every original Easy checkpoint ID");
     stats=openCJ\mySQL::mysqlSyncQuery("SELECT timePlayed FROM checkpointStatistics WHERE runID="+run[0][0]+" AND cpID="+ids[0][0]);
     check(stats.size==1&&int(stats[0][0])==123,"published Easy statistics survive rename and merge");
-    bot openCJ\checkpointCreation::stop(true);bot.login_playerID=int(player[0][0]);kick(bot getEntityNumber());
+    bot openCJ\checkpointCreation::stop(true);bot.login_playerID=int(player[0][0]);bot.sessionState="spectator"; // Retain synthetic slots until fixture shutdown; no slot reuse.
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM challengeCompletions WHERE challengeKey='rename.fixture'");
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM challenges WHERE challengeKey='rename.fixture'");
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM demoWinners WHERE runID="+run[0][0]);
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM demoRuns WHERE runID="+run[0][0]);
     openCJ\mySQL::mysqlSyncQuery("DELETE FROM playerRuns WHERE runID="+run[0][0]);
     fixtures="'flow_root','flow_combined','flow_easy','flow_regular','flow_hard'";
-    cleanup=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE routeName IN ("+fixtures+")");
-    openCJ\mySQL::mysqlSyncQuery("DELETE FROM routes WHERE routeName IN ("+fixtures+")");
-    openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpointAreas WHERE routeName IN ("+fixtures+")");
+    cleanup=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName IN ("+fixtures+")");
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpointAreas WHERE draftName IN ("+fixtures+")");
     for(i=0;i<cleanup.size;i++)openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpoints WHERE cpID="+cleanup[i][0]);
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM routes WHERE routeName IN ("+fixtures+")");
     openCJ\checkpoints::onInit();
 }
 

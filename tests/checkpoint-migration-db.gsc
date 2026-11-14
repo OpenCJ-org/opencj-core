@@ -1,8 +1,8 @@
 main()
 {
     wait 2;level.migrationFailures=0;
-    if(getCvar("db_base")!="opencj_demo_test_20260924_cod"){check(false,"isolated database required");return;}
-    openCJ\mySQL::onInit();
+    if(getCvar("db_base")!="opencj_demo_test_20260924_cod" && getCvar("db_base")!="route_fixture_cod"){check(false,"isolated database required");return;}
+    if(!isDefined(level.mySQL))openCJ\mySQL::onInit();
     q("START TRANSACTION");
     q("INSERT INTO mapids(mapname) VALUES('mp_migration_fixture')");level.mapid_mapID=scalar("SELECT LAST_INSERT_ID()");
     player=scalar("SELECT playerID FROM playerInformation LIMIT 1");
@@ -13,13 +13,14 @@ main()
     check(editor openCJ\checkpointPublish::_writeSequentialRoute(),"initial fixture publication");
     ids=q("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" ORDER BY ordinal");
     finish=ids[4][0];removed=ids[2][0];
+    routeID=scalar("SELECT routeID FROM routes WHERE mapID="+level.mapid_mapID+" AND routeName='hard'");
     q("INSERT INTO playerRuns(playerID,mapID,finishcpID,finishTimeStamp) VALUES("+player+","+level.mapid_mapID+","+finish+",NOW())");completed=scalar("SELECT LAST_INSERT_ID()");
     q("INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives) VALUES("+completed+","+finish+",12345,0,0,7,7,0),("+completed+","+removed+",4000,0,0,2,2,0)");
     q("INSERT INTO playerRuns(playerID,mapID) VALUES("+player+","+level.mapid_mapID+")");unfinished=scalar("SELECT LAST_INSERT_ID()");
     q("INSERT INTO playerSaves(runID,saveNumber,alpha,beta,gamma,explosiveJumps,doubleExplosives,checkpointID,flags) VALUES("+unfinished+",1,0,0,0,0,0,"+removed+",0)");
-    q("INSERT INTO demoRuns(runID,mapID,routeName,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount,ready) VALUES("+completed+","+level.mapid_mapID+",'hard','mix',0,12345,7,2,1)");
+    q("INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount,ready) VALUES("+completed+","+level.mapid_mapID+","+routeID+",'mix',0,12345,7,2,1)");
     q("INSERT INTO demoChunks VALUES("+completed+",0,'fixture')");
-    q("INSERT INTO demoWinners VALUES("+level.mapid_mapID+",'hard','mix',0,'speedrun',"+completed+")");
+    q("INSERT INTO demoWinners(mapID,routeID,FPSMode,modeMask,kind,runID) VALUES("+level.mapid_mapID+","+routeID+",'mix',0,'speedrun',"+completed+")");
     q("SAVEPOINT original_layout");
     editor.cpc.rows=[];editor.cpc.rows[0]=original[0];editor.cpc.rows[1]=original[1];editor.cpc.rows[2]=original[3];editor.cpc.rows[3]=original[4];
     check(editor openCJ\checkpointPublish::_writeSequentialRoute(),"delete checkpoint migration succeeds");
@@ -62,13 +63,13 @@ main()
     // A separate unused route can change endpoints and multiple requirements.
     unused=spawnStruct();unused.cpc=spawnStruct();unused.cpc.route="unused";unused.cpc.routeHex="#ffffff";unused.cpc.path="migration-unused-fixture";unused.cpc.rows=original;
     check(unused openCJ\checkpointPublish::_writeSequentialRoute(),"publish unused route fixture");
-    emptyIDs=q("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND routeName='unused' ORDER BY ordinal");
+    emptyIDs=q("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND draftName='unused' ORDER BY ordinal");
     q("SAVEPOINT unused_layout");
     unused.cpc.rows=[];unused.cpc.rows[0]=row(1000,false);unused.cpc.rows[1]=row(1200,false);unused.cpc.rows[2]=row(1400,true);
     cp=openCJ\checkpointCreation::_decode(unused.cpc.rows[1]);cp.allowEle=true;cp.heightAbove=32;unused.cpc.rows[1]=openCJ\checkpointCreation::_encode(cp);
     check(unused openCJ\checkpointPublish::_writeSequentialRoute(),"unused route allows arbitrary layout and requirement changes");
-    check(scalar("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND routeName='unused' AND ordinal=0")==int(emptyIDs[0][0]),"unused replacement retains route start identity");
-    check(scalar("SELECT COUNT(*) FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND routeName='unused'")==3,"unused replacement has requested area count");
+    check(scalar("SELECT cpID FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND draftName='unused' AND ordinal=0")==int(emptyIDs[0][0]),"unused replacement retains route start identity");
+    check(scalar("SELECT COUNT(*) FROM checkpointAreas WHERE mapID="+level.mapid_mapID+" AND draftName='unused'")==3,"unused replacement has requested area count");
     q("ROLLBACK TO SAVEPOINT unused_layout");
     q("INSERT INTO playerRuns(playerID,mapID) VALUES("+player+","+level.mapid_mapID+")");partial=scalar("SELECT LAST_INSERT_ID()");
     q("INSERT INTO playerSaves(runID,saveNumber,alpha,beta,gamma,explosiveJumps,doubleExplosives,checkpointID,flags) VALUES("+partial+",1,0,0,0,0,0,"+emptyIDs[1][0]+",0)");
