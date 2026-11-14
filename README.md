@@ -64,22 +64,6 @@ then open `dev-tools/opencj.code-workspace` in that SSH window. All repositories
 appear as separate folders. Use **Terminal → Run Task** for build/start/restart/
 logs/stop, or run `python3 dev.py <command>` in a remote terminal.
 
-- Server GSC: edit and save, then run `map_restart` in the server console.
-  `docker compose attach server` opens that console; Ctrl-P, Ctrl-Q detaches.
-- Native C/C++: `build` stops the development server and performs a clean debug
-  build of the executable and CoD4 libcod plugin. Then run `up`. A clean build
-  is deliberate because the existing makefile does not track all header changes.
-- Database: `python3 dev.py db-shell` opens the development schema. Changes to
-  the SQL export do not migrate existing databases.
-- Client assets: build with Windows CoD4 Mod Tools, put the resulting `mod.ff`
-  and OpenCJ IWDs in the configured asset directory, and restart/reconnect with
-  matching client assets. Fastfile changes require a full server-process restart: a
-  map reload retains the loaded mod zone size and can advertise the old size,
-  making clients download even when their files match the server on disk.
-  The startup script preserves any existing pinned script release. Those generated binaries still need deployment; source
-  edits through SSH do not compile Windows fastfiles. Use the existing client
-  build script unchanged, from its required working directory:
-
   ```powershell
   cd '$MOD_TOOLS'
   python makeMod.py
