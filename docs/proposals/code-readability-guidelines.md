@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.11 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.12 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -297,9 +297,10 @@ where appropriate with their limits stated. All guidelines remain inactive.
 
 ### R10. Make the purpose and effects of every change reviewable
 
-Revised proposal, 2026-11-14: pending discussion. This rule concerns the scope
-and explanation of a change, not statement formatting or runtime safety.
-Check the actual diff against these concrete criteria before handing it over:
+Discussion decision, 2026-11-14: the user approved these review criteria and
+required concise commit messages. This rule concerns the scope and explanation
+of a change, not statement formatting or runtime safety. Check the actual diff
+against these concrete criteria before handing it over:
 
 1. Every changed logical block must have a current purpose: implement the
    requested outcome, support a necessary dependency, verify or document that
@@ -329,17 +330,28 @@ current task? Are all meaningful changes to behavior/data handling disclosed?
 Does each new mechanism have a present use? Are verification claims supported?
 An unexplained extra change or unsupported claim means the handoff is not ready.
 
+Keep commit messages concise. A short, descriptive one-line subject is normally
+enough; add only brief essential context when needed. Do not turn commit
+messages into paragraphs of review notes. Detailed explanations of behavior
+changes and validation belong in the PR/review description, task handoff, or
+relevant documentation. The criteria above do not require all that detail in
+the commit message itself. Approval of this rule does not activate it.
+
 ### R11. Validate before use and leave predictable results on failure
 
-New proposal, 2026-11-14: pending discussion. This rule covers avoiding invalid
-memory access, uninitialized or unintended results, and partially applied
-state changes. It is separate from presenting a change clearly for review.
+Discussion decision, 2026-11-14: the user approved this rule, while noting
+that numeric limits must also follow rule 7. It covers avoiding invalid memory
+access, uninitialized or unintended results, and partially applied state
+changes. It is separate from presenting a change clearly for review and
+remains inactive with the rest of the guidelines.
 
 For introduced or modified operations, check these concrete requirements:
 
 - Before dereferencing a pointer, indexing a collection, or using parsed input,
   establish that the value is valid for that operation. Check both lower and
-  upper bounds where relevant. Use the actual collection or engine limits.
+  upper bounds where relevant. Use the actual collection or engine limits,
+  preferably an existing named limit as required by rule 7. A literal such as
+  the entity bound `1024` in an illustration is not an exemption from rule 7.
 - When an operation can fail, check its result before using outputs that are
   only valid on success. Every value read or returned must have been assigned
   a valid value for that path. Zero-initialization alone does not prove that
@@ -361,9 +373,74 @@ or type guarantee. Do not add repeated checks at every layer when that guarantee
 already exists. Do not add speculative fallback behavior or catch-all error
 handling simply to hide an invalid state.
 
+### R12. Handle delayed, repeated, and concurrent work deliberately
+
+Additional candidate, 2026-11-14: proposed for discussion, not yet approved.
+This covers valid data or a valid object being used for an obsolete operation,
+and requests whose effects could happen twice. Rule 11's access checks alone
+do not establish that work still belongs to the current player session, map,
+menu, recording, or editor operation.
+
+For work that waits, runs asynchronously, or can be repeated:
+
+- Identify the owner and the operation it belongs to. Before applying a delayed
+  result, verify that the relevant session, map, request version, or operation
+  is still current. Do not rely solely on a reusable player/entity slot.
+- Define what happens when newer work replaces it or its owner leaves. Prevent
+  old work from publishing results or changing state after it is superseded.
+  Cancellation of a caller does not prove that an already-started write stopped.
+- When operations can overlap on shared data, make their ordering or update
+  protection explicit. Validate the relevant current state as part of the
+  protected update, rather than assuming an earlier read still holds.
+- Before retrying an operation that can change persistent state, establish
+  whether repeating it is safe. A lost response does not prove the first write
+  failed. Use an appropriate request identity, completion receipt, or a state
+  check when needed, rather than blindly repeating uncertain writes.
+- Cover the relevant cases with focused verification: an old request finishes
+  after a new one, an owner/session changes, or a request is repeated after its
+  response is lost. Choose cases that apply to the change, not every case for
+  every function.
+
+Reuse existing request tokens, scopes, locks, and publication receipts where
+suitable. Do not build a general scheduling or transaction framework for a
+simple operation. Existing examples include menu epochs/versions, the route
+refresh request number, and durable demo-publication receipts.
+
+### R13. Bound resource growth and waiting
+
+Additional candidate, 2026-11-14: proposed for discussion, not yet approved.
+Code may be safe for each individual request yet still exhaust memory or stall
+the server when requests accumulate or an external dependency stops responding.
+
+For queues, caches, recordings, retained results, retries, background jobs,
+and repeated work that can grow with players, traffic, or time:
+
+- Identify what can accumulate and its bound. Reuse an appropriate existing
+  limit; name new limits and explain their purpose. Count retained results as
+  well as queued and running work where all consume the resource.
+- Define the response at capacity: reject new work, delay it within a bound,
+  replace obsolete work, or discard only data that the feature may safely lose.
+  Do not silently discard player progress or authoritative records to meet a cap.
+- Bound waits and retries where the operation can otherwise remain pending
+  indefinitely. Define the result at the deadline and how owned resources are
+  eventually released. A caller timeout alone does not stop background work.
+- Keep blocking I/O and growing amounts of work out of frame-sensitive paths,
+  or provide a justified work budget. Moving work to a thread does not remove
+  the need to bound its queue, memory, and lifetime.
+- Verify relevant limit and failure behavior at an appropriate scale: for
+  example, reaching capacity, an unavailable database, cancellation, and cleanup.
+  Report measurements for performance claims rather than assuming a change
+  is faster because it is shorter or more complicated.
+
+This does not require arbitrary caps on every small local collection or
+premature optimization. Apply it where growth or waiting can affect the server,
+other players, or persistence. The bounded native save history and SQL worker
+pool are existing examples to preserve and learn from.
+
 Future cleanup of existing AI-added code remains a separate, user-directed
-activity. These revised proposals do not authorize code cleanup or activate
-any guideline. Rules 10 and 11 still need discussion and agreement.
+activity. Agreement on rules 1-11 does not activate the guidelines or authorize
+cleanup. Rules 12 and 13 are additional candidates awaiting discussion; all
+rules remain inactive until the user explicitly confirms readiness to use them.
 
 ## What "self-explanatory" would mean in review
 
