@@ -106,6 +106,9 @@ createFlags()
 
 onRunCreated()
 {
+    self openCJ\notifications::cancelCheckpoint();
+    self openCJ\notifications::cancelFlash();
+    self openCJ\notifications::cancelResults();
     self openCJ\historySave::cancelPendingPage();
     self.historySaves=undefined;
     self savePosition_initClient();
@@ -159,12 +162,12 @@ printCanSaveError(error)
 
 printSaveSuccess()
 {
-    self iprintln("^2Saved");
+    self openCJ\notifications::action("save","^2Saved");
 }
 
 printLoadSuccess()
 {
-    self iprintln("^2Loaded");
+    self openCJ\notifications::action("load","^2Loaded");
 }
 
 onSpawnPlayer()

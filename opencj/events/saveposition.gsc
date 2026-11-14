@@ -15,6 +15,7 @@ main() // Not threaded as it returns a result
     }
 
     saveNum = self openCJ\savePosition::setSavedPosition();
+    if(!isDefined(saveNum))return undefined;
     self openCJ\savePosition::resetBackwardsCount();
     self openCJ\savePosition::printSaveSuccess();
 

@@ -154,7 +154,11 @@ awardRun(runID)
     result=self openCJ\mySQL::mysqlAsyncBackground(awardSQL("AND r.runID="+int(runID)), "run:"+runID);
     if(!isDefined(result))return;
     self refresh();
-    if(self.challengePoints>before)self sendLocalChatMessage("Challenge complete! +"+(self.challengePoints-before)+" points. Total: "+self.challengePoints+" | Level "+self.challengeRank);
+    if(self.challengePoints>before)
+    {
+        self iprintln("Challenge complete! +"+(self.challengePoints-before)+" points. Total: "+self.challengePoints+" | Level "+self.challengeRank);
+        self openCJ\notifications::result("challenge",runID);
+    }
 }
 command(args)
 {

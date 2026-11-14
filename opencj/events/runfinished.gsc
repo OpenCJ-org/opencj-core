@@ -20,6 +20,8 @@ main(cp, tOffset, route)
     self.playerRuns_runFinishing = true;
     runID = self openCJ\playerRuns::getRunID();
     filters = self openCJ\playerRuns::finishSettings();
+    category=openCJ\recordNotices::category(self openCJ\fps::getCurrentFPSMode(),self openCJ\elevate::hasUsedEle(),self openCJ\anyPct::hasAnyPct(),self openCJ\halfBeat::isHalfBeatAllowed(),self openCJ\tas::hasHardTAS());
+    finishedRPGs=self openCJ\statistics::getExplosiveJumps();
     self openCJ\playTime::setTimePlayed(self openCJ\playTime::getTimePlayed() + tOffset);
     timePlayed = self openCJ\playTime::getTimePlayed();
     self openCJ\playTime::onRunFinished(cp);
@@ -29,37 +31,19 @@ main(cp, tOffset, route)
     if (!self openCJ\playerRuns::onRunFinished(cp, filters))
         return;
     self.playerRuns_runFinishing = false;
+    self openCJ\notifications::beginResults(runID);
     self thread openCJ\finishSounds::onRunFinished(runID);
     self thread openCJ\challenges::awardRun(runID);
     self openCJ\demoRecording::onRunFinished();
     if (!isDefined(route))
         route = "<unknown route>";
-    timeStr = formatTimeString(timePlayed, true);
-    iprintln(self.name + "^7 finished " + route + " in: ^2" + timeStr);
-    self thread _notifyFinishedMap(runID, cpID, timePlayed);
+    timeStr = formatTimeString(timePlayed, false);
+    iprintln(self.name + "^7 finished " + route + " ["+category+"] in ^2" + timeStr+"^7 ("+finishedRPGs+" RPGs)");
+    self thread openCJ\recordNotices::onRunFinished(runID);
     self thread openCJ\discord::onRunFinished(runID, timeStr, route);
     self openCJ\checkpointPointers::onRunFinished(cp);
     self openCJ\showRecords::onRunFinished(cp);
     self openCJ\huds\hudProgressBar::onRunFinished(cp);
     self openCJ\statistics::onRunFinished();
     self openCJ\elevate::onRunFinished();
-}
-_notifyFinishedMap(runID, cpID, timePlayed)
-{
-    self endon("disconnect");
-    self notify("mapFinishNotify");
-    self endon("mapFinishNotify");
-    rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT MIN(cs.timePlayed) FROM checkpointStatistics cs INNER JOIN playerRuns pr ON pr.runID = cs.runID WHERE cs.cpID = " + cpID + " AND pr.finishcpID IS NOT NULL AND pr.runID != " + runID);
-    if(isDefined(rows) && rows.size && isDefined(rows[0][0]))
-    {
-        diff = timePlayed - int(rows[0][0]);
-        if(diff > 0)
-            self iprintlnbold("You finished the map ^1+" + formatTimeString(diff, false));
-        else if( diff < 0)
-            self iprintlnbold("You finished the map ^2-" + formatTimeString(-1 * diff, false));
-        else
-            self iprintlnbold("You finished the map, no difference");
-    }
-    else
-        self iprintlnbold("You finished the map");
 }

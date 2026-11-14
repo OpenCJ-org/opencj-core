@@ -2,6 +2,7 @@
 
 main() // Threaded
 {
+    self openCJ\notifications::onDisconnect();
     self openCJ\halfBeat::disableCorrection();
     self openCJ\mySQL::cancelMenuReads();
     self openCJ\mapBoost::cancel();
