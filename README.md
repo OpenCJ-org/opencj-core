@@ -135,3 +135,35 @@ once; demo, challenge and run references do not change. Renaming a shared
 opening leaves the names of its descendant routes alone.
 
 See dev-tools/docs/route-identity-174.md for validation and deployment details.
+
+
+## Separate database cleanup (migration 020)
+
+Apply migrations/020-database-cleanup.sql after 019, with OpenCJ stopped and a
+full backup. Deploy the matching GSC scripts before restarting. This migration
+is separate from issue #174.
+
+Run identity remains playerRuns.runID. The optional player-chosen name stays in
+runLabels(runID, runLabel); only the unused duplicate playerRuns.runLabel column
+is removed. Nonempty legacy labels are preserved, and conflicting copies stop
+the migration rather than silently choosing a name.
+
+Challenges now use mapID as well as routeID. Existing challenge map definitions
+without catalogue entries receive map IDs with inRotation=0. This does not
+publish their routes, approve them for voting, or fill unknown release/author
+metadata. Existing map metadata and pool membership are unchanged. Catalogue
+startup retains existing map bindings even after a map is renamed.
+
+Removed: the empty legacy playerSaves_test, playerRecordings and demoEvents
+tables, their five unused functions, unused palette-color columns (RGB remains),
+and shopEquipped.category. Preflight rejects nonempty legacy tables or populated
+palette fields so they cannot be silently discarded on another installation.
+
+Retained lookup fields now have matching-reference constraints:
+checkpointAreas map matches its checkpoint; a challenge route belongs to its
+map; a demo winner category matches its recording; equipped item/slot matches
+the catalogue. Equipment slots follow catalogue slot changes atomically.
+Prices paid, saved state, checkpoint results, demo summaries and recordings
+remain preserved.
+
+See dev-tools/docs/database-cleanup.md and tests/database-cleanup.py.
