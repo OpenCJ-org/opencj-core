@@ -9,7 +9,7 @@ Definitions and eligibility rules are maintained in `server-gsc/opencj/challenge
 
 ## Shop preview
 
-Apply `migrations/010-shop-purchases.sql` before deploying the Shop menu. It adds ownership and historical spending without modifying challenge awards. Available points are the active challenge total minus the sum of prices actually paid, clamped to zero if challenge values decrease. Purchased items remain owned after repricing or retirement.
+Apply `migrations/010-shop-purchases.sql` before deploying the Shop menu. It adds ownership and historical spending without modifying challenge awards. After migration 023, available points are recorded challengeCompletions.pointsAwarded minus prices actually paid. Competitive ranks still use current active challenge values. Purchased items remain owned after repricing or retirement.
 
 Apply `migrations/011-shop-equipment.sql` for transactional purchase handling and saved equipment. The initial catalogue in `server-gsc/opencj/shop.gsc` remains preview-only: every item is unavailable. Real items need a registered cosmetic resource and server-side availability before sales can be enabled.
 
@@ -167,3 +167,18 @@ Prices paid, saved state, checkpoint results, demo summaries and recordings
 remain preserved.
 
 See dev-tools/docs/database-cleanup.md and tests/database-cleanup.py.
+
+## Data safety and tracked migrations (021–023)
+
+Use tools/migrate.py to explicitly adopt the verified post-020 development schema,
+then apply pending migrations. It records checksums and refuses changed, concurrent
+or interrupted migration histories. Stop gameplay writers and back up first.
+
+021 protects history against cascading deletion and enforces missing references,
+same-map relationships and unique checkpoint edges. 022 corrects checkpoint updates
+that retained old counters after updating elapsed time. 023 records awarded currency
+while preserving competitive rank rules.
+
+Apply tools/runtime_access.py after migrations to remove gameplay schema/deletion
+powers while retaining required operations and stored routines. See
+../dev-tools/docs/database-safety.md for commands, tests and recovery details.
