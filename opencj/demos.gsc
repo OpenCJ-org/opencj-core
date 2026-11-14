@@ -387,6 +387,8 @@ startDemo(demoID)
     self demoDisplayStart();
     self.maxSpeed=0;
     self selectPlaybackDemo(demoID);
+    if(!isDefined(self.demoTechnique))self.demoTechnique=0;
+    self demoSetTechnique(self.demoTechnique);
     if(!isDefined(self.demoStyle))self.demoStyle=0;
     edited=self demoPlaybackStyle(self.demoStyle,self.demoBegin,self.demoEnd);
     if(isDefined(edited)){self.demoBegin=edited[0];self.demoEnd=edited[1];}
@@ -423,6 +425,7 @@ isPlayingDemo()
 
 onPlayerConnect()
 {
+    self.demoTechnique=0;
     self thread demoMenuResponses();
     self openCJ\clips::onConnect();
     self.playingDemo = false;
@@ -461,6 +464,7 @@ _getDemoFrame(nrFramesToSkip, shouldSkipFails)
     frame = spawnStruct();
     frame.origin = self readPlaybackFrame_origin();
     frame.angles = self readPlaybackFrame_angles();
+    frame.techniquePhase = self demoTechniquePhase();
     frame.saveNow = self readPlaybackFrame_saveNow();
     frame.loadNow = self readPlaybackFrame_loadNow();
     frame.rpgNow = self readPlaybackFrame_rpgNow();
@@ -825,7 +829,8 @@ syncDemoFPSHistory(target)
         if(!departed)return;
         self.demoFPSWaiting=false;self.demoFPSFloor=target;
     }
-    key=self.demoID+":"+self.demoStyle+":"+self.demoBegin+":"+self.demoEnd+":"+mode;
+    technique=0;if(isDefined(self.demoTechnique))technique=self.demoTechnique;
+    key=self.demoID+":"+self.demoStyle+":"+self.demoBegin+":"+self.demoEnd+":"+mode+":"+technique;
     if(!isDefined(self.demoFPSCacheKey) || self.demoFPSCacheKey!=key)
     {
         self.demoFPSCacheKey=key;self demoFPSReset();
@@ -915,6 +920,7 @@ demoTime(frame)
 
 demoUpdateOverlay()
 {
+    self updateTechniqueLabel();
     checkpointText=self demoCheckpointText();
     if(!isDefined(self.demoCheckpointText) || self.demoCheckpointText!=checkpointText)
     {
@@ -976,6 +982,7 @@ demoMenuResponses()
         else if(response=="previous")self.demoCheckpointRequest=-1;
         else if(response=="next")self.demoCheckpointRequest=1;
         else if(response=="direction")self setDemoDirection("toggle");
+        else if(response=="technique")self toggleTechnique();
         else
         {
             args=strTok(response,"_");
@@ -1092,6 +1099,36 @@ spectatorCaption()
         self setClientCvar("cg_drawSpectatorMessages",int(!playback));
     }
 }
+
+// Connection-only choice shared by demos, history and clip viewers.
+toggleTechnique()
+{
+    if(!self isPlayingDemo())return;
+    if(!isDefined(self.demoTechnique))self.demoTechnique=0;
+    self.demoTechnique=(self.demoTechnique+1)%4;
+    self demoSetTechnique(self.demoTechnique);
+    self.demoFPSCacheKey=undefined;self.demoFPSStateFrame=undefined;
+    // Re-present the current sample even when paused; do not advance the cursor.
+    self.demoFirstFrame=true;
+    self updateTechniqueLabel();
+}
+updateTechniqueLabel()
+{
+    mode=0;if(isDefined(self.demoTechnique))mode=self.demoTechnique;
+    text="Original";if(mode==1)text="Fullbeat";else if(mode==2)text="Halfbeat";else if(mode==3)text="Invert";
+    if(!isDefined(self.demoTechniqueLabel) || self.demoTechniqueLabel!=text)
+    {
+        self.demoTechniqueLabel=text;
+        self setClientCvar("opencj_demo_technique",text);
+    }
+    fallback=mode!=0 && self demoTechniqueFallback();
+    if(!isDefined(self.demoTechniqueFallback) || self.demoTechniqueFallback!=fallback)
+    {
+        self.demoTechniqueFallback=fallback;
+        self setClientCvar("opencj_demo_technique_original",int(fallback));
+    }
+}
+
 
 // These labels describe the original run's rules, never the viewing technique.
 runModeLabel(fps,mask)

@@ -385,6 +385,7 @@ responses()
         self waittill("menuresponse",menu,response);
         if(menu=="opencj_clips")
         {
+            if(response=="technique"){self openCJ\demos::toggleTechnique();continue;}
             if(response=="close")
             {self closeInGameMenu();self closeMenu();if(isDefined(self.clipPreview))self.demoExitRequested=true;continue;}
             if(response=="open" || response=="toggle" || response=="session" || response=="permanent" || response=="next" || response=="previous")

@@ -206,6 +206,8 @@ _action(kind,fps,switched,inputTime,firstFPSChange)
     event.switched=switched;event.started=now;
     event.inputTime=now;if(isDefined(inputTime))event.inputTime=inputTime;
     event.firstFPSChange=firstFPSChange;
+    if(self openCJ\demos::isPlayingDemo() && isDefined(self.fpsHistoryViewPhase))
+        event.viewPhase=self.fpsHistoryViewPhase;
     if(kind=="bounce")
     {
         event.incomingFPS=self.fpshistory["shortfps"];
@@ -340,7 +342,7 @@ bounceDisplayEvents(events,now,pending)
         if(waiting)break;
         copy=spawnStruct();copy.kind="move";copy.fps=first.fps;
         copy.keys=first.keys;copy.forward=first.forward;copy.right=first.right;
-        copy.switched=first.switched;copy.started=first.started;
+        copy.switched=first.switched;copy.started=first.started;copy.viewPhase=first.viewPhase;
         // A carry-over value already shown before the bounce is not a new FPS
         // step. Remove only that leading value, only when its first change is
         // inside the window. Rapid changes after it (e.g. 3->2->3) all survive.
@@ -355,7 +357,7 @@ bounceDisplayEvents(events,now,pending)
             {
                 copy.fps=mergePhaseFPS(copy.fps,next.fps);
                 copy.keys=next.keys;copy.forward=next.forward;copy.right=next.right;
-                copy.switched=false;i++;
+                copy.viewPhase=next.viewPhase;copy.switched=false;i++;
             }
         }
         result[result.size]=copy;
@@ -444,6 +446,7 @@ makeStrafeStyle(kind,forward,right)
 phaseActions(events,style)
 {
     if(!isDefined(style))style=inferStrafeStyle(events);
+    inferred=style;
     phases=[];phaseForward=0;phaseRight=0;pendingFPS="";pendingStart=undefined;
     for(j=0;j<events.size;j++)
     {
@@ -451,12 +454,23 @@ phaseActions(events,style)
         if(phases.size>0)current=phases[phases.size-1];
         if(event.kind=="move")
         {
+            style=inferred;
+            if(isDefined(event.viewPhase) && event.viewPhase!=0)
+            {
+                kind="fullbeat";if((event.viewPhase & 48)==32)kind="halfbeat";
+                else if((event.viewPhase & 48)==48)kind="invert";
+                f=1;if(event.viewPhase & 8)f=-1;
+                r=1;if(event.viewPhase & 1)r=-1;
+                style=makeStrafeStyle(kind,f,r);
+            }
             forward=event.forward;right=event.right;
             hasPhase=phaseForward!=0 || phaseRight!=0;
             neutral=forward==0 && right==0;
             if(!hasPhase && neutral)continue;
             accepted=false;
-            if(isDefined(style) && style.kind=="halfbeat")
+            if(isDefined(style) && style.kind=="invert")
+                accepted=forward==0 && right!=0;
+            else if(isDefined(style) && style.kind=="halfbeat")
                 accepted=(forward==style.forward && right==style.right) || (forward==0 && right==(0-style.right));
             else
                 accepted=forward!=0 && right!=0 && (!isDefined(style) || forward==style.forward);
@@ -480,6 +494,9 @@ phaseActions(events,style)
                 upgrade=phaseForward==0 || phaseRight==0;
                 if(isDefined(style) && style.kind=="halfbeat")
                     upgrade=!((phaseForward==style.forward && phaseRight==style.right) || (phaseForward==0 && phaseRight==(0-style.right)));
+                // Converted samples carry an already confirmed native phase.
+                // A preserved takeoff must remain its own row when HB begins.
+                if(isDefined(event.viewPhase) && event.viewPhase!=0)upgrade=false;
                 switched=!upgrade && (phaseForward!=forward || phaseRight!=right);
                 phaseForward=forward;phaseRight=right;
             }
@@ -599,6 +616,7 @@ _clearDemoFPSHistory()
 applyRecordedFrame(frame,sequential,interpolated)
 {
     if(interpolated)return;
+    self.fpsHistoryViewPhase=frame.techniquePhase;
     f=int(frame.forward)-int(frame.back);r=int(frame.right)-int(frame.left);
     fps=openCJ\fps::getShortFPS(frame.FPS);
     if(!sequential || frame.loadNow)
