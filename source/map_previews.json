@@ -139,5 +139,16 @@
         ]
       }
     }
-  ]
+  ],
+  "fallback": {
+    "material": "opencj_missing_image",
+    "image": "opencj_missing_image",
+    "source": "assets/map-replacements/mp_bouncer_training/missing-picture.png",
+    "kind": "generated_placeholder",
+    "encoding": "DXT1_no_mipmaps",
+    "width": 512,
+    "height": 512,
+    "sourceSHA256": "4a920b14622061c48c0f4ceeadff19c198e8c14d99e83752a9f54e0f89f7bfa3",
+    "imageSHA256": "39083e96c2c5a00ee032ef1d4c076c1f2d63abc64118317287c738265b8ce313"
+  }
 }

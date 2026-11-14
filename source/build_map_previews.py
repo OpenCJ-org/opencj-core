@@ -1,8 +1,9 @@
 """Compile 2D UI materials for bundled map-list preview images.
 
 Run on the authoritative source host before the existing Windows makeMod.py.
-Images are copied unchanged from the original map archives; provenance/hashes
-are in map_previews.json. That manifest inventories assets, not voting policy.
+Original archive images are verified unchanged; captures and placeholders are
+encoded from their recorded sources. Provenance/hashes are in map_previews.json.
+That manifest inventories assets, not voting policy.
 """
 from pathlib import Path
 import hashlib
@@ -24,10 +25,13 @@ def build():
         assert template[pointer:].split(b"\0", 1)[0] == expected
     assert template[76:79] == b"2d\0"
     materials = []
-    for entry in manifest["maps"]:
+    entries = list(manifest["maps"])
+    if "fallback" in manifest:
+        entries.append(manifest["fallback"])
+    for entry in entries:
         name = entry["material"]
         assert entry["image"] == name
-        if entry["kind"] == "starting_area_capture":
+        if entry["kind"] in ("starting_area_capture", "generated_placeholder"):
             from PIL import Image
             source = ROOT / entry["source"]
             assert hashlib.sha256(source.read_bytes()).hexdigest() == entry["sourceSHA256"]
@@ -74,7 +78,7 @@ def build():
         if material not in text.splitlines():
             text += material + "\n"
     csv.write_text(text)
-    print("Prepared", len(materials), "map preview materials; original image bytes verified.")
+    print("Prepared", len(materials), "preview/fallback materials; image bytes verified.")
 
 
 if __name__ == "__main__":

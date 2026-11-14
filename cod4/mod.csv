@@ -379,3 +379,4 @@ material,loadscreen_mp_futile_fixed
 menufile,ui_mp/scriptmenus/opencj_commands.menu
 material,opencj_notify_glow_left
 material,opencj_notify_glow_right
+material,opencj_missing_image

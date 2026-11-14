@@ -3,12 +3,12 @@
 The existing menu asks for a material named `loadscreen_<mapname>`. The original
 map packages generally supply an image with that name behind `$levelbriefing`
 in the map's loading zone; they do not supply the named UI material for browsing
-other maps. The mod now bundles ten matching 2D materials and their images.
+other maps. The mod bundles ten matching map-preview materials plus a dedicated missing-image material.
 
 `source/map_previews.json` records source paths, archive/image hashes and capture
 details. It is an asset inventory, not a voting allowlist. Game eligibility still
 comes exclusively from `mapids.inRotation`. Maps outside that pool use
-`opencj_logo_nobg` through the shared GSC preview helper, including uber-admin
+`opencj_missing_image` through the shared GSC preview helper, including uber-admin
 votes and the map-list menu. End-map voting uses the same helper.
 
 ## Build and deploy
@@ -29,3 +29,12 @@ votes and the map-list menu. End-map voting uses the same helper.
 ## Bouncer Training artwork, 14 November 2026
 
 Build on the authoritative host with:
+
+## Dedicated missing-image fallback, 14 November 2026
+
+Map previews without bundled artwork now use `opencj_missing_image`: the same
+dark question mark used for Bouncer Training's replacement pictures. The
+`fallback` entry in `source/map_previews.json` builds its independent 2D material
+and image. It is not a map or a pool-membership entry. The shared GSC helper
+serves both map-list and end-vote previews; ordinary OpenCJ branding still uses
+`opencj_logo_nobg`. The isolated menu fixture passed all 40 checks.
