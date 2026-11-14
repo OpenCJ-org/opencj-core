@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.8 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.9 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -241,13 +241,31 @@ handling. All guidelines remain inactive.
 ### R8. Preserve a coherent local style without copying its weaknesses
 
 Follow established naming, indentation, brace placement, and file organization
-where they remain compatible with the approved common rules. The older OpenCJ
-C++ and GSC style, for example, often puts opening braces on separate lines.
+where they remain compatible with the approved common rules. Different languages
+may retain different naming and formatting conventions; for example, Python
+`compile_asset` and C++ `findDemoById` may coexist. Do not impose one naming
+convention or one formatter across every language.
 
-The common rules govern structure; they do not require one naming convention or
-one formatter for every language. Apply them to new or deliberately edited
-logical blocks after activation. Do not reformat an entire old file merely
-because it was touched. Keep generated and upstream sections recognizable.
+Keep formatting consistent within a function. For example, spaces inside
+`if ( condition )` are acceptable when they follow that function's convention;
+do not add them when its other conditions use `if (condition)`. A convention
+found elsewhere in a file or repository is not sufficient reason to introduce
+a different style into the function being edited. For new functions, follow
+the established surrounding conventions. If existing code is already mixed,
+use its predominant established style for the changed block and do not add
+another variation. The shared readability rules still take precedence.
+
+After activation, apply these rules to new or deliberately edited logical
+blocks. Editing an initialization block, function, or other small part of a
+file does not automatically authorize reformatting the entire file or
+repository. Keep unrelated formatting and naming cleanup out of the change.
+Broader cleanup should be planned and agreed separately, including cleanup of
+existing inconsistencies outside the affected block. Keep generated and
+upstream sections recognizable.
+
+Discussion decision, 2026-11-14: the user approved different conventions between
+languages, required consistency within the edited function, and requested the
+block/file/repository scope limit to be explicit. All guidelines remain inactive.
 
 ### R9. Make tests readable descriptions of behavior
 
