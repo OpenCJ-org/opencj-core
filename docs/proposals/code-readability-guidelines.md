@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.12 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.13 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -375,20 +375,37 @@ handling simply to hide an invalid state.
 
 ### R12. Handle delayed, repeated, and concurrent work deliberately
 
-Additional candidate, 2026-11-14: proposed for discussion, not yet approved.
+Discussion decision, 2026-11-14: the user agreed with handling delayed and
+repeated work deliberately and requested active cancellation of work that is
+no longer relevant, rather than spending resources only to discard its result.
 This covers valid data or a valid object being used for an obsolete operation,
 and requests whose effects could happen twice. Rule 11's access checks alone
 do not establish that work still belongs to the current player session, map,
-menu, recording, or editor operation.
+menu, recording, or editor operation. This rule remains inactive.
 
 For work that waits, runs asynchronously, or can be repeated:
 
 - Identify the owner and the operation it belongs to. Before applying a delayed
   result, verify that the relevant session, map, request version, or operation
   is still current. Do not rely solely on a reusable player/entity slot.
-- Define what happens when newer work replaces it or its owner leaves. Prevent
-  old work from publishing results or changing state after it is superseded.
-  Cancellation of a caller does not prove that an already-started write stopped.
+- Actively cancel work when it is no longer relevant. Prevent queued work from
+  starting. For running work, use a safe supported cancellation mechanism;
+  long-running code under our control should check for cancellation between
+  bounded pieces of work and before starting another expensive step.
+- Keep the current-request checks even when cancellation is requested: work
+  can finish just before cancellation takes effect. Old results must not be
+  applied to a newer session or operation. Requesting cancellation does not
+  prove that the work has stopped; retain resources until it has stopped or
+  completed the required cleanup.
+- If an operation cannot be interrupted safely, explain that constraint, bound
+  the remaining work or wait, and discard obsolete results. Do not use this as
+  a default excuse to keep cancellable work running. Verify actual stopping
+  where supported, not merely that the caller stopped waiting.
+- Cancel only work that has actually become unnecessary. Closing a menu may
+  cancel its reads while a requested save still needs to finish or roll back
+  safely. Do not abort shared work still needed by another owner. Cancellation
+  of a caller does not prove that an already-started write stopped or undid its
+  effects; settle that write before treating it as safely retryable.
 - When operations can overlap on shared data, make their ordering or update
   protection explicit. Validate the relevant current state as part of the
   protected update, rather than assuming an earlier read still holds.
@@ -396,10 +413,11 @@ For work that waits, runs asynchronously, or can be repeated:
   whether repeating it is safe. A lost response does not prove the first write
   failed. Use an appropriate request identity, completion receipt, or a state
   check when needed, rather than blindly repeating uncertain writes.
-- Cover the relevant cases with focused verification: an old request finishes
-  after a new one, an owner/session changes, or a request is repeated after its
-  response is lost. Choose cases that apply to the change, not every case for
-  every function.
+- Cover relevant cases with focused verification: obsolete queued work never
+  starts, cancellable running work stops and releases resources, a late result
+  cannot overwrite newer state, an owner/session changes, or a request repeats
+  after its response is lost. Choose cases that apply to the change, not every
+  case for every function.
 
 Reuse existing request tokens, scopes, locks, and publication receipts where
 suitable. Do not build a general scheduling or transaction framework for a
@@ -408,7 +426,7 @@ refresh request number, and durable demo-publication receipts.
 
 ### R13. Bound resource growth and waiting
 
-Additional candidate, 2026-11-14: proposed for discussion, not yet approved.
+Discussion decision, 2026-11-14: the user approved this rule; it remains inactive.
 Code may be safe for each individual request yet still exhaust memory or stall
 the server when requests accumulate or an external dependency stops responding.
 
@@ -438,9 +456,9 @@ other players, or persistence. The bounded native save history and SQL worker
 pool are existing examples to preserve and learn from.
 
 Future cleanup of existing AI-added code remains a separate, user-directed
-activity. Agreement on rules 1-11 does not activate the guidelines or authorize
-cleanup. Rules 12 and 13 are additional candidates awaiting discussion; all
-rules remain inactive until the user explicitly confirms readiness to use them.
+activity. Agreement on individual rules does not activate the guidelines or
+authorize cleanup. All thirteen rules remain inactive until the user explicitly
+confirms that the complete guidelines are ready to use.
 
 ## What "self-explanatory" would mean in review
 
