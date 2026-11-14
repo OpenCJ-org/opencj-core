@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.9 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.10 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -272,18 +272,28 @@ block/file/repository scope limit to be explicit. All guidelines remain inactive
 Tests and diagnostic tools deserve the same clarity as production code.
 
 Give scenarios meaningful names. Separate setup, action, and verification, and
-make failure messages identify the scenario and expected result. Prefer
-assertions about observable behavior over assertions about implementation text.
+make failure messages identify what failed and provide useful expected and
+actual results. Prefer assertions about observable behavior over assertions
+about implementation text.
 
-Avoid exact whitespace matching, fragile string splitting, or searches for
-particular function bodies as a substitute for executing behavior. If an engine
-or asset boundary makes a source-level check necessary, state its limited purpose
-and make it insensitive to harmless formatting where feasible.
+Avoid dependence on private helper names, exact source formatting, fragile
+string splitting, or internal statement order unless those are themselves
+part of the requirement. These checks must not replace executing the behavior
+being tested. Narrow source or compiled-asset checks are appropriate when they
+verify a real requirement, such as a required key binding in a compiled menu.
+State what each check proves and what it does not prove, and tolerate harmless
+formatting differences where feasible.
 
-Reuse real production behavior through a suitable seam; do not copy its
-algorithm into the test as the expected answer. Keep intentional fixture
-values, timing assumptions, and cleanup understandable. Do not build an
-elaborate test framework just to satisfy the guideline.
+Exercise real production behavior through an appropriate function, test input,
+or generated output. Choose expected results independently; do not copy the
+production algorithm into the test as the expected answer. Keep intentional
+fixture values, timing assumptions, and cleanup understandable. Use tests
+appropriate to the change; this rule does not require every test to launch
+the whole game or justify an elaborate new test framework.
+
+Discussion decision, 2026-11-14: the user approved behavior-focused tests by
+default, readable scenarios and failure reports, and focused asset checks
+where appropriate with their limits stated. All guidelines remain inactive.
 
 ### R10. Keep changes understandable in review
 
