@@ -377,3 +377,5 @@ material,loadscreen_mp_galaxy
 material,loadscreen_mp_mystic_v3
 material,loadscreen_mp_futile_fixed
 menufile,ui_mp/scriptmenus/opencj_commands.menu
+material,opencj_notify_glow_left
+material,opencj_notify_glow_right
