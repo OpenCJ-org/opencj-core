@@ -22,10 +22,18 @@
         itemDef
         {
             name status
-            rect 100 449.5 112 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 96 450.5 116 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_TEXT dvar "opencj_demo_status"
-            textfont UI_FONT_NORMAL textscale 0.20 textalign ITEM_ALIGN_LEFT textaligny 17.5
+            textfont UI_FONT_NORMAL textscale 0.20 textalign ITEM_ALIGN_LEFT textaligny 10
             forecolor 1 1 1 1 visible 1 decoration
+        }
+        itemDef
+        {
+            name checkpoint
+            rect 96 464.5 116 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            type ITEM_TYPE_TEXT dvar "opencj_demo_checkpoint"
+            textfont UI_FONT_NORMAL textscale .18 textalign ITEM_ALIGN_LEFT textaligny 10
+            forecolor .8 .85 .9 1 visible 1 decoration
         }
         itemDef
         {
@@ -92,7 +100,7 @@
         itemDef
         {
             name direction_forward
-            rect 220 449.5 64 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 216 449.5 60 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .07 .24 .13 .9 forecolor 1 1 1 1
             text "Forward >" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -104,7 +112,7 @@
         itemDef
         {
             name direction_reverse
-            rect 220 449.5 64 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 216 449.5 60 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .30 .09 .09 .9 forecolor 1 1 1 1
             text "< Reverse" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -116,7 +124,7 @@
         itemDef
         {
             name speed_slowest
-            rect 292 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 282 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
             text "Slowest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -128,7 +136,7 @@
         itemDef
         {
             name speed_slowest_selected
-            rect 292 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 282 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
             text "Slowest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -140,7 +148,7 @@
         itemDef
         {
             name speed_slow
-            rect 341 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 331 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
             text "Slow" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -152,7 +160,7 @@
         itemDef
         {
             name speed_slow_selected
-            rect 341 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 331 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
             text "Slow" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -164,7 +172,7 @@
         itemDef
         {
             name speed_normal
-            rect 390 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 374 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
             text "Normal" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -176,7 +184,7 @@
         itemDef
         {
             name speed_normal_selected
-            rect 390 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 374 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
             text "Normal" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -188,7 +196,7 @@
         itemDef
         {
             name speed_fast
-            rect 439 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 423 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
             text "Fast" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -200,7 +208,7 @@
         itemDef
         {
             name speed_fast_selected
-            rect 439 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 423 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
             text "Fast" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -212,7 +220,7 @@
         itemDef
         {
             name speed_fastest
-            rect 488 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 466 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
             text "Fastest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -224,7 +232,7 @@
         itemDef
         {
             name speed_fastest_selected
-            rect 488 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            rect 466 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
             type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
             bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
             text "Fastest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
@@ -333,6 +341,28 @@
             type ITEM_TYPE_TEXT style WINDOW_STYLE_FILLED backcolor 0 0 0 .85
             dvar "opencj_demo_hint" textfont UI_FONT_NORMAL textscale .20 textalign ITEM_ALIGN_MIDDLE_CENTER
             forecolor .8 .9 .92 1 visible when (dvarString("opencj_demo_hint") != "") decoration
+        }
+
+        itemDef
+        {
+            name technique
+            rect 536 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
+            bordercolor .48 .29 .6 1 backcolor .20 .10 .28 .9 forecolor 1 1 1 1
+            dvar "opencj_demo_technique" textfont UI_FONT_NORMAL textscale .19
+            textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            visible 1
+            mouseEnter { setitemcolor technique backcolor .36 .20 .48 1; setdvar opencj_demo_hint "Switch viewing technique"; }
+            mouseExit { setitemcolor technique backcolor .20 .10 .28 .9; setdvar opencj_demo_hint ""; }
+            action { play "mouse_click"; scriptMenuResponse "technique"; }
+        }
+        itemDef
+        {
+            name technique_original
+            rect 96 423 180 18 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            type ITEM_TYPE_TEXT text "Original section" textfont UI_FONT_NORMAL textscale .18
+            textalign ITEM_ALIGN_RIGHT textaligny 13 forecolor 1 .8 .45 1
+            visible when (dvarInt("opencj_demo_technique_original")) decoration
         }
     }
 }

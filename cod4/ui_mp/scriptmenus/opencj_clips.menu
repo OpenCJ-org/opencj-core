@@ -59,5 +59,26 @@
   itemDef { name page rect 0 0 140 22 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT origin 266 434 type ITEM_TYPE_TEXT dvar "opencj_clips_page" textfont UI_FONT_NORMAL textscale 0.23 textalign ITEM_ALIGN_MIDDLE_LEFT forecolor 1 1 1 1 visible 1 decoration }
   itemDef { name hint rect 0 0 568 18 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT origin 36 460 type ITEM_TYPE_TEXT dvar "opencj_clips_hint" textfont UI_FONT_NORMAL textscale 0.18 textalign ITEM_ALIGN_MIDDLE_LEFT forecolor 1 1 1 1 visible 1 decoration }
 
-}
+        itemDef
+        {
+            name technique
+            rect 558 214 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
+            bordercolor .48 .29 .6 1 backcolor .20 .10 .28 .9 forecolor 1 1 1 1
+            dvar "opencj_demo_technique" textfont UI_FONT_NORMAL textscale .19
+            textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            visible when (dvarInt("opencj_clips_preview"))
+            mouseEnter { setitemcolor technique backcolor .36 .20 .48 1; }
+            mouseExit { setitemcolor technique backcolor .20 .10 .28 .9; }
+            action { play "mouse_click"; scriptMenuResponse "technique"; }
+        }
+        itemDef
+        {
+            name technique_original
+            rect 320 217 150 18 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            type ITEM_TYPE_TEXT text "Original section" textfont UI_FONT_NORMAL textscale .18
+            textalign ITEM_ALIGN_RIGHT textaligny 13 forecolor 1 .8 .45 1
+            visible when (dvarInt("opencj_clips_preview") && dvarInt("opencj_demo_technique_original")) decoration
+        }
+ }
 }
