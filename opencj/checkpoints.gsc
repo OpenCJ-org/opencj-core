@@ -91,7 +91,10 @@ onInit()
 
     if(openCJ\mapid::hasMapID())
     {
-        rows = openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, GROUP_CONCAT(b.childCpID), a.ender, a.elevate, a.endShaderColor, c.bigBrotherID, a.allowSave FROM checkpoints a LEFT JOIN checkpointConnections b ON a.cpID = b.cpID LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID WHERE a.retired=0 AND a.mapID = " + openCJ\mapid::getMapID() + " GROUP BY a.cpID");
+        if(getCodVersion()==4)
+            rows = openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, GROUP_CONCAT(b.childCpID), r.routeName, a.elevate, a.endShaderColor, c.bigBrotherID, a.allowSave, a.finishRouteID FROM checkpoints a LEFT JOIN routes r ON r.routeID=a.finishRouteID LEFT JOIN checkpointConnections b ON a.cpID = b.cpID LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID WHERE a.retired=0 AND a.mapID = " + openCJ\mapid::getMapID() + " GROUP BY a.cpID");
+        else
+            rows = openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, GROUP_CONCAT(b.childCpID), a.ender, a.elevate, a.endShaderColor, c.bigBrotherID, a.allowSave, NULL FROM checkpoints a LEFT JOIN checkpointConnections b ON a.cpID = b.cpID LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID WHERE a.retired=0 AND a.mapID = " + openCJ\mapid::getMapID() + " GROUP BY a.cpID");
 
         // First we obtain all checkpoints for the current map from the database
         checkpoints = [];
@@ -112,6 +115,7 @@ onInit()
                 checkpoint.childIDs = strTok(rows[i][6], ",");
             }
             checkpoint.ender = rows[i][7];
+            checkpoint.finishRouteID = intOrUndefined(rows[i][12]);
             checkpoint.isEleAllowed = int(rows[i][8]);
             checkpoint.endShaderColor = rows[i][9];
             checkpoint.bigBrother = intOrUndefined(rows[i][10]);

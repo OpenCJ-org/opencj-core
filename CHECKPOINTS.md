@@ -101,3 +101,21 @@ shared geometry. Use `!cp split easy hard`: Easy keeps its existing continuation
 and Hard opens a new branch. Then detect the different landing again. Include all
 sharing route names when more than two routes share the section; the first keeps
 its continuation. Only finalize when you have verified the finish for your route.
+
+
+## Stable route IDs (#174)
+
+Requires server-db migration 019. Published routes now have permanent numeric
+IDs, scoped to a map. Every active checkpoint has one or more database route
+links; shared checkpoints retain all their routes. A finish's route ID is
+separate from ordinary membership.
+
+!cp rename <old> <new> preserves checkpoint IDs, saved runs, record categories,
+demo recordings and earned challenge rewards. Runtime names, map voting,
+leaderboards, demo selection and challenges resolve the renamed route. Existing
+open route menus refresh too. Challenge catalogue refresh preserves an already
+bound route even if its original source label or matching hint is unchanged.
+
+Shared editing sections still have their own names. Renaming a common opening
+does not rename the Easy/Hard/etc. routes using it. The existing draft recovery
+files and geometry/history editing restrictions remain in effect.

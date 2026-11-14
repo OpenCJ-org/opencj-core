@@ -68,7 +68,7 @@ prepare(entries,existing)
 {
     if(isDefined(level.demoPersisting) && level.demoPersisting>0)return self fail("A demo is still saving; retry finalizing shortly");
     map=openCJ\mapID::getMapID();route=self.cpc.route;
-    rows=openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID,b.bigBrotherID,c.ender,a.vertices,a.allowDoubleRPG,c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID LEFT JOIN checkpointBrothers b ON b.cpID=a.cpID WHERE a.mapID="+map+" AND a.routeName="+openCJ\util::dbStr(route)+" ORDER BY a.ordinal");
+    rows=openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID,b.bigBrotherID,c.finishRouteID,a.vertices,a.allowDoubleRPG,c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID LEFT JOIN checkpointBrothers b ON b.cpID=a.cpID WHERE a.mapID="+map+" AND a.draftName="+openCJ\util::dbStr(route)+" ORDER BY a.ordinal");
     if(!isDefined(rows)||!rows.size)return self fail("Cannot read route for migration");
     old=[];groups=[];ids="(";
     for(i=0;i<rows.size;i++)
@@ -95,7 +95,7 @@ prepare(entries,existing)
     p=plan(old,self.cpc.rows);
     if(!isDefined(p))
     {
-        history=openCJ\mySQL::mysqlSyncQuery("SELECT EXISTS(SELECT 1 FROM playerRuns WHERE finishcpID IN "+ids+")+EXISTS(SELECT 1 FROM checkpointStatistics WHERE cpID IN "+ids+")+EXISTS(SELECT 1 FROM playerSaves WHERE checkpointID IN "+ids+")+EXISTS(SELECT 1 FROM demoRuns WHERE mapID="+map+" AND routeName="+openCJ\util::dbStr(route)+")");
+        history=openCJ\mySQL::mysqlSyncQuery("SELECT EXISTS(SELECT 1 FROM playerRuns WHERE finishcpID IN "+ids+")+EXISTS(SELECT 1 FROM checkpointStatistics WHERE cpID IN "+ids+")+EXISTS(SELECT 1 FROM playerSaves WHERE checkpointID IN "+ids+")+EXISTS(SELECT 1 FROM demoRuns WHERE mapID="+map+" AND routeID IN (SELECT routeID FROM routes WHERE mapID="+map+" AND routeName="+openCJ\util::dbStr(route)+")"+")");
         if(!isDefined(history) || history.size!=1)return self fail("Cannot check route history; draft retained");
         if(int(history[0][0])!=0)return self fail("Route has run history: keep start/finish and requirements; change one checkpoint or insert/delete up to 3 together");
         p=unusedPlan(old,self.cpc.rows);
@@ -134,7 +134,7 @@ prepare(entries,existing)
     queries[queries.size]="DELETE FROM checkpointAreas WHERE cpID IN "+ids;
     queries[queries.size]="UPDATE playerRuns r SET archived=1 WHERE r.finishcpID IS NULL AND (EXISTS(SELECT 1 FROM checkpointStatistics s WHERE s.runID=r.runID AND s.cpID IN "+ids+") OR EXISTS(SELECT 1 FROM playerSaves s WHERE s.runID=r.runID AND s.checkpointID IN "+ids+"))";
     // ready=2 retains old footage while excluding playback and winner comparison.
-    queries[queries.size]="UPDATE demoRuns SET ready=2 WHERE mapID="+map+" AND routeName="+openCJ\util::dbStr(route);
+    queries[queries.size]="UPDATE demoRuns SET ready=2 WHERE mapID="+map+" AND routeID IN (SELECT routeID FROM routes WHERE mapID="+map+" AND routeName="+openCJ\util::dbStr(route)+")";
     for(i=0;i<queries.size;i++)
         if(!isDefined(openCJ\mySQL::mysqlSyncQuery(queries[i])))return self fail("Migration failed; transaction rolled back and draft retained");
     return p;

@@ -27,7 +27,7 @@ show()
     published=[];
     if(openCJ\mapID::hasMapID())
     {
-        rows=openCJ\mySQL::mysqlSyncQuery("SELECT routeName,cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" ORDER BY routeName,ordinal");
+        rows=openCJ\mySQL::mysqlSyncQuery("SELECT draftName,cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" ORDER BY draftName,ordinal");
         if(!isDefined(rows)){self sendLocalChatMessage("Could not read published routes; please try again.",true);return;}
         for(i=0;i<rows.size;i++)
         {

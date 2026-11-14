@@ -20,12 +20,12 @@ recordQuery(runID)
     // Older run IDs win exact ties so repeating a record does not trigger fanfare.
     // Each player occupies only one place on each of the two boards.
     return "WITH finished AS (" +
-        "SELECT r.*,c.ender AS routeName FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID " +
+        "SELECT r.*,c.finishRouteID AS routeID FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID " +
         "WHERE r.runID=" + runID + " AND r.finishTimeStamp IS NOT NULL), eligible AS (" +
         "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps FROM finished f " +
         "JOIN playerRuns r ON r.mapID=f.mapID AND r.ele<=f.ele AND r.anyPct<=f.anyPct AND r.hb<=f.hb AND r.hardTAS<=f.hardTAS " +
         "AND (r.FPSMode=f.FPSMode OR r.FPSMode='125' OR (f.FPSMode='hax' AND r.FPSMode='mix')) " +
-        "JOIN checkpoints c ON c.cpID=r.finishcpID AND c.ender=f.routeName " +
+        "JOIN checkpoints c ON c.cpID=r.finishcpID AND c.finishRouteID=f.routeID " +
         "JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE r.finishTimeStamp IS NOT NULL), best AS (" +
         "SELECT e.*,ROW_NUMBER() OVER(PARTITION BY playerID ORDER BY timePlayed,explosiveJumps,runID) AS timeBest," +
         "ROW_NUMBER() OVER(PARTITION BY playerID ORDER BY explosiveJumps,timePlayed,runID) AS rpgBest FROM eligible e), podium AS (" +

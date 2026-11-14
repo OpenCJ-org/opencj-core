@@ -93,7 +93,7 @@ initialize()
     {
         c=level.challenges[keys[i]];route="NULL";
         if(isDefined(c.routeName))route=dbStr(c.routeName);
-        values="tier="+c.tier+",points="+c.points+",mapName="+dbStr(c.mapName)+",routeLabel="+dbStr(c.routeLabel)+",routeName="+route+",maxTimeMs="+c.maxTime+",maxRPG="+c.maxRPG+",allowedModes="+c.allowed+",requiredModes="+c.required+",fpsModes="+dbStr(c.fps)+",active=1";
+        values="tier="+c.tier+",points="+c.points+",mapName="+dbStr(c.mapName)+",routeLabel="+dbStr(c.routeLabel)+",routeHint="+route+",maxTimeMs="+c.maxTime+",maxRPG="+c.maxRPG+",allowedModes="+c.allowed+",requiredModes="+c.required+",fpsModes="+dbStr(c.fps)+",active=1";
         ok=isDefined(openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges SET challengeKey="+dbStr(c.key)+","+values+" ON DUPLICATE KEY UPDATE "+values));
     }
     if(!ok){openCJ\mySQL::mysqlSyncQuery("ROLLBACK");return;}
@@ -110,7 +110,7 @@ initialize()
 awardSQL(extra)
 {
     mask="(r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS)";
-    return "INSERT IGNORE INTO challengeCompletions(playerID,challengeKey,runID) SELECT r.playerID,c.challengeKey,MIN(r.runID) FROM challenges c JOIN mapids m ON m.mapname=c.mapName JOIN playerRuns r ON r.mapID=m.mapID JOIN checkpoints cp ON cp.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE c.active=1 AND c.routeName IS NOT NULL AND LOWER(cp.ender)=LOWER(c.routeName) AND r.finishTimeStamp IS NOT NULL AND FIND_IN_SET(r.FPSMode,c.fpsModes)>0 AND ("+mask+" & c.allowedModes)="+mask+" AND ("+mask+" & c.requiredModes)=c.requiredModes AND (c.maxTimeMs=0 OR s.timePlayed<=c.maxTimeMs) AND (c.maxRPG<0 OR s.explosiveJumps<=c.maxRPG) "+extra+" GROUP BY r.playerID,c.challengeKey";
+    return "INSERT IGNORE INTO challengeCompletions(playerID,challengeKey,runID) SELECT r.playerID,c.challengeKey,MIN(r.runID) FROM challenges c JOIN mapids m ON m.mapname=c.mapName JOIN playerRuns r ON r.mapID=m.mapID JOIN checkpoints cp ON cp.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE c.active=1 AND c.routeID IS NOT NULL AND cp.finishRouteID=c.routeID AND r.finishTimeStamp IS NOT NULL AND FIND_IN_SET(r.FPSMode,c.fpsModes)>0 AND ("+mask+" & c.allowedModes)="+mask+" AND ("+mask+" & c.requiredModes)=c.requiredModes AND (c.maxTimeMs=0 OR s.timePlayed<=c.maxTimeMs) AND (c.maxRPG<0 OR s.explosiveJumps<=c.maxRPG) "+extra+" GROUP BY r.playerID,c.challengeKey";
 }
 rankForPoints(points)
 {
@@ -226,7 +226,7 @@ show()
     {
         title="Tier "+tab+" challenges";
         hint="";
-        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.challengeKey,c.mapName,c.routeLabel,c.points,c.maxTimeMs,c.maxRPG,c.routeName,COUNT(a.playerID),MAX(a.playerID="+self openCJ\login::getPlayerID()+"),c.fpsModes,c.allowedModes FROM challenges c LEFT JOIN challengeCompletions a ON a.challengeKey=c.challengeKey WHERE c.active=1 AND c.tier="+tab+" GROUP BY c.challengeKey ORDER BY c.challengeKey", "challenges");
+        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.challengeKey,c.mapName,COALESCE(rt.routeName,c.routeLabel),c.points,c.maxTimeMs,c.maxRPG,c.routeID,COUNT(a.playerID),MAX(a.playerID="+self openCJ\login::getPlayerID()+"),c.fpsModes,c.allowedModes FROM challenges c LEFT JOIN routes rt ON rt.routeID=c.routeID LEFT JOIN challengeCompletions a ON a.challengeKey=c.challengeKey WHERE c.active=1 AND c.tier="+tab+" GROUP BY c.challengeKey ORDER BY c.challengeKey", "challenges");
         if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
         if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
         count=0;if(isDefined(rows))count=rows.size;
@@ -299,14 +299,14 @@ routeKeySQL(value)
 // sole published route, but difficulty labels never use that fallback.
 routeLinkSQL()
 {
-    published="SELECT cp.mapID,"+routeKeySQL("cp.ender")+" AS routeKey,MIN(cp.ender) AS routeName,COUNT(DISTINCT LOWER(cp.ender)) AS routeCount FROM checkpoints cp JOIN checkpointAreas a ON a.cpID=cp.cpID AND a.mapID=cp.mapID WHERE cp.retired=0 AND cp.ender IS NOT NULL AND cp.ender<>'' GROUP BY cp.mapID,routeKey";
-    return "UPDATE challenges c JOIN mapids m ON m.mapname=c.mapName LEFT JOIN ("+published+") p ON p.mapID=m.mapID AND p.routeCount=1 AND p.routeKey=("+routeKeySQL("COALESCE(c.routeName,c.routeLabel)")+ ") LEFT JOIN (SELECT mapID,MIN(routeName) AS routeName FROM ("+published+") routes GROUP BY mapID HAVING SUM(routeCount)=1) sole ON sole.mapID=m.mapID LEFT JOIN (SELECT mapName,COUNT(DISTINCT LOWER(routeLabel)) AS routeCount FROM challenges WHERE active=1 GROUP BY mapName) labels ON labels.mapName=c.mapName SET c.routeName=COALESCE(p.routeName,CASE WHEN labels.routeCount=1 AND (LOWER(c.routeLabel)='main route' OR LOWER(c.routeLabel) LIKE 'main route (%)') THEN sole.routeName ELSE NULL END) WHERE c.active=1";
+    published="SELECT r.mapID,"+routeKeySQL("r.routeName")+" AS routeKey,MIN(r.routeID) AS routeID,COUNT(*) AS routeCount FROM routes r WHERE EXISTS(SELECT 1 FROM checkpoints cp JOIN checkpointAreas a ON a.cpID=cp.cpID WHERE cp.finishRouteID=r.routeID AND cp.retired=0) GROUP BY r.mapID,routeKey";
+    return "UPDATE challenges c JOIN mapids m ON m.mapname=c.mapName LEFT JOIN ("+published+") p ON p.mapID=m.mapID AND p.routeCount=1 AND p.routeKey=("+routeKeySQL("COALESCE(c.routeHint,c.routeLabel)")+ ") LEFT JOIN (SELECT mapID,MIN(routeID) AS routeID FROM ("+published+") publishedRoutes GROUP BY mapID HAVING SUM(routeCount)=1) sole ON sole.mapID=m.mapID LEFT JOIN (SELECT mapName,COUNT(DISTINCT LOWER(routeLabel)) AS routeCount FROM challenges WHERE active=1 GROUP BY mapName) labels ON labels.mapName=c.mapName SET c.routeID=COALESCE(p.routeID,CASE WHEN labels.routeCount=1 AND (LOWER(c.routeLabel)='main route' OR LOWER(c.routeLabel) LIKE 'main route (%)') THEN sole.routeID ELSE NULL END) WHERE c.active=1 AND c.routeID IS NULL";
 }
 onRoutesPublished()
 {
     if(getCodVersion()!=4 || !isDefined(level.challengesReady) || !level.challengesReady)return;
     // Snapshot unavailable challenges before linking, so re-publishing is quiet.
-    pending=openCJ\mySQL::mysqlSyncQuery("SELECT challengeKey FROM challenges WHERE active=1 AND routeName IS NULL AND mapName="+dbStr(getDvar("mapname")));
+    pending=openCJ\mySQL::mysqlSyncQuery("SELECT challengeKey FROM challenges WHERE active=1 AND routeID IS NULL AND mapName="+dbStr(getDvar("mapname")));
     if(!isDefined(openCJ\mySQL::mysqlSyncQuery(routeLinkSQL())))return;
     if(isDefined(pending) && pending.size)
     {
@@ -316,7 +316,7 @@ onRoutesPublished()
             if(i)keys+=",";
             keys+=dbStr(pending[i][0]);
         }
-        enabled=openCJ\mySQL::mysqlSyncQuery("SELECT routeLabel,tier FROM challenges WHERE active=1 AND routeName IS NOT NULL AND challengeKey IN ("+keys+") ORDER BY tier,challengeKey");
+        enabled=openCJ\mySQL::mysqlSyncQuery("SELECT r.routeName,c.tier FROM challenges c JOIN routes r ON r.routeID=c.routeID WHERE c.active=1 AND c.routeID IS NOT NULL AND c.challengeKey IN ("+keys+") ORDER BY tier,challengeKey");
         if(isDefined(enabled))
             for(i=0;i<enabled.size;i++)
                 self sendLocalChatMessage("Challenge now available: "+getDvar("mapname")+" / "+enabled[i][0]+" (Tier "+enabled[i][1]+").");

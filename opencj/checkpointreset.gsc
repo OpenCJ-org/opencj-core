@@ -11,7 +11,7 @@ reset(route)
     // Shared sections need a network-wide reset; never silently detach or edit other routes.
     if(FS_TestFile(base+"network.a") || FS_TestFile(base+"network.b"))
         return self fail("Reset of shared network drafts is not supported; all drafts kept.");
-    ids=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND routeName="+dbStr(route)+" ORDER BY ordinal");
+    ids=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND draftName="+dbStr(route)+" ORDER BY ordinal");
     if(!isDefined(ids) || !ids.size)return self fail("Finalized route has no editable CPC areas; draft unchanged.");
     checkpoints=[];
     for(i=0;i<ids.size;i++)checkpoints[i]=openCJ\checkpoints::getCheckpointByID(int(ids[i][0]));

@@ -294,7 +294,7 @@ publish()
         // Logical checkpoints retain route-specific records through a merge.
         // Shared geometry is authored once in its section draft; the legacy
         // runtime receives one ordered continuation per route after the fork.
-        rows=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND routeName="+dbStr(self.cpc.route)+" ORDER BY ordinal");
+        rows=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+openCJ\mapID::getMapID()+" AND draftName="+dbStr(self.cpc.route)+" ORDER BY ordinal");
         prefixEntries=0;
         for(j=0;j<entries.size;j++)if(entries[j].group<self.cpc.sharedCount)prefixEntries++;
         if(!isDefined(rows) || rows.size!=entries.size-prefixEntries){ok=false;message="Cannot read published section IDs";break;}
@@ -319,6 +319,7 @@ publish()
             if(!isDefined(openCJ\mySQL::mysqlSyncQuery(query))){ok=false;message="Cannot save section color";break;}
         }
     }
+    if(ok)ok=isDefined(openCJ\mySQL::mysqlSyncQuery("CALL rebuildCheckpointRoutes("+openCJ\mapID::getMapID()+")"));
     if(ok)ok=isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT"));
     if(!ok){openCJ\mySQL::mysqlSyncQuery("ROLLBACK");return self fail("Network not published: "+message);}
     self.cpc.publishedLabel=label(names);
@@ -602,7 +603,7 @@ rename(old,name)
     if(isDefined(target)||(isDefined(n)&&isDefined(n.paths[name])))return self fail("The new name is already used; nothing overwritten.");
     if(isDefined(oldPart)&&isDefined(oldPart.sharedRoute))return self fail("Rename legacy branches after converting their shared-opening references.");
     map=openCJ\mapID::getMapID();
-    collision=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+map+" AND routeName="+dbStr(name)+" UNION SELECT cpID FROM checkpoints WHERE mapID="+map+" AND ender="+dbStr(name)+" LIMIT 1");
+    collision=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID="+map+" AND draftName="+dbStr(name)+" UNION SELECT routeID FROM routes WHERE mapID="+map+" AND routeName="+dbStr(name)+" LIMIT 1");
     if(!isDefined(collision)||collision.size)return self fail("That name is already published; nothing overwritten.");
     if(isDefined(oldPart))
     {
@@ -617,13 +618,10 @@ rename(old,name)
     if(!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION")))return self fail("Cannot begin rename; original retained.");
     queries=[];
     queries[0]="SELECT mapID FROM mapids WHERE mapID="+map+" FOR UPDATE";
-    queries[1]="UPDATE checkpointAreas SET routeName="+dbStr(name)+" WHERE mapID="+map+" AND routeName="+dbStr(old);
-    queries[2]="UPDATE checkpoints SET ender="+dbStr(name)+" WHERE mapID="+map+" AND ender="+dbStr(old);
-    queries[3]="UPDATE routes r JOIN checkpoints c ON c.cpID=r.cpID SET r.routeName="+dbStr(name)+" WHERE c.mapID="+map+" AND r.routeName="+dbStr(old);
-    queries[4]="UPDATE checkpointAreas SET sectionName="+dbStr(name)+" WHERE mapID="+map+" AND sectionName="+dbStr(old);
-    queries[5]="UPDATE checkpointSectionColors SET sectionName="+dbStr(name)+" WHERE mapID="+map+" AND sectionName="+dbStr(old);
-    queries[6]="UPDATE demoRuns SET routeName="+dbStr(name)+" WHERE mapID="+map+" AND routeName="+dbStr(old);
-    queries[7]="UPDATE demoWinners SET routeName="+dbStr(name)+" WHERE mapID="+map+" AND routeName="+dbStr(old);
+    queries[1]="UPDATE checkpointAreas SET draftName="+dbStr(name)+" WHERE mapID="+map+" AND draftName="+dbStr(old);
+    queries[2]="UPDATE routes SET routeName="+dbStr(name)+" WHERE mapID="+map+" AND routeName="+dbStr(old);
+    queries[3]="UPDATE checkpointAreas SET sectionName="+dbStr(name)+" WHERE mapID="+map+" AND sectionName="+dbStr(old);
+    queries[4]="UPDATE checkpointSectionColors SET sectionName="+dbStr(name)+" WHERE mapID="+map+" AND sectionName="+dbStr(old);
     for(i=0;i<queries.size;i++)if(!isDefined(openCJ\mySQL::mysqlSyncQuery(queries[i])))
     {
         openCJ\mySQL::mysqlSyncQuery("ROLLBACK");return self fail("Rename failed; existing database records unchanged. New draft copy retained.");
@@ -650,6 +648,7 @@ rename(old,name)
     self openCJ\checkpointCreation::_close();
     self openCJ\checkpointPublish::activate();
     self openCJ\checkpointCreation::_start(active);
+    refreshRenamedRoute(old,name);
     self sendLocalChatMessage("Renamed "+old+" to "+name+". Colors, checkpoint IDs and records retained; separately named branches are unchanged.");
     return true;
 }
@@ -721,4 +720,26 @@ areaOverlap(a,b,points)
     movingB = openCJ\checkpointMoving::isMoving(b);
     if (movingA || movingB) return movingA && movingB && a.platformRef == b.platformRef;
     return openCJ\checkpointHeight::overlap(a,a.points,b,points);
+}
+
+// Names cached by an already-open board are presentation data, never identity.
+refreshRenamedRoute(old,name)
+{
+    players=getEntArray("player","classname");
+    for(i=0;i<players.size;i++)
+    {
+        player=players[i];
+        if(isDefined(player.currentBoard) && isDefined(player.currentBoard["routes"]))
+        {
+            for(j=0;j<player.currentBoard["routes"].size;j++)
+                if(player.currentBoard["routes"][j]==old)player.currentBoard["routes"][j]=name;
+            if(isDefined(player.currentMenu) && (player.currentMenu=="opencj_leaderboard" || player.currentMenu=="opencj_runsboard"))
+            {
+                player openCJ\menus\board_base::updateRoutes();
+                player thread openCJ\menus\board_base::updateBoard();
+            }
+        }
+        if(isDefined(player.currentMenu) && player.currentMenu=="opencj_challenges")
+            player thread openCJ\challenges::show();
+    }
 }

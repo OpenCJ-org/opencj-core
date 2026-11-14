@@ -38,7 +38,7 @@ split(first, second)
     for (i = 0; i < names.size; i++)
     {
         paths[i] = "checkpoints/drafts/" + self openCJ\login::getPlayerID() + "_" + getCvar("mapname") + "_" + names[i];
-        existing = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID() + " AND routeName=" + dbStr(names[i]) + " LIMIT 1");
+        existing = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID() + " AND draftName=" + dbStr(names[i]) + " LIMIT 1");
         if (!isDefined(existing) || existing.size || FS_TestFile(paths[i] + ".a") || FS_TestFile(paths[i] + ".b"))
         {
             self sendLocalChatMessage("A draft or published route already uses " + names[i] + "; nothing was overwritten.", true);
@@ -112,7 +112,7 @@ publish()
     self.cpc = branch;
     if (!ok)return self openCJ\checkpointPublish::_fail(status);
     first = openCJ\checkpointCreation::_decode(suffix.rows[0]);
-    children = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID() + " AND routeName=" + dbStr(branch.route) + " ORDER BY ordinal LIMIT " + (first.alternatives.size + 1));
+    children = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID() + " AND draftName=" + dbStr(branch.route) + " ORDER BY ordinal LIMIT " + (first.alternatives.size + 1));
     if (!isDefined(children) || children.size != first.alternatives.size + 1)
         return self openCJ\checkpointPublish::_fail("Cannot read branch connection IDs");
     for (i = 0; i < parentIDs.size; i++)
@@ -142,8 +142,8 @@ ensurePrefix()
     entries = self openCJ\checkpointPublish::_entries();
     for (i = 0; i < entries.size; i++)
         if (entries[i].cp.finish){self.cpc.status = "Shared opening contains a Finish";return undefined;}
-    where = "a.mapID=" + mapID + " AND a.routeName=" + dbStr(self.cpc.route);
-    rows = openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID,a.vertices,a.allowDoubleRPG,b.bigBrotherID,c.ender,c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID LEFT JOIN checkpointBrothers b ON b.cpID=a.cpID WHERE " + where + " ORDER BY a.ordinal");
+    where = "a.mapID=" + mapID + " AND a.draftName=" + dbStr(self.cpc.route);
+    rows = openCJ\mySQL::mysqlSyncQuery("SELECT a.cpID,a.vertices,a.allowDoubleRPG,b.bigBrotherID,c.finishRouteID,c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID LEFT JOIN checkpointBrothers b ON b.cpID=a.cpID WHERE " + where + " ORDER BY a.ordinal");
     if (!isDefined(rows)){self.cpc.status = "Cannot read shared opening";return undefined;}
     if (rows.size == 0)
     {

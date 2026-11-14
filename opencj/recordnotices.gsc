@@ -5,13 +5,13 @@
 finishQuery(runID)
 {
     return "WITH finished AS ("+
-        "SELECT r.runID,r.playerID,r.mapID,r.FPSMode,r.ele,r.anyPct,r.hb,r.hardTAS,c.ender AS routeName,s.timePlayed,s.explosiveJumps,p.playerName "+
-        "FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID AND c.retired=0 "+
+        "SELECT r.runID,r.playerID,r.mapID,r.FPSMode,r.ele,r.anyPct,r.hb,r.hardTAS,c.finishRouteID AS routeID,route.routeName,s.timePlayed,s.explosiveJumps,p.playerName "+
+        "FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID AND c.retired=0 JOIN routes route ON route.routeID=c.finishRouteID "+
         "JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID "+
         "JOIN playerDisplayNames p ON p.playerID=r.playerID WHERE r.runID="+runID+" AND r.finishTimeStamp IS NOT NULL), eligible AS ("+
         "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps FROM finished f "+
         "JOIN playerRuns r ON r.mapID=f.mapID AND r.FPSMode=f.FPSMode AND r.ele=f.ele AND r.anyPct=f.anyPct AND r.hb=f.hb AND r.hardTAS=f.hardTAS "+
-        "JOIN checkpoints c ON c.cpID=r.finishcpID AND c.ender=f.routeName AND c.retired=0 "+
+        "JOIN checkpoints c ON c.cpID=r.finishcpID AND c.finishRouteID=f.routeID AND c.retired=0 "+
         "JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID "+
         "WHERE r.finishTimeStamp IS NOT NULL AND r.runID<>f.runID), scoped AS ("+
         "SELECT 0 AS scope,e.* FROM eligible e UNION ALL SELECT 1 AS scope,e.* FROM eligible e JOIN finished f ON e.playerID=f.playerID), ranked AS ("+

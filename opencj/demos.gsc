@@ -104,9 +104,9 @@ candidateQuery(location,kind,fps,mask,mapID)
         for(i=0;i<routes.size;i++)
         {
             if(i)names+=",";
-            names+=dbStr(routes[i]);
+            names+=int(routes[i]);
         }
-        routeFilter=" AND w.routeName IN ("+names+")";
+        routeFilter=" AND w.routeID IN ("+names+")";
     }
     order="d.timePlayed,d.explosiveJumps";
     if(kind=="lowrpg")order="d.explosiveJumps,d.timePlayed";
@@ -129,7 +129,7 @@ selectionLocation()
         ends=openCJ\checkpoints::getEndCheckpoints(cp);
         if(!isDefined(ends))continue;
         for(j=0;j<ends.size;j++)
-            if(isDefined(ends[j].ender))location.routes[ends[j].ender]=true;
+            if(isDefined(ends[j].finishRouteID))location.routes[""+ends[j].finishRouteID]=true;
     }
     return location;
 }

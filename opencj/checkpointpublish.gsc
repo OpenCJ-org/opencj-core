@@ -34,14 +34,14 @@ publish()
         self.cpc.status = "Install server-db/migrations/001-checkpoint-areas.sql first";
         return false;
     }
-    if (!isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT colorRGB FROM routes LIMIT 0")))
-        return self _fail("Install server-db/migrations/002-route-colors.sql first");
+    if (!isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT routeID FROM routes LIMIT 0")))
+        return self _fail("Install server-db/migrations/019-route-identity.sql first");
     if (!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION")))
     {
         self.cpc.status = "Cannot start database transaction; draft retained";
         return false;
     }
-    if (!self _writeRoute())
+    if (!self _writeRoute() || !isDefined(openCJ\mySQL::mysqlSyncQuery("CALL rebuildCheckpointRoutes("+openCJ\mapID::getMapID()+")")))
     {
         openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
         self iprintln(self.cpc.status);
@@ -113,12 +113,12 @@ _writeSequentialRoute()
     entries = self _entries();
     mapID = openCJ\mapID::getMapID();
     route = openCJ\mySQL::escapeString(self.cpc.route);
-    where = "mapID=" + mapID + " AND routeName='" + route + "'";
+    where = "mapID=" + mapID + " AND draftName='" + route + "'";
     // Lock the map row to serialize publishers of the same map.
     locked = openCJ\mySQL::mysqlSyncQuery("SELECT mapID FROM mapids WHERE mapID=" + mapID + " FOR UPDATE");
     if (!isDefined(locked) || locked.size != 1)
         return self _fail("Cannot lock map for publishing");
-    existing = openCJ\mySQL::mysqlSyncQuery("SELECT cpID,(SELECT bigBrotherID FROM checkpointBrothers b WHERE b.cpID=checkpointAreas.cpID),(SELECT ender FROM checkpoints c WHERE c.cpID=checkpointAreas.cpID) FROM checkpointAreas WHERE " + where + " ORDER BY ordinal");
+    existing = openCJ\mySQL::mysqlSyncQuery("SELECT cpID,(SELECT bigBrotherID FROM checkpointBrothers b WHERE b.cpID=checkpointAreas.cpID),(SELECT finishRouteID FROM checkpoints c WHERE c.cpID=checkpointAreas.cpID) FROM checkpointAreas WHERE " + where + " ORDER BY ordinal");
     if (!isDefined(existing))
         return self _fail("Cannot read published checkpoint IDs");
     migration=undefined;
@@ -131,10 +131,15 @@ _writeSequentialRoute()
     }
     else
     {
-        collision = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpoints WHERE mapID=" + mapID + " AND ender='" + route + "' LIMIT 1");
+        collision = openCJ\mySQL::mysqlSyncQuery("SELECT c.cpID FROM checkpoints c JOIN routes r ON r.routeID=c.finishRouteID WHERE c.mapID="+mapID+" AND r.routeName='"+route+"' LIMIT 1");
         if (!isDefined(collision) || collision.size > 0)
             return self _fail("An existing route already uses that name; it will not be overwritten");
     }
+    routeRows = openCJ\mySQL::mysqlSyncQuery("INSERT INTO routes(mapID,routeName) VALUES (" + mapID + ",'" + route + "') ON DUPLICATE KEY UPDATE routeID=LAST_INSERT_ID(routeID)");
+    if (!isDefined(routeRows))return self _fail("Cannot create route identity");
+    routeRows = openCJ\mySQL::mysqlSyncQuery("SELECT routeID FROM routes WHERE mapID="+mapID+" AND routeName='"+route+"'");
+    if (!isDefined(routeRows) || routeRows.size!=1)return self _fail("Cannot read route identity");
+    routeID = int(routeRows[0][0]);
     ids = [];
     groups = [];
     for (i = 0; i < self.cpc.rows.size; i++)
@@ -149,8 +154,8 @@ _writeSequentialRoute()
         origin = vectorScale(origin, 1.0 / points.size);
         finish = "NULL";
         if (cp.finish)
-            finish = "'" + route + "'";
-        values = "x=" + int(origin[0]) + ",y=" + int(origin[1]) + ",z=" + int(origin[2]) + ",radius=NULL,elevate=" + int(cp.allowEle) + ",allowSave=" + int(cp.allowSave) + ",onGround=" + int(cp.onGround) + ",ender=" + finish;
+            finish = "" + routeID;
+        values = "x=" + int(origin[0]) + ",y=" + int(origin[1]) + ",z=" + int(origin[2]) + ",radius=NULL,elevate=" + int(cp.allowEle) + ",allowSave=" + int(cp.allowSave) + ",onGround=" + int(cp.onGround) + ",finishRouteID=" + finish;
         if (existing.size == 0 || !existing[i].size)
         {
             result = openCJ\mySQL::mysqlSyncQuery("INSERT INTO checkpoints SET mapID=" + mapID + "," + values);
@@ -170,7 +175,7 @@ _writeSequentialRoute()
         group = entries[i].group;
         groups[group][groups[group].size] = ids[i];
         vertices = openCJ\mySQL::escapeString(openCJ\checkpointArea::encode(points));
-        result = openCJ\mySQL::mysqlSyncQuery("INSERT INTO checkpointAreas (cpID,mapID,routeName,ordinal,vertices,allowDoubleRPG) VALUES (" + ids[i] + "," + mapID + ",'" + route + "'," + i + ",'" + vertices + "'," + int(cp.double) + ") ON DUPLICATE KEY UPDATE vertices=VALUES(vertices),allowDoubleRPG=VALUES(allowDoubleRPG)");
+        result = openCJ\mySQL::mysqlSyncQuery("INSERT INTO checkpointAreas (cpID,mapID,draftName,ordinal,vertices,allowDoubleRPG) VALUES (" + ids[i] + "," + mapID + ",'" + route + "'," + i + ",'" + vertices + "'," + int(cp.double) + ") ON DUPLICATE KEY UPDATE vertices=VALUES(vertices),allowDoubleRPG=VALUES(allowDoubleRPG)");
         if (!isDefined(result))
             return self _fail("Failed to save checkpoint area");
         platformRef = "NULL";
@@ -211,7 +216,7 @@ _writeSequentialRoute()
     if (!isDefined(color))
         return self _fail("Invalid route color; draft retained");
     packed = int(color[0]*255+0.5)*65536 + int(color[1]*255+0.5)*256 + int(color[2]*255+0.5);
-    if (!isDefined(openCJ\mySQL::mysqlSyncQuery("INSERT INTO routes (cpID,routeName,colorRGB) VALUES (" + ids[0] + ",'" + route + "'," + packed + ") ON DUPLICATE KEY UPDATE routeName=VALUES(routeName),colorRGB=VALUES(colorRGB)")))
+    if (!isDefined(openCJ\mySQL::mysqlSyncQuery("UPDATE routes SET cpID="+ids[0]+",colorRGB="+packed+" WHERE routeID="+routeID)))
         return self _fail("Failed to store route color; transaction rolled back");
     return true;
 }
@@ -270,9 +275,9 @@ loadAreas()
         }
     }
     columns = openCJ\mySQL::mysqlSyncQuery("SHOW COLUMNS FROM checkpointAreas LIKE 'sectionName'");
-    query = "SELECT cpID,vertices,allowDoubleRPG,routeName,NULL,platformRef,heightAbove FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID();
+    query = "SELECT cpID,vertices,allowDoubleRPG,draftName,NULL,platformRef,heightAbove FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID();
     if (isDefined(columns) && columns.size)
-        query = "SELECT a.cpID,a.vertices,a.allowDoubleRPG,a.routeName,CONCAT('#',LPAD(HEX(s.colorRGB),6,'0')),a.platformRef,a.heightAbove FROM checkpointAreas a LEFT JOIN checkpointSectionColors s ON s.mapID=a.mapID AND s.sectionName=a.sectionName WHERE a.mapID=" + openCJ\mapID::getMapID();
+        query = "SELECT a.cpID,a.vertices,a.allowDoubleRPG,a.draftName,CONCAT('#',LPAD(HEX(s.colorRGB),6,'0')),a.platformRef,a.heightAbove FROM checkpointAreas a LEFT JOIN checkpointSectionColors s ON s.mapID=a.mapID AND s.sectionName=a.sectionName WHERE a.mapID=" + openCJ\mapID::getMapID();
     rows = openCJ\mySQL::mysqlSyncQuery(query);
     if (!isDefined(rows))
         return;
@@ -301,7 +306,7 @@ loadAreas()
 unchangedPublished(entries, existing)
 {
     if(entries.size!=existing.size)return false;
-    rows=openCJ\mySQL::mysqlSyncQuery("SELECT a.vertices,a.allowDoubleRPG,c.onGround,c.ender,c.allowSave,c.elevate,a.platformRef,a.heightAbove FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID WHERE a.mapID="+openCJ\mapID::getMapID()+" AND a.routeName="+openCJ\util::dbStr(self.cpc.route)+" ORDER BY a.ordinal");
+    rows=openCJ\mySQL::mysqlSyncQuery("SELECT a.vertices,a.allowDoubleRPG,c.onGround,c.finishRouteID,c.allowSave,c.elevate,a.platformRef,a.heightAbove,r.routeName FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID LEFT JOIN routes r ON r.routeID=c.finishRouteID WHERE a.mapID="+openCJ\mapID::getMapID()+" AND a.draftName="+openCJ\util::dbStr(self.cpc.route)+" ORDER BY a.ordinal");
     if(!isDefined(rows)||rows.size!=entries.size)return false;
     for(i=0;i<entries.size;i++)
     {
@@ -312,7 +317,7 @@ unchangedPublished(entries, existing)
         if(isDefined(rows[i][6]) && rows[i][6]!=cp.platformRef)return false;
         if(float(rows[i][7])!=cp.heightAbove)return false;
         if(cp.finish!=isDefined(rows[i][3]))return false;
-        if(cp.finish&&rows[i][3]!=self.cpc.route)return false;
+        if(cp.finish&&rows[i][8]!=self.cpc.route)return false;
         for(j=0;j<points.size;j++)if(distanceSquared(points[j],entries[i].points[j])>0.0001)return false;
         if(entries[i].leader==i && isDefined(existing[i][1]))return false;
         if(entries[i].leader!=i && (!isDefined(existing[i][1])||int(existing[i][1])!=int(existing[entries[i].leader][0])))return false;

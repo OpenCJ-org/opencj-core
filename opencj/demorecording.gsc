@@ -167,7 +167,7 @@ persist(id)
     }
     if(!isDefined(level.demoPersisting))level.demoPersisting=0;
     level.demoPersisting++;
-    query = "INSERT INTO demoRuns(runID,mapID,routeName,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount) SELECT r.runID,r.mapID,c.ender,r.FPSMode,r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS,s.timePlayed,s.explosiveJumps," + count + " FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE r.runID=" + id + " AND r.finishTimeStamp IS NOT NULL";
+    query = "INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount) SELECT r.runID,r.mapID,c.finishRouteID,r.FPSMode,r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS,s.timePlayed,s.explosiveJumps," + count + " FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE r.runID=" + id + " AND r.finishTimeStamp IS NOT NULL";
     ok = isDefined(openCJ\mySQL::mysqlAsyncBackground(query, "demo:"+id));
     for (first=0;ok && first<count;first+=64)
     {
