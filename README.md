@@ -5,7 +5,7 @@ OpenCJ databasing
 
 Apply `migrations/009-challenges.sql` to the existing CoD4 database before deploying the Challenges scripts. This additive migration creates the catalogue and one completion per player/challenge; it does not replace existing game tables.
 
-Definitions and eligibility rules are maintained in `server-gsc/opencj/challenges.gsc`. Keep each challenge key stable: completions refer to it permanently. A missing `routeName` leaves a challenge visible but unlinked. Startup refreshes catalogue metadata and backfills qualifying finalized runs. Removing a definition deactivates it without deleting earned completions. Rank thresholds are cumulative tier point totals, not stored player levels.
+Definitions and eligibility rules are maintained in `server-gsc/opencj/challenges.gsc`. Keep each challenge key stable: completions refer to it permanently. A missing `routeID` (migration 019) leaves a challenge visible but unlinked. Startup refreshes catalogue metadata and backfills qualifying finalized runs. Removing a definition deactivates it without deleting earned completions. Rank thresholds are cumulative tier point totals, not stored player levels.
 
 ## Shop preview
 
@@ -99,3 +99,39 @@ cannot republish an obsolete candidate. It is removed only when its parent
 player run is deleted. Receipts do not make a retired recording playable.
 
 See dev-tools/docs/sql-capacity-190.md for concurrency and workload verification.
+
+## Stable route identity (#174)
+
+After migrations 001–018, apply migrations/019-route-identity.sql once, with all
+OpenCJ servers using this database stopped. Back up the database and checkpoint
+drafts first. MySQL DDL commits implicitly; rehearse the migration on a restored
+copy and deploy the matching GSC scripts before starting the servers again.
+Do not rerun migration 018 afterwards: 019 replaces publishDemo with its
+route-ID version while preserving the same transaction, lock and receipt rules.
+
+- routes.routeID is the permanent key; (mapID, routeName) is unique.
+  cpID is optional start/color metadata, not identity.
+- checkpointRoutes(cpID, routeID) contains every reachable route for each
+  active checkpoint, including shared openings and alternative finish areas.
+- checkpoints.finishRouteID replaces ender and distinguishes finishes from
+  ordinary route membership. Completed runs retain their existing finishcpID.
+- demoRuns and demoWinners use routeID; recordings and winner categories are
+  preserved. Challenges retain their permanent challengeKey and bind to routeID.
+- challenges.routeHint is only a hint for an unbound challenge. Once linked,
+  startup must preserve its routeID even if the source hint still has an old name.
+  Displays resolve the current route name from routes.
+- checkpointAreas.draftName replaces its old routeName column. This identifies
+  the editor-owned logical chain, which can be a shared opening; sectionName
+  identifies authored shared geometry. Neither is a historical route key.
+
+rebuildCheckpointRoutes(mapID) runs inside the publisher's existing map-locked
+transaction, after all graph changes. It does not commit. Retired memberships
+survive, and repeated rebuilds are idempotent. Its recursive union terminates
+even on cycles; the existing MySQL recursion ceiling still bounds long graphs.
+
+Use the existing !cp rename <old> <new> command so the draft files, network
+manifest and authoring labels move together. The route catalogue name changes
+once; demo, challenge and run references do not change. Renaming a shared
+opening leaves the names of its descendant routes alone.
+
+See dev-tools/docs/route-identity-174.md for validation and deployment details.
