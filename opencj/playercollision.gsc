@@ -7,11 +7,6 @@ onInit()
     openCJ\settings::addSettingInt("hideradius", 0, 4096, 60, "Sets your radius for hiding nearby players. Usage !hideradius [0-4096]. 0 hides nobody by proximity. Default 60", ::_onSettingHideRadius);
 }
 
-onStartDemo()
-{
-    //placeholder until demo mode is added in vis settings
-}
-
 _onSettingHideAll(newVal)
 {
     mode = 0;

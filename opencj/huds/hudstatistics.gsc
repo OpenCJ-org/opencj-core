@@ -50,16 +50,12 @@ onSpectatorClientChanged(newClient)
     }
 }
 
-onStartDemo()
+onRunStopped()
 {
-    specs = self getSpectatorList(true); // true -> includes the player that is the spectator
-    for(i = 0; i < specs.size; i++)
-    {
-        specs[i] _hideStatisticsHud(false);
-    }
+    self hideForSpectators();
 }
 
-onRunStopped()
+hideForSpectators()
 {
     specs = self getSpectatorList(true); // true -> includes the player that is the spectator
     for(i = 0; i < specs.size; i++)
@@ -70,11 +66,7 @@ onRunStopped()
 
 onRunCreated()
 {
-    specs = self getSpectatorList(true); // true -> includes the player that is the spectator
-    for(i = 0; i < specs.size; i++)
-    {
-        specs[i] _hideStatisticsHud(false);
-    }
+    self hideForSpectators();
 }
 
 whileAlive()

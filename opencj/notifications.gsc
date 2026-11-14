@@ -218,13 +218,12 @@ cancelCheckpoint()
 {
     self notify("notificationCheckpointStop");
 }
-onStartDemo()
-{
-    self cancelFlash();
-    self cancelCheckpoint();
-    self cancelResults();
-}
 onDisconnect()
+{
+    self cancelAll();
+}
+
+cancelAll()
 {
     self cancelFlash();
     self cancelCheckpoint();

@@ -23,11 +23,6 @@ _createPositionHud()
     }
 }
 
-onStartDemo()
-{
-    self _setPosHudAlpha(0);
-}
-
 onSpawnPlayer()
 {
     if(self openCJ\settings::getSetting("poshud"))

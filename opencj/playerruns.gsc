@@ -18,11 +18,6 @@ onPlayerLogin()
     self thread _createRunID();
 }
 
-onStartDemo()
-{
-
-}
-
 onRunFinished(cp, filterStr)
 {
     if(self isRunFinished())

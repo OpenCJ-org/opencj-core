@@ -22,16 +22,6 @@ onInit()
     precacheShader(level.runInfoShader["hardTAS"]);
 }
 
-onStartDemo()
-{
-    specs = self getSpectatorList(true); // true -> self as spectator too
-    for (i = 0; i < specs.size; i++)
-    {
-        specs[i] _hideRunIcons();
-        specs[i] _hideRunStatus();
-    }
-}
-
 onRunCreated()
 {
 

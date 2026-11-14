@@ -40,11 +40,6 @@ _onSettingAllowMix(newVal)
     }
 }
 
-onStopDemo()
-{
-    // TODO: implement after alpha
-}
-
 onRunStarted()
 {
     // Start by forcing the most basic FPS, and 'upgrade' it when the user's current FPS is not allowed according to the mode

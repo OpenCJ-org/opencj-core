@@ -47,15 +47,6 @@ onCheckpointPassed(cp, timems)
     self thread _getRecords(cps, 1, timems);
 }
 
-onStartDemo()
-{
-    specs = self getSpectatorList(true);
-    for(i = 0; i < specs.size; i++)
-    {
-        specs[i] _hideRecords(true);
-    }
-}
-
 onRunRestored()
 {
     self _runChanged();
@@ -72,6 +63,11 @@ onRunCreated()
 }
 
 onRunStopped()
+{
+    self hideForSpectators();
+}
+
+hideForSpectators()
 {
     specs = self getSpectatorList(true); // true -> include self as spectator
     for(i = 0; i < specs.size; i++)

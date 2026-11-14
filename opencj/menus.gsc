@@ -35,8 +35,3 @@ openFPSUserinfoMenu()
     // Registration/restoration is immediate; the menu closes itself.
     self openMenu(level.menu["fpsuserinfo"]);
 }
-
-onStartDemo()
-{
-    //placeholder, open demo menu here
-}

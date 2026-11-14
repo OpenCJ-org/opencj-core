@@ -45,8 +45,3 @@ onSpawnSpectator()
 {
     self.hud[self.jumpSlowDownHudName].alpha = 0;
 }
-
-onStartDemo()
-{
-    self.hud[self.jumpSlowDownHudName].alpha = 0;
-}

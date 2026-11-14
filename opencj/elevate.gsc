@@ -41,11 +41,6 @@ _updateAllowEle()
     self _setAllowElevate(allowEle);
 }
 
-onStartDemo()
-{
-    self _updateAllowEle();
-}
-
 onRunCreated()
 {
     self setUsedEle(false);

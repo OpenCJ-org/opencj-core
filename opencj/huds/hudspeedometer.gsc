@@ -41,11 +41,6 @@ onPlayerConnect()
     self _initSpeedHud("max", (1.0, 0.3, 0.3), -60); // Has to be above progress bar and time limit
 }
 
-onStartDemo()
-{
-    self _hideSpeedometer();
-}
-
 onSpawnPlayer()
 {
     self _resetSpeed();

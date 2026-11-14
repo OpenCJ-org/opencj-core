@@ -69,11 +69,6 @@ storeCheckpointPassed(runID, cpID, timePlayed)
 }
 
 
-onStartDemo()
-{
-    self.checkpoints_checkpoint = level.checkpoints_startCheckpoint;
-}
-
 onRunStarted()
 {
     self.route = undefined;

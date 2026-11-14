@@ -50,8 +50,3 @@ resetShellShock()
     self openCJ\playtime::addTimeUntil(self.shellShock_completedTime);
     self.shellShock_completedTime = undefined;
 }
-
-onStartDemo()
-{
-    self resetShellShock();
-}

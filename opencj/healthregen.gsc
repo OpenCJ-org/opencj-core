@@ -11,14 +11,6 @@ resetHealthRegen()
     self.health = self.maxHealth;
 }
 
-onStartDemo()
-{
-    self notify("stopHealthRegen");
-
-    self openCJ\playtime::addTimeUntil(self.healthRegen_completedTime);
-    self.healthRegen_completedTime = undefined;
-}
-
 onRunCreated()
 {
     self.healthRegen_completedTime = undefined;

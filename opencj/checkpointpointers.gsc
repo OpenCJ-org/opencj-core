@@ -57,11 +57,6 @@ onPlayerConnect()
         self objective_player_delete(i);
 }
 
-onStartDemo()
-{
-    self _hideCheckpointPointers();
-}
-
 onRunCreated()
 {
     self _hideCheckpointPointers(); // Showing them is triggered based on onCheckpointsChanged() instead

@@ -361,7 +361,7 @@ startDemo(demoID)
     self.demoReturn=state;
     self.checkpointContact=undefined;
     self openCJ\historySave::cancelPendingPage();
-    self openCJ\notifications::onStartDemo();
+    self openCJ\notifications::cancelAll();
     self.playingDemo=true;
     self openCJ\halfBeat::disableCorrection();
     self.demoExitRequested=false;
@@ -381,7 +381,6 @@ startDemo(demoID)
     self.demoMenuOpened=false;
     self demoDisplayStart();
     self.maxSpeed=0;
-    self openCJ\huds\hudSpeedometer::_hideSpeedometer();
     self selectPlaybackDemo(demoID);
     if(!isDefined(self.demoStyle))self.demoStyle=0;
     edited=self demoPlaybackStyle(self.demoStyle,self.demoBegin,self.demoEnd);
@@ -391,10 +390,6 @@ startDemo(demoID)
     self.demoLinker.origin=self.origin;
     self linkTo(self.demoLinker,"",(0,0,0),(0,0,0));
     self disableWeapons();
-    self openCJ\showRecords::onStartDemo();
-    self openCJ\checkpointPointers::onStartDemo();
-    self openCJ\huds\hudStatistics::onStartDemo();
-    self openCJ\huds\hudProgressBar::onStartDemo();
     self openCJ\buttonPress::resetButtons();
     if(getCodVersion()==4)
     {
@@ -854,7 +849,7 @@ syncDemoFPSHistory(target)
         if(isDefined(self.demoFPSFloor) && self.demoFPSFloor>floor)floor=self.demoFPSFloor;
         if(target<floor){self skipPlaybackFrames(target-(self skipPlaybackFrames(0)));self.fpsHistoryBatch=false;self openCJ\huds\hudFPSHistory::_hide();return;}
         if(frame.number<floor){self skipPlaybackFrames(floor-frame.number);frame=self _getDemoFrame(0,false);}
-        self openCJ\huds\hudFPSHistory::onDemoFrame(frame,false,false);
+        self openCJ\huds\hudFPSHistory::applyRecordedFrame(frame,false,false);
         if(frame.number>floor && !frame.onGround)
         {
             self.fpsHistoryTruncated=true;
@@ -866,7 +861,7 @@ syncDemoFPSHistory(target)
     {
         frame=self _getDemoFrame(1,self.demoStyle!=0);
         if(frame.number<=previous)break;
-        self openCJ\huds\hudFPSHistory::onDemoFrame(frame,frame.number==previous+1,false);
+        self openCJ\huds\hudFPSHistory::applyRecordedFrame(frame,frame.number==previous+1,false);
         self cacheDemoFPS(frame.number);
         previous=frame.number;
     }
@@ -978,7 +973,14 @@ demoMenuResponses()
 // Presentation only: do not alter spectator interpolation or recorded motion.
 demoDisplayStart()
 {
-    self openCJ\huds\hudTimeLimit::onStartDemo();
+    // Hide live-run overlays through the same operations used by other events.
+    // Do not dispatch gameplay events: viewing a recording must not change a run.
+    self openCJ\showRecords::hideForSpectators();
+    self openCJ\checkpointPointers::_hideCheckpointPointers();
+    self openCJ\huds\hudStatistics::hideForSpectators();
+    self openCJ\huds\hudProgressBar::_hideProgressBar();
+    self openCJ\huds\hudSpeedometer::_hideSpeedometer();
+    self openCJ\huds\hudTimeLimit::setPlaybackLayout(true);
     self demoMovementHudInMenu(isDefined(self.clipEdit) || isDefined(self.clipPreview));
     keys=getArrayKeys(self.hudSpeed);
     for(i=0;i<keys.size;i++)
@@ -1020,7 +1022,7 @@ demoDisplayStop()
 {
     // Playback returns without spawning, so explicitly clear its input overlay.
     self openCJ\huds\hudOnScreenKeyboard::_hideKeyboard();
-    self openCJ\huds\hudTimeLimit::onStopDemo();
+    self openCJ\huds\hudTimeLimit::setPlaybackLayout(false);
     self demoMovementHudInMenu(true);
     keys=getArrayKeys(self.hudSpeed);
     for(i=0;i<keys.size;i++)

@@ -19,7 +19,6 @@ onPlayerConnect()
     self _createPlayerNameHud();self _hidePlayerNameHud();
     if(!isDefined(self.nameAccepted))self onUserInfoChanged();
 }
-onStartDemo(){self _hidePlayerNameHud();}
 onPlayerLogin(){self.forcedName=undefined;}
 
 // GUID protects the connection before OpenCJ account login finishes; account ID

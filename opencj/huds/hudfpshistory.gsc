@@ -527,7 +527,6 @@ _separator(kind)
     wait 0.15;
     self _recordFPS(openCJ\fps::getShortFPS(self openCJ\fps::getCurrentFPS()));
 }
-onStartDemo(){self _clearFPSHistory();}
 onLoaded()
 {
     if(self openCJ\demos::isPlayingDemo())return;
@@ -591,57 +590,13 @@ _setFPSHistory(text)
     self _publish();
 }
 _addFPSHistory(text){self _setFPSHistory(appendFPSHistory(self.fpsHistoryText,text));}
-_setDemoFPSHistory(text)
-{
-    self _cancelPendingInput();
-    self.fpsHistoryEvents=[];
-    self.fpsHistoryText=appendFPSHistory("",text);self.fpsHistoryDetailedText=self.fpsHistoryText;
-    self _render(self);
-}
 _clearDemoFPSHistory()
 {
     self _resetHistory();
     if(!isDefined(self.fpsHistoryBatch) || !self.fpsHistoryBatch)self _hide();
 }
-clearAndSetDemoFPS(text){self _clearDemoFPSHistory();self _setDemoFPSHistory(text);}
-addDemoFPSHistory(text)
-{
-    if(self.fpsHistoryEvents.size>0){self _recordFPS(text);return;}
-    if(self.fpsHistoryText.size>0 && self.fpsHistoryText[self.fpsHistoryText.size-1]==text)return;
-    self _setDemoFPSHistory(appendFPSHistory(self.fpsHistoryText,text));
-}
-onDemoBounce(text)
-{
-    self thread _onDemoBounceThread(text);
-}
-_onDemoBounceThread(text)
-{
-    self endon("disconnect");self endon("fpshistory_clear");
-    if(self.fpsHistoryText=="")return;
-    self _action("bounce","",false);
-    marker=self.fpsHistoryEvents[self.fpsHistoryEvents.size-1];
-    self endon("fpshistory_fpschanged");wait 0.15;
-    // Legacy helper has already waited in wall time; it does not advance the
-    // recorded clock used by onDemoFrame.
-    marker.displayReady=true;
-    self _recordFPS(text);
-}
-onDemoLand()
-{
-    self thread _onDemoLandThread();
-}
-_onDemoLandThread()
-{
-    self endon("disconnect");self notify("fpshistory_ongroundchange");self endon("fpshistory_ongroundchange");
-    wait 2;self _clearDemoFPSHistory();
-}
-onDemoLeaveGround(text)
-{
-    self notify("fpshistory_ongroundchange");
-    self _beginHistory(text);
-}
-
-onDemoFrame(frame,sequential,interpolated)
+// Process recorded time, not wall time: slow motion, seeks and reverse use this same path.
+applyRecordedFrame(frame,sequential,interpolated)
 {
     if(interpolated)return;
     f=int(frame.forward)-int(frame.back);r=int(frame.right)-int(frame.left);

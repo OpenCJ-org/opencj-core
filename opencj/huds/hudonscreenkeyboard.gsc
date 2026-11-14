@@ -19,11 +19,6 @@ onInit()
     }
 }
 
-onStartDemo()
-{
-    //placeholder func
-}
-
 whileAlive()
 {
     spectators = getSpectatorList(false);

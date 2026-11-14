@@ -21,11 +21,6 @@ onCheckpointsChanged(checkpointPassed)
     self _updateProgressBar(false, checkpointPassed);
 }
 
-onStartDemo()
-{
-    self _hideProgressBar();
-}
-
 onSpawnPlayer()
 {
     self _updateProgressBar(false);

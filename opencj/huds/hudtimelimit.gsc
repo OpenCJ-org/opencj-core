@@ -5,15 +5,12 @@ onPlayerConnect()
         self.hudTimeLimit = newClientHudElem(self);
         self.hudTimeLimit.alpha = 0;
         self.hudTimeLimit.foreground = true;
-        self.hudTimeLimit.alignx = "center";
         self.hudTimeLimit.aligny = "bottom";
-        self.hudTimeLimit.x = 0;
-        self.hudTimeLimit.y = -12; // Above progress bar
-        self.hudTimeLimit.horzalign = "center";
         self.hudTimeLimit.vertalign = "bottom";
         self.hudTimeLimit.color = (1.0, 1.0, 1.0);
         self.hudTimeLimit.fontscale = 1.4;
         self.hudTimeLimit.archived = false;
+        self setPlaybackLayout(false);
 
         // The HUD itself is just a timer counting down the level time
         self thread _updateTimer();
@@ -91,19 +88,14 @@ _updatePlayerTimers()
     }
 }
 
-onStartDemo()
+// Playback moves the level timer clear of the toolbar; gameplay uses its normal position.
+setPlaybackLayout(playback)
 {
-    self.hudTimeLimit.horzalign = "right";
-    self.hudTimeLimit.alignx = "right";
-    self.hudTimeLimit.x = -8;
-    self.hudTimeLimit.y = -74;
+    align = "center"; x = 0; y = -12;
+    if(playback){align = "right"; x = -8; y = -74;}
+    self.hudTimeLimit.horzalign = align;
+    self.hudTimeLimit.alignx = align;
+    self.hudTimeLimit.x = x;
+    self.hudTimeLimit.y = y;
     self.hudTimeLimit.hideWhenInMenu = false;
-}
-
-onStopDemo()
-{
-    self.hudTimeLimit.horzalign = "center";
-    self.hudTimeLimit.alignx = "center";
-    self.hudTimeLimit.x = 0;
-    self.hudTimeLimit.y = -12;
 }
