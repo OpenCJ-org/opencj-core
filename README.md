@@ -112,3 +112,13 @@ dependency is constrained to discord.py 2.x; this bridge still needs a live test
 `docker compose --profile discord down` stops all services while preserving data.
 
 ## Map screenshots and preview assets
+
+## Database safety
+
+The database uses the existing external Docker volume opencj-dev_database.
+On a fresh development host, run docker volume create opencj-dev_database before
+starting Compose. Never replace an existing deployment's volume with an empty one.
+
+Use server-db/tools/migrate.py and tools/runtime_access.py for migrations and
+permissions. scripts/backup.py creates and restore-tests an on-demand backup.
+See docs/database-safety.md; no backup schedule is installed.

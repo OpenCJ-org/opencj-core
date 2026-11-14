@@ -861,7 +861,7 @@ networkDiscoveryTest(points)
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoChunks VALUES("+run[0][0]+",0,'rename fixture')");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoWinners(mapID,routeID,FPSMode,modeMask,kind,runID) VALUES("+openCJ\mapID::getMapID()+","+routeID+",'mix',0,'speedrun',"+run[0][0]+")");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges(challengeKey,tier,points,mapID,routeLabel,routeHint,routeID) VALUES('rename.fixture',1,10,"+openCJ\mapID::getMapID()+",'Old label','flow_easy',"+routeID+")");
-    openCJ\mySQL::mysqlSyncQuery("INSERT INTO challengeCompletions(playerID,challengeKey,runID) VALUES("+player[0][0]+",'rename.fixture',"+run[0][0]+")");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO challengeCompletions(playerID,challengeKey,runID,pointsAwarded) VALUES("+player[0][0]+",'rename.fixture',"+run[0][0]+",0)");
     check(bot openCJ\checkpointNetwork::rename("flow_root","flow_combined"),"rename shared opening succeeds");
     n=bot openCJ\checkpointNetwork::load();check(n.root=="flow_combined"&&isDefined(n.paths["flow_easy"])&&isDefined(n.paths["flow_hard"]),"opening rename leaves separate route names unchanged");
     check(bot openCJ\checkpointNetwork::rename("flow_easy","flow_regular"),"rename recorded route succeeds");
@@ -911,6 +911,8 @@ networkDiscoveryTest(points)
     openCJ\mySQL::mysqlSyncQuery("DELETE FROM challenges WHERE challengeKey='rename.fixture'");
     openCJ\mySQL::mysqlSyncQuery("DELETE FROM demoWinners WHERE runID="+run[0][0]);
     openCJ\mySQL::mysqlSyncQuery("DELETE FROM demoRuns WHERE runID="+run[0][0]);
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM checkpointStatistics WHERE runID="+run[0][0]);
+    openCJ\mySQL::mysqlSyncQuery("DELETE FROM playerSaves WHERE runID="+run[0][0]);
     openCJ\mySQL::mysqlSyncQuery("DELETE FROM playerRuns WHERE runID="+run[0][0]);
     fixtures="'flow_root','flow_combined','flow_easy','flow_regular','flow_hard'";
     cleanup=openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE draftName IN ("+fixtures+")");

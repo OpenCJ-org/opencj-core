@@ -123,3 +123,5 @@ services:
 
 volumes:
   database:
+    external: true
+    name: ${DATABASE_VOLUME:-opencj-dev_database}

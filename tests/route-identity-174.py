@@ -91,6 +91,8 @@ try:
  report["recordCategoryChecks"]=record72.verify(sql)
  check(report["recordCategoryChecks"]==36,"all 36 exact-mode record comparisons pass with route IDs")
  sql((ROOT/"server-db/migrations/020-database-cleanup.sql").read_text())
+ for followup in ["021-history-protection.sql","022-checkpoint-statistics.sql","023-earned-rewards.sql"]:
+  sql((ROOT/"server-db/migrations"/followup).read_text())
  # Full GSC compilation plus real CPC publishing/renaming, against this DB only.
  db("CREATE USER 'fixture'@'%' IDENTIFIED BY '"+password+"';GRANT ALL ON "+database+".* TO 'fixture'@'%';")
  mod=home/"mods/opencj";mod.mkdir(parents=True)

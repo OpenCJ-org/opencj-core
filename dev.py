@@ -91,7 +91,7 @@ def initialize(args):
     env = HERE / ".env"
     env.write_text("".join(f"{key}={dotenv(value)}\n" for key, value in settings.items()), encoding="utf-8")
     env.chmod(0o600)
-    print("Initialized. Next: python3 dev.py build, then python3 dev.py up")
+    print("Initialized. Create the external data volume with docker volume create opencj-dev_database, then run python3 dev.py build and python3 dev.py up.")
 
 
 def main():

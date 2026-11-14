@@ -120,6 +120,8 @@ try:
  record72=importlib.util.module_from_spec(spec);spec.loader.exec_module(record72)
  report["recordCategoryChecks"]=record72.verify(sql)
  check(report["recordCategoryChecks"]==36,"all exact-mode record comparisons remain valid")
+ for followup in ["021-history-protection.sql","022-checkpoint-statistics.sql","023-earned-rewards.sql"]:
+  sql((ROOT/"server-db/migrations"/followup).read_text())
  # Full GSC compilation plus real CPC publishing/renaming, against this DB only.
  db("CREATE USER 'fixture'@'%' IDENTIFIED BY '"+password+"';GRANT ALL ON "+database+".* TO 'fixture'@'%';")
  mod=home/"mods/opencj";mod.mkdir(parents=True)
