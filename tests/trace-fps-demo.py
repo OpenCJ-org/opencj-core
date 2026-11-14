@@ -81,7 +81,7 @@ main()
         frame=player openCJ\demos::_getDemoFrame(skip,true);
         level.fpsTraceFrame=frame.number;level.fpsTraceTime=tick*50;
         printf("FPS LIVE INPUT\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+int(frame.forward)+"\t"+int(frame.back)+"\t"+int(frame.left)+"\t"+int(frame.right)+"\t"+int(frame.onGround)+"\t"+frame.FPS+"\t"+int(frame.bounce)+"\n");
-        player openCJ\huds\hudFPSHistory::onDemoFrame(frame,!first && frame.number==previous+1,false);
+        player openCJ\huds\hudFPSHistory::applyRecordedFrame(frame,!first && frame.number==previous+1,false);
         if(!isDefined(player.fpsTraceDetailed) || player.fpsTraceDetailed!=player.fpsHistoryDetailedText)
         {
             printf("FPS DETAILED HUD\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+player.fpsHistoryDetailedText+"\n");

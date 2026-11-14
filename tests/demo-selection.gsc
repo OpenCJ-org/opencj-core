@@ -5,7 +5,7 @@ run()
     level.demoCache=[];
     cp=spawnStruct();cp.id=17;cp.origin=(0,0,100);cp.radius=100;cp.onGround=false;
     cp.hasChildren=true;cp.endCheckpoints=[];
-    easy=spawnStruct();easy.ender="easy";hard=spawnStruct();hard.ender="hard";
+    easy=spawnStruct();easy.finishRouteID=11;hard=spawnStruct();hard.finishRouteID=12;
     cp.endCheckpoints[0]=easy;cp.endCheckpoints[1]=hard;
     sibling=spawnStruct();sibling.id=19;sibling.origin=cp.origin;sibling.radius=100;
     sibling.onGround=false;sibling.bigBrother=cp;
@@ -14,7 +14,7 @@ run()
     self setOrigin(cp.origin);self.route="unrelated";self.checkpoints_checkpoint=stale;
     location=self openCJ\demos::selectionLocation();
     check(location.checkpoints.size==1,"overlapping pieces normalize to one checkpoint");
-    check(isDefined(location.routes["easy"]) && isDefined(location.routes["hard"]),"shared checkpoint includes both routes");
+    check(isDefined(location.routes["11"]) && isDefined(location.routes["12"]),"shared checkpoint includes both routes");
     check(!isDefined(location.routes["unrelated"]),"stale route is excluded");
     check(self.route=="unrelated" && self.checkpoints_checkpoint==stale,"location lookup preserves progress");
 

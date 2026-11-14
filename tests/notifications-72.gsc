@@ -122,7 +122,7 @@ main()
     check(!isDefined(p.notificationResultRun) && !p.notificationFlashResult && isDefined(p.notificationFlashRight),"load cancels result window and returns to edge feedback");
     p openCJ\notifications::cancelFlash();
     p openCJ\notifications::beginResults(1002);
-    p openCJ\notifications::onStartDemo();
+    p openCJ\notifications::cancelAll();
     check(!isDefined(p.notificationFlash) && !isDefined(p.notificationResultRun),"demo entry cancels active finish emphasis");
     p.playingDemo=true;p openCJ\notifications::beginResults(1002);
     check(!isDefined(p.notificationFlash),"demo playback cannot start result flash");
