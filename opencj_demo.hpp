@@ -78,8 +78,11 @@ void Gsc_Demo_UploadChunk();
 void Gsc_Demo_Pin();
 void Gsc_Demo_Unpin();
 
+void Gsc_Demo_SetTechnique(int client);
+void Gsc_Demo_TechniqueFallback(int client);
 
 void Gsc_Demo_CopyHistory();
 void Gsc_Demo_RangeInfo();
 
+void Gsc_Demo_TechniquePhase(int client);
 void Gsc_Demo_ReadFrame_Checkpoint(int client);

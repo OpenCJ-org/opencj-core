@@ -7,6 +7,7 @@
  **************************************************************************/
 
 #include "opencj_demo_fps.hpp"
+#include "opencj_demo_technique.hpp"
 #include "mysql_async_pool.hpp"
 #include <chrono>
 #include "shared.hpp"
@@ -208,6 +209,84 @@ static unsigned long long demoGeneration=0;
 
 static bool Base_Gsc_IsValidClientNum(int clientNum);
 
+// One transformed sample per viewer, never another copy of the full recording.
+struct DemoTechniqueState {
+    int mode,index;
+    unsigned long long generation;
+    bool valid,fallback;
+    sDemoFrame_t frame;
+    CJ_DemoSection section;
+    unsigned long long sectionGeneration;
+    int sectionSize;
+};
+static DemoTechniqueState demoTechnique[MAX_CLIENTS];
+static sDemoFrame_t &techniqueFrame(int client,const sDemo_t &demo,int index)
+{
+    DemoTechniqueState &state=demoTechnique[client];
+    if(state.valid && state.generation==demo.generation && state.index==index)return state.frame;
+    state.frame=demo.pDemoFrames[index];state.generation=demo.generation;state.index=index;
+    state.valid=true;state.fallback=false;
+    if(!state.mode)return state.frame;
+    auto read=[&](int i) {
+        const sDemoFrame_t &f=demo.pDemoFrames[i];
+        bool excluded=(f.flags&(128|256))!=0;
+        return CJ_DemoInput{int(bool(f.flags&4))-int(bool(f.flags&8)),
+            int(bool(f.flags&2))-int(bool(f.flags&1)),bool(f.flags&8192),f.loadNow,excluded,f.rpgNow};
+    };
+    if(state.sectionGeneration!=demo.generation || state.sectionSize!=demo.size ||
+       index<state.section.begin || index>=state.section.end)
+    {
+        state.section=CJ_AnalyzeDemoTechnique(demo.size,index,read);
+        state.sectionGeneration=demo.generation;state.sectionSize=demo.size;
+    }
+    CJ_DemoTechnique result=CJ_ApplyDemoTechnique(index,state.mode,read(index),state.section);
+    state.fallback=result.fallback;
+    state.frame.flags=(state.frame.flags&~15)|(result.forward>0?4:result.forward<0?8:0)|
+        (result.right>0?2:result.right<0?1:0);
+    auto camera=[&](int i) {
+        const CJ_DemoInput input=read(i);
+        const bool outside=i<state.section.begin || i>=state.section.end;
+        CJ_DemoTechnique view=CJ_ApplyDemoTechnique(i,state.mode,input,state.section);
+        // Shot aiming is a short camera-only flick, independent of the general
+        // strafe smoothing and the converted keys.
+        const bool locked=outside || input.ground || input.excluded || view.fallback;
+        return CJ_DemoCameraSample{demo.pDemoFrames[i].angles[1],locked?0:view.yawOffset,input.cut,locked,input.shot};
+    };
+    state.frame.angles[1]=std::remainder(CJ_SmoothDemoYaw(demo.size,index,camera),360.0f);
+    return state.frame;
+}
+void Gsc_Demo_SetTechnique(int client)
+{
+    if(Base_Gsc_IsValidClientNum(client))return;
+    int mode;
+    if(!stackGetParams("i",&mode) || mode<0 || mode>3){stackPushBool(false);return;}
+    demoTechnique[client].mode=mode;demoTechnique[client].valid=false;
+    demoFPSText[client].clear();
+    stackPushBool(true);
+}
+void Gsc_Demo_TechniqueFallback(int client)
+{
+    if(Base_Gsc_IsValidClientNum(client))return;
+    const sDemoPlayback_t &play=opencj_playback[client];
+    if(!play.pDemo || !play.pDemo->size){stackPushBool(false);return;}
+    techniqueFrame(client,*play.pDemo,play.selectedFrame);
+    stackPushBool(demoTechnique[client].fallback);
+}
+
+
+void Gsc_Demo_TechniquePhase(int client)
+{
+    if(Base_Gsc_IsValidClientNum(client))return;
+    const sDemoPlayback_t &play=opencj_playback[client];
+    if(!play.pDemo || !play.pDemo->size){stackPushInt(0);return;}
+    techniqueFrame(client,*play.pDemo,play.selectedFrame);
+    const auto &state=demoTechnique[client];
+    const auto &section=state.section;
+    if(!state.mode || state.fallback || !section.style){stackPushInt(0);return;}
+    int mode=state.mode;
+    if((mode==2 || mode==3) && play.selectedFrame<section.takeoffEnd)mode=1;
+    stackPushInt((mode<<4)|(section.anchorF>0?4:8)|(section.anchorR>0?2:1));
+}
 void Gsc_Demo_ReadFrame_Checkpoint(int client)
 {
     if(Base_Gsc_IsValidClientNum(client))return;
@@ -275,6 +354,7 @@ static void clearDemoById(int demoId)
 static void clearAllDemos()
 {
     for(int i=0;i<MAX_CLIENTS;++i){demoFPSText[i].clear();std::vector<int>().swap(demoPlaybackTimeline[i]);}
+    memset(demoTechnique,0,sizeof(demoTechnique));
     printf("Clearing all demos\n");
 #ifdef COD4
     for(int i=0;i<MAX_CLIENTS;++i){delete demoReturnVisual[i];demoReturnVisual[i]=nullptr;}
@@ -793,6 +873,7 @@ void Gsc_Demo_SelectPlaybackDemo(int playerId)
     // Clear the player's current playback state
     sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     pPlayback->selectedFrame = 0;
+    demoTechnique[playerId].valid=false;
     std::vector<int>().swap(demoPlaybackTimeline[playerId]);
     demoFPSText[playerId].clear();
     pPlayback->pDemo = findDemoById(demoId);
@@ -887,7 +968,7 @@ void Gsc_Demo_ReadFrame_Flags(int playerId)
     }
     else
     {
-        const sDemoFrame_t *pDemoFrame = &pDemo->pDemoFrames[pPlayback->selectedFrame];
+        const sDemoFrame_t *pDemoFrame = &techniqueFrame(playerId,*pDemo,pPlayback->selectedFrame);
         stackPushInt(pDemoFrame->flags);
     }
 }
@@ -921,7 +1002,7 @@ void Gsc_Demo_ReadFrame_Angles(int playerId)
     }
     else
     {
-        sDemoFrame_t *pDemoFrame = &pDemo->pDemoFrames[pPlayback->selectedFrame]; // CoD2 stock Scr_AddVector doesn't like const here
+        sDemoFrame_t *pDemoFrame = &techniqueFrame(playerId,*pDemo,pPlayback->selectedFrame); // CoD2 stock Scr_AddVector doesn't like const here
         stackPushVector(pDemoFrame->angles);
     }
 }
@@ -1402,7 +1483,7 @@ static void applyDemoBodyEvent(DemoBody &body, playerState_t &pose, int event, i
 }
 static void applyDemoBody(int client, const sDemo_t &demo, int index)
 {
-    const sDemoFrame_t &frame=demo.pDemoFrames[index];
+    const sDemoFrame_t &frame=techniqueFrame(client,demo,index);
     playerState_t &ps=*SV_GameClientNum(client);
     DemoBody &body=demoPresentedBody[client];
     // Older demos never stored body animation indices. Select stock locomotion
@@ -1660,6 +1741,7 @@ void Gsc_Demo_EndPresentation(int client)
 {
 #ifdef COD4
     if(Base_Gsc_IsValidClientNum(client))return;
+    demoTechnique[client]={};
     playerState_t *saved=demoReturnVisual[client];if(!saved)return;
     playerState_t &ps=*SV_GameClientNum(client);
     g_entities[client].client->bFrozen=demoReturnFrozen[client];
