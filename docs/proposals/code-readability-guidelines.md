@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.5 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.6 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -162,14 +162,31 @@ Explain the reason and consequence, not a translation of the next statement.
 For example: "Read metadata after taking the map lock so a concurrent route
 rename cannot publish stale ownership."
 
+Strongly encourage a brief purpose summary for nontrivial functions. Explain
+what the function does and any important effects beyond its return value, so
+a reader can understand its scope before reading the body. This is an urged
+practice, not merely permission to add a comment. Small, obvious helpers do
+not need a compulsory summary.
+
 A function contract may explain inputs, outputs, side effects, and failures;
 a local comment should explain a local decision. Issue numbers are supporting
 references, not substitutes for the explanation. Update comments with behavior.
 Remove stale explanations and commented-out implementations when deliberately
 cleaning that area; keep historical code in Git.
 
+Prefer simple language in comments: familiar words, direct sentences, and
+concrete explanations of what can happen and why it matters. Avoid unnecessary
+jargon and abstract wording. Use technical terms when they help accuracy,
+explaining unfamiliar ones where needed. Do not invent a reason for a limit or
+workaround; investigate when the reason is unknown.
+
 There is no comment quota and no requirement to narrate obvious code. Improve
 names and structure before using comments to compensate for them.
+
+Discussion decision, 2026-11-14: the user agreed to reason/constraint comments
+and urged brief purpose summaries for nontrivial functions, rather than merely
+allowing them. The user also explicitly requested simple language in comments.
+All guidelines remain inactive.
 
 ### R6. Make interfaces, state transitions, and failure meanings explicit
 
