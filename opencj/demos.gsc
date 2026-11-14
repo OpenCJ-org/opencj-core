@@ -228,7 +228,7 @@ playRun(id,full,kind,selectedRange)
     if(!self canWatch())return;
     self sendLocalChatMessage("Loading demo...");
     if(!isDefined(full))full=true;
-    meta=self openCJ\mySQL::mysqlAsyncRead("SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerDisplayNames p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID) FROM demoRuns WHERE ready=1 AND mapID="+openCJ\mapID::getMapID()+" AND runID="+id);
+    meta=self openCJ\mySQL::mysqlAsyncRead("SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerDisplayNames p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID),(SELECT routeName FROM routes WHERE routeID=demoRuns.routeID),FPSMode,explosiveJumps FROM demoRuns WHERE ready=1 AND mapID="+openCJ\mapID::getMapID()+" AND runID="+id);
     if(!isDefined(meta)||!meta.size)
     {
         self sendLocalChatMessage("This run has no retained demo.",true);
@@ -261,6 +261,9 @@ playRun(id,full,kind,selectedRange)
     self.demoPendingId=undefined;
     self.demoAuthor=meta[0][3];
     if(!isDefined(self.demoAuthor) || self.demoAuthor=="")self.demoAuthor="Unknown player";
+    self.demoKind=kind;
+    self.demoRouteName=meta[0][4];
+    self.demoDetails=meta[0][4]+" | "+runModeLabel(meta[0][5],int(meta[0][1]))+" | Run: "+meta[0][6]+" RPG jumps";
     self.demoStyle=0;
     if(kind=="lowrpg")self.demoStyle=1;
     else if(kind=="walkthrough")self.demoStyle=2;
@@ -586,6 +589,7 @@ whilePlayingDemo()
             if (isDefined(sound))self playLocalSound(sound);
         }
     }
+    self openCJ\clips::onPresented();
     if (!isInterpolatedFrame)self.demoLastPresentedFrame = currFrame.number;
     if(!isDefined(self.clipEdit))
         self openCJ\huds\hudOnScreenKeyboard::showKeyboardDemo(currFrame.forward, currFrame.back, currFrame.left, currFrame.right, currFrame.jump, currFrame.sprint);
@@ -908,6 +912,12 @@ demoTime(frame)
 
 demoUpdateOverlay()
 {
+    checkpointText=self demoCheckpointText();
+    if(!isDefined(self.demoCheckpointText) || self.demoCheckpointText!=checkpointText)
+    {
+        self.demoCheckpointText=checkpointText;
+        self setClientCvar("opencj_demo_checkpoint",checkpointText);
+    }
     frame=self skipPlaybackFrames(0);
     status="PLAY";if(self.demoRate<0)status="REVERSE";
     if(self.playbackPaused)status="PAUSED";
@@ -990,7 +1000,7 @@ demoDisplayStart()
     if(getCodVersion()!=4)return;
     self setClientCvar("cg_drawSpectatorMessages",0);
     self.demoCaption=[];
-    for(i=0;i<2;i++)
+    for(i=0;i<3;i++)
     {
         hud=newClientHudElem(self);
         hud.archived=true;hud.foreground=true;hud.hideWhenInMenu=false;
@@ -999,6 +1009,8 @@ demoDisplayStart()
         hud.x=0;hud.y=8+i*16;hud.font="objective";hud.fontScale=1.4;hud.alpha=1;
         self.demoCaption[i]=hud;
     }
+    author="Unknown player";
+    if(isDefined(self.demoAuthor))author=self.demoAuthor;
     if(isDefined(self.clipEdit))
     {
         self.demoCaption[0] setText("EDITING CLIP");
@@ -1006,16 +1018,20 @@ demoDisplayStart()
     }
     else if(isDefined(self.clipDescription))
     {
-        self.demoCaption[0] setText("VIEWING CLIP");
+        self.demoCaption[0] setText("CLIP by "+author);
         self.demoCaption[1] setText(self.clipDescription);
     }
     else
     {
-        self.demoCaption[0] setText("VIEWING DEMO");
-        author="Unknown player";
-        if(isDefined(self.demoAuthor))author=self.demoAuthor;
-        self.demoCaption[1] setText(author);
+        kind="SPEEDRUN";
+        if(isDefined(self.demoKind) && self.demoKind=="walkthrough")kind="WALKTHROUGH";
+        else if(isDefined(self.demoKind) && self.demoKind=="lowrpg")kind="LOW RPG";
+        self.demoCaption[0] setText(kind+" by "+author);
+        if(isDefined(self.demoDetails))self.demoCaption[1] setText(self.demoDetails);
     }
+    if(isDefined(self.clipDescription))
+        self.demoCaption[2] setText(rangeLabel(demoRangeInfo(self.demoID,self.demoBegin,self.demoEnd)));
+
 }
 
 demoDisplayStop()
@@ -1033,7 +1049,7 @@ demoDisplayStop()
     if(isDefined(self.demoCaption))
         for(i=0;i<self.demoCaption.size;i++)self.demoCaption[i] destroy();
     self.demoCaption=undefined;
-    self.demoAuthor=undefined;
+    self.demoAuthor=undefined;self.demoDetails=undefined;self.demoKind=undefined;self.demoRouteName=undefined;
     self setClientCvar("cg_drawSpectatorMessages",1);
 }
 
@@ -1063,4 +1079,51 @@ spectatorCaption()
         self.demoSpectatorCaption=playback;
         self setClientCvar("cg_drawSpectatorMessages",int(!playback));
     }
+}
+
+// These labels describe the original run's rules, never the viewing technique.
+runModeLabel(fps,mask)
+{
+    text=fps+" FPS | CP";
+    if(mask&1)text=fps+" FPS | Any%";
+    if(mask&2)text+=" / Ele";
+    if(mask&4)text+=" / HB";
+    if(mask&8)text+=" / TAS";
+    return text;
+}
+
+rangeLabel(info)
+{
+    if(!isDefined(info))return "Recording details unavailable";
+    fps="?";if(info[1]==0)fps="125";else if(info[1]==1)fps="Mix";else if(info[1]==2)fps="Hax";
+    ele="Ele unknown";if(info[2]==0)ele="No ele";else if(info[2]==1)ele="Ele";
+    return info[0]+" RPG shots | "+fps+" FPS | "+ele;
+}
+
+// Use the demo's recorded CP and selected route, including shared checkpoints.
+// Nothing here reads or changes the viewer's own run.
+demoCheckpointText()
+{
+    if(!isDefined(self.demoCheckpointed) || !self.demoCheckpointed ||
+       !isDefined(self.demoRouteName) || !isDefined(level.routeEnders))return "";
+    enders=level.routeEnders[self.demoRouteName];
+    if(!isDefined(enders))return "";
+    cpID=self readPlaybackFrame_checkpoint();
+    if(!isDefined(cpID))return "";
+    total=undefined;
+    for(i=0;i<enders.size;i++)
+    {
+        depth=enders[i].checkpointsFromStart;
+        if(isDefined(depth) && (!isDefined(total) || depth>total))total=depth;
+    }
+    if(!isDefined(total) || total<=0)return "";
+    passed=0;
+    if(cpID>0)
+    {
+        cp=openCJ\checkpoints::getCheckpointByID(cpID);
+        if(!isDefined(cp))return "";
+        passed=cp.checkpointsFromStart;
+        if(!isDefined(passed) || passed>total)return "";
+    }
+    return "Checkpoint "+passed+" / "+total;
 }
