@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.6 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.7 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -205,6 +205,14 @@ All guidelines remain inactive.
 Use the simplest representation compatible with the existing language, ABI,
 and project. This is not a mandate to migrate C++ libraries or replace working
 resource-management conventions. If a low-level pattern is required, explain it.
+
+Discussion decision, 2026-11-14: for shared interfaces with multiple easily
+confused choices, prefer distinct named option types where the language supports
+them. For example, `ScopeMatch::Prefix` and `CompletionHandling::Discard`
+make the two cancellation choices clear at a call site. Named Boolean variables
+remain acceptable for simpler local code. Use appropriate language features,
+such as keyword arguments, when they provide equivalent clarity. Do not add a
+class or framework around every function. All guidelines remain inactive.
 
 ### R7. Give numbers and positional data meaning
 
