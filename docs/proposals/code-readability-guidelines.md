@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.7 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.8 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -223,11 +223,20 @@ the source of non-obvious values.
 Decode database columns, packet fields, and positional tuples at a clear
 boundary into named variables or an existing suitable structure. Avoid carrying
 unexplained `row[10]` or `state == 2` expressions through domain logic.
-Keep field order and binary representation unchanged.
+
+For readability-only changes, preserve behavior and the meaning of existing
+data. Changes to numeric values or data layouts must be deliberate, with
+affected readers, writers, and stored data handled together where necessary.
 
 Do not replace every 0, 1, coordinate component, or ordinary arithmetic constant
 with a name. A constant is useful when its name communicates domain meaning;
 `VALUE_16777215` does not improve understanding.
+
+Discussion decision, 2026-11-14: the user approved this rule with the revised
+wording above. Preserving existing data meaning applies to readability-only
+cleanup; deliberate functional or data-format changes remain possible when
+part of the requested work, with the necessary updates and compatibility
+handling. All guidelines remain inactive.
 
 ### R8. Preserve a coherent local style without copying its weaknesses
 
