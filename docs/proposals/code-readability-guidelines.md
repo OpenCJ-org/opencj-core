@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.2 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.3 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -68,10 +68,21 @@ A name passes review when the reader can tell:
 
 Use verb phrases for functions that perform an action, and predicates for
 Boolean questions. Avoid names such as `process`, `handle`, or `data`
-when a more specific name would describe the responsibility. Short names are
-fine for a tiny conventional scope: loop indices, coordinates, or a standard
-mathematical formula. Do not rename an external interface just to satisfy this
-rule; give it a meaningful local name where useful.
+when a more specific name would describe the responsibility.
+
+Discussion clarification, 2026-11-14: conventional mathematical names,
+coordinates, and simple local loop indices are acceptable when their role is
+already clear in context. Being mathematical, familiar to the author, or used
+in a short function is not sufficient by itself. Prefer a descriptive name
+when it makes the value's role appreciably clearer. In `smoothstep`, use
+`interpolation_factor` rather than `t`: the descriptive name explains what the
+parameter represents even though the function is short.
+
+For example, `x` and `y` in a coordinate calculation or `i` in a simple local
+loop may remain short. Assess the meaning conveyed at the use site, not merely
+whether a symbol is conventional somewhere in mathematics. Do not rename an
+external interface just to satisfy this rule; give it a meaningful local name
+where useful. This clarification does not activate any guideline.
 
 ### R3. Make expressions readable without mental execution
 
