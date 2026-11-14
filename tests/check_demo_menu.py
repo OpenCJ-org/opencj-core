@@ -59,14 +59,14 @@ def check_layout(source):
     names=["previous","pause","resume","next","direction_forward","direction_reverse","exit"]
     speeds=[n for n in controls if n.startswith("speed_")]
     assert len(speeds)==10,"Five speed choices, each with selected/unselected states"
-    names+=speeds
+    names+=speeds+["technique"]
     # The stock linker parses origin offsets as integers (449.5 -> 449).
     row_y=controls["pause"]["rect"][1]
     assert row_y in (449,449.5)
     for name in names:
         control=controls[name];x,y,w,h=control["rect"]
         assert y+h/2==461.5 and 8<=x and x+w<=632,(name,control["rect"])
-        if name not in ("previous","pause","resume","next"):assert control["text"],name+" must own its visible label"
+        if name not in ("previous","pause","resume","next","technique"):assert control["text"],name+" must own its visible label"
         assert re.search(r'\btype\s+(?:ITEM_TYPE_BUTTON|1)\b',control["block"]),name
     pairs={frozenset(["pause","resume"]),frozenset(["direction_forward","direction_reverse"])}
     pairs.update(frozenset([name,name+"_selected"]) for name in speeds if not name.endswith("_selected"))
@@ -85,10 +85,15 @@ def check_layout(source):
         block=controls[name]["block"]
         assert re.search(r"textalignx\s+-1(?:\s|$)",block),name
         assert re.search(r"textaligny\s+-1.5(?:\s|$)",block),name
-    assert re.search(r"textaligny\s+17.5",controls["status"]["block"])
+    assert re.search(r"textaligny\s+10",controls["status"]["block"])
+    assert controls["checkpoint"]["rect"]==(96,464.5,116,12)
     assert re.search(r"textalignx\s+-0.5",controls["exit"]["block"])
     # Status must retain its own space; invisible counterparts are the only overlap.
-    names+=["status"]
+    assert controls["status"]["rect"]==(96,450.5,116,12)
+    assert controls["technique"]["rect"]==(536,449.5,46,24)
+    assert 'setdvar opencj_demo_hint "Switch viewing technique' in controls["technique"]["block"]
+    assert 'setdvar opencj_demo_hint ""' in controls["technique"]["block"]
+    names+=["status","checkpoint"]
     for i,a in enumerate(names):
         ax,ay,aw,ah=controls[a]["rect"]
         for b in names[i+1:]:
