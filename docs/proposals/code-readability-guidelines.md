@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.4 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.5 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -137,6 +137,15 @@ domain rule, or makes a difficult boundary understandable. Do not scatter a
 straightforward sequence among trivial forwarding helpers, introduce a generic
 framework for one case, or split code merely to satisfy a size metric. Prefer
 existing project facilities when they fit.
+
+Discussion decision, 2026-11-14: the user approved extracting a meaningful
+operation even when it is short and has only one caller. For example, a
+`register_material` helper can own manifest reading, duplicate prevention,
+and writing while `build` coordinates asset creation. Reuse is not a
+prerequisite. Avoid helpers that merely rename an obvious assignment or
+forward a call without adding useful domain meaning. The existing `succeeds`
+helper is useful because it names the publication-result convention. This
+records agreement on the draft only; all guidelines remain inactive.
 
 ### R5. Explain non-obvious reasons and constraints near the code
 
