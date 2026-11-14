@@ -3,6 +3,8 @@
 onInit()
 {
     if(getCodVersion()==4)precacheMenu("opencj_demo");
+    openCJ\commands_base::registerCommand("view","Watch a fixed copy of a player\'s current run history. Usage: !view <player>",::_viewHistory,1,undefined,0);
+    openCJ\settings::addSettingBool("sharehistory",true,"Allow others to view your current run history. Usage: !sharehistory on|off",::_shareHistory);
     clearAllDemos();
     level.demoCache = [];
     openCJ\demoRecording::onInit();
@@ -618,8 +620,9 @@ whilePlayingDemo()
 
 _endOfDemo()
 {
-    if(self.demoRate<0)
+    if(self.demoRate<0 || (isDefined(self.demoKind) && self.demoKind=="history"))
     {
+        self.demoLoopPending=false;
         self.playbackPaused=true;
         self.demoStepRemainder=0;
         self demoUpdateOverlay();
@@ -932,7 +935,11 @@ demoUpdateOverlay()
     timing=self demoPlaybackTime(self.demoBegin,self.demoEnd);
     if(isDefined(timing)){elapsed=timing[0];duration=timing[1];}
     text=demoTime(elapsed)+" / "+demoTime(duration);
-    if(self.playbackPaused)text="Paused  "+text;
+    if(self.playbackPaused)
+    {
+        if(isDefined(self.demoKind) && self.demoKind=="history" && frame==self.demoEnd)text="End  "+text;
+        else text="Paused  "+text;
+    }
     if(isDefined(self.clipEdit))
     {
         count=numberOfDemoFrames(self.demoID);
@@ -1011,7 +1018,12 @@ demoDisplayStart()
     }
     author="Unknown player";
     if(isDefined(self.demoAuthor))author=self.demoAuthor;
-    if(isDefined(self.clipEdit))
+    if(isDefined(self.demoHistorySource))
+    {
+        self.demoCaption[0] setText("VIEWING "+author+"^7's RUN HISTORY");
+        self.demoCaption[1] setText("Fixed copy");
+    }
+    else if(isDefined(self.clipEdit))
     {
         self.demoCaption[0] setText("EDITING CLIP");
         self.demoCaption[1] setText(self.name);
@@ -1049,7 +1061,7 @@ demoDisplayStop()
     if(isDefined(self.demoCaption))
         for(i=0;i<self.demoCaption.size;i++)self.demoCaption[i] destroy();
     self.demoCaption=undefined;
-    self.demoAuthor=undefined;self.demoDetails=undefined;self.demoKind=undefined;self.demoRouteName=undefined;
+    self.demoAuthor=undefined;self.demoDetails=undefined;self.demoKind=undefined;self.demoRouteName=undefined;self.demoHistorySource=undefined;
     self setClientCvar("cg_drawSpectatorMessages",1);
 }
 
@@ -1098,6 +1110,71 @@ rangeLabel(info)
     fps="?";if(info[1]==0)fps="125";else if(info[1]==1)fps="Mix";else if(info[1]==2)fps="Hax";
     ele="Ele unknown";if(info[2]==0)ele="No ele";else if(info[2]==1)ele="Ele";
     return info[0]+" RPG shots | "+fps+" FPS | "+ele;
+}
+
+_viewHistory(args)
+{
+    self thread viewHistory(args);
+}
+
+_shareHistory(enabled)
+{
+    if(enabled)return true;
+    players=getEntArray("player","classname");
+    for(i=0;i<players.size;i++)
+        if(players[i]!=self && isDefined(players[i].demoHistorySource) && players[i].demoHistorySource==self)
+            players[i].demoExitRequested=true;
+    return true;
+}
+
+viewHistory(args)
+{
+    self cancelRequest();
+    self endon("demo_request");
+    self endon("disconnect");
+    if(!self canWatch())return;
+    name=args[0];for(i=1;i<args.size;i++)name+=" "+args[i];
+    source=findHistoryPlayer(name);
+    if(!isDefined(source))
+    {self sendLocalChatMessage("No unique player matches that name. Use more of their name.",true);return;}
+    if(source!=self && !(source openCJ\settings::getSetting("sharehistory")))
+    {self sendLocalChatMessage("This player has disabled run-history sharing.",true);return;}
+    rec=source openCJ\demoRecording::current();
+    if(!isDefined(rec) || rec.failed || rec.finishing || source openCJ\playerRuns::isRunFinished())
+    {self sendLocalChatMessage("This player has no current run recording to view.",true);return;}
+    // No yield between copying and registering ownership. Native memory remains
+    // separate from the source recording, including later rewinds/disconnects.
+    id=demoCopyHistory(rec.id);
+    if(!isDefined(id))
+    {self sendLocalChatMessage("Run history is too short or recording capacity is currently full.",true);return;}
+    cache=spawnStruct();cache.ready=true;cache.loading=false;cache.refs=1;
+    level.demoCache[""+id]=cache;self.demoPendingId=id;
+    author=source.name;
+    waittillframeend;
+    if(!isDefined(self.demoPendingId) || self.demoPendingId!=id)return;
+    if(!self canWatch() || !isDefined(source) || (source!=self && !(source openCJ\settings::getSetting("sharehistory"))))
+    {self releasePending();return;}
+    self.demoPendingId=undefined;
+    self.demoHistorySource=source;self.demoAuthor=author;self.demoKind="history";
+    self.demoStyle=0;self.demoBegin=0;self.demoEnd=numberOfDemoFrames(id)-1;self.demoCheckpointed=false;
+    self startDemo(id);
+    if(!self isPlayingDemo()){self.demoHistorySource=undefined;self.demoAuthor=undefined;self.demoKind=undefined;}
+}
+
+findHistoryPlayer(name)
+{
+    name=toLower(stripColors(name));players=getEntArray("player","classname");
+    match=undefined;count=0;exact=undefined;exactCount=0;
+    for(i=0;i<players.size;i++)
+    {
+        candidate=toLower(stripColors(players[i].name));
+        if(candidate==name){exact=players[i];exactCount++;}
+        for(j=0;j<=candidate.size-name.size;j++)
+            if(getSubStr(candidate,j,j+name.size)==name){match=players[i];count++;break;}
+    }
+    if(exactCount==1)return exact;
+    if(!exactCount && count==1)return match;
+    return undefined;
 }
 
 // Use the demo's recorded CP and selected route, including shared checkpoints.
