@@ -860,7 +860,7 @@ networkDiscoveryTest(points)
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount,ready) VALUES("+run[0][0]+","+openCJ\mapID::getMapID()+","+routeID+",'mix',0,123,0,2,1)");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoChunks VALUES("+run[0][0]+",0,'rename fixture')");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoWinners(mapID,routeID,FPSMode,modeMask,kind,runID) VALUES("+openCJ\mapID::getMapID()+","+routeID+",'mix',0,'speedrun',"+run[0][0]+")");
-    openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges(challengeKey,tier,points,mapName,routeLabel,routeHint,routeID) VALUES('rename.fixture',1,10,'"+getCvar("mapname")+"','Old label','flow_easy',"+routeID+")");
+    openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges(challengeKey,tier,points,mapID,routeLabel,routeHint,routeID) VALUES('rename.fixture',1,10,"+openCJ\mapID::getMapID()+",'Old label','flow_easy',"+routeID+")");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO challengeCompletions(playerID,challengeKey,runID) VALUES("+player[0][0]+",'rename.fixture',"+run[0][0]+")");
     check(bot openCJ\checkpointNetwork::rename("flow_root","flow_combined"),"rename shared opening succeeds");
     n=bot openCJ\checkpointNetwork::load();check(n.root=="flow_combined"&&isDefined(n.paths["flow_easy"])&&isDefined(n.paths["flow_hard"]),"opening rename leaves separate route names unchanged");

@@ -25,7 +25,7 @@ def check(value,label):
  report.setdefault("checks",[]).append(label)
  print("R174 PASS "+label,flush=True)
 def rows(query):return sql(query).splitlines()
-def checksum(query):return hashlib.sha256(sql(query).encode()).hexdigest()
+def checksum(query):return hashlib.sha256("\n".join(sorted(sql(query).splitlines())).encode()).hexdigest()
 try:
  network=run(["docker","inspect","-f","{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}","opencj-dev-db-1"]).stdout.strip()
  assert re.fullmatch(r"opencj[-\w]+",network)
@@ -90,6 +90,7 @@ try:
  record72=importlib.util.module_from_spec(spec);spec.loader.exec_module(record72)
  report["recordCategoryChecks"]=record72.verify(sql)
  check(report["recordCategoryChecks"]==36,"all 36 exact-mode record comparisons pass with route IDs")
+ sql((ROOT/"server-db/migrations/020-database-cleanup.sql").read_text())
  # Full GSC compilation plus real CPC publishing/renaming, against this DB only.
  db("CREATE USER 'fixture'@'%' IDENTIFIED BY '"+password+"';GRANT ALL ON "+database+".* TO 'fixture'@'%';")
  mod=home/"mods/opencj";mod.mkdir(parents=True)
