@@ -38,12 +38,24 @@
       "map": "mp_bouncer_training",
       "material": "loadscreen_mp_bouncer_training",
       "image": "loadscreen_mp_bouncer_training",
-      "source": "mp_bouncer_training/mp_bouncer_training.iwd:images/loadscreen_mp_bouncer_training.iwi",
-      "imageSHA256": "26c891bd31328f551ca099589676b5215c79f35d13d170a44eedf06bebe72af7",
-      "sourceSHA256": "dd3d3035b9e62de56f780f771b4bd5b87cd13e9f2775206f4c2adc8fa2873edb",
+      "source": "assets/map-previews/mp_bouncer_training-start.png",
+      "imageSHA256": "98a34c192636d4d3d573c56c0025df7f43f77377c5434772f892757a908f4676",
+      "sourceSHA256": "a89b6118c9bd2d7da83d467c546c0b010cc37894595e9bad86ece60fcb5a5fd6",
       "width": 1024,
       "height": 1024,
-      "kind": "original_loading_screen"
+      "kind": "starting_area_capture",
+      "capture": {
+        "map": "mp_bouncer_training",
+        "mode": "User-captured local game, HUD and weapon hidden",
+        "originalFile": "shot0014.jpg",
+        "originalSHA256": "c1f40458a6e13641a9e69c206170ad060359acedd253549f116e09bddf209c63",
+        "originalSize": [
+          2560,
+          1440
+        ],
+        "crop": null
+      },
+      "encoding": "DXT1_no_mipmaps"
     },
     {
       "map": "mp_blue2",

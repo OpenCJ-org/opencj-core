@@ -40,6 +40,18 @@ def build():
             header = b"IWi" + bytes([6, 1, 193]) + struct.pack("<HHH", im.width, im.height, 1)
             header += struct.pack("<4I", *[28 + sum(sizes[min(i, len(sizes)-1):]) for i in range(4)])
             converted = header + b"".join(q.tobytes("raw", "BGRA") for q in reversed(levels))
+            if entry.get("encoding") == "DXT1_no_mipmaps":
+                # Keep existing loading-zone image metadata valid for an image-only
+                # replacement: the original texture is DXT1, clamped, no mipmaps.
+                import io
+                output = io.BytesIO()
+                im.convert("RGB").save(output, format="DDS", pixel_format="DXT1")
+                dds = output.getvalue()
+                assert dds[84:88] == b"DXT1"
+                pixels = dds[128:]
+                converted = b"IWi" + bytes([6, 11, 195])
+                converted += struct.pack("<HHH", im.width, im.height, 1)
+                converted += struct.pack("<4I", *([28 + len(pixels)] * 4)) + pixels
             (COD4 / "images" / (name + ".iwi")).write_bytes(converted)
         image = (COD4 / "images" / (name + ".iwi")).read_bytes()
         assert image[:4] == b"IWi\x06"

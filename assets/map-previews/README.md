@@ -5,13 +5,6 @@ map packages generally supply an image with that name behind `$levelbriefing`
 in the map's loading zone; they do not supply the named UI material for browsing
 other maps. The mod now bundles ten matching 2D materials and their images.
 
-Nine images are unchanged copies from the installed original map IWDs. Futile's
-original release has no loading artwork. `mp_futile_fixed-start.png` is an actual
-in-game capture of the starting platforms, taken in a local photo session with
-the HUD and weapon hidden. The top/corner capture UI was cropped out. It is not
-a reconstruction or generated artwork. The capture is resized to a power-of-two
-IWI texture for the menu's existing wide rectangle.
-
 `source/map_previews.json` records source paths, archive/image hashes and capture
 details. It is an asset inventory, not a voting allowlist. Game eligibility still
 comes exclusively from `mapids.inRotation`. Maps outside that pool use
@@ -32,3 +25,7 @@ votes and the map-list menu. End-map voting uses the same helper.
    byte-for-byte unchanged before deployment.
 5. Deploy matching `mod.ff` and `z_opencj.iwd` to the server and client. Restart
    OpenCJ safely, retaining its active map; clients must reload the mod/reconnect.
+
+## Bouncer Training artwork, 14 November 2026
+
+Build on the authoritative host with:
