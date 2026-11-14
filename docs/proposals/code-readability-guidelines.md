@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.3 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.4 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -49,10 +49,18 @@ and the complete guidelines remain inactive pending explicit activation.
   the language's syntax. Separate functions and distinct phases with blank lines.
 - In SQL, expand procedural branches and transaction steps; in menu definitions,
   put distinct properties and action statements on separate lines.
+- Wrap long calls and expressions at semantic boundaries. Embedded SQL should
+  expose SELECT, JOIN, WHERE, ordering, and CASE branches; string literals do
+  not exempt embedded code from readable layout.
 
 A `for` header is one construct, not three statements to split. A short literal
 tuple, vector, or homogeneous data-table row may stay together when it is clearer.
 Required macro continuations preserve the same vertical structure.
+
+**Proposed layout review prompts, not automatic failures:** aim for about
+100 columns and reconsider lines over 120 columns. Indivisible literals,
+protocol data, and syntax constraints may justify exceptions. Never shrink
+names or remove spaces merely to meet a line-length target.
 
 ### R2. Name the domain concept, role, and units
 
@@ -84,7 +92,18 @@ whether a symbol is conventional somewhere in mathematics. Do not rename an
 external interface just to satisfy this rule; give it a meaningful local name
 where useful. This clarification does not activate any guideline.
 
-### R3. Make expressions readable without mental execution
+### R3. Keep expression logic understandable
+
+Rule 1 governs layout: statements, bodies, declarations, and line wrapping.
+Rule 3 governs the logic inside an expression. An expression can obey every
+layout rule while still combining several decisions or transformations that
+should be exposed separately. Do not justify a rule 3 rewrite solely by showing
+that compressed statements could be placed on separate lines.
+
+Discussion decision, 2026-11-14: both a short, simple conditional expression
+and an expanded if/else are acceptable for a choice between two values. Neither
+form is mandatory, and an existing readable form need not be converted to the
+other. This records a drafting decision only; all guidelines remain inactive.
 
 - Separate calculations, validation, and mutations. Do not hide unrelated side
   effects in conditions, arguments, conditional expressions, or comma expressions.
@@ -94,15 +113,10 @@ where useful. This clarification does not activate any guideline.
   Do not replace a readable two-term condition with a helper solely to add a name.
 - Prefer an ordinary loop to a comprehension or chained expression that combines
   nested iteration, filtering, branching, and conversion.
-- Format long calls and expressions over multiple lines at semantic boundaries.
-  Embedded SQL should expose SELECT, JOIN, WHERE, ordering, and CASE branches;
-  do not treat a string literal as an exemption from readable logic.
 
-**Proposed review prompts, not automatic failures:** aim for about 100 columns;
-reconsider lines over 120 columns; explain or simplify conditions with more
-than three Boolean terms. Indivisible literals, protocol data, and syntax
-constraints may justify exceptions. Never shrink names or remove spaces merely
-to meet a line-length target.
+**Proposed review prompt, not an automatic failure:** explain or simplify
+conditions with more than three Boolean terms. The purpose is to expose the
+meaning of a decision, not merely to reduce its line length.
 
 ### R4. Keep functions cohesive and control flow shallow
 
