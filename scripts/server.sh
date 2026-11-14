@@ -5,8 +5,14 @@ mod="$runtime/mods/opencj"
 mkdir -p "$mod"
 [[ -f /mod-assets/mod.ff ]] || { echo 'Missing mod.ff in MOD_DIR.' >&2; exit 1; }
 [[ -f "$runtime/plugins/libcod4_1_8x.so" ]] || { echo 'Run the build command first.' >&2; exit 1; }
-ln -sfn /workspace/server-gsc/opencj "$mod/opencj"
-ln -sfn /workspace/server-gsc/maps "$mod/maps"
+# A native deployment may pin a known-good script release. Preserve it when
+# restarting; deployment explicitly switches these links after validation.
+for tree in opencj maps; do
+    if [[ ! -e "$mod/$tree" && ! -L "$mod/$tree" ]]; then
+        ln -s "/workspace/server-gsc/$tree" "$mod/$tree"
+    fi
+    [[ -d "$mod/$tree" ]] || { echo "Missing script tree: $mod/$tree" >&2; exit 1; }
+done
 ln -sfn /mod-assets/mod.ff "$mod/mod.ff"
 shopt -s nullglob
 assets=(/mod-assets/*.iwd)

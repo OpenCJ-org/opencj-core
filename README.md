@@ -73,7 +73,10 @@ logs/stop, or run `python3 dev.py <command>` in a remote terminal.
   the SQL export do not migrate existing databases.
 - Client assets: build with Windows CoD4 Mod Tools, put the resulting `mod.ff`
   and OpenCJ IWDs in the configured asset directory, and restart/reconnect with
-  matching client assets. Those generated binaries still need deployment; source
+  matching client assets. Fastfile changes require a full server-process restart: a
+  map reload retains the loaded mod zone size and can advertise the old size,
+  making clients download even when their files match the server on disk.
+  The startup script preserves any existing pinned script release. Those generated binaries still need deployment; source
   edits through SSH do not compile Windows fastfiles. Use the existing client
   build script unchanged, from its required working directory:
 
