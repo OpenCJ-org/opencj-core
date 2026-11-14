@@ -6,7 +6,7 @@ isPoolMap(name)
 previewImage(name)
 {
     if (isPoolMap(name)) return "loadscreen_" + toLower(name);
-    return "opencj_logo_nobg";
+    return "opencj_missing_image";
 }
 
 canVoteMap(name, adminLevel)
