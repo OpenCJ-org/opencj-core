@@ -8,7 +8,7 @@ onInit()
 }
 query()
 {
-    return "SELECT m.mapname,r.routeName,COALESCE(r.colorRGB,CASE r.routeShaderColor WHEN 'blue' THEN 255 WHEN 'cyan' THEN 65535 WHEN 'green' THEN 65280 WHEN 'orange' THEN 16746496 WHEN 'purple' THEN 11163135 WHEN 'red' THEN 16711680 WHEN 'yellow' THEN 16776960 ELSE 16777215 END) " +
+    return "SELECT m.mapname,r.routeName,COALESCE(r.colorRGB,16777215) " +
         "FROM routes r JOIN mapids m ON m.mapID=r.mapID " +
         "WHERE r.routeType='normal' AND r.routeName IS NOT NULL AND r.routeName<>'' " +
         "AND EXISTS(SELECT 1 FROM checkpoints e WHERE e.mapID=r.mapID AND e.retired=0 AND e.finishRouteID=r.routeID) " +
