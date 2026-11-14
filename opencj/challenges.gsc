@@ -131,6 +131,7 @@ onPlayerConnected()
 {
     if(getCodVersion()!=4)return;
     self.challengeRank=1;self.challengePoints=0;
+    self setClientCvar("ocj_ch_rank",self.challengeRank);
     self setClientCvar("ocj_ch_height",388);
     self thread connected();self thread responses();
 }
@@ -148,6 +149,7 @@ refresh(menu)
     else rows=self openCJ\mySQL::mysqlAsyncRead(query);
     if(!isDefined(rows) || !rows.size)return;
     self.challengePoints=int(rows[0][0]);self.challengeRank=rankForPoints(self.challengePoints);
+    self setClientCvar("ocj_ch_rank",self.challengeRank);
 }
 awardRun(runID)
 {
