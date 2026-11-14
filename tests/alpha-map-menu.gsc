@@ -57,8 +57,8 @@ main()
     check(approved, "automatic end vote still offers only other alpha maps");
     check(openCJ\maps::previewImage("MP_FUTILE_FIXED") == "loadscreen_mp_futile_fixed",
           "pool map preview uses its bundled material");
-    check(openCJ\maps::previewImage("mp_legacy") == "opencj_logo_nobg",
-          "non-pool map preview uses OpenCJ logo");
+    check(openCJ\maps::previewImage("mp_legacy") == "opencj_missing_image",
+          "non-pool map preview uses missing-image placeholder");
     player.adminLevel = 0;
     check(player openCJ\vote::_findMapByName("MP_BLUE2", true) == "mp_blue2",
           "regular exact vote normalizes case");
@@ -111,7 +111,7 @@ main()
     check(approved, "end vote follows changed database membership");
 
     openCJ\maps::loadMapRows(undefined);
-    check(openCJ\maps::previewImage("mp_dark") == "opencj_logo_nobg",
+    check(openCJ\maps::previewImage("mp_dark") == "opencj_missing_image",
           "unavailable membership uses safe preview fallback");
     check(openCJ\maps::voteMaps(0).size == 0 && !openCJ\maps::canVoteMap("mp_dark", 0),
           "failed database read fails closed without alpha fallback");
