@@ -38,3 +38,13 @@ dark question mark used for Bouncer Training's replacement pictures. The
 and image. It is not a map or a pool-membership entry. The shared GSC helper
 serves both map-list and end-vote previews; ordinary OpenCJ branding still uses
 `opencj_logo_nobg`. The isolated menu fixture passed all 40 checks.
+
+### Engine-wide missing material fallback
+
+CoD4 also has a built-in `default` material, independently of the map-preview
+fallback above. Its `cod4/images/default.iwi` now uses the same question-mark
+artwork. Rebuild it with `python source/build_missing_image.py` before the normal
+Windows Mod Tools build. This also regenerates `source/texture_source/default.tga`
+and preserves the original DXT3 format, dimensions, mip levels and image header.
+The `default` material and its properties stay intact. The intentional
+`opencj_logo_nobg` branding remains separate.
