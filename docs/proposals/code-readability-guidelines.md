@@ -1,6 +1,6 @@
 # Draft: OpenCJ code readability guidelines
 
-**Status: DRAFT v0.1 — INACTIVE — awaiting explicit user approval.**
+**Status: DRAFT v0.2 — INACTIVE — awaiting explicit user approval.**
 
 Prepared on 2026-11-14. This document proposes rules; it does not establish
 current instructions. Do not apply or enforce it, use it to authorize cleanup,
@@ -31,6 +31,12 @@ surrounding code is already compressed" is not a sufficient reason.
 ## Proposed rules, in priority order
 
 ### R1. Give each executable step its own line
+
+Discussion decision, 2026-11-14: the user chose B everywhere. Every branch
+and loop body must be expanded, including a single return, break, continue,
+or call. There is no short-body or guard-clause exception in any first-party
+language or repository. This records agreement on the wording only; rule 1
+and the complete guidelines remain inactive pending explicit activation.
 
 - Put each statement on its own line. Do not join assignments, calls, returns,
   cleanup, or state transitions with semicolons on one line.
