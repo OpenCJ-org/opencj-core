@@ -1,9 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-<defs><radialGradient id="bg"><stop stop-color="#29323b"/><stop offset="1" stop-color="#10161c"/></radialGradient><pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8297a8" stroke-opacity=".045"/></pattern></defs>
-<rect width="1024" height="1024" fill="url(#bg)"/><rect width="1024" height="1024" fill="url(#grid)"/>
-<rect x="38" y="38" width="948" height="948" rx="14" fill="none" stroke="#70818e" stroke-opacity=".19" stroke-width="2"/>
-<path d="M70 132V70H132 M892 70H954V132 M954 892V954H892 M132 954H70V892" fill="none" stroke="#8699a7" stroke-opacity=".36" stroke-width="3"/>
-<circle cx="512" cy="512" r="235" fill="#18212a" fill-opacity=".35" stroke="#708595" stroke-opacity=".28" stroke-width="2"/>
+<rect width="1024" height="1024" fill="#18212a"/>
 <path d="M426 424C426 371 463 342 514 342C570 342 604 374 604 418C604 456 581 479 552 498C524 517 512 531 512 568" fill="none" stroke="#b5c3cd" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="512" cy="650" r="23" fill="#b5c3cd"/>
 </svg>

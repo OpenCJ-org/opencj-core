@@ -1,11 +1,10 @@
 """Build the engine missing-material image from the shared question-mark artwork.
 
-Keep the original default image's CoD4 DXT3 format, 1024-square dimensions,
-flags, mip chain and byte layout. Intentional branding has its own image.
+Use lossless BGRA pixels for clean UI edges. Keep the original 1024-square
+dimensions, flags and mip chain. Intentional branding has its own image.
 """
 from pathlib import Path
 import hashlib
-import io
 import struct
 from PIL import Image
 
@@ -20,14 +19,8 @@ def build():
     while levels[-1].width > 1 or levels[-1].height > 1:
         previous = levels[-1]
         levels.append(previous.resize((max(1, previous.width // 2), max(1, previous.height // 2)), Image.Resampling.LANCZOS))
-    encoded = []
-    for level in levels:
-        output = io.BytesIO()
-        level.save(output, format="DDS", pixel_format="DXT3")
-        dds = output.getvalue()
-        assert dds[84:88] == b"DXT3"
-        encoded.append(dds[128:])
-    header = b"IWi" + bytes([6, 12, 0]) + struct.pack("<HHH", 1024, 1024, 1)
+    encoded = [level.tobytes("raw", "BGRA") for level in levels]
+    header = b"IWi" + bytes([6, 1, 0]) + struct.pack("<HHH", 1024, 1024, 1)
     header += struct.pack("<4I", *[28 + sum(len(part) for part in encoded[i:]) for i in range(4)])
     data = header + b"".join(reversed(encoded))
     (ROOT / "cod4/images/default.iwi").write_bytes(data)

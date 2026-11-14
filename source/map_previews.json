@@ -145,10 +145,10 @@
     "image": "opencj_missing_image",
     "source": "assets/map-replacements/mp_bouncer_training/missing-picture.png",
     "kind": "generated_placeholder",
-    "encoding": "DXT1_no_mipmaps",
-    "width": 512,
-    "height": 512,
-    "sourceSHA256": "4a920b14622061c48c0f4ceeadff19c198e8c14d99e83752a9f54e0f89f7bfa3",
-    "imageSHA256": "39083e96c2c5a00ee032ef1d4c076c1f2d63abc64118317287c738265b8ce313"
+    "encoding": "RGBA8_mipmaps",
+    "width": 1024,
+    "height": 1024,
+    "sourceSHA256": "1b08a9e0cfec502a91d3e9cfad5fb12da20469a27e3f2c76b053f4520c4212ff",
+    "imageSHA256": "06726dc54f1f24a34d652388bb7d161d0457b71b23e369ab2a3c8dd70cf2fe88"
   }
 }

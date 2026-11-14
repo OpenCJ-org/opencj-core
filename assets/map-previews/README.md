@@ -45,6 +45,12 @@ CoD4 also has a built-in `default` material, independently of the map-preview
 fallback above. Its `cod4/images/default.iwi` now uses the same question-mark
 artwork. Rebuild it with `python source/build_missing_image.py` before the normal
 Windows Mod Tools build. This also regenerates `source/texture_source/default.tga`
-and preserves the original DXT3 format, dimensions, mip levels and image header.
+and uses lossless BGRA pixels while preserving the original dimensions, flags
+and mip levels. The map-list placeholder also uses lossless pixels at 1024x1024.
 The `default` material and its properties stay intact. The intentional
 `opencj_logo_nobg` branding remains separate.
+
+The shared placeholder now has a flat dark background and the original question
+mark, without a gradient, grid, circle or decorative frame. UI textures avoid
+block compression; the in-map Bouncer replacements retain their original DXT1
+image headers/layout and use the same simplified artwork.
