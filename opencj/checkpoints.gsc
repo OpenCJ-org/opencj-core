@@ -956,7 +956,7 @@ whileAlive()
                 foundContact = true;
                 // Reserve this expected landing while it settles; do not fall
                 // through to a coincident checkpoint belonging to another route.
-                if (!self contactReady(cp, self isOnGround(), getTime()))break;
+                if (!self contactReady(cp, self isOnGround(), getTime(), self getVelocity()))break;
                 self.checkpointContact = undefined;
 
                 // Player may have changed their route.
@@ -1013,6 +1013,9 @@ whileAlive()
         }
     }
 
+    // Leaving the area breaks the continuous landing even without leaving ground.
+    if (!foundContact)self.checkpointContact = undefined;
+
     // Set variables so the change in origin and onground can be detected in the next iteration
     self.previousOrigin = self.origin;
     self.previousOnground = self isOnground();
@@ -1044,9 +1047,10 @@ canSaveHere()
     return true;
 }
 
-// Require a short continuous landing, not a bunny-hop contact. This is kept
-// separate from geometry so CPC selection and no-save areas remain immediate.
-contactReady(cp, grounded, now)
+// Ordinary-speed landings count immediately; excess carried speed still needs
+// 150 ms of continuous contact. Geometry, CPC and no-save checks stay separate.
+// 350 u/s is a conservative strafe-jump allowance, not a reachability proof.
+contactReady(cp, grounded, now, velocity)
 {
     if (!cp.onGround)
     {
@@ -1057,6 +1061,13 @@ contactReady(cp, grounded, now)
     {
         self.checkpointContact = undefined;
         return false;
+    }
+    // Ignore vertical speed: only horizontal momentum carries into the next jump.
+    // Unknown velocity keeps the settled-contact rule (including older callers).
+    if (isDefined(velocity) && velocity[0] * velocity[0] + velocity[1] * velocity[1] <= 350 * 350)
+    {
+        self.checkpointContact = undefined;
+        return true;
     }
     contact = self.checkpointContact;
     if (!isDefined(contact) || contact.cp != cp || now - contact.seen > 100)
