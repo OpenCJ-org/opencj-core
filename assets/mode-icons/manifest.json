@@ -1,0 +1,57 @@
+{
+  "logical_dimensions": {
+    "fps": [
+      24,
+      20
+    ],
+    "modifier": [
+      16,
+      20
+    ]
+  },
+  "glyphs": "Lucide 0.468.0; Halfbeat original A/D keycaps",
+  "icons": {
+    "fps_classic": {
+      "label": "Classic",
+      "role": "classic",
+      "sha256": "4ee78910945e957a6459e388406a26ffb1e78f78e70c76011f2239ba7bd50cd4",
+      "bytes": 1398128
+    },
+    "fps_standard": {
+      "label": "Standard",
+      "role": "standard",
+      "sha256": "479f6e8b76ac087df6d6c93ac309b5222e500bc976f8a39fccb225bc45d6c7d9",
+      "bytes": 1398128
+    },
+    "fps_any": {
+      "label": "Hax",
+      "role": "expanded",
+      "sha256": "a8a381bfb85d5414342e27df32a298afcde4a6af5670558c687add0b2958356e",
+      "bytes": 1398128
+    },
+    "ele": {
+      "label": "ELE",
+      "role": "expanded",
+      "sha256": "9ebbf07331a9f4d235c3792fb3307b8f34bffcb1864301feffe0738b8f3a2451",
+      "bytes": 1398128
+    },
+    "anypct": {
+      "label": "ANY%",
+      "role": "expanded",
+      "sha256": "e47c536f63611877bd67eef09b296518258ddce2c8314cca08d9f30bd9cee2bb",
+      "bytes": 1398128
+    },
+    "halfbeat": {
+      "label": "HB",
+      "role": "expanded",
+      "sha256": "f2fe3d2103b25b370352667ab360bd6f0dee32d7e79ef4cc2f2172d195134916",
+      "bytes": 1398128
+    },
+    "tas": {
+      "label": "TAS",
+      "role": "assisted",
+      "sha256": "7ca6b05485c86f0fa183b36bd96fe712fc6488549d8b82b290838173460cbcb5",
+      "bytes": 1398128
+    }
+  }
+}

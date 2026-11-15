@@ -549,3 +549,17 @@
         mouseExit { setitemcolor _name backcolor .5 .04 .04 .9; } \
         action { play "mouse_click"; _action; } \
     }
+
+// Mode artwork uses 16:20 proportions; the separate rail denotes filter state.
+#define MODE_FILTER_RECT_WHEN(_name, _shader, _stateColor, _iconColor, _visibility, orgX, orgY, sizeX, sizeY) \
+    SEL_SHADER_RECT_WHEN(_name, _shader, _iconColor, _visibility, (orgX+(sizeX-sizeY*0.8)/2), orgY, (sizeY*0.8), sizeY) \
+    itemDef \
+    { \
+        name mode_filter_state \
+        rect DEFAULT_RECT(0 0 1 sizeY) \
+        origin orgX orgY \
+        style WINDOW_STYLE_FILLED \
+        backcolor _stateColor \
+        visible when( _visibility ) \
+        decoration \
+    }
