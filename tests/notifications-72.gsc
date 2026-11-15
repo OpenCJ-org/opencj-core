@@ -53,7 +53,7 @@ main()
             wait .05;
         }
         check(valid,"only two edge bands with clear center "+strength);
-        check(peak==24+16*strength,"encoded opacity reaches intended peak "+strength);
+        check(peak==40+16*strength,"encoded opacity reaches intended peak "+strength);
         check(visibleFrames>=5,"flash persists across client updates "+strength);
         check(!isDefined(p.notificationFlash),"fade probe overlay released "+strength);
     }
@@ -97,7 +97,7 @@ main()
             wait .05;
         }
         check(valid,"result uses one full-screen overlay "+strength);
-        check(peak==40+16*strength,"result has stronger encoded peak "+strength);
+        check(peak==56+16*strength,"result has stronger encoded peak "+strength);
         check(visibleFrames>=10,"result remains more noticeable "+strength);
         check(!isDefined(p.notificationFlash),"result overlay expires "+strength);
     }

@@ -43,11 +43,11 @@ Each side glow occupies the outer 64 units of the fullscreen 640-unit space.
 Its opacity fades smoothly inward and tapers near the top/bottom corners; the
 central 80% stays completely clear. The pair fades in over 50 ms, holds
 for 100 ms and fades out over 150 ms: 300 ms total. Low/medium/high peak opacity
-is 40/255, 56/255 or 72/255 (approximately 16%, 22%, 28%).
+is 56/255, 72/255 or 88/255 (approximately 22%, 28%, 35%).
 
 Result feedback fades in over 100 ms, holds for 200 ms and fades out over
-350 ms: 650 ms total. Peak opacity is 56/255, 72/255 or 88/255
-(approximately 22%, 28%, 35%). Result text remains iprintln.
+350 ms: 650 ms total. Peak opacity is 72/255, 88/255 or 104/255
+(approximately 28%, 35%, 41%). Result text remains iprintln.
 
 All opacity levels align to CoD4's 8/255 transmission steps. The foreground
 draw pass avoids the stock HUD visibility gate. Flashes remain hidden in menus
@@ -129,3 +129,20 @@ Build validation found 323 existing IWD entries and 1,904 compiled assets
 unchanged. Only the two material/image pairs were added. Unlinker preserved
 every gradient pixel/mipmap; it normalizes the exported IWI flags byte.
 The original material UV clamp settings were verified in the compiled output.
+
+## Visibility adjustment (2026-11-15)
+
+Peak alpha increased by 16/255 at each strength, for both edge glows and result
+overlays. Colors, shapes, timing and opt-in settings are unchanged.
+
+The isolated tests/notifications-opacity.gsc fixture passed 32 checks against
+the exact deployed scripts. It checks actual HUD opacity, overlay reuse and
+cleanup at all three strengths. The full #72 database suite remains separate.
+Run from the repository root:
+
+~~~sh
+python3 dev-tools/tests/run-demo-viewing-24.py mp_killhouse \
+  --fixture dev-tools/tests/notifications-opacity.gsc \
+  --scripts /absolute/path/to/tested/release-scripts \
+  --completion-marker "NOTIFICATION OPACITY COMPLETE"
+~~~
