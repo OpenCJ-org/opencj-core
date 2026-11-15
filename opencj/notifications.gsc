@@ -184,9 +184,9 @@ flash(event,isResult)
     strength=self openCJ\settings::getSetting("notify_strength");
     if(!isDefined(strength))strength=1;
     // HUD alpha is transmitted in multiples of 8/255.
-    alpha=(24+16*strength)/255.0; // Edge bands: approximately 16%, 22%, 28%.
+    alpha=(40+16*strength)/255.0; // Edge glows: approximately 22%, 28%, 35%.
     hold=.15;fadeOut=.15;fadeIn=.05;
-    if(isResult){alpha=(40+16*strength)/255.0;hold=.30;fadeOut=.35;fadeIn=.10;}
+    if(isResult){alpha=(56+16*strength)/255.0;hold=.30;fadeOut=.35;fadeIn=.10;}
     self thread _fade(hud,right,alpha,fadeIn,hold,fadeOut);
 }
 _fade(hud,right,alpha,fadeIn,hold,fadeOut)
