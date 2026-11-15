@@ -7,7 +7,7 @@ main()
     check(openCJ\scoreboard::spectatorRow(p),"connecting client grouped with spectators");
     r=openCJ\scoreboard::row(p);
     check(r["name"]==p.name && r["route"]=="^3Connecting...","loading name and status available without initialization");
-    check(r["rank"]=="" && r["flag"]=="" && r["pingText"]=="-" && r["progress"]==-1,"no invented rank country ping or progress");
+    check(r["rank"]=="" && r["flag"]=="default" && r["flagSelector"]==0 && r["pingText"]=="-" && r["progress"]==-1,"no invented rank country ping or progress");
     check(r["fps"]==0 && r["ele"]==0 && r["hb"]==0 && r["tas"]==0 && r["any"]==0,"all mode fields reset");
     p.isFullyConnected=false;check(openCJ\scoreboard::connecting(p),"explicit connecting state recognized");
     p.isFullyConnected=true;p.sessionState="playing";
