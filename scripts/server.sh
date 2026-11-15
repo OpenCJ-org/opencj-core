@@ -4,7 +4,6 @@ runtime=/workspace/dev-tools/local/runtime
 mod="$runtime/mods/opencj"
 mkdir -p "$mod"
 [[ -f /mod-assets/mod.ff ]] || { echo 'Missing mod.ff in MOD_DIR.' >&2; exit 1; }
-[[ -f "$runtime/plugins/libcod4_1_8x.so" ]] || { echo 'Run the build command first.' >&2; exit 1; }
 # A native deployment may pin a known-good script release. Preserve it when
 # restarting; deployment explicitly switches these links after validation.
 for tree in opencj maps; do

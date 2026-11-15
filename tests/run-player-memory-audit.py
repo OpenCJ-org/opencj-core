@@ -13,7 +13,7 @@ def run(cmd,**kw):return subprocess.run(cmd,capture_output=True,text=True,**kw)
 for name in ("opencj","maps"):shutil.copytree(root/"server-gsc"/name,mod/name)
 for name in ("mod.ff","z_opencj.iwd"):(mod/name).symlink_to("/mod-assets/"+name)
 (home/"plugins").mkdir();(home/"steamclient.so").symlink_to("/game/steamclient.so")
-(home/"plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
 shutil.copyfile(root/"dev-tools/tests/player-memory-audit.gsc",mod/"opencj/memoryaudit.gsc")
 (mod/"maps/mp/gametypes/cj.gsc").write_text('main(){level.script=getCvar("mapname");}\n')
 (mod/"maps/mp/gametypes/_callbacksetup.gsc").write_text(
@@ -29,7 +29,7 @@ name="opencj-"+tag
 cmd=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
 for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28976),("sv_maxclients",2),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:
     cmd+=["+set",k,str(v)]
-cmd+=["+loadplugin","libcod4_1_8x","+loadplugin","memory_audit","+map","mp_killhouse"]
+cmd+=["+loadplugin","memory_audit","+map","mp_killhouse"]
 try:
     p=run(cmd,cwd=root/"dev-tools");assert p.returncode==0,p.stderr
     for _ in range(40):

@@ -10,7 +10,7 @@ for mapname in sys.argv[1:] or ['mp_dark']:
     for name in ['mod.ff','z_opencj.iwd']:(mod/name).symlink_to('/mod-assets/'+name)
     (home/'usermaps').symlink_to('/game/usermaps')
     (home/'plugins').mkdir()
-    (home/'plugins/libcod4_1_8x.so').symlink_to('/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so')
+
     (home/'steamclient.so').symlink_to('/game/steamclient.so')
     shutil.copyfile(root/'dev-tools/tests/checkpoint-list.gsc',mod/'opencj/platformtest.gsc')
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
@@ -18,7 +18,7 @@ for mapname in sys.argv[1:] or ['mp_dark']:
     name='opencj-'+tag
     args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_checkpoint_list_test']
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28963'),('sv_maxclients','1'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj')]:args+=['+set',k,v]
-    args+=['+loadplugin','libcod4_1_8x','+map',mapname]
+    args+=['+map',mapname]
     try:
         subprocess.run(args,cwd=root/'dev-tools',check=True,capture_output=True)
         for _ in range(45):

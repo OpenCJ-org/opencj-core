@@ -35,7 +35,7 @@ for asset in ["mod.ff","z_opencj.iwd"]:(mod/asset).symlink_to("/mod-assets/"+ass
 (home/"usermaps").symlink_to("/game/usermaps")
 (home/"steamclient.so").symlink_to("/game/steamclient.so")
 (home/"plugins").mkdir()
-(home/"plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
 init=mod/"opencj/events/init.gsc";init.write_text(init.read_text().replace("    level.playerCount = 0;","    return;\n    level.playerCount = 0;",1))
 game=mod/"maps/mp/gametypes/cj.gsc";game.write_text(game.read_text().replace("main()\n{","main()\n{\n    thread openCJ\\platformTest::main();",1))
 callback=mod/"maps/mp/gametypes/_callbacksetup.gsc"
@@ -123,7 +123,7 @@ fixture=fixture.replace("RUN_ID",str(int(recording["runID"]))).replace("PLAYBACK
 name="opencj-"+tag
 args=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
 for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/dev-tools/local/"+tag),("fs_game","mods/opencj"),("dedicated","2"),("net_port","28967"),("sv_maxclients","1"),("sv_authorizemode","0"),("com_hunkMegs","1024"),("developer","1"),("g_gametype","cj")]:args+=["+set",k,v]
-args+=["+loadplugin","libcod4_1_8x","+map","mp_killhouse"]
+args+=["+map","mp_killhouse"]
 try:
     subprocess.run(args,cwd=root/"dev-tools",check=True,capture_output=True)
     for _ in range(45):

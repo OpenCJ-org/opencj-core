@@ -56,7 +56,7 @@ try:
         assetDirectory="/workspace/"+str(assetPath.relative_to(ROOT))
     for asset in ["mod.ff","z_opencj.iwd"]:(mod/asset).symlink_to(assetDirectory+"/"+asset)
     (home/"plugins").mkdir();(home/"steamclient.so").symlink_to("/game/steamclient.so")
-    (home/"plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
     shutil.copyfile(ROOT/"dev-tools/tests/notifications-72.gsc",mod/"opencj/notify72test.gsc")
     (mod/"maps/mp/gametypes/cj.gsc").write_text('main(){level.script=getCvar("mapname");}\n')
     (mod/"maps/mp/gametypes/_callbacksetup.gsc").write_text('CodeCallback_StartGameType(){thread openCJ\\notify72Test::main();}\n'+"\n".join("CodeCallback_"+c+"(){}" for c in ["PlayerConnect","PlayerDisconnect","PlayerDamage","PlayerKilled","PlayerLastStand"]))
@@ -88,7 +88,7 @@ try:
     (home/"build.log").write_text(build.stdout+build.stderr);assert build.returncode==0,"Profiler build failed"
     command=["docker","compose","run","-d","--no-deps","--name",engine,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
     for key,value in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28979),("sv_maxclients",32),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:command+=["+set",key,str(value)]
-    command+=["+exec","notify72.cfg","+loadplugin","libcod4_1_8x","+loadplugin","memory_audit","+map","mp_killhouse"]
+    command+=["+exec","notify72.cfg","+loadplugin","memory_audit","+map","mp_killhouse"]
     p=run(command,cwd=ROOT/"dev-tools");assert p.returncode==0;started=True
     print("N72 isolated engine: "+str(home),flush=True)
     log=""

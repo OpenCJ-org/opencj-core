@@ -16,7 +16,7 @@ The setup clones missing sibling repositories from **OpenCJ-org**. Existing
 checkouts are preserved, including their current branches and uncommitted work.
 Defaults are `master`, except `cod4x-server` and `libcod` use `opencj`;
 Discord uses its remote default branch. The separate libcod checkout is for CoD2;
-the CoD4 plugin is built from `cod4x-server/plugins/libcod_plugin`.
+CoD4 compiles its native helpers directly from `server-ext`.
 
 1. Install Docker Engine with Compose v2, Git, and Python 3 on Ubuntu. An optional
    helper is `bash scripts/install-host.sh`. It uses Docker's official repository

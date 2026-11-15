@@ -9,7 +9,7 @@ for name in ['opencj','maps']:shutil.copytree(root/'server-gsc'/name,mod/name)
 for name in ['mod.ff','z_opencj.iwd']:(mod/name).symlink_to('/mod-assets/'+name)
 (home/'usermaps').symlink_to('/game/usermaps')
 (home/'plugins').mkdir()
-(home/'plugins/libcod4_1_8x.so').symlink_to('/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so')
+
 (home/'steamclient.so').symlink_to('/game/steamclient.so')
 # Replace only service dependencies in this isolated copy. Keep the complete
 # production handlers for actual loads, spectator/spawn, and run restoration.
@@ -84,7 +84,7 @@ p.write_text(s)
 name='opencj-'+tag
 args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
 for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28963'),('sv_maxclients','4'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj'),('sv_fps','20')]:args+=['+set',k,v]
-args+=['+loadplugin','libcod4_1_8x','+map','mp_to_the_moon']
+args+=['+map','mp_to_the_moon']
 try:
  subprocess.run(args,cwd=root/'dev-tools',check=True,capture_output=True)
  for _ in range(70):

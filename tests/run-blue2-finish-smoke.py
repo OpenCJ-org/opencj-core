@@ -12,7 +12,7 @@ for name in ("opencj", "maps"):
 for name in ("mod.ff", "z_opencj.iwd"):
     (mod / name).symlink_to("/mod-assets/" + name)
 (smoke / "plugins").mkdir()
-(smoke / "plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
 (smoke / "steamclient.so").symlink_to("/game/steamclient.so")
 p = mod / "opencj/events/init.gsc"
 s = p.read_text()
@@ -46,7 +46,7 @@ args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "ser
         "+set", "sv_maxclients", "1", "+set", "sv_authorizemode", "0",
         "+set", "com_hunkMegs", "1024", "+set", "developer", "1", "+set", "g_gametype", "cj",
         "+set", "g_log", "blue2-test.log", "+set", "g_logSync", "1",
-        "+loadplugin", "libcod4_1_8x", "+map", "mp_blue2"]
+        "+map", "mp_blue2"]
 try:
     subprocess.run(args, cwd=dev, check=True, capture_output=True)
     logfile = mod / "blue2-test.log"

@@ -30,7 +30,7 @@ def main():
         binary=home/'cod4x18_geoip_smoke';shutil.copy2(ROOT/'cod4x-server/bin/cod4x18_dedrun',binary);binary.chmod(0o755)
         (home/'usermaps').symlink_to('/game/usermaps')
         (home/'plugins').mkdir()
-        shutil.copy2(ROOT/'dev-tools/local/runtime/plugins/libcod4_1_8x.so',home/'plugins/libcod4_1_8x.so')
+
         (home/'steamclient.so').symlink_to('/game/steamclient.so')
         shutil.copy2(ROOT/'dev-tools/tests/geoip.gsc',mod/'opencj/platformtest.gsc')
         init=mod/'opencj/events/init.gsc';s=init.read_text();assert '    level.playerCount = 0;' in s
@@ -39,7 +39,7 @@ def main():
         name='opencj-'+tag
         command=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/dev-tools/local/'+tag+'/'+binary.name]
         for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28976'),('sv_maxclients','1'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('developer_script','1'),('g_gametype','cj')]:command+=['+set',k,v]
-        command+=['+loadplugin','libcod4_1_8x','+map',mapname]
+        command+=['+map',mapname]
         started=False
         try:
             subprocess.run(command,cwd=ROOT/'dev-tools',check=True,capture_output=True);started=True

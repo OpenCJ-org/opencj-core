@@ -14,7 +14,7 @@ for mapname in options.maps or ['mp_killhouse']:
     for name in ['mod.ff','z_opencj.iwd']:(mod/name).symlink_to('/mod-assets/'+name)
     (home/'usermaps').symlink_to('/game/usermaps')
     (home/'plugins').mkdir()
-    (home/'plugins/libcod4_1_8x.so').symlink_to('/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so')
+
     (home/'steamclient.so').symlink_to('/game/steamclient.so')
     shutil.copyfile(root/'dev-tools/tests/camera.gsc',mod/'opencj/platformtest.gsc')
     # Real older OCJ4 wire payload: no newly recorded animation metadata.
@@ -73,7 +73,7 @@ for mapname in options.maps or ['mp_killhouse']:
     name='opencj-'+tag
     args=['docker','compose','run','-d','--no-deps','--name',name,'server',options.binary]
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28974'),('sv_maxclients','2'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj'),('opencj_isolated_camera_test','1'),('cg_thirdPerson','1')]:args+=['+set',k,v]
-    args+=['+loadplugin','libcod4_1_8x','+loadplugin','camera_engine','+map',mapname]
+    args+=['+loadplugin','camera_engine','+map',mapname]
     try:
         subprocess.run(args,cwd=root/'dev-tools',check=True,capture_output=True)
         for _ in range(45):

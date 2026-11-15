@@ -142,7 +142,7 @@ try:
     assert args.load_batch==32 and args.load_concurrency==0 and args.fps_cache_limit==512, "Use unchanged production paths for acceptance"
     for asset in ("mod.ff","z_opencj.iwd"):(mod/asset).symlink_to("/mod-assets/"+asset)
     (home/"plugins").mkdir();(home/"steamclient.so").symlink_to("/game/steamclient.so")
-    (home/"plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
     shutil.copyfile(ROOT/"dev-tools/tests/sql-capacity-190.gsc",mod/"opencj/sqlcapacity.gsc")
     p=mod/"opencj/sqlcapacity.gsc";fixture=p.read_text()
     fixture=fixture.replace('stats[0]==4 &&',f'stats[0]=={args.workers} &&').replace('four workers and empty completion backlog','configured workers and empty completion backlog')
@@ -191,7 +191,7 @@ _request(query, policy, key, scope, deadline, save)
                       ("net_port",28975),("sv_maxclients",32),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),
                       ("g_gametype","cj"),("capacity_frames",args.frames),("capacity_ticks",args.seconds*20)]:
         cmd+=["+set",key,str(value)]
-    cmd+=["+exec","capacity.cfg","+loadplugin","libcod4_1_8x","+loadplugin","capacity_clock","+map","mp_killhouse"]
+    cmd+=["+exec","capacity.cfg","+loadplugin","capacity_clock","+map","mp_killhouse"]
     p=run(cmd,cwd=ROOT/"dev-tools");assert p.returncode==0,"Isolated engine launch failed";started=True
     print("CAPACITY isolated engine started: "+str(home),flush=True)
     seen=0;log=""

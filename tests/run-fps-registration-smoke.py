@@ -18,7 +18,7 @@ for name in ("opencj", "maps"):
 for name in ("mod.ff", "z_opencj.iwd"):
     (mod / name).symlink_to("/mod-assets/" + name)
 (smoke / "plugins").mkdir()
-(smoke / "plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
 (smoke / "steamclient.so").symlink_to("/game/steamclient.so")
 bs = chr(92)
 def g(s):
@@ -99,7 +99,7 @@ args = [
     "+set", "sv_authorizemode", "0", "+set", "com_hunkMegs", "1024",
     "+set", "developer", "1", "+set", "g_gametype", "cj",
     "+set", "g_log", "fpsregistration-test.log", "+set", "g_logSync", "1",
-    "+loadplugin", "libcod4_1_8x", "+map", "mp_dark",
+    "+map", "mp_dark",
 ]
 try:
     subprocess.run(args, cwd=root / "dev-tools", check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

@@ -67,7 +67,7 @@ try:
     for asset in ("mod.ff", "z_opencj.iwd"):
         (mod / asset).symlink_to("/mod-assets/" + asset)
     (home / "plugins").mkdir()
-    (home / "plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
     (home / "steamclient.so").symlink_to("/game/steamclient.so")
     shutil.copyfile(ROOT / "dev-tools/tests/history-save-192.gsc", mod / "opencj/history192test.gsc")
     (mod / "maps/mp/gametypes/cj.gsc").write_text('main() { level.script = getCvar("mapname"); }\n')
@@ -147,7 +147,7 @@ try:
         ("sv_maxclients", "2"), ("sv_authorizemode", "0"), ("com_hunkMegs", "1024"),
         ("developer", "1"), ("g_gametype", "cj")
     ]: cmd += ["+set", key, val]
-    cmd += ["+exec", "history192.cfg", "+loadplugin", "libcod4_1_8x", "+map", "mp_killhouse"]
+    cmd += ["+exec", "history192.cfg", "+map", "mp_killhouse"]
     subprocess.run(cmd, cwd=ROOT / "dev-tools", check=True, capture_output=True, text=True)
     started = True
     log = ""

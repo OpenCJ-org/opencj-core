@@ -24,8 +24,7 @@ mod = home / "mods/opencj"
 for name in ("mod.ff", "z_opencj.iwd"):
     (mod / name).symlink_to("/mod-assets/" + name)
 (home / "plugins").mkdir()
-(home / "plugins/libcod4_1_8x.so").symlink_to(
-    "/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
 (home / "steamclient.so").symlink_to("/game/steamclient.so")
 shutil.copyfile(ROOT / "dev-tools/tests/specular-scale.gsc",
                 mod / "opencj/specularscaletest.gsc")
@@ -54,7 +53,7 @@ for key, value in [
     ("developer", "1"), ("g_gametype", "cj"),
 ]:
     cmd += ["+set", key, value]
-cmd += ["+loadplugin", "libcod4_1_8x", "+map", "mp_killhouse"]
+cmd += ["+map", "mp_killhouse"]
 errors = ["script compile error", "script runtime error",
           "SPECULAR TEST 0:", "config string start value"]
 log = ""

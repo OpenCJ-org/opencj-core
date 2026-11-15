@@ -5,6 +5,7 @@ root=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('maps',nargs='*',default=['mp_killhouse'])
 parser.add_argument('--binary',default='/workspace/cod4x-server/bin/cod4x18_dedrun')
+parser.add_argument("--scripts",type=Path,default=root/"server-gsc")
 options=parser.parse_args()
 binary=root/options.binary.removeprefix('/workspace/')
 assert options.binary.startswith('/workspace/') and binary.is_file()
@@ -20,11 +21,11 @@ for mapname in options.maps or ['mp_killhouse']:
     tag='fps-history-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
     mod=home/'mods/opencj';mod.mkdir(parents=True)
-    for name in ['opencj','maps']:shutil.copytree(root/'server-gsc'/name,mod/name)
+    for name in ['opencj','maps']:shutil.copytree(options.scripts/name,mod/name)
     for name in ['mod.ff','z_opencj.iwd']:(mod/name).symlink_to('/mod-assets/'+name)
     (home/'usermaps').symlink_to('/game/usermaps')
     (home/'plugins').mkdir()
-    (home/'plugins/libcod4_1_8x.so').symlink_to('/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so')
+
     (home/'plugins/strafe_engine.so').symlink_to('/workspace/dev-tools/local/strafe-history-92/strafe_engine.so')
     (home/'steamclient.so').symlink_to('/game/steamclient.so')
     shutil.copyfile(root/'dev-tools/tests/fps-history.gsc',mod/'opencj/platformtest.gsc')
@@ -47,7 +48,7 @@ for mapname in options.maps or ['mp_killhouse']:
     name='opencj-'+tag
     args=['docker','compose','run','-d','--no-deps','--name',name,'server',options.binary]
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28966'),('sv_maxclients','2'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj')]:args+=['+set',k,v]
-    args+=['+loadplugin','libcod4_1_8x','+loadplugin','strafe_engine','+map',mapname]
+    args+=['+loadplugin','strafe_engine','+map',mapname]
     try:
         subprocess.run(args,cwd=root/'dev-tools',check=True,capture_output=True)
         for _ in range(45):

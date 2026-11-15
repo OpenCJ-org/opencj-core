@@ -12,6 +12,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--cvars-revision", help="Optional Git revision for a negative baseline")
+parser.add_argument("--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun")
+parser.add_argument("--scripts", type=Path, default=ROOT / "server-gsc")
 args = parser.parse_args()
 tag = "download-cvars-" + uuid.uuid4().hex[:8]
 home = ROOT / "dev-tools/local" / tag
@@ -19,7 +21,7 @@ mod = home / "mods/opencj"
 mod.mkdir(parents=True)
 # Production includes resolve unchanged; test callbacks omit account/DB startup.
 for folder in ("opencj", "maps"):
-    shutil.copytree(ROOT / "server-gsc" / folder, mod / folder)
+    shutil.copytree(args.scripts / folder, mod / folder)
 if args.cvars_revision:
     source = subprocess.check_output(
         ["git", "show", args.cvars_revision + ":opencj/cvars.gsc"],
@@ -28,8 +30,7 @@ if args.cvars_revision:
 for name in ("mod.ff", "z_opencj.iwd"):
     (mod / name).symlink_to("/mod-assets/" + name)
 (home / "plugins").mkdir()
-(home / "plugins/libcod4_1_8x.so").symlink_to(
-    "/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
 (home / "steamclient.so").symlink_to("/game/steamclient.so")
 shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc",
                 mod / "opencj/downloadcvarstest.gsc")
@@ -47,7 +48,7 @@ shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc",
 (mod / "maps/mp/mp_killhouse.gsc").write_text("main() {}\n")
 name = "opencj-" + tag
 cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "server",
-       "/workspace/cod4x-server/bin/cod4x18_dedrun"]
+       args.binary]
 for key, val in [
     ("fs_basepath", "/game"), ("fs_homepath", "/workspace/dev-tools/local/" + tag),
     ("fs_game", "mods/opencj"), ("dedicated", "2"), ("net_port", "28971"),
@@ -57,7 +58,7 @@ for key, val in [
     ("sv_allowDownload", "0"), ("sv_wwwDownload", "0"), ("sv_wwwBaseURL", ""),
 ]:
     cmd += ["+set", key, val]
-cmd += ["+loadplugin", "libcod4_1_8x", "+map", "mp_killhouse"]
+cmd += ["+map", "mp_killhouse"]
 errors = ["script compile error", "script runtime error", "DOWNLOAD TEST 0:"]
 try:
     subprocess.run(cmd, cwd=ROOT / "dev-tools", check=True, capture_output=True)

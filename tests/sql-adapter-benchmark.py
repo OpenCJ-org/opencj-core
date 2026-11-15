@@ -61,7 +61,7 @@ def run_benchmark(root, home, private, redact):
         cfg=mod/"history192.cfg";cfg.write_bytes(private.read_bytes());cfg.chmod(0o600)
         (target/"steamclient.so").symlink_to("/game/steamclient.so")
         (target/"plugins").mkdir()
-        (target/"plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+
         name="opencj-sqlbench-"+home.name[-8:]+"-"+variant
         binary=root/("dev-tools/local/sql-adapter/baseline-dedrun" if variant=="baseline" else "cod4x-server/bin/cod4x18_dedrun")
         command=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/"+str(binary.relative_to(root))]
@@ -69,7 +69,7 @@ def run_benchmark(root, home, private, redact):
             ("fs_game","mods/opencj"),("dedicated","2"),("net_port","28973"),("sv_maxclients","2"),
             ("sv_authorizemode","0"),("com_hunkMegs","1024"),("developer","1"),("g_gametype","cj")]:
             command+=["+set",key,value]
-        command+=["+exec","history192.cfg","+loadplugin","libcod4_1_8x","+map","mp_killhouse"]
+        command+=["+exec","history192.cfg","+map","mp_killhouse"]
         started=False
         try:
             subprocess.run(command,cwd=root/"dev-tools",check=True,capture_output=True);started=True

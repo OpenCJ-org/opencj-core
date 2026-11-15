@@ -99,7 +99,7 @@ try:
  for folder in ["opencj","maps"]:shutil.copytree(ROOT/"server-gsc"/folder,mod/folder)
  for asset in ["mod.ff","z_opencj.iwd"]:(mod/asset).symlink_to("/mod-assets/"+asset)
  (home/"usermaps").symlink_to("/game/usermaps")
- (home/"plugins").mkdir();(home/"plugins/libcod4_1_8x.so").symlink_to("/workspace/dev-tools/local/runtime/plugins/libcod4_1_8x.so")
+ (home/"plugins").mkdir()
  (home/"steamclient.so").symlink_to("/game/steamclient.so")
  shutil.copyfile(ROOT/"dev-tools/tests/checkpoints.gsc",mod/"opencj/route174test.gsc")
  shutil.copyfile(ROOT/"dev-tools/tests/checkpoint-migration-db.gsc",mod/"opencj/route174migration.gsc")
@@ -113,7 +113,7 @@ try:
  relative=str(home.relative_to(ROOT))
  command=["docker","compose","run","-d","--no-deps","--name",engine,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
  for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28978),("sv_maxclients",4),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:command+=["+set",k,str(v)]
- command+=["+exec","route174.cfg","+loadplugin","libcod4_1_8x","+map","mp_killhouse"]
+ command+=["+exec","route174.cfg","+map","mp_killhouse"]
  p=run(command,cwd=ROOT/"dev-tools");assert not p.returncode;engineStarted=True
  print("R174 isolated GSC engine started",flush=True)
  for _ in range(120):

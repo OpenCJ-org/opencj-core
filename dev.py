@@ -85,8 +85,7 @@ def initialize(args):
         'set sv_hostname "OpenCJ Development"\n'
         'set sv_punkbuster "0"\nset sv_allowDownload "1"\n'
         'set db_host "db"\nset db_port "3306"\nset db_user "opencj"\n'
-        f'set db_pass "{password}"\nset db_base "openCJ_cod"\n'
-        'loadPlugin libcod4_1_8x\n', encoding="utf-8")
+        f'set db_pass "{password}"\nset db_base "openCJ_cod"\n', encoding="utf-8")
     config.chmod(0o600)
     env = HERE / ".env"
     env.write_text("".join(f"{key}={dotenv(value)}\n" for key, value in settings.items()), encoding="utf-8")
