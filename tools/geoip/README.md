@@ -1,0 +1,101 @@
+# Country database updater
+
+DB-IP Country Lite is the default. It requires no vendor account or download key.
+Only public database files are downloaded; player IP addresses stay on the game
+server. Data is supplied by [DB-IP](https://db-ip.com/db/lite.php), under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The scoreboard and
+client archive retain attribution. Country lookup is an approximate IP-based
+location, not proof of nationality or physical location.
+
+## Install on a new host
+
+Keep server-db and dev-tools as sibling directories. Supply MySQL 8.0 and a
+Docker network reachable by the updater. This service does not depend on this
+host's name, filesystem layout, cron or systemd. It does not create the game DB.
+
+1. Stop gameplay writers, take and verify a private database backup, and apply
+   migration 025 with the tracked migration runner. On the development host:
+
+       python3 ../server-db/tools/migrate.py apply --confirm-database openCJ_cod4
+
+2. Provision a dedicated account and an ignored, mode-0600 secret file:
+
+       python3 ../server-db/tools/geoip/provision.py --confirm-database openCJ_cod4 --secret-file ./local/geoip/password
+
+   Run from dev-tools. For another DB/container use --container and --database,
+   and match --confirm-database. Set --gameplay-account when its name differs.
+   This administrative helper uses the existing database container's root
+   authentication without printing it. It grants the updater only SELECT,
+   INSERT, UPDATE and DELETE on geoIPReleases, geoIPRanges and geoIPState.
+   It grants gameplay EXECUTE on the two country functions. No player-table
+   access, schema DDL or database-wide updater grant is needed.
+
+3. Configure non-secret deployment settings through environment variables:
+   GEOIP_NETWORK, GEOIP_DB_HOST, GEOIP_DB_PORT, GEOIP_DB_NAME, GEOIP_DB_USER,
+   GEOIP_PASSWORD_FILE and DEV_UID/DEV_GID. Defaults target the existing OpenCJ
+   development Docker network. The container user must be able to read the
+   mounted 0600 file. A remote MySQL service needs equivalent least-privilege
+   account provisioning; never pass its password as a command argument.
+
+4. Build, populate, and start the separate updater project:
+
+       docker compose -f compose.geoip.yaml build updater
+       docker compose -f compose.geoip.yaml run --rm --no-deps updater --minimum-ranges 50000
+       docker compose -f compose.geoip.yaml up -d --no-deps updater
+
+   The explicit argument makes the initial import one-shot; the normal service
+   starts with --daemon.
+
+   Inspect logs with docker compose -f compose.geoip.yaml logs --tail=20 updater.
+   This project never starts or restarts the game or database service.
+
+## Updates and failure behavior
+
+The daemon checks daily, retries failures after six hours, and tries the current
+UTC month followed by the previous two months when a release returns HTTP 404.
+Source and dependency versions are pinned in Dockerfile/requirements.txt.
+Database releases themselves follow DB-IP's monthly publication.
+
+Each download is parsed completely before publication. It validates addresses,
+country codes, range ordering/non-overlap, minimum size, and bounded row/download
+counts. IPv6 rows are validated then ignored: this game integration uses IPv4.
+A release older than the active dataset or a drop exceeding 25% in ranges or
+address coverage is rejected. An explicit --allow-older permits a planned older
+import; it does not bypass the shrink check. A database-scoped advisory lock
+prevents concurrent publishers.
+
+A transaction inserts the validated dataset and switches its active pointer.
+Readers see a complete old or new release. A failed transaction publishes no
+partial ranges. The current and immediately previous releases are retained.
+Identical provider/version/checksum imports are no-ops. Legacy geoIP and
+longCountry tables are retained for compatibility; they are no longer the
+active range source. An absent/gapped/unknown range never defaults to the UK.
+
+Offline DB-IP imports use --input /data/country.csv.gz --month YYYY-MM, with the
+public file bind-mounted read-only into the one-shot container. Existing
+GeoLite CSV exports remain supported using --geolite-directory /data/geolite
+--month YYYY-MM. Supply GeoLite2-Country-Locations-en.csv and
+GeoLite2-Country-Blocks-IPv4.csv; retain MaxMind's applicable license/attribution
+if you switch providers. No MaxMind downloading or credentials are configured.
+
+## Secrets and publication
+
+The development secret is dev-tools/local/geoip/password: ignored by Git,
+mode 0600, mounted read-only through a Compose secret. Its value is absent from
+Compose environment variables, image layers, source, client assets and reports.
+Docker Compose secrets here are ordinary protected host files, not an encrypted
+secret vault. Protect private backups and host access accordingly.
+
+Do not add local/, .env, database dumps or secret files to Git or support bundles.
+The Docker context whitelist contains only Dockerfile, requirements.txt and
+update.py. provision.py checks Git exclusion and refuses to silently reset an
+existing account whose local secret is missing. To move hosts, provision a new
+restricted account/secret there; do not put passwords in deployment manifests.
+
+## Verification
+
+Run python3 -B server-db/tools/geoip/test_update.py from the workspace root.
+The real MySQL fixture is python3 -B dev-tools/tests/run-geoip-database.py;
+it creates and removes its own temporary schema/account/secret and checks exact
+range boundaries, gaps, atomic failure, retention and restricted privileges.
+It requires the opencj-geoip-updater image and the development database container.
