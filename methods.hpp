@@ -1,5 +1,10 @@
 #ifndef __METHODS_HPP_
 #define __METHODS_HPP_
+#ifdef COD4
+{"addvelocity", Gsc_Cod4_AddVelocity, 0},
+{"getip", Gsc_Cod4_GetIP, 0},
+{"issprinting", Gsc_Cod4_IsSprinting, 0},
+#endif
 
 {"saveposition_initclient", gsc_saveposition_initclient, 0},
 {"saveposition_save", gsc_saveposition_save, 0},

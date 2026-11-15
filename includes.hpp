@@ -1,6 +1,7 @@
 #ifndef __INCLUDES_HPP_
 #define __INCLUDES_HPP_
 
+#include "gsc_cod4_helpers.hpp"
 #include "gsc_custom_player.hpp"
 #include "gsc_custom_utils.hpp"
 #include "gsc_saveposition.hpp"

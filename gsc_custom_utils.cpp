@@ -222,7 +222,13 @@ void Gsc_Utils_Printf()
 {
     char *buf = NULL;
     stackGetParamString(0, &buf);
-	printf("%s", buf);
+#ifdef COD4
+    // Preserve the plugin's immediate engine-console logging. libc stdout can
+    // remain buffered when a dedicated server runs under Docker or a service.
+    Com_Printf(CON_CHANNEL_SERVER, "%s", buf);
+#else
+    printf("%s", buf);
+#endif
 }
 
 void Gsc_Utils_VectorScale()

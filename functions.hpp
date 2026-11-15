@@ -1,6 +1,9 @@
 #ifndef __FUNCTIONS_HPP_
 #define __FUNCTIONS_HPP_
 #ifdef COD4
+{"getascii", Gsc_Cod4_GetAscii, 0},
+{"forcedlcvars", Gsc_Cod4_ForceDownloadCvars, 0},
+{"g_findconfigstringindex", Gsc_Cod4_FindConfigstringIndex, 0},
 {"strafeTransition", Gsc_Movement_StrafeTransition, 0},
 #endif
 

@@ -244,6 +244,14 @@ void Gsc_Player_SV_GameSendServerCommand(int id)
 
 void Gsc_Player_GetQueuedReliableMessages(int id)
 {
+#ifdef COD4
+    // Match the retiring plugin's invalid-client result without indexing svs.
+    if (!sv_maxclients || id < 0 || id >= sv_maxclients->integer)
+    {
+        stackPushInt(0);
+        return;
+    }
+#endif
     client_t *pClient = &svs.clients[id];
     if (!pClient)
     {
