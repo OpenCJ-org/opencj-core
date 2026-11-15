@@ -7,6 +7,7 @@ parser.add_argument('maps',nargs='*',default=['mp_killhouse'])
 parser.add_argument('--binary',default='/workspace/cod4x-server/bin/cod4x18_dedrun')
 parser.add_argument('--fixture',type=Path,default=root/'dev-tools/tests/demo-viewing-24.gsc')
 parser.add_argument('--scripts',type=Path,default=root/'server-gsc',help='Exact deployed-script artifact to exercise')
+parser.add_argument('--completion-marker',default='DEMO VIEWING COMPLETE',help='Completion line emitted by the isolated fixture')
 parser.add_argument('--baseline',action='store_true',help='Test committed scripts in the isolated fixture')
 options=parser.parse_args()
 for mapname in options.maps or ['mp_killhouse']:
@@ -52,12 +53,12 @@ for mapname in options.maps or ['mp_killhouse']:
         for _ in range(45):
             time.sleep(1)
             log=subprocess.check_output(['docker','logs',name],stderr=subprocess.STDOUT,text=True)
-            if 'DEMO VIEWING COMPLETE' in log or 'script compile error' in log or 'script runtime error' in log:break
+            if options.completion_marker in log or 'script compile error' in log or 'script runtime error' in log:break
         if 'script compile error' in log or 'script runtime error' in log:
             pos=log.index('script compile error') if 'script compile error' in log else log.index('script runtime error');print(log[pos:pos+1400],flush=True)
         (home/'console.log').write_text(log)
-        (home/'result.json').write_text(json.dumps({'baseline':options.baseline,'sourceHashes':sourceHashes,'passed':'DEMO VIEWING COMPLETE failures=0' in log and 'script compile error' not in log and 'script runtime error' not in log,'summary':[l for l in log.splitlines() if 'DEMO VIEWING' in l]},indent=2)+'\n')
-        lines=[l for l in log.splitlines() if 'DEMO VIEWING' in l or 'SUPPORT FACE' in l or 'script' in l.lower() and 'error' in l.lower()]
+        (home/'result.json').write_text(json.dumps({'baseline':options.baseline,'sourceHashes':sourceHashes,'passed':(options.completion_marker+' failures=0') in log and 'script compile error' not in log and 'script runtime error' not in log,'summary':[l for l in log.splitlines() if options.completion_marker.split(' COMPLETE')[0] in l]},indent=2)+'\n')
+        lines=[l for l in log.splitlines() if options.completion_marker.split(' COMPLETE')[0] in l or 'SUPPORT FACE' in l or 'script' in l.lower() and 'error' in l.lower()]
         print(mapname+'\n'+'\n'.join(lines)+'\nEvidence: '+str(home),flush=True)
-        assert 'DEMO VIEWING COMPLETE failures=0' in log and 'script compile error' not in log and 'script runtime error' not in log,home
+        assert (options.completion_marker+' failures=0') in log and 'script compile error' not in log and 'script runtime error' not in log,home
     finally:subprocess.run(['docker','rm','-f',name],capture_output=True)
