@@ -256,6 +256,9 @@ show()
             self setUI("ocj_ch_status"+i,status);
             icons=allowedModeIcons(row[9],int(row[10]));
             self setUI("ocj_ch_modes"+i,icons.size);
+            fpsCount=0;
+            for(m=0;m<icons.size;m++)if(isSubStr(icons[m],"opencj_icon_fps_"))fpsCount++;
+            self setUI("ocj_ch_fpscount"+i,fpsCount);
             for(m=0;m<icons.size;m++)self setUI("ocj_ch_mode"+i+"_"+m,icons[m]);
             self setUI("ocj_ch_name"+i,row[1]);self setUI("ocj_ch_detail"+i,detail);
             self setUI("ocj_ch_points"+i,row[3]+" pts");self setUI("ocj_ch_state"+i,state);
