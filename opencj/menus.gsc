@@ -2,6 +2,7 @@
 
 onInit()
 {
+    openCJ\menus\hudSettings::onInit();
     level.menu["ingame"] = "openCJ_ingame";
     level.menu["clientcmd"] = "openCJ_clientcmd";
     precacheMenu(level.menu["ingame"]);

@@ -4,6 +4,7 @@ onPlayerConnected(name)
     self.currentMenu = "";
 
     self thread onMenuResponse();
+    self thread openCJ\menus\hudSettings::responses();
 }
 
 onMenuResponse()

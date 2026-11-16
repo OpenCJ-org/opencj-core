@@ -2,7 +2,7 @@
 
 onInit()
 {
-    underlyingCmd = openCJ\settings::addSettingInt("speclisthud", 0, 10, 4, "Set the maximum numbers of spectators shown in your HUD. 0 = off.", ::_onSpectatorListSettingChanged);
+    underlyingCmd = openCJ\settings::addSettingInt("speclisthud", 0, 5, 4, "Set the maximum spectator names shown in your HUD (0-5). 0 = off.", ::_onSpectatorListSettingChanged);
     openCJ\commands_base::addAlias(underlyingCmd, "speclist");
 
     level.specListHudName = "speclist";
@@ -98,7 +98,7 @@ _updateSpecList()
 
 _updateSpecListHud(specList)
 {
-    nrSpecsToShow = self openCJ\settings::getSetting("speclisthud");
+    nrSpecsToShow = min(5, self openCJ\settings::getSetting("speclisthud"));
     if (nrSpecsToShow == 0)
     {
         self _hideSpecList();

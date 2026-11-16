@@ -16,6 +16,7 @@ _createPositionHud()
         rgb = (0.8, 0.8, 0.8);
         spaceBetween = 20;
         startY = 6;
+        if (getCodVersion() == 4) { spaceBetween = 16; startY = 8; }
         self _initPosHud("x", rgb, startY);
         self _initPosHud("y", rgb, startY + spaceBetween);
         self _initPosHud("z", rgb, startY + (2 * spaceBetween));
@@ -91,6 +92,13 @@ _initPosHud(name, colors, yOffset)
         self.hudPos[name].vertalign = "top";
         self.hudPos[name].color = colors;
         self.hudPos[name].fontscale = 1.4;
+        if (getCodVersion() == 4)
+        {
+            // Minimap occupies x=5..73.3 and y=5..73.3 in the same HUD space.
+            self.hudPos[name].x = 80;
+            // Keep the original readable face; compact the rows instead of the glyphs.
+            self.hudPos[name].font = "default";
+        }
         self.hudPos[name].archived = false;
         self.hudPos[name].hideWhenInMenu = true;
     }

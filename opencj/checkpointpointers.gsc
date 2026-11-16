@@ -4,6 +4,7 @@ onInit()
 {
     if (getCodVersion() == 4)
     {
+        precacheShader("opencj_checkpoint_tint");
         precacheShader("opencj_checkpoint_tint_obj");
         level.checkpointPalette = [];
         addPalette("aqua", (0,0.8,1));addPalette("lime", (0,1,0));
@@ -48,9 +49,11 @@ onPlayerConnect()
     {
         // Scale only the offscreen icon away; the engine draws its direction
         // pointer separately. Scale length must be positive (use subpixel fade).
-        self setClientCvar("waypointOffscreenScaleLength", "0.001");
-        self setClientCvar("waypointOffscreenScaleSmallest", "0");
+        self setClientCvars("waypointOffscreenScaleLength", "0.001",
+            "waypointOffscreenScaleSmallest", "0",
+            "waypointOffscreenPointerWidth", "25", "waypointOffscreenPointerHeight", "12");
     }
+    self.checkpointIconMode = 2;
     self.checkpointPointers_huds = [];
     self.checkpointPointers_objectives = [];
     for(i = 0; i < 16; i++)
@@ -90,6 +93,11 @@ onRunFinished(cp)
 showCheckpointPointers()
 {
     self notify("checkpoint_pointer_refresh");
+    if (isDefined(self.checkpointIconMode) && self.checkpointIconMode == 0)
+    {
+        self _hideCheckpointPointers();
+        return;
+    }
     if (self.sessionState != "playing" || self openCJ\checkpointCreation::isEditing() || self openCJ\demos::isPlayingDemo() || !self openCJ\playerRuns::hasRunID() || self openCJ\playerRuns::isRunFinished())
     {
         self _hideCheckpointPointers();
@@ -111,7 +119,11 @@ showCheckpointPointers()
         routeColored = getCodVersion() == 4 && isDefined(checkpoints[i].routeInfo);
         if (routeColored)
         {
-            shader_hud = "opencj_checkpoint_tint_obj";
+            // World sprites require an effect material; the 2D material only
+            // works in the screen/edge-marker renderer selected below.
+            shader_hud = "opencj_checkpoint_tint";
+            if (self.checkpointIconMode == 2)
+                shader_hud = "opencj_checkpoint_tint_obj";
             shader_objective = paletteShader(checkpoints[i].routeInfo.color);
             tint = checkpoints[i].routeInfo.color;
         }
@@ -122,18 +134,17 @@ showCheckpointPointers()
         self.checkpointPointers_huds[i] setShader(shader_hud, size, size);
         self.checkpointPointers_huds[i].color = tint;
         if (routeColored)
-        {
             self.checkpointPointers_huds[i].alpha = 1;
-            self.checkpointPointers_huds[i] setWaypoint(true, shader_hud);
-        }
         else
-        {
             self.checkpointPointers_huds[i].alpha = 0.5;
-            if (getCodVersion() == 4)
-                self.checkpointPointers_huds[i] setWaypoint(true, shader_hud);
-            else
-                self.checkpointPointers_huds[i] setWaypoint(true);
-        }
+
+        // A second material selects DrawOffscreenViewableWaypoint, which clamps
+        // icons to the screen. Omitting it selects the actual world-space sprite
+        // (CG_AddDrawSurfsFor3dHudElems), clipped by the client's view frustum.
+        if (getCodVersion() == 4 && self.checkpointIconMode == 2)
+            self.checkpointPointers_huds[i] setWaypoint(true, shader_hud);
+        else
+            self.checkpointPointers_huds[i] setWaypoint(true);
 
         if (openCJ\checkpointMoving::isMoving(checkpoints[i]))
         {
@@ -147,7 +158,7 @@ showCheckpointPointers()
 
         // Stock compass objectives have no RGB field. Default route colors have
         // matching materials; custom RGB uses the nearest palette arrow here.
-        if(i < 16)
+        if(i < 16 && self.checkpointIconMode == 2)
         {
             self.checkpointPointers_objectives[i] = true;
             if(getCodVersion() == 2)
@@ -317,7 +328,17 @@ _followMovingPointers(checkpoints)
             self.checkpointPointers_huds[i].x=p[0];self.checkpointPointers_huds[i].y=p[1];self.checkpointPointers_huds[i].z=p[2]+10;
             shader=_getShaderObjective(openCJ\checkpoints::getCheckpointShaderColor(cp));
             if(isDefined(cp.routeInfo)) shader=paletteShader(cp.routeInfo.color);
-            if(i<16) { self objective_player_add(i,"active",p,shader); self.checkpointPointers_objectives[i]=true; }
+            if(i<16 && self.checkpointIconMode == 2) { self objective_player_add(i,"active",p,shader); self.checkpointPointers_objectives[i]=true; }
         }
     }
+}
+
+// Recreate the HUDs when switching between world sprites and edge markers,
+// and clear compass objectives before creating the selected representation.
+onIconSetting(value)
+{
+    self.checkpointIconMode = value;
+    if (!isDefined(self.checkpointPointers_huds)) return;
+    self _hideCheckpointPointers();
+    self showCheckpointPointers();
 }

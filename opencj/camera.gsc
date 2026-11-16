@@ -14,6 +14,8 @@ onInit()
 
 onPlayerConnected()
 {
+    self endon("disconnect");
+    level endon("game_ended");
     if(getCodVersion()!=4)return;
     // Re-send current values after reliable startup acknowledgement. Login's
     // setting callbacks still apply any preferences loaded after this point.

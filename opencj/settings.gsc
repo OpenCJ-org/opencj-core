@@ -44,7 +44,7 @@ loadSettingsFromDatabase()
             {
                 if(isDefined(level.settings[name].sessionOnly) && level.settings[name].sessionOnly)
                     continue;
-                value = parseSettingValue(level.settings[name], rows[i][1]);
+                value = parseSettingValue(level.settings[name], normalizeStoredValue(name, rows[i][1]));
                 if(!isDefined(value))
                 {
                     self iprintln("Not setting " + name + " because it has an invalid stored value");
@@ -394,4 +394,13 @@ writePlayerSettingToDb(setting, value)
     query = "CALL setPlayerSetting(" + self openCJ\login::getPlayerID() + ", '" + openCJ\mySQL::escapeString(setting) + "', '" + openCJ\mySQL::escapeString(value + "") + "')";
     printf("setPlayerSetting query:\n" + query + "\n"); // Debug
     self thread openCJ\mySQL::mysqlAsyncQueryNosave(query);
+}
+
+// Accept older saved spectator limits without clearing a valid preference or
+// touching account records. The current UI and command accept only 0..5.
+normalizeStoredValue(name, value)
+{
+    if (name == "speclisthud" && isValidInt(value) && int(value) > 5 && int(value) <= 10)
+        return "5";
+    return value;
 }
