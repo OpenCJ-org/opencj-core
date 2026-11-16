@@ -40,9 +40,12 @@ class DiscordListenerTests(unittest.IsolatedAsyncioTestCase):
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
                 # Cancel any accepted-client handler still waiting after a failed assertion.
-                handlers = [pending for pending in asyncio.all_tasks()
-                            if pending is not asyncio.current_task()
-                            and pending.get_coro().__qualname__ == "OpenCJListener.handle_client"]
+                handlers = [
+                    pending
+                    for pending in asyncio.all_tasks()
+                    if pending is not asyncio.current_task()
+                    and pending.get_coro().__qualname__ == "OpenCJListener.handle_client"
+                ]
                 for handler in handlers:
                     handler.cancel()
                 await asyncio.gather(*handlers, return_exceptions=True)
