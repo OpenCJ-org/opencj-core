@@ -42,12 +42,6 @@ routine setup step: it bypasses the recorded revision.
 
 ## History and licensing
 
-The five original application repositories retain their original commits as
-parents of their import merges. Dev-tools history was sanitized before import;
-its authorship, dates and merge structure were retained. Historical file paths
-precede their component-directory prefixes; use `git log --follow -- <path>` and
-consult import commits when following older changes.
-
 The default project license is [AGPL-3.0](LICENSE). The Discord bridge retains
 its [GPL-3.0 license](discord-integration/LICENSE). Component and third-party
 asset notices continue to apply; the root license does not replace them.
