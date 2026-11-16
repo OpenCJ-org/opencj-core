@@ -182,3 +182,13 @@ while preserving competitive rank rules.
 Apply tools/runtime_access.py after migrations to remove gameplay schema/deletion
 powers while retaining required operations and stored routines. See
 ../dev-tools/docs/database-safety.md for commands, tests and recovery details.
+
+
+## Query ranking indexes (026)
+
+Migration 026 adds two nonunique checkpointStatistics indexes for checkpoint/time
+and checkpoint/RPG ordering, with runID as the ranking tie-break. The time index
+also covers load/save counts for leaderboard reads. Apply with the tracked migration
+runner after the normal backup and stopped-writer check. No data, routines or
+permissions change. Deploy the matching checkpoint notice query so its equivalent
+cs.runID tie-break can use the index. See dev-tools/docs/query-performance.md.
