@@ -51,6 +51,23 @@ mapper credits and source links and is included in client packages.
 The [map catalogue](maps/catalogue.md) contains the detailed source evidence.
 Map artwork and underlying game assets are not relicensed by the project AGPL.
 
+## libcod license check
+
+The pinned libcod tree supports CoD2 1.0, 1.2c and 1.3. Its history shares the
+initial commit with [kungfooman/libcod](https://github.com/kungfooman/libcod).
+The separate CoD4x submodule supplies the CoD4 server.
+
+A brief review found no license file or source license headers in the pinned
+tree, and no license file in its available Git history. GitHub reports no
+recognized license for the original repository or the OpenCJ copy. The upstream
+repository also contains no visible license file. The license status remains
+unknown; no MIT, GPL or AGPL grant is inferred from public availability or from
+licenses added by other forks.
+
+Keep the existing libcod pin and attribution. An explicit grant from the relevant
+upstream rights holders would be needed to resolve this missing license record.
+This review does not alter or relicense the submodule.
+
 ## Material requiring a publication decision
 
 These records identify unresolved issues, not permission to redistribute.
