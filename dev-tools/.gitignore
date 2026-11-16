@@ -1,7 +1,36 @@
+# Machine-specific configuration
 .env
-local/
-__pycache__/
-*.pyc
+.env.*
+!.env.example
+!.env.*.example
+/compose.override.yaml
+/compose.override.yml
+/compose.local.yaml
+/compose.local.yml
+/compose.*.local.yaml
+/compose.*.local.yml
 
-# Generated route-label research notes; not an executable regression fixture.
+# Private records and generated output
+/local/
+/backups/
+/docs/private/
 /tests/challenge-route-evidence.json
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+/htmlcov/
+
+# Editor and OS leftovers
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

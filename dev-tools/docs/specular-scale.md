@@ -20,12 +20,3 @@ The existing Specular **Off / Map / On** choices are unchanged. They control
 Off disables specular; Map uses the original materials; On uses white masks.
 
 Implementation: `cod4x-server/src/sv_game.c`. No GSC map edits or database writes.
-
-## Client acceptance
-
-1. Reconnect on Futile. `/r_specularColorScale` should report 1.
-2. Try `/r_specularColorScale 5`. It should be rejected; the value should remain 1.
-3. Vote Descent v2 or To the Moon. The reported scale should be 9, with stronger
-   highlights visible using Specular = Map.
-4. After reconnecting on that map it should remain 9. Returning to a map without
-   an override should restore 1. Off / Map / On should remain usable.

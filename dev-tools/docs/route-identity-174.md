@@ -32,9 +32,3 @@ shared-opening metadata entry). Alternative finish areas share a route ID.
 
 Runs, demo payloads, player saves, earned completions and cpIDs were not rewritten.
 User-written run labels/clip descriptions and old chat messages are not renamed.
-
-## Deployment
-
-Applied 2026-11-14, after checking only operator was connected. OpenCJ was stopped
-for the schema change, backed up, restarted and restored to mp_futile_fixed.
-Post-migration data hashes matched and startup reported no script/SQL errors.

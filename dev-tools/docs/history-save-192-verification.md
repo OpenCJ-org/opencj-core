@@ -73,23 +73,3 @@ Evidence is retained under dev-tools/local/history-save-192-<token>/:
 result.json and restricted console.log. The runner removes its container,
 temporary connection config, database grant and schema even after failure.
 It never copies player records or deletes production data.
-
-## Deployment
-
-The native extension is compiled into cod4x-server/bin/cod4x18_dedrun:
-
-    cd dev-tools
-    docker compose run --rm --no-deps --entrypoint bash server -lc \
-      'cd /workspace/cod4x-server && make DEBUG=true -j2'
-
-Apply migration 016 to openCJ_cod4 while OpenCJ is stopped, after preserving the
-current savePosition definition. This migration replaces one routine and does
-not update player rows or table structures. The base CoD4 export contains the
-same corrected function. Restart only when nobody except operator is connected,
-and restore the captured map. No client asset build is required.
-
-Deployment completed with the original map mp_to_the_moon restored, no occupied
-slots before restart and no startup script errors. The running executable hash
-matches the tested binary. The routine and original executable backups, guarded
-deployment scripts and deployment-result.json are retained in
-dev-tools/local/history-save-192-fix/. No production player data was migrated.

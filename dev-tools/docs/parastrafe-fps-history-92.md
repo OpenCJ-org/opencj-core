@@ -1,4 +1,7 @@
-# Spectator FPS modes and halfbeat correction (#92)
+# Spectator FPS history and halfbeat correction
+
+Current behavior and implementation constraints. Earlier toolbar prototypes and
+installation acceptance records are retained privately, not as setup requirements.
 
 ## Player behavior
 
@@ -94,129 +97,18 @@ container. It does not rebuild or replace the live executable. The plugin is nev
 - Logs/results: `local/fps-history-<id>/console.log` and `result.json`.
 - Native build log/test plugin: `local/strafe-history-92/`.
 
-## Real-demo noise evidence
+## Playback and bounce boundaries
 
-`python3 tests/trace-fps-demo.py 3667 review`
+Reverse playback and seeks display history for the selected recorded frame.
+Rendered Compact/Detailed snapshots are cached separately from the event builder.
+Rebuilding is bounded to 512 samples; an airborne history beginning at that bound
+shows truncation. Changing the demo, style or clip range invalidates the cache.
+Rebuilding restores the native cursor before presentation.
 
-A numeric ID performs only a SELECT export. An existing JSON export can instead
-be passed as the first argument. Input JSON contains `runID` and `chunks` pairs
-of chunk number/hex payload. A deterministic 50 ms playback clock drives the
-fixture. It logs input samples, accepted source actions, Detailed strings (older traces also include the retired Live renderer); it does not touch a human client or write to the DB.
+Slow playback interpolates camera origin and the shortest angular arc at the
+server tick rate. Loads, edited cuts and large recorded position jumps remain
+discrete. Input and weapon events stay tied to recorded samples.
 
-| Revision | Source actions | Marked switches | Live text changes | Live label changes | Unwanted A/S/D/None outputs |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Confirmed style, before duration gate | 342 | 73 | 200 | 131 | 0 |
-| 150 ms gate and short Detailed | 214 | 50 | 182 | 113 | 0 |
-
-The earlier four-action Detailed revision never exceeded 37 visible characters
-or 61 encoded characters in that replay. Regression tests also cover longer FPS sequences and
-truncation. The counts describe this recording, not a universal reduction target.
-
-Previously noisy windows remain covered:
-- Frames 182-201: WA -> W -> WD -> D -> WD -> neutral -> A -> landing.
-- Frames 664-673: W -> neutral -> S braking.
-- Frames 6212-6287: fullbeat followed by D/neutral/A/D landing taps.
-
-The independent earlier style-confirmation fix removed the unwanted single-key
-rows. The latest duration gate additionally rejects short alternations before
-they reach any view; it does not change the native physics classifier.
-
-## Final view simplification and demo toolbar (2026-11-12)
-
-The demo toolbar keeps transport, direction and speed in one compact row:
-- Checkpoint previous/next, pause/play, elapsed/duration, a current-state
-  Forward/Reverse toggle, and Exit.
-- Five speed buttons: Slowest (0.25x), Slow (0.5x), Normal (1x / default), Fast (2x),
-  Fastest (4x). The selected speed remains highlighted.
-- Direction changes preserve speed; speed changes preserve direction. Neither
-  implicitly resumes a paused demo. New demos start Forward / Normal.
-- Left/right shortcuts select the next slower/faster magnitude in the current
-  direction. Chat also supports `!demo forward`, `!demo reverse` and
-  `!demo speed 0.25|0.5|1|2|4`. Pause/resume remain separate.
-- Fractional speeds accumulate recorded frame steps on the normal 50 ms ticks.
-  Fractional ticks interpolate camera position and view angles between adjacent
-  samples; they do not re-fire events or clear FPS history. Explicit seeks and direction/speed changes reset the
-  remainder. Reverse playback pauses at the beginning while retaining the
-  selected direction/speed.
-
-Source: `client-mod/cod4/ui_mp/scriptmenus/opencj_demo.menu` and
-`server-gsc/opencj/demos.gsc`. The clip editor's existing controls are separate.
-
-Verification adds every speed in both directions, actual in-memory native
-frame selection, menu responses, pause preservation, quarter-speed parastrafe
-history, six-entry boundaries and fallback from stored Live preferences.
-`tests/check_demo_menu.py` checks menu registration and control contracts.
-The Windows Mod Tools build preserved all unrelated inputs; compiled menus
-were unlinked and checked for the new controls with no warnings or errors.
-
-
-### Toolbar layout correction (2026-11-12)
-
-The correction restores the original y=443, height=37 bar. Every control uses
-the original source y=449.5 (the stock linker's origin parser truncates this to
-449), height=24. Transport, time, Forward/Reverse, five named speed buttons and
-Exit occupy separate horizontal regions. Each speed button owns its text;
-selected/unselected variants use identical rectangles. Checkpoint icons remain
-visible but gray when navigation is unavailable. Multipliers and Normal's
-default meaning are hover hints above the bar, hidden otherwise.
-No playback or halfbeat logic changed.
-
-
-### Playback consistency and toolbar refinements (2026-11-12)
-
-Current speed labels are **Slowest, Slow, Normal, Fast, Fastest** (.25/.5/1/2/4).
-The bar remains a single row, 37 units high. Transport uses centered geometric
-pause bars and existing arrow materials, independent of font alignment.
-Forward has a subdued green background; Reverse a subdued red background.
-Speed buttons are 46 units wide. The established red X replaces Exit, at
-x=606 with its right edge at 632. Time has an explicit baseline 16 units into
-its 24-unit rectangle. Direct fractional rectangles preserve y=449.5 through
-the linker, unlike the previous integer-parsed origin offsets.
-
-Fast playback previously skipped source frames before updating FPS history,
-causing discontinuity resets. The production pipeline now processes crossed
-recorded samples in chronology, preserving the same 150 ms held-input filter,
-FPS sequences and six-action Detailed view at every supported speed.
-Landing expiry uses recorded time, so slow motion and pauses do not expire
-history according to unrelated wall time. Leftover Live-only phase timing was
-removed; Live itself remains unavailable.
-
-Reverse and seeks display history as it stood at the selected recorded frame.
-Rendered Compact/Detailed snapshots are cached separately from the mutable
-event builder. Rebuilding looks back at most 512 samples (about 25.6 seconds);
-an airborne history beginning at that bound visibly marks truncation. Cache
-eviction is bounded; changes to demo, style or clip range invalidate it.
-Peeking/rebuilding restores the native playback cursor before presentation.
-
-Slow modes now interpolate camera origin and the shortest angular arc every
-50 ms tick, instead of holding the entire picture for 100/200 ms.
-Loads, edited-timeline cuts and large legacy position jumps (>256 units per
-sample) remain discrete in either direction. Recorded input, events and native
-weapon/stance presentation stay anchored to actual recorded samples; no
-recorded movement or firing is re-simulated. This smooths camera movement
-within the server tick rate, not arbitrary client frame-rate animation.
-
-
-### Screenshot-based alignment correction (2026-11-12)
-
-Adjusted bordered labels by (-1, -1.5) menu units, the time baseline from 16 to
-17.5, and the X's horizontal bearing by -0.5. Repositioned the arrow artwork,
-tightened the skip-symbol gaps and reduced stop/pause bars to a comparable
-visible height. The toolbar, button rectangles, responses, playback code and
-textures are unchanged. Both active/disabled checkpoint symbols use the same
-placement.
-
-Measurements and compiled validation: `local/demo-controls-92-alignment-r4/`.
-Only opencj_demo changed among 275 compiled menus; all 323 runtime IWD entries
-are unchanged. The deployed GSC/native files still exactly match the prior
-158/740-check evidence, so gameplay tests were not repeated. Server restart
-passed the player guard (operator only), restored mp_to_the_moon and produced no
-script errors. Matching client menu installed with a backup and no game control
-or process restart. User visual recheck remains pending; no commit authorized.
-
-
-## Bounce-exit grouping (2026-11-13)
-
-See [the bounce boundary investigation](fps-bounce-boundaries.md) for the
-150 ms exit grouping, retained FPS transitions, exact Moon clip evidence and
-regressions. Both views use the same projection; raw recorded actions remain intact.
+See [bounce boundaries](fps-bounce-boundaries.md) for exit grouping and
+[demo viewing](demo-viewing-24.md) for current controls. The removed Live mode
+must not be reintroduced by following an older proposal.

@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('maps',nargs='*',default=['mp_killhouse'])
-    parser.add_argument('--asset-dir',type=Path)
+    parser.add_argument('--asset-dir',type=Path,required=True,help='Matching compiled mod.ff and IWD directory')
     parser.add_argument('--scripts',type=Path,help='Exact prepared release; do not overlay working source')
     args=parser.parse_args()
     for mapname in args.maps:
@@ -23,9 +23,7 @@ def main():
         if not args.scripts:
             for name in ['country.gsc','flagatlas.gsc','scoreboard.gsc']:
                 shutil.copy2(ROOT/'server-gsc/opencj'/name,mod/'opencj'/name)
-        assets=args.asset_dir
-        if assets is None:
-            raise SystemExit('--asset-dir is required')
+        assets=args.asset_dir.resolve()
         for name in ['mod.ff','z_opencj.iwd']:shutil.copy2(assets/name,mod/name)
         binary=home/'cod4x18_geoip_smoke';shutil.copy2(ROOT/'cod4x-server/bin/cod4x18_dedrun',binary);binary.chmod(0o755)
         (home/'usermaps').symlink_to('/game/usermaps')

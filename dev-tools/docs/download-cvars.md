@@ -26,18 +26,3 @@ disconnect; it sets the client download preferences to 1 through systeminfo.
 
 No native/client asset rebuild is needed. Live server file-delivery settings
 and URLs are unchanged. HTTP hosting and access rules remain separate #203 work.
-
-## Client acceptance
-
-Before reconnecting, set `/cl_allowDownload 0` and `/cl_wwwDownload 0`.
-Reconnect to OpenCJ, then query both settings without the value.
-Both should report 1.
-
-User result (11 November 2026): both settings reported 1 after reconnecting
-from 0. The change, regression tests and documentation were approved for commit.
-
-Source references:
-- `cod4x-server/plugins/libcod_plugin/gsc_utils.cpp::gsc_misc_forcedlcvars`
-- `cod4x-server/src/cvar.h`
-- `cod4x-server/tools/cod4_dasm/src/_cl_parse_mp.asm`
-- [CoD4x client download settings and initialization](https://github.com/callofduty4x/CoD4x_Client_pub/blob/master/src/cl_main.c)

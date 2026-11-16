@@ -74,9 +74,3 @@ the tested executable and matching scripts. Preserve configuration permissions
 and all other settings. Retain the old executable, config and plugin privately
 for rollback; never expose the config contents in logs. Retire the old plugin
 from the active runtime after stopping that server.
-
-## Development deployment
-
-Deployment evidence and rollback locations are recorded in deployment.json and
-deploy.py under the evidence directory above. The configuration backup is
-private and must not be printed or committed.

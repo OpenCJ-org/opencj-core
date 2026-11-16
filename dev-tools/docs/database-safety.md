@@ -1,24 +1,16 @@
 # Database safety and earned rewards
 
-## Development scope and manual backup
+## Manual backups
 
-This protects the development database. No scheduled backups, upload jobs or
-retention timers are installed. Public-beta deployment/backup policy is deferred
-to that server's setup.
+Backups contain private gameplay data and credentials. Keep them outside Git
+and copy verified backups to independent storage. The manual helper accepts
+explicit database names, container, source paths and output location; see
+[scripts/backup.py](../scripts/backup.py) with `--help`.
 
-The verified pre-change backup uses the established Amsterdam-time folder format:
-the repository root-backups/2026-11-14_13h22m/
-
-Its six files contain both OpenCJ databases (all data, demo payloads, routines,
-triggers and events), runtime configuration, checkpoint drafts, an inventory,
-checksums and an isolated restore report. Configuration and data are private.
-Accounts/grants, map binaries, build trees and Git repositories are excluded.
-Runtime files are copied online, not atomically with the SQL snapshot.
-
-Run scripts/backup.py manually on the authoritative server for another backup.
-It writes under backups, restores into an isolated MySQL
-container, and checks every restored table/view. Copy the completed folder to the
-requested destination and verify SHA256SUMS. No scheduler is involved.
+It restore-checks the SQL snapshot in an isolated MySQL container. Runtime files
+are copied online and are not atomic with that SQL snapshot. Accounts/grants,
+map binaries and source repositories require their own recovery plan.
+No backup scheduler or retention policy is installed by development setup.
 
 ## Historical data protection (021)
 
@@ -62,7 +54,7 @@ reward. Competitive ranking retains current active challenge values.
 
 Past amounts were not recorded. Migration preserves each existing award's current
 contribution (current reward when active, otherwise zero), without pretending to
-reconstruct its original value. All existing development completions were active.
+reconstruct its original value.
 
 ## Tracked migrations
 
@@ -76,7 +68,7 @@ After stopping OpenCJ writers and making a backup, from server-db:
 
 Adoption checks the known post-020 schema and records those earlier migrations as
 adopted, not newly executed. It is not a fresh bootstrap or an automatic upgrade
-from an arbitrary old database. The future beta bootstrap will be prepared separately.
+from an arbitrary old database. For an empty development database, use the separate [bootstrap procedure](getting-started.md).
 
 Applied migrations are not rerun. Changed checksums, missing versions, concurrent
 runners and interrupted migrations are refused. MySQL DDL commits implicitly;
@@ -87,8 +79,7 @@ intentionally instead of bypassing that marker. Future changes use new migration
 
 From server-db:
 
-    python3 tools/runtime_access.py --confirm-database openCJ_cod4 \
-        --readonly-database opencj_test_cod4
+    python3 tools/runtime_access.py --confirm-database openCJ_cod4
 
 Gameplay cannot create/alter/drop tables, rewrite migration history, update old
 award amounts or directly delete accounts, runs, saves, statistics, checkpoints,
@@ -96,8 +87,8 @@ awards or purchases. Required data writes, temporary cleanup and reviewed stored
 routines remain available. Administrative routine definers preserve account
 creation rollback and atomic purchases. Passwords/accounts are not replaced.
 
-The old persistent test database becomes read-only to gameplay. Destructive tests
-use disposable containers and their own test/admin identity. Migration/recovery
+An optional legacy test database can be made read-only to gameplay with the
+`--readonly-database` option. Destructive tests use disposable containers and their own test/admin identity. Migration/recovery
 admin access remains available. No other host service/database is changed.
 
 Compose now treats the existing opencj-dev_database volume as external. Teardown,
@@ -105,19 +96,34 @@ including down --volumes, cannot remove it. Explicit administrator deletion is
 still possible: this is protection against teardown mistakes, not a backup.
 Fresh development setups must create that external volume before starting Compose.
 
-## Applied development deployment
+## Verification and recovery
 
-Applied 2026-11-14 at 13:57 Europe/Amsterdam. Only operator was connected before
-the guarded restart; mp_futile_fixed was restored. No script or SQL startup errors.
-The same database container/volume remains in use.
+From dev-tools, the migration rehearsal needs the pre-021 backup:
 
-All pre-existing base-table projections and existing spending-point balances
-matched their pre-migration values. Migrations 001–020 are explicitly recorded as
-adopted; 021–023 are recorded as applied.
+    python3 tests/database-safety.py /path/to/private/pre-021-backup/databases.sql.gz
 
-Validation: 55 database safety checks, 239 CPC checks, 34 history/layout checks,
-36 exact-mode record comparisons, restricted-account engine startup, four setup
-unit tests, and the disposable Docker-volume teardown test all passed.
+Use the SAFE_FIXTURE directory printed by that command for the engine stage:
 
-The earlier cleanup (020) and this safety work are kept in separate commits.
-Unrelated source changes were preserved.
+    python3 tests/database-safety-engine.py local/database-safety-<printed-id>
+    python3 tests/database-volume.py
+
+The engine stage also cleans up the first stage's disposable DB and credentials.
+
+
+- tests/database-safety.py restores the manual backup into a separate container,
+  reproduces the statistics bug, migrates via the tracked runner, checks all old
+  base-table projections by hash, and tests deletion/reference rejection, rewards,
+  purchases, runtime permissions and 36 exact-mode record comparisons.
+- tests/database-safety-engine.py consumes that fixture, runs the CPC and history
+  suites, then initializes real scripts under the restricted gameplay account.
+  It removes the isolated DB/engine and private credentials.
+- tests/database-volume.py verifies the production volume name is unchanged and
+  proves a disposable external volume survives Compose down --volumes.
+
+Synthetic-client startup and stock-map physics workarounds remain confined to the
+test copy, as in the route-identity suite. No game UI control is used.
+
+Recovery requires matching database and source versions. Keep the server stopped
+while restoring the pre-migration dump and previous GSC files. Re-provision the
+matching permissions through the administrator connection. Do not restore over
+newer player activity without reviewing which data would be replaced.

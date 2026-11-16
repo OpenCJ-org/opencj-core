@@ -48,12 +48,3 @@ equipment key. The catalogue slot and equipped slot now move together.
 A recorded purchase price is what the player actually paid. It must not change
 when today's catalogue price changes. Earned challenge ownership likewise
 remains independent of whether an old supporting run is eventually removed.
-
-## Deployment and rollback
-
-Migration 020 and matching GSC must deploy together. MySQL DDL commits
-implicitly; rehearse on a restored copy, stop the game server, and back up the
-full database and drafts first. Rollback needs the full backup plus the matching
-prior GSC revision, not a partial reverse migration.
-
-This cleanup is committed separately from the route-identity and data-safety work.

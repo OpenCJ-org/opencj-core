@@ -45,5 +45,3 @@ retry after one second.
 - server-gsc/opencj/saveposition.gsc: existing control integration and notices.
 - server-gsc/opencj/commands.gsc: safe-position history fallback.
 - server-gsc/opencj/{demos,checkpointcreation}.gsc: cancel pending history on entry.
-
-## Deployment

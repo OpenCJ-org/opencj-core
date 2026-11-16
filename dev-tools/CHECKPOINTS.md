@@ -1,17 +1,14 @@
-# Checkpoint editor: first CoD4 milestone
+# Checkpoint editor
 
-The first version supports independent sequential routes such as `easy` and
-`hard` on `mp_dark`. A checkpoint is a stationary, planar convex landing area
-with 3–8 perimeter corners. A multi-bounce jump sequence gets one checkpoint
-at its final landing. Moving platforms, airborne checkpoints, route merges,
-and multi-step branches are not implemented by this editor. A checkpoint can have up to four alternative landing areas with shared requirements; landing in any one completes that step.
+The editor supports published routes, alternative landing areas, moving-platform
+references and saved drafts. Inspect detected geometry before confirming it.
+Checkpoint data and earned player history must survive editor changes.
 
 ## Enable on a development server
 
-Apply `server-db/migrations/001-checkpoint-areas.sql`, then `002-route-colors.sql` and `003-finish-settings.sql`, to `openCJ_cod4` once.
-New Compose databases apply it after the base schema. Existing databases need
-the migration explicitly; restarting does not run initialization SQL again.
-The table is additive; existing radius checkpoints keep their existing behavior.
+Use the [fresh setup or upgrade procedure](docs/getting-started.md) to bring the
+database to the complete recorded migration set before enabling the editor.
+Restarting a database does not apply migrations.
 
 Add these settings to the game server configuration, then reload the map:
 

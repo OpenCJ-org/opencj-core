@@ -35,8 +35,3 @@ nearest palette color. The original RGB data remains unchanged.
 - client-mod/cod4/ui_mp/scriptmenus/opencj_maplist.menu: ten route rows.
 - client-mod/cod4/ui_mp/scriptmenus/opencj_ingame.menu: Voting button label.
 - No database migration or production checkpoint modifications.
-
-## Deployment
-
-The unchanged IWD hash is:
-d19a7009bea758070167e385258f42fc8c8907615173bbd58976e7759c44b897

@@ -90,26 +90,6 @@ Implementation lives in server-ext/mysql_async_pool.cpp/.hpp, the thin
 gsc_custom_mysql.cpp bridge, and server-gsc/opencj/mysql.gsc. cod4x-server's
 makefile tracks the new interface/registration dependencies.
 
-## Acceptance and deployment (2026-11-11)
-
-- 810 native checks passed against MySQL, including four permanent OS workers,
-  admission limits, key ordering, fairness, cancellation and uncertain outcomes.
-- 121 game-VM checks passed, including the existing #192 regression suite and an
-  actual map transition with a write and obsolete menu read in flight.
-- The same four-worker, 40-menu-query benchmark improved median game-visible
-  progress completion from 550 ms to 50 ms across five trials. The separate
-  native saturation probe completed its progress write in 2 ms.
-- All five compiled-asset comparisons passed: the 275-menu inventory is intact,
-  only the three intended close notifications changed, and 272 menus are unchanged.
-- The disposable schema, temporary grant, credential configs and test containers
-  were removed. Test fixtures did not write production player records.
-
-Native binary SHA-256:
-4ea30ff0361b6f5d8cff488cede0eafc7e88598aa8a5d14c6d6d126e40aca75a
-
-Compiled mod.ff SHA-256:
-8f604d82671a22df6f5358ad5697ed239030f78a53395e26cabf7f48c54d24b3
-
 ## References
 
 MySQL timeout options and their retry semantics:

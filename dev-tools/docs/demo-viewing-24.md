@@ -59,8 +59,6 @@ and repeated loops do not count. A process-session UUID survives map changes;
 normal heartbeat cleanup removes old receipts while retaining total view counts.
 The owner's original map-session clip lifetime is unchanged.
 
-## Deployment incident and follow-up
-
 ## Camera, live Detailed labels and toolbar revision
 
 The viewing pattern now stays anchored to takeoff: WA -> D -> WA, or WD -> A -> WD.

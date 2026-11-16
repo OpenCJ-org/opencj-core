@@ -105,9 +105,6 @@ run, layout, load, settings and demo changes.
   IWI images and 2D alpha-blended material bindings, included by cod4/mod.csv.
 - No engine, movement-physics or database schema changes.
 
-## Acceptance and deployment
-
-
 ## Soft-glow assets (2026-11-14)
 
 The two 128x256 white RGBA textures use a smooth horizontal alpha falloff and
