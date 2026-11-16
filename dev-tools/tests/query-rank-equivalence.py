@@ -1,14 +1,13 @@
 """Frozen-before versus current finish-query comparisons, including exact ties."""
 from pathlib import Path
+import runpy
 import ast,random,json,sys,importlib.util,re
 from query_sql import ROOT,MySQL,query
 def verify(db):
  checks=0
  # Existing hand-authored sound expectations, updated only for stable route IDs.
- source=(ROOT/'dev-tools/tests/finish-sounds.py').read_text()
- source=source[:source.index("p=subprocess.run(")]
- namespace={'__file__':str(ROOT/'dev-tools/tests/finish-sounds.py')}
- exec(compile(source,'finish-sound-fixtures','exec'),namespace)
+ # Loading the module builds cases without running its database entry point.
+ namespace = runpy.run_path(str(ROOT / "dev-tools/tests/finish-sounds.py"))
  for name,sql,expected in namespace['cases']:
   actual=db.query(sql)
   assert actual==str(expected),(name,actual,expected)
