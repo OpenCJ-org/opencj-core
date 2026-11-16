@@ -127,12 +127,32 @@ rankForPoints(points)
     }
     return rank;
 }
+// Pure menu projection: total points remain unchanged; the bar covers this level only.
+progressForPoints(points)
+{
+    points=max(0,points);rank=rankForPoints(points);
+    data=[];data["level"]="Level "+rank;data["points"]=points+" points";
+    data["next"]="Maximum level";data["remaining"]="";data["fraction"]=1;
+    if(rank>=10)return data;
+    lower=0;for(t=1;t<rank;t++)lower+=level.challengeTierPoints[t];
+    upper=lower+level.challengeTierPoints[rank];
+    data["next"]="Next: Level "+(rank+1);
+    remaining=max(0,upper-points);
+    data["remaining"]=remaining+" points to go";
+    if(remaining==1)data["remaining"]="1 point to go";
+    data["fraction"]=0;
+    if(upper>lower)data["fraction"]=min(1,max(0,(points-lower)*1.0/(upper-lower)));
+    return data;
+}
+
 onPlayerConnected()
 {
     if(getCodVersion()!=4)return;
     self.challengeRank=1;self.challengePoints=0;
     self setClientCvar("ocj_ch_rank",self.challengeRank);
     self setClientCvar("ocj_ch_height",388);
+    self setClientCvar("ocj_ch_progress_ready",0);
+    self setClientCvar("ocj_ch_summary","Loading your progress...");
     self thread connected();self thread responses();
 }
 connected()
@@ -150,7 +170,19 @@ refresh(menu)
     if(!isDefined(rows) || !rows.size)return;
     self.challengePoints=int(rows[0][0]);self.challengeRank=rankForPoints(self.challengePoints);
     self setClientCvar("ocj_ch_rank",self.challengeRank);
+    self publishProgress();
 }
+publishProgress()
+{
+    progress=progressForPoints(self.challengePoints);
+    self setClientCvar("ocj_ch_player_level",progress["level"]);
+    self setClientCvar("ocj_ch_player_points",progress["points"]);
+    self setClientCvar("ocj_ch_next_level",progress["next"]);
+    self setClientCvar("ocj_ch_points_remaining",progress["remaining"]);
+    self setClientCvar("ocj_ch_progress",progress["fraction"]);
+    self setClientCvar("ocj_ch_progress_ready",1);
+}
+
 awardRun(runID)
 {
     self endon("disconnect");
@@ -184,10 +216,10 @@ responses()
         else if(response=="previous"){if(self.challengePage>0)self.challengePage--;}
         else if(isValidInt(response)){tier=int(response);if(tier<0 || tier>10)continue;self.challengeTab=tier;self.challengePage=0;}
         else continue;
-        self thread show();
+        self thread show(response=="open");
     }
 }
-show()
+show(refreshProgress)
 {
     sqlToken=self openCJ\mySQL::beginMenuRead("challenges");
     if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
@@ -196,16 +228,9 @@ show()
     self setClientCvar("ocj_ch_busy",1);
     if(!level.challengesReady || !self openCJ\login::isLoggedIn())
     {self setClientCvar("ocj_ch_summary","Challenges are loading. Reopen in a moment.");return;}
-    self refresh(true);
+    // Tab/page navigation refreshes only the list; retain the published player stats.
+    if(isDefined(refreshProgress) && refreshProgress)self refresh(true);
     if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
-    next="Maximum level";
-    if(self.challengeRank<10)
-    {
-        threshold=0;for(t=1;t<=self.challengeRank;t++)threshold+=level.challengeTierPoints[t];
-        next="Next level: "+threshold+" points";
-    }
-    self setClientCvar("ocj_ch_summary","Level "+self.challengeRank+" | "+self.challengePoints+" points | "+next);
-    self setClientCvar("ocj_ch_rank",self.challengeRank);
     self.challengeMenuValues=[];
     tab=self.challengeTab;page=self.challengePage;
     self setUI("ocj_ch_tab",tab);
@@ -235,13 +260,15 @@ show()
         if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
         if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
         count=0;if(isDefined(rows))count=rows.size;
-        pages=int((count+15)/16);if(pages<1)pages=1;
+        // Reserve menu items for the personal progress header (engine limit: 256).
+        pageSize=15;
+        pages=int((count+pageSize-1)/pageSize);if(pages<1)pages=1;
         if(page>=pages)page=pages-1;
         self.challengePage=page;
-        total=count-page*16;if(total>16)total=16;
+        total=count-page*pageSize;if(total>pageSize)total=pageSize;
         for(i=0;i<total;i++)
         {
-            row=rows[page*16+i];detail=row[2];target="Finish";
+            row=rows[page*pageSize+i];detail=row[2];target="Finish";
             if(int(row[4])>0)target=formatTimeString(int(row[4]),true);
             if(int(row[5])>=0)
             {

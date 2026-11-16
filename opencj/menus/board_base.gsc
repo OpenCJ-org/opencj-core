@@ -190,7 +190,7 @@ onBoardOpen(shortName)
     }
 
     // Set currently selected FPS filter
-    self setClientCvar(level.boardsDvarPrefix + "fpsselected", "^5" + dbFPSToFullName(self.currentBoard["filter"]["fps"]) + "^7");
+    self setClientCvar(level.boardsDvarPrefix + "fpsselected", dbFPSToFullName(self.currentBoard["filter"]["fps"]));
 
     // Fill in the routes
     self updateRoutes();
@@ -316,6 +316,17 @@ updateBoard()
 
             dvars[key] += val + "\n";
         }
+    }
+
+    // One material per row; clear unused slots after paging or tightening filters.
+    for (i = 0; i < self.currentBoard["maxEntriesPerPage"]; i++)
+    {
+        icon = "";
+        if (i < self.currentBoard["nrEntriesThisPage"])
+        {
+            icon = fpsNameToIcon(self.currentBoard["cols"][i]["fps"]);
+        }
+        dvars["fps_icon" + (i + 1)] = icon;
     }
 
     // Update client dvars with above determined values
@@ -557,6 +568,18 @@ handlePageChange(button)
     }
 }
 
+// Input is the display category already populated by both board queries.
+fpsNameToIcon(name)
+{
+    switch (name)
+    {
+        case "Classic": return "opencj_icon_fps_classic";
+        case "Standard": return "opencj_icon_fps_standard";
+        case "Any": return "opencj_icon_fps_any";
+        default: return "";
+    }
+}
+
 dbFPSToFullName(dbFPSName)
 {
     switch(dbFPSName)
@@ -611,7 +634,7 @@ handleFilterChange(button)
             }
 
             self openCJ\settings::setSettingByScript(self.currentBoard["filterNames"]["fps"], self.currentBoard["filter"]["fps"]);
-            self setClientCvar(level.boardsDvarPrefix + "fpsselected", "^5" + dbFPSToFullName(self.currentBoard["filter"]["fps"]) + "^7");
+            self setClientCvar(level.boardsDvarPrefix + "fpsselected", dbFPSToFullName(self.currentBoard["filter"]["fps"]));
         }
     }
 
