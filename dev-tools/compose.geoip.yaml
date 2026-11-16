@@ -1,0 +1,27 @@
+name: opencj-geoip
+services:
+  updater:
+    image: opencj-geoip-updater:latest
+    build: ../server-db/tools/geoip
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    mem_limit: 384m
+    environment:
+      GEOIP_DB_HOST: ${GEOIP_DB_HOST:-db}
+      GEOIP_DB_PORT: ${GEOIP_DB_PORT:-3306}
+      GEOIP_DB_NAME: ${GEOIP_DB_NAME:-openCJ_cod4}
+      GEOIP_DB_USER: ${GEOIP_DB_USER:-geoip_updater}
+      GEOIP_DB_PASSWORD_FILE: /run/secrets/geoip_db_password
+    secrets: [geoip_db_password]
+    networks: [database]
+secrets:
+  geoip_db_password:
+    file: ${GEOIP_PASSWORD_FILE:-./local/geoip/password}
+networks:
+  database:
+    external: true
+    name: ${GEOIP_NETWORK:-opencj-dev_default}

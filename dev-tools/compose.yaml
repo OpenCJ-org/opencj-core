@@ -1,0 +1,127 @@
+name: opencj-dev
+
+x-development: &development
+  build: .
+  platform: linux/amd64
+  user: "${DEV_UID}:${DEV_GID}"
+  environment:
+    HOME: /tmp
+  volumes:
+    - type: bind
+      source: ${SOURCE_ROOT}
+      target: /workspace
+      bind:
+        create_host_path: false
+
+services:
+  build:
+    <<: *development
+    command: ["bash", "/workspace/dev-tools/scripts/build.sh"]
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: openCJ_cod4
+      MYSQL_USER: opencj
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    command: ["--log-bin-trust-function-creators=1"]
+    volumes:
+      - database:/var/lib/mysql
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/exports/openCJ_cod4.sql
+        target: /docker-entrypoint-initdb.d/10-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/migrations/001-checkpoint-areas.sql
+        target: /docker-entrypoint-initdb.d/20-checkpoint-areas.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/migrations/002-route-colors.sql
+        target: /docker-entrypoint-initdb.d/21-route-colors.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/migrations/003-finish-settings.sql
+        target: /docker-entrypoint-initdb.d/22-finish-settings.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/migrations/004-shared-demos.sql
+        target: /docker-entrypoint-initdb.d/23-shared-demos.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SOURCE_ROOT}/server-db/migrations/012-checkpoint-retirement.sql
+        target: /docker-entrypoint-initdb.d/31-checkpoint-retirement.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u opencj openCJ_cod4 -e 'SELECT COUNT(*) FROM playerRuns' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+  server:
+    <<: *development
+    group_add: ["${GAME_GID}"]
+    command: ["bash", "/workspace/dev-tools/scripts/server.sh"]
+    working_dir: /workspace/dev-tools/local/runtime
+    environment:
+      HOME: /tmp
+      START_MAP: ${START_MAP}
+      LD_LIBRARY_PATH: /game
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BIND_IP}:${SERVER_PORT}:28960/udp"
+      - "${BIND_IP}:${SERVER_PORT}:28960/tcp"
+    stdin_open: true
+    tty: true
+    volumes:
+      - type: bind
+        source: ${SOURCE_ROOT}
+        target: /workspace
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GAME_DIR}
+        target: /game
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MOD_DIR}
+        target: /mod-assets
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./local/sockets:/tmp
+
+  discord:
+    profiles: ["discord"]
+    build:
+      context: .
+      dockerfile: Dockerfile.discord
+    user: "${DEV_UID}:${DEV_GID}"
+    working_dir: /config
+    command: ["python", "/bridge/start.py", "cod4"]
+    volumes:
+      - ${SOURCE_ROOT}/discord-integration:/bridge:ro
+      - ./local:/config:ro
+      - ./local/sockets:/tmp
+
+volumes:
+  database:
+    external: true
+    name: ${DATABASE_VOLUME:-opencj-dev_database}
