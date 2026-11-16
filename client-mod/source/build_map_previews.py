@@ -5,6 +5,7 @@ Original archive images are verified unchanged; captures and placeholders are
 encoded from their recorded sources. Provenance/hashes are in map_previews.json.
 That manifest inventories assets, not voting policy.
 """
+
 from pathlib import Path
 import hashlib
 import json
@@ -33,21 +34,33 @@ def build():
         assert entry["image"] == name
         if entry["kind"] in ("starting_area_capture", "generated_placeholder"):
             from PIL import Image
+
             source = ROOT / entry["source"]
             assert hashlib.sha256(source.read_bytes()).hexdigest() == entry["sourceSHA256"]
-            im = Image.open(source).convert("RGBA").resize((entry["width"], entry["height"]), Image.Resampling.LANCZOS)
+            im = (
+                Image.open(source)
+                .convert("RGBA")
+                .resize((entry["width"], entry["height"]), Image.Resampling.LANCZOS)
+            )
             levels = [im]
             while levels[-1].width > 1 or levels[-1].height > 1:
                 q = levels[-1]
-                levels.append(q.resize((max(1, q.width // 2), max(1, q.height // 2)), Image.Resampling.LANCZOS))
+                levels.append(
+                    q.resize(
+                        (max(1, q.width // 2), max(1, q.height // 2)), Image.Resampling.LANCZOS
+                    )
+                )
             sizes = [len(q.tobytes()) for q in levels]
             header = b"IWi" + bytes([6, 1, 193]) + struct.pack("<HHH", im.width, im.height, 1)
-            header += struct.pack("<4I", *[28 + sum(sizes[min(i, len(sizes)-1):]) for i in range(4)])
+            header += struct.pack(
+                "<4I", *[28 + sum(sizes[min(i, len(sizes) - 1) :]) for i in range(4)]
+            )
             converted = header + b"".join(q.tobytes("raw", "BGRA") for q in reversed(levels))
             if entry.get("encoding") == "DXT1_no_mipmaps":
                 # Keep existing loading-zone image metadata valid for an image-only
                 # replacement: the original texture is DXT1, clamped, no mipmaps.
                 import io
+
                 output = io.BytesIO()
                 im.convert("RGB").save(output, format="DDS", pixel_format="DXT1")
                 dds = output.getvalue()
@@ -70,7 +83,9 @@ def build():
         struct.pack_into("<HH", data, 24, width, height)
         data = bytes(data).replace(old, name.encode("ascii"))
         (COD4 / "materials" / name).write_bytes(data)
-        (COD4 / "material_properties" / name).write_bytes((COD4 / "material_properties/opencj_rank_1").read_bytes())
+        (COD4 / "material_properties" / name).write_bytes(
+            (COD4 / "material_properties/opencj_rank_1").read_bytes()
+        )
         materials.append("material," + name)
     csv = COD4 / "mod.csv"
     text = csv.read_text()

@@ -3,6 +3,7 @@
 Uses the existing 2D rank-material template and uncompressed RGBA IWI format.
 Run with the existing Pillow environment, then the unchanged Windows makeMod.py.
 """
+
 from pathlib import Path
 import struct
 from PIL import Image, ImageOps
@@ -11,9 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 COD4 = ROOT / "cod4"
 WIDTH, HEIGHT = 128, 256
 
+
 def smoothstep(t):
     t = max(0.0, min(1.0, t))
     return t * t * (3.0 - 2.0 * t)
+
 
 def glow():
     image = Image.new("RGBA", (WIDTH, HEIGHT), (255, 255, 255, 0))
@@ -27,15 +30,20 @@ def glow():
             pixels[x, y] = (255, 255, 255, round(255 * inward * corners))
     return image
 
+
 def compile_asset(name, image):
     levels = [image]
     while levels[-1].width > 1 or levels[-1].height > 1:
         q = levels[-1]
-        levels.append(q.resize((max(1, q.width // 2), max(1, q.height // 2)), Image.Resampling.LANCZOS))
+        levels.append(
+            q.resize((max(1, q.width // 2), max(1, q.height // 2)), Image.Resampling.LANCZOS)
+        )
     sizes = [len(q.tobytes()) for q in levels]
     header = b"IWi" + bytes([6, 1, 193]) + struct.pack("<HHH", image.width, image.height, 1)
-    header += struct.pack("<4I", *[28 + sum(sizes[min(i, len(sizes)-1):]) for i in range(4)])
-    (COD4 / "images" / (name + ".iwi")).write_bytes(header + b"".join(q.tobytes("raw", "BGRA") for q in reversed(levels)))
+    header += struct.pack("<4I", *[28 + sum(sizes[min(i, len(sizes) - 1) :]) for i in range(4)])
+    (COD4 / "images" / (name + ".iwi")).write_bytes(
+        header + b"".join(q.tobytes("raw", "BGRA") for q in reversed(levels))
+    )
     old = b"opencj_rank_1"
     data = bytearray((COD4 / "materials/opencj_rank_1").read_bytes())
     for offset, expected in [(0, old), (4, old), (64, b"colorMap"), (72, old)]:
@@ -48,7 +56,10 @@ def compile_asset(name, image):
     struct.pack_into("<I", data, 64, struct.unpack_from("<I", data, 64)[0] + 2 * delta)
     struct.pack_into("<HH", data, 24, image.width, image.height)
     (COD4 / "materials" / name).write_bytes(bytes(data).replace(old, name.encode("ascii")))
-    (COD4 / "material_properties" / name).write_bytes((COD4 / "material_properties/opencj_rank_1").read_bytes())
+    (COD4 / "material_properties" / name).write_bytes(
+        (COD4 / "material_properties/opencj_rank_1").read_bytes()
+    )
+
 
 def build():
     left = glow()
@@ -61,6 +72,7 @@ def build():
         if entry not in text.splitlines():
             csv.write_text(text + entry + "\n")
     print("Prepared two mirrored notification glow materials.")
+
 
 if __name__ == "__main__":
     build()

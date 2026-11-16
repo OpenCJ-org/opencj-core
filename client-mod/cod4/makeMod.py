@@ -17,10 +17,14 @@ opencj_ff = 'mod.ff'
 
 
 def fatal_exit(str):
-    print('\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nFATAL: {}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'.format(str))
-    cd(opencj_cod4_dir) # Don't end up in a random folder upon error
+    print(
+        '\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nFATAL: {}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'.format(
+            str
+        )
+    )
+    cd(opencj_cod4_dir)  # Don't end up in a random folder upon error
     if os.path.exists(tmp_dir):
-        shutil.rmtree(tmp_dir) # Always delete the tmp directory
+        shutil.rmtree(tmp_dir)  # Always delete the tmp directory
     sys.exit(1)
 
 
@@ -34,6 +38,7 @@ def cd(path):
 def rmfile(path):
     if os.path.exists(path):
         os.remove(path)
+
 
 def mkdir(path, force=False):
     if os.path.exists(path) and os.path.isdir(path):
@@ -71,7 +76,9 @@ def clear():
 
 def main():
     clear()
-    print('Important: this script needs to be in <game>/mods/opencj/cod4 folder for the paths to work\n')
+    print(
+        'Important: this script needs to be in <game>/mods/opencj/cod4 folder for the paths to work\n'
+    )
 
     # We start in a subdir where we need files from, but the output needs to be in parent directory so the fs_game works
     cd(opencj_dir)
@@ -81,7 +88,28 @@ def main():
     rmfile(opencj_ff)
 
     # Copy over all files to raw so the mod tools can do their job
-    ff_folders = ['opencj','animtrees','english','fx','images','maps','material_properties','materials','info','mp','soundaliases','sound','ui','ui_mp','weapons','vision','xanim','xmodel','xmodelparts','xmodelsurfs']
+    ff_folders = [
+        'opencj',
+        'animtrees',
+        'english',
+        'fx',
+        'images',
+        'maps',
+        'material_properties',
+        'materials',
+        'info',
+        'mp',
+        'soundaliases',
+        'sound',
+        'ui',
+        'ui_mp',
+        'weapons',
+        'vision',
+        'xanim',
+        'xmodel',
+        'xmodelparts',
+        'xmodelsurfs',
+    ]
     folders_copied = 0
     for folder in ff_folders:
         # Only copy it if it exists
@@ -110,7 +138,9 @@ def main():
     # Return to the original folder and copy over the newly generated output files
     cd(opencj_cod4_dir)
     try:
-        shutil.copyfile(os.path.join(zone_dir, 'english/mod.ff'), os.path.join(opencj_dir, opencj_ff))
+        shutil.copyfile(
+            os.path.join(zone_dir, 'english/mod.ff'), os.path.join(opencj_dir, opencj_ff)
+        )
     except Exception as e:
         fatal_exit('Could not copy over mod.ff from zone dir')
 
@@ -126,7 +156,10 @@ def main():
 
     # Lastly delete the temporary directory, rename (->iwd) and move the zip file
     shutil.rmtree(tmp_dir)
-    shutil.move(os.path.join(opencj_cod4_dir, opencj_iwd_name + '.zip'), os.path.join(opencj_dir, opencj_iwd_name + '.iwd'))
+    shutil.move(
+        os.path.join(opencj_cod4_dir, opencj_iwd_name + '.zip'),
+        os.path.join(opencj_dir, opencj_iwd_name + '.iwd'),
+    )
 
     # All done!
     print('Mod created successfully!')
@@ -134,5 +167,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
