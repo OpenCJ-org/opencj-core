@@ -56,6 +56,28 @@ Consult private operator instructions for actual locations; do not copy those
 locations into public documentation. If a file's publication status is unclear,
 keep it private while resolving the uncertainty.
 
+## Licensing and attribution
+
+When adding, reusing, modifying or packaging third-party code, artwork, audio,
+fonts, datasets or tools, identify the original source and applicable license.
+Keep required copyright notices, license text or links, creator attribution and
+modification notices with the material. Update its source/version/hash record
+when the input changes.
+
+Follow the existing notice folders and asset catalogues. Include the required
+notices in distributed archives, binaries and asset exports as well as in the
+source checkout; verify their presence in the resulting package. Keep notices
+accurate when material is changed or removed, without dropping notices still
+required by retained content.
+
+Do not assume that a public download, a user-supplied file or the root project
+license grants additional rights to third-party material. Attribution alone
+does not replace license conditions. If terms or provenance are unclear, record
+the uncertainty and resolve it before declaring the material cleared for
+publication; do not invent a license or silently relicense it.
+
+This active licensing instruction does not activate the coding-guideline draft.
+
 ## Make tracking match the decision
 
 Track reusable source, documentation, sanitized example configuration and
