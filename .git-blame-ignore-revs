@@ -1,3 +1,15 @@
 # Verified mechanical readability commits only.
 # Configure locally with: git config blame.ignoreRevsFile .git-blame-ignore-revs
 # Do not add behavior changes or substantive refactors.
+
+# Expand client build-tool layout
+274206ce8c4e6eca0f206874e0f6af4f60e8e70a
+
+# Expand Python tooling and test layout
+613de5a066ac5ac57b160bcefdfe71903620835a
+
+# Expand database tooling layout
+f3f851c621df99b1a05bb1222de96bb5c214f8f4
+
+# Expand Discord listener test layout
+7cab2e7d43df9367e960241d6ccf766e9de388fc
