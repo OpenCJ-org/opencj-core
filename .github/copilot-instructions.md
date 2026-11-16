@@ -7,6 +7,10 @@ Before adding, moving or expanding files or entries, read the active
 [file placement and privacy rule](instructions/repository-content.instructions.md).
 It covers folder choice, public/private content and Git tracking.
 
+Also follow the active [audit maintenance rules](instructions/audit-maintenance.instructions.md)
+to preserve privacy, licensing, fresh-install support and tool portability.
+Extend the relevant maintenance rule when completing another audit step.
+
 Read [development setup](../docs/setup/development.md) and the
 [test guide](../docs/development/testing.md) for the affected work.
 Keep related core changes reviewable together. Engine edits require a separate
