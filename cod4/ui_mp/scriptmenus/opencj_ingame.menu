@@ -37,8 +37,8 @@
 
 #define ELEMENT_SPACING           2 // Spacing between each part (left, center, right)
 
-#define IG_OUTER_FRAME_SIZE_X        400
-#define IG_OUTER_FRAME_SIZE_Y        268
+#define IG_OUTER_FRAME_SIZE_X        488
+#define IG_OUTER_FRAME_SIZE_Y        292
 #define IG_OUTER_FRAME_ORG_X         ((FULLSCREEN_X - IG_OUTER_FRAME_SIZE_X) / 2)
 #define IG_OUTER_FRAME_ORG_Y         ((FULLSCREEN_Y - IG_OUTER_FRAME_SIZE_Y) / 2)
 
@@ -47,7 +47,7 @@
 #define LEFT_SPACING              10
 
     // Background
-#define IG_LEFT_FRAME_SIZE_X         80
+#define IG_LEFT_FRAME_SIZE_X         100
 #define IG_LEFT_FRAME_SIZE_Y         (IG_OUTER_FRAME_SIZE_Y - (2 * ELEMENT_SPACING))
 #define IG_LEFT_FRAME_ORG_X          (IG_OUTER_FRAME_ORG_X + ELEMENT_SPACING)
 #define IG_LEFT_FRAME_ORG_Y          (IG_OUTER_FRAME_ORG_Y + ELEMENT_SPACING)
@@ -57,7 +57,7 @@
 #define OPENCJ_LOGO_SIZE_Y        OPENCJ_LOGO_SIZE_X // Square
 #define OPENCJ_LOGO_OFFSET_X      ((IG_LEFT_FRAME_SIZE_X - OPENCJ_LOGO_SIZE_X) / 2)
 #define OPENCJ_LOGO_ORG_X         (IG_LEFT_FRAME_ORG_X + OPENCJ_LOGO_OFFSET_X)
-#define OPENCJ_LOGO_ORG_Y         (IG_LEFT_FRAME_ORG_Y + 0)
+#define OPENCJ_LOGO_ORG_Y         (IG_LEFT_FRAME_ORG_Y + 10)
 
     // Buttons
 #define ACTION_COMMON          play "mouse_click"; close self
@@ -86,7 +86,7 @@
 #define BTN_PLAY_SIZE_X        BTN_SIZE_X
 #define BTN_PLAY_SIZE_Y        BTN_SIZE_Y
 #define BTN_PLAY_ORG_X         (IG_LEFT_FRAME_ORG_X + LEFT_SPACING)
-#define BTN_PLAY_ORG_Y         (OPENCJ_LOGO_ORG_Y + OPENCJ_LOGO_SIZE_Y)
+#define BTN_PLAY_ORG_Y         (IG_LEFT_FRAME_ORG_Y + 50)
 
 #define BTN_SPEC_SIZE_X        BTN_SIZE_X
 #define BTN_SPEC_SIZE_Y        BTN_SIZE_Y
@@ -98,29 +98,29 @@
 #define BTN_RUNS_SIZE_X        BTN_SIZE_X
 #define BTN_RUNS_SIZE_Y        BTN_SIZE_Y
 #define BTN_RUNS_ORG_X         BTN_PLAY_ORG_X
-#define BTN_RUNS_ORG_Y         (BTN_SPEC_ORG_Y + BTN_SPEC_SIZE_Y + BTN_GROUP_SPACING)
+#define BTN_RUNS_ORG_Y         (BTN_LB_ORG_Y + BTN_LB_SIZE_Y + BTN_SPACING)
 
 #define BTN_LB_SIZE_X          BTN_SIZE_X
 #define BTN_LB_SIZE_Y          BTN_SIZE_Y
 #define BTN_LB_ORG_X           BTN_RUNS_ORG_X
-#define BTN_LB_ORG_Y           (BTN_RUNS_ORG_Y + BTN_RUNS_SIZE_Y + BTN_SPACING)
+#define BTN_LB_ORG_Y           (BTN_CHALL_ORG_Y + BTN_CHALL_SIZE_Y + BTN_SPACING)
 
 #define BTN_CLIPS_SIZE_X      BTN_SIZE_X
 #define BTN_CLIPS_SIZE_Y      BTN_SIZE_Y
 #define BTN_CLIPS_ORG_X       BTN_LB_ORG_X
-#define BTN_CLIPS_ORG_Y     (BTN_CHALL_ORG_Y + BTN_CHALL_SIZE_Y + BTN_GROUP_SPACING)
+#define BTN_CLIPS_ORG_Y     (BTN_RUNS_ORG_Y + BTN_RUNS_SIZE_Y + BTN_GROUP_SPACING)
 
 #define BTN_CHALL_SIZE_X       BTN_SIZE_X
 #define BTN_CHALL_SIZE_Y       BTN_SIZE_Y
 #define BTN_CHALL_ORG_X        BTN_CLIPS_ORG_X
-#define BTN_CHALL_ORG_Y     (BTN_LB_ORG_Y + BTN_LB_SIZE_Y + BTN_SPACING)
+#define BTN_CHALL_ORG_Y     (BTN_SPEC_ORG_Y + BTN_SPEC_SIZE_Y + BTN_GROUP_SPACING)
 
     // Shop has its own group.
 
 #define BTN_SHOP_SIZE_X        BTN_SIZE_X
 #define BTN_SHOP_SIZE_Y        BTN_SIZE_Y
 #define BTN_SHOP_ORG_X         BTN_CHALL_ORG_X
-#define BTN_SHOP_ORG_Y     (BTN_MAPLIST_ORG_Y + BTN_MAPLIST_SIZE_Y + BTN_GROUP_SPACING)
+#define BTN_SHOP_ORG_Y     BTN_LEAVE_ORG_Y
 
     // Map list belongs with clips; servers have their own final group.
 
@@ -175,16 +175,16 @@
 #define RIGHT_FRAME_ORG_Y         CENTER_FRAME_ORG_Y
 
     // Icon: rank
-#define RANK_ICON_SIZE_X          15
+#define RANK_ICON_SIZE_X          OPENCJ_LOGO_SIZE_X
 #define RANK_ICON_SIZE_Y          RANK_ICON_SIZE_X // Square
 #define RANK_ICON_ORG_X           (RIGHT_FRAME_ORG_X + ((RIGHT_FRAME_SIZE_X - RANK_ICON_SIZE_X) / 2))
-#define RANK_ICON_ORG_Y           (OPENCJ_LOGO_ORG_Y + RIGHT_SPACING)
+#define RANK_ICON_ORG_Y           OPENCJ_LOGO_ORG_Y
 
 // The following buttons are from bottom to top
 
     // Button: leave game
-#define BTN_LEAVE_SIZE_X    20
-#define BTN_LEAVE_SIZE_Y    BTN_LEAVE_SIZE_X // Square
+#define BTN_LEAVE_SIZE_X    BTN_SIZE_X
+#define BTN_LEAVE_SIZE_Y    BTN_SIZE_Y
 #define BTN_LEAVE_ORG_X     (RIGHT_FRAME_ORG_X + ((RIGHT_FRAME_SIZE_X - BTN_LEAVE_SIZE_X) / 2))
 #define BTN_LEAVE_ORG_Y     (RIGHT_FRAME_ORG_Y + RIGHT_FRAME_SIZE_Y - BTN_LEAVE_SIZE_Y - RIGHT_SPACING)
 
@@ -238,24 +238,17 @@
             // Buttons: spectate
         IG_NAV_BUTTON(btn_spec, "Spectate", ACTION_SPEC, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_SPEC_ORG_X, BTN_SPEC_ORG_Y, BTN_SPEC_SIZE_X, BTN_SPEC_SIZE_Y)
 
-            // Buttons: runs
-        IG_NAV_BUTTON(btn_runs, "Runs", ACTION_RUN, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_RUNS_ORG_X, BTN_RUNS_ORG_Y, BTN_RUNS_SIZE_X, BTN_RUNS_SIZE_Y)
-            // Buttons: leaderboard
-        IG_NAV_BUTTON(btn_lb, "Leaderboard", ACTION_LB, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LB_ORG_X, BTN_LB_ORG_Y, BTN_LB_SIZE_X, BTN_LB_SIZE_Y)
-            // Buttons: clips
+            // Competitive pages: names/order only; destinations and shortcuts stay the same.
+        IG_NAV_BUTTON(btn_challenges, "Competitive", ACTION_COMMON; open opencj_challenges, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_CHALL_ORG_X, BTN_CHALL_ORG_Y, BTN_CHALL_SIZE_X, BTN_CHALL_SIZE_Y)
+        IG_NAV_BUTTON(btn_lb, "Map records", ACTION_LB, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LB_ORG_X, BTN_LB_ORG_Y, BTN_LB_SIZE_X, BTN_LB_SIZE_Y)
+        IG_NAV_BUTTON(btn_runs, "My runs", ACTION_RUN, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_RUNS_ORG_X, BTN_RUNS_ORG_Y, BTN_RUNS_SIZE_X, BTN_RUNS_SIZE_Y)
         IG_NAV_BUTTON(btn_clips, "Clips", ACTION_COMMON; open opencj_clips, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_CLIPS_ORG_X, BTN_CLIPS_ORG_Y, BTN_CLIPS_SIZE_X, BTN_CLIPS_SIZE_Y)
-            // Buttons: challenges
-        IG_NAV_BUTTON(btn_challenges, "Challenges", ACTION_COMMON; open opencj_challenges, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_CHALL_ORG_X, BTN_CHALL_ORG_Y, BTN_CHALL_SIZE_X, BTN_CHALL_SIZE_Y)
 
             // Buttons: shop
         IG_NAV_BUTTON(btn_shop, "Shop", ACTION_COMMON; open opencj_shop, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_SHOP_ORG_X, BTN_SHOP_ORG_Y, BTN_SHOP_SIZE_X, BTN_SHOP_SIZE_Y)
 
             // Buttons: map list
         IG_NAV_BUTTON(btn_maplist, "Voting", ACTION_MAPLIST, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_MAPLIST_ORG_X, BTN_MAPLIST_ORG_Y, BTN_MAPLIST_SIZE_X, BTN_MAPLIST_SIZE_Y)
-            // Button: servers
-        FIXED_RECT_TXT(1, "Servers", BTN_FONT, ITEM_TEXTSTYLE_NORMAL, BTN_FONTSIZE, ITEM_ALIGN_MIDDLE_CENTER, 0, 0, NO_COLOR, IG_DISABLED_COLOR, BTN_SERVERS_ORG_X, BTN_SERVERS_ORG_Y, BTN_SERVERS_SIZE_X, BTN_SERVERS_SIZE_Y)
-
-
     // Center frame
         // Background
         FIXED_RECT(IG_CENTER_COLOR, CENTER_FRAME_ORG_X, CENTER_FRAME_ORG_Y, CENTER_FRAME_SIZE_X, CENTER_FRAME_SIZE_Y)
@@ -280,15 +273,15 @@
         // Latest features: small square bullets avoid font-specific glyphs.
         FIXED_RECT_TXT(1, "Latest features", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.26, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, HIGHLIGHT_COLOR, MOTD_CONTENT_ORG_X, (MOTD_CONTENT_ORG_Y + 84), MOTD_CONTENT_SIZE_X, 18)
         FIXED_RECT(HIGHLIGHT_COLOR, MOTD_CONTENT_ORG_X, (MOTD_CONTENT_ORG_Y + 112), 2, 2)
-        FIXED_RECT_TXT(1, "Checkpoint creation tooling", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 106), (MOTD_CONTENT_SIZE_X - 8), 14)
+        FIXED_RECT_TXT(1, "First 10 checkpointed maps", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 106), (MOTD_CONTENT_SIZE_X - 8), 14)
         FIXED_RECT(HIGHLIGHT_COLOR, MOTD_CONTENT_ORG_X, (MOTD_CONTENT_ORG_Y + 126), 2, 2)
-        FIXED_RECT_TXT(1, "New & revamped menus", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 120), (MOTD_CONTENT_SIZE_X - 8), 14)
+        FIXED_RECT_TXT(1, "Refreshed look & feel", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 120), (MOTD_CONTENT_SIZE_X - 8), 14)
         FIXED_RECT(HIGHLIGHT_COLOR, MOTD_CONTENT_ORG_X, (MOTD_CONTENT_ORG_Y + 140), 2, 2)
-        FIXED_RECT_TXT(1, "Demos & clips", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 134), (MOTD_CONTENT_SIZE_X - 8), 14)
+        FIXED_RECT_TXT(1, "Checkpoint creation tooling", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 134), (MOTD_CONTENT_SIZE_X - 8), 14)
         FIXED_RECT(HIGHLIGHT_COLOR, MOTD_CONTENT_ORG_X, (MOTD_CONTENT_ORG_Y + 154), 2, 2)
-        FIXED_RECT_TXT(1, "Challenges & ranks", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 148), (MOTD_CONTENT_SIZE_X - 8), 14)
+        FIXED_RECT_TXT(1, "Demos & clips", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 148), (MOTD_CONTENT_SIZE_X - 8), 14)
         FIXED_RECT(HIGHLIGHT_COLOR, MOTD_CONTENT_ORG_X, (MOTD_CONTENT_ORG_Y + 168), 2, 2)
-        FIXED_RECT_TXT(1, "Shop & equip system", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 162), (MOTD_CONTENT_SIZE_X - 8), 14)
+        FIXED_RECT_TXT(1, "Challenges & ranks", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, IG_TEXT_COLOR, (MOTD_CONTENT_ORG_X + 8), (MOTD_CONTENT_ORG_Y + 162), (MOTD_CONTENT_SIZE_X - 8), 14)
 
         // MOTD: date
         FIXED_RECT_DVARLEFT_STYLED(ADDPREFIX("motd_date"), UI_FONT_NORMAL, 0.19, NO_COLOR, IG_MUTED_COLOR, MOTD_DATE_ORG_X, MOTD_DATE_ORG_Y, MOTD_DATE_SIZE_X, MOTD_DATE_SIZE_Y)
@@ -309,52 +302,44 @@
 
         FIXED_RECT(IG_DIVIDER_COLOR, RIGHT_FRAME_ORG_X, RIGHT_FRAME_ORG_Y, 1, RIGHT_FRAME_SIZE_Y)
 
-        // Icon: rank
+        // Rank is a badge, not an unlabeled button; Challenges remains on the left.
         itemDef
         {
             name rank_icon
             rect DEFAULT_RECT(RANK_ICON_ORG_X RANK_ICON_ORG_Y RANK_ICON_SIZE_X RANK_ICON_SIZE_Y)
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_SHADER
+            type ITEM_TYPE_TEXT style WINDOW_STYLE_SHADER decoration
             background "opencj_rank_1"
             exp material ("opencj_rank_" + dvarString("ocj_ch_rank"))
-            forecolor WHITE_COLOR
-            visible 1
-            mouseEnter { setitemcolor rank_icon forecolor HIGHLIGHT_COLOR; play "mouse_over"; }
-            mouseExit { setitemcolor rank_icon forecolor WHITE_COLOR; }
-            action { play "mouse_click"; close self; open opencj_challenges; }
+            forecolor WHITE_COLOR visible 1
         }
 
-        // Button: controls
-        BUTTON_RECT_TXT_ACTION(btn_controls, "", play "mouse_click"; close self; open main_controls, NO_COLOR, WHITE_COLOR, UI_FONT_NORMAL, 0.24, BTN_CONTROLS_ORG_X, BTN_CONTROLS_ORG_Y, 20, 20)
-        FIXED_RECT_BORDER(NO_COLOR, 1, WHITE_COLOR, (BTN_CONTROLS_ORG_X + 1), (BTN_CONTROLS_ORG_Y + 4), 18, 12)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 5), (BTN_CONTROLS_ORG_Y + 7), 2, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 9), (BTN_CONTROLS_ORG_Y + 7), 2, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 13), (BTN_CONTROLS_ORG_Y + 7), 2, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 5), (BTN_CONTROLS_ORG_Y + 10), 2, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 9), (BTN_CONTROLS_ORG_Y + 10), 2, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 13), (BTN_CONTROLS_ORG_Y + 10), 2, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 6), (BTN_CONTROLS_ORG_Y + 13), 8, 1)
+        IG_NAV_BUTTON(btn_hudsettings, "HUD settings", ACTION_COMMON; open opencj_hudsettings, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LEAVE_ORG_X, BTN_PLAY_ORG_Y, BTN_SIZE_X, BTN_SIZE_Y)
+        IG_NAV_BUTTON(btn_graphics, "GFX settings", ACTION_COMMON; open opencj_graphics, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LEAVE_ORG_X, BTN_SPEC_ORG_Y, BTN_SIZE_X, BTN_SIZE_Y)
+        IG_NAV_BUTTON(btn_controls, "Game controls", ACTION_COMMON; open main_controls, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LEAVE_ORG_X, BTN_CHALL_ORG_Y, BTN_SIZE_X, BTN_SIZE_Y)
+        IG_NAV_BUTTON(btn_settings, "Game options", ACTION_COMMON; open main_options, BTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LEAVE_ORG_X, BTN_LB_ORG_Y, BTN_SIZE_X, BTN_SIZE_Y)
+        // The server browser is not implemented yet; preserve its disabled state.
+        itemDef
+        {
+            name btn_servers
+            rect DEFAULT_RECT(BTN_LEAVE_ORG_X (BTN_LEAVE_ORG_Y - BTN_SIZE_Y - BTN_SPACING) BTN_SIZE_X BTN_SIZE_Y)
+            type ITEM_TYPE_TEXT style WINDOW_STYLE_FILLED decoration
+            backcolor .065 .12 .14 1 forecolor IG_DISABLED_COLOR
+            text "Servers" textfont BTN_FONT textscale BTN_FONTSIZE
+            textalign ITEM_ALIGN_MIDDLE_CENTER visible 1
+        }
 
-        // Mod graphics: monitor with a cyan landscape, above the stock controls.
-        BUTTON_RECT_TXT_ACTION(btn_graphics, "", play "mouse_click"; close self; open opencj_graphics, NO_COLOR, WHITE_COLOR, UI_FONT_NORMAL, 0.24, BTN_CONTROLS_ORG_X, (BTN_CONTROLS_ORG_Y - 30), 20, 20)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 1), (BTN_CONTROLS_ORG_Y - 29), 18, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 1), (BTN_CONTROLS_ORG_Y - 17), 18, 1)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 1), (BTN_CONTROLS_ORG_Y - 28), 1, 11)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 18), (BTN_CONTROLS_ORG_Y - 28), 1, 11)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 9), (BTN_CONTROLS_ORG_Y - 16), 2, 3)
-        FIXED_RECT(WHITE_COLOR, (BTN_CONTROLS_ORG_X + 5), (BTN_CONTROLS_ORG_Y - 13), 10, 1)
-        FIXED_RECT(HIGHLIGHT_COLOR, (BTN_CONTROLS_ORG_X + 9), (BTN_CONTROLS_ORG_Y - 26), 2, 1)
-        FIXED_RECT(HIGHLIGHT_COLOR, (BTN_CONTROLS_ORG_X + 8), (BTN_CONTROLS_ORG_Y - 25), 4, 1)
-        FIXED_RECT(HIGHLIGHT_COLOR, (BTN_CONTROLS_ORG_X + 7), (BTN_CONTROLS_ORG_Y - 24), 6, 1)
-        FIXED_RECT(HIGHLIGHT_COLOR, (BTN_CONTROLS_ORG_X + 6), (BTN_CONTROLS_ORG_Y - 23), 8, 1)
-        FIXED_RECT(HIGHLIGHT_COLOR, (BTN_CONTROLS_ORG_X + 5), (BTN_CONTROLS_ORG_Y - 22), 10, 1)
-        FIXED_RECT(HIGHLIGHT_COLOR, (BTN_CONTROLS_ORG_X + 4), (BTN_CONTROLS_ORG_Y - 21), 12, 1)
-
-        // Button: settings
-        SEL_SHADER_RECT_ALWAYS_ACTION(btn_settings, close self; open main_options, opencj_icon_gear, BTN_SETTINGS_ORG_X, BTN_SETTINGS_ORG_Y, BTN_SETTINGS_SIZE_X, BTN_SETTINGS_SIZE_Y)
-
-        // Button: leave game
-        SEL_SHADER_RECT_ALWAYS_ACTION(btn_leave, execnow "bind TAB +scores"; execnow "set opencj_sb_held 0"; execnow "setu opencj_sb_active 0"; exec "disconnect", opencj_icon_exit, BTN_LEAVE_ORG_X, BTN_LEAVE_ORG_Y, BTN_LEAVE_SIZE_X, BTN_LEAVE_SIZE_Y)
+        itemDef
+        {
+            name btn_leave
+            rect DEFAULT_RECT(BTN_LEAVE_ORG_X BTN_LEAVE_ORG_Y BTN_LEAVE_SIZE_X BTN_LEAVE_SIZE_Y)
+            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED
+            backcolor .28 .065 .07 1 forecolor 1 .65 .65 1
+            text "Exit" textfont BTN_FONT textscale BTN_FONTSIZE
+            textalign ITEM_ALIGN_MIDDLE_CENTER visible 1
+            mouseEnter { setitemcolor btn_leave backcolor .55 .10 .12 1; play "mouse_over"; }
+            mouseExit { setitemcolor btn_leave backcolor .28 .065 .07 1; }
+            action { play "mouse_click"; open opencj_exitconfirm; }
+        }
 
         // Continuous accent above all three sections.
         FIXED_RECT(HIGHLIGHT_COLOR, IG_OUTER_FRAME_ORG_X, IG_OUTER_FRAME_ORG_Y, IG_OUTER_FRAME_SIZE_X, 2)

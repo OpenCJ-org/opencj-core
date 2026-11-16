@@ -131,3 +131,6 @@ material,opencj_flag_atlas_4
 material,opencj_flag_atlas_5
 material,opencj_flag_atlas_6
 material,opencj_flag_atlas_7
+
+menufile,ui_mp/scriptmenus/opencj_hudsettings.menu
+menufile,ui_mp/scriptmenus/opencj_exitconfirm.menu

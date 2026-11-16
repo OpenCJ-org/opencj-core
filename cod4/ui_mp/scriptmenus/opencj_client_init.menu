@@ -14,6 +14,9 @@
             execNowOnDvarIntValue opencj_init_once 1 "setfromdvar opencj_gfx_map_blur r_blur";
             OPENCJ_SETUP_SCOREBOARD(execNowOnDvarIntValue opencj_init_once 1)
             OPENCJ_REGISTER_FPS(execNowOnDvarIntValue opencj_init_fps 1)
+            // Compact minimap, without the stock compass ticker.
+            setDvar hud_fade_compass 0;
+            setDvar compassSize 0.65;
             setDvar opencj_init_once 0;
             scriptMenuResponse "ready";
             close opencj_client_init;

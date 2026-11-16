@@ -1,0 +1,63 @@
+#include "ui/menudef.h"
+#include "ui_mp/scriptmenus/opencj_common.inc"
+
+// Server-published values; controls stay hidden until account settings are ready.
+#define HUD_ROW(_key, _label, _values, _action, _x, _y, _hint) \
+    FIXED_RECT_TXT(1, _label, UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.23, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, WHITE_COLOR, _x, _y, 126, 22) \
+    itemDef { \
+        name _key type ITEM_TYPE_MULTI style WINDOW_STYLE_FILLED \
+        rect DEFAULT_RECT(0 0 120 22) origin (_x + 130) _y \
+        dvar "opencj_hud_edit_"#_key dvarFloatList _values \
+        textfont UI_FONT_NORMAL textscale 0.23 textalign ITEM_ALIGN_MIDDLE_CENTER \
+        forecolor WHITE_COLOR backcolor .10 .19 .22 .95 \
+        visible when (dvarInt("opencj_hud_ready") == 1) \
+        mouseEnter { setitemcolor _key backcolor .08 .38 .44 1; setdvar opencj_hud_hint _hint; play "mouse_over"; } \
+        mouseExit { setitemcolor _key backcolor .10 .19 .22 .95; setdvar opencj_hud_hint ""; } \
+        action { play "mouse_click"; _action } \
+    }
+
+{
+    menuDef
+    {
+        name opencj_hudsettings
+        rect DEFAULT_RECT(0 0 FULLSCREEN_X FULLSCREEN_Y)
+        style WINDOW_STYLE_EMPTY focuscolor WHITE_COLOR blurWorld 2
+        onOpen { setdvar opencj_hud_ready 0; setdvar opencj_hud_hint ""; scriptMenuResponse "begin"; }
+        onEsc { close self; open opencj_ingame; }
+
+        FIXED_RECT(.015 .025 .03 .98, 42, 40, 556, 406)
+        FIXED_RECT(HIGHLIGHT_COLOR, 42, 40, 556, 2)
+        FIXED_RECT_TXT(1, "HUD & notifications", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.36, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, HIGHLIGHT_COLOR, 60, 54, 480, 26)
+        FIXED_RECT_TXT(1, "Changes apply immediately and are saved to your account.", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.21, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, LIGHTGREY_COLOR, 60, 83, 520, 18)
+        FIXED_RECT(.10 .23 .26 .65, 60, 108, 520, 1)
+        FIXED_RECT_TXT(1, "On-screen information", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.25, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, HIGHLIGHT_COLOR, 60, 116, 250, 22)
+        FIXED_RECT_TXT(1, "Notifications", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.25, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, HIGHLIGHT_COLOR, 330, 116, 250, 22)
+        HUD_ROW(fpshud, "FPS overlay", { "Off" 0 "Standard" 1 "OpenCJ" 2 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_fpshud" 0 "fpshud:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_fpshud" 1 "fpshud:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_fpshud" 2 "fpshud:2";, 60, 144, "Standard uses the game FPS counter; OpenCJ shows its custom overlay.")
+        HUD_ROW(speedometer, "Speedometer", { "Off" 0 "On" 1 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speedometer" 0 "speedometer:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speedometer" 1 "speedometer:1";, 60, 169, "Show your movement speed.")
+        HUD_ROW(poshud, "Position", { "Off" 0 "On" 1 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_poshud" 0 "poshud:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_poshud" 1 "poshud:1";, 60, 194, "Show your world coordinates.")
+        HUD_ROW(specfps, "Spectator FPS", { "Off" 0 "Compact" 1 "Detailed" 2 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_specfps" 0 "specfps:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_specfps" 1 "specfps:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_specfps" 2 "specfps:2";, 60, 219, "FPS information for the player you are watching.")
+        HUD_ROW(speclisthud, "Spectator list", { "Off" 0 "1" 1 "2" 2 "3" 3 "4" 4 "5" 5 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speclisthud" 0 "speclisthud:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speclisthud" 1 "speclisthud:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speclisthud" 2 "speclisthud:2"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speclisthud" 3 "speclisthud:3"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speclisthud" 4 "speclisthud:4"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_speclisthud" 5 "speclisthud:5";, 60, 244, "Maximum number of spectator names, up to five.")
+        HUD_ROW(rpgtiming, "RPG timing", { "Off" 0 "On" 1 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_rpgtiming" 0 "rpgtiming:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_rpgtiming" 1 "rpgtiming:1";, 60, 269, "Show feedback on RPG shot timing.")
+        HUD_ROW(rpgangle, "RPG angle", { "Off" 0 "On" 1 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_rpgangle" 0 "rpgangle:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_rpgangle" 1 "rpgangle:1";, 60, 294, "Show feedback on your RPG firing angle.")
+        HUD_ROW(smallcrosshair, "Small crosshair", { "Off" 0 "On" 1 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_smallcrosshair" 0 "smallcrosshair:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_smallcrosshair" 1 "smallcrosshair:1";, 60, 319, "Use the smaller crosshair.")
+        HUD_ROW(notify_checkpoint, "Checkpoint", { "Off" 0 "Text" 1 "Flash" 2 "Both" 3 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_checkpoint" 0 "notify_checkpoint:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_checkpoint" 1 "notify_checkpoint:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_checkpoint" 2 "notify_checkpoint:2"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_checkpoint" 3 "notify_checkpoint:3";, 330, 144, "Notification when you reach a checkpoint.")
+        HUD_ROW(notify_save, "Save", { "Off" 0 "Text" 1 "Flash" 2 "Both" 3 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_save" 0 "notify_save:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_save" 1 "notify_save:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_save" 2 "notify_save:2"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_save" 3 "notify_save:3";, 330, 169, "Notification when you save your position.")
+        HUD_ROW(notify_load, "Load", { "Off" 0 "Text" 1 "Flash" 2 "Both" 3 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_load" 0 "notify_load:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_load" 1 "notify_load:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_load" 2 "notify_load:2"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_load" 3 "notify_load:3";, 330, 194, "Notification when you load your saved position.")
+        HUD_ROW(notify_results, "Results", { "Text" 0 "Both" 1 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_results" 0 "notify_results:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_results" 1 "notify_results:1";, 330, 219, "Finish, record and challenge messages stay visible.")
+        HUD_ROW(notify_strength, "Flash strength", { "Low" 0 "Medium" 1 "High" 2 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_strength" 0 "notify_strength:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_strength" 1 "notify_strength:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_notify_strength" 2 "notify_strength:2";, 330, 244, "Strength of notification flashes.")
+        FIXED_RECT_TXT(1, "Navigation", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, 0.25, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, HIGHLIGHT_COLOR, 330, 286, 250, 22)
+        HUD_ROW(checkpointicons, "Checkpoint icons", { "Off" 0 "Locations only" 1 "All markers" 2 }, scriptMenuRespondOnDvarIntValue "opencj_hud_edit_checkpointicons" 0 "checkpointicons:0"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_checkpointicons" 1 "checkpointicons:1"; scriptMenuRespondOnDvarIntValue "opencj_hud_edit_checkpointicons" 2 "checkpointicons:2";, 330, 316, "Locations only hides screen-edge arrows and minimap markers.")
+
+        itemDef
+        {
+            name hud_loading type ITEM_TYPE_TEXT decoration
+            rect DEFAULT_RECT(330 346 250 18)
+            text "Loading settings..." textfont UI_FONT_NORMAL textscale 0.23
+            textalign ITEM_ALIGN_MIDDLE_CENTER forecolor LIGHTGREY_COLOR
+            visible when (dvarInt("opencj_hud_ready") == 0)
+        }
+        FIXED_RECT(.10 .23 .26 .65, 60, 377, 520, 1)
+        FIXED_RECT_DVARLEFT_STYLED(opencj_hud_hint, UI_FONT_NORMAL, 0.20, NO_COLOR, LIGHTGREY_COLOR, 60, 382, 520, 20)
+        BUTTON_RECT_TXT_ACTION_BG(hud_back, "Back", play "mouse_click"; close self; open opencj_ingame, .10 .19 .22 .95, WHITE_COLOR, UI_FONT_NORMAL, 0.24, 480, 412, 100, 22)
+    }
+}
