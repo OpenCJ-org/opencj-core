@@ -152,5 +152,12 @@ if result.returncode or not (COD4.parent/'mod.ff').exists():raise RuntimeError('
 assert 'Menu load error' not in result.stdout and 'UNRECOVERABLE ERROR' not in result.stdout and not re.search(r'(?m)^ERROR:',result.stdout), 'See makeMod.log'
 with zipfile.ZipFile(COD4.parent/'z_opencj.iwd','a',compression=zipfile.ZIP_DEFLATED) as z:
     for license_file in (ROOT/'stage/licenses').glob('*'):
-        if license_file.is_file():z.write(license_file,'licenses/'+license_file.name)
+        if not license_file.is_file():
+            continue
+        entry_name = 'licenses/' + license_file.name
+        if entry_name in z.namelist():
+            if z.read(entry_name) != license_file.read_bytes():
+                raise RuntimeError('Built archive contains a different notice: ' + entry_name)
+            continue
+        z.write(license_file, entry_name)
 print('BUILD COMPLETE; all build writes were confined to the private toolroot.')

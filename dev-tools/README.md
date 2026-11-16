@@ -42,7 +42,9 @@ Client assets need a separate Windows build and verified deployment;
 The Discord bridge uses the Compose `discord` profile and a private config file
 under `local/`. See [its configuration format](../discord-integration/README.md).
 
-Artwork scripts use the dependencies in `requirements-art.txt`. They require
+Artwork scripts use the dependencies in `requirements-art.txt`.
+Read [licenses and asset sources](../docs/reference/licensing.md) before
+redistributing their inputs, outputs or tools. They require
 licensed map/game inputs supplied by the operator. See the
 [preview asset guide](../docs/development/map-previews.md).
 

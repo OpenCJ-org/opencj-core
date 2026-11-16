@@ -7,7 +7,10 @@ maps. The mod supplies matching preview materials and a missing-image fallback.
 Eight previews reuse original map-package imagery. Bouncer Training and Futile
 use actual game captures of their starting areas. These are recorded images,
 not generated reconstructions. The source catalogue records image provenance,
-hashes and conversion details.
+hashes and conversion details. It does not record permission to redistribute
+map artwork separately. See [licenses and asset sources](../../../docs/reference/licensing.md)
+for the unresolved publication review; mapper credit and public downloads alone
+do not settle that question.
 
 `source/map_previews.json` is an asset inventory, not a voting allowlist.
 Eligibility comes from `mapids.inRotation`. The shared preview helper serves

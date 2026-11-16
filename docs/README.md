@@ -22,6 +22,8 @@ public folders.
 
 ## Reference index
 
+- [Licenses and asset sources](reference/licensing.md): component licenses, third-party notices and unresolved redistribution questions.
+
 - Checkpoints: [editor](reference/checkpoints/editor.md), [ground contact](reference/checkpoints/ground-contact.md).
 - Gameplay: [camera](reference/gameplay/camera.md), [saved history](reference/gameplay/save-history.md), [player names](reference/gameplay/player-names.md).
 - Demos: [lifecycle](reference/demos/lifecycle.md), [selection](reference/demos/selection.md), [viewing](reference/demos/viewing.md).

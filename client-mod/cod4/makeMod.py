@@ -116,7 +116,7 @@ def main():
 
     # Now zip relevant folders to the iwd. For that we need to make a temporary directory to use with make_archive, and copy all files to it
     # zipfile package can do it without a root directory, but that requires users of this script to install a Python package..
-    iwd_folders = ['images', 'weapons']
+    iwd_folders = ['images', 'weapons', 'licenses']
     for folder in iwd_folders:
         tmp_subdir = os.path.join(tmp_dir, folder)
         full_path = os.path.join(opencj_cod4_dir, folder)

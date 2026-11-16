@@ -1,11 +1,17 @@
 # Route finish audio
 
-The two MP3s in this directory were supplied by the OpenCJ owner for this feature.
-Their filenames retain the creator names and source IDs. No separate license
-text was supplied with them.
+The two MP3s come from Pixabay:
 
-- `freesound_gamestudio-level-complete-394515.mp3`: ordinary route completion.
-- `universfield-victory-fanfare-152480.mp3`: new top-three time or low-RPG finish.
+- [Level Complete by freesound_gamestudio](https://pixabay.com/sound-effects/film-special-effects-level-complete-394515/): `freesound_gamestudio-level-complete-394515.mp3`, ordinary route completion.
+- [Victory Fanfare by Universfield](https://pixabay.com/sound-effects/musical-victory-fanfare-152480/): `universfield-victory-fanfare-152480.mp3`, new top-three time or low-RPG finish.
+
+Both pages identify the Pixabay Content License. They are third-party audio,
+not AGPL or CC0 assets. The [license terms](https://pixabay.com/service/terms/)
+restrict standalone redistribution. Keeping source MP3s and lightly converted
+WAVs in a public repository therefore remains unresolved, separately from
+incorporating sound into the game. See [licenses and asset sources](../../docs/reference/licensing.md).
+The conversion below changes encoding, sample rate and volume; it does not
+establish a new license or remove the source restrictions.
 
 Run `python3 dev-tools/scripts/build-finish-sounds.py` from the workspace on the
 server to regenerate the WAV assets (requires libsndfile with MP3 support).

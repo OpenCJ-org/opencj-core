@@ -53,6 +53,8 @@ The default project license is [AGPL-3.0](LICENSE). The Discord bridge retains
 its [GPL-3.0 license](discord-integration/LICENSE). Component and third-party
 asset notices continue to apply; the root license does not replace them.
 Dev-tools is licensed under [AGPL-3.0](dev-tools/LICENSE).
+See [licenses and asset sources](docs/reference/licensing.md) for retained
+notices, external inputs and unresolved redistribution questions.
 
 The [coding guidelines](dev-tools/agent-guidelines/drafts/coding-guidelines.md)
 are an **inactive draft**. Their presence here does not activate them.
