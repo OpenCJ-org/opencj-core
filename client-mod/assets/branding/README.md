@@ -8,7 +8,12 @@ The edit prompt and hashes are recorded in `opencj-logo-clean.json`.
 
 `source/build_logo.py` converts this source to the existing 1024x1024 TGA and
 DXT5 IWI, preserving the prior flags, mip offsets and encoded byte length. Run
-with the existing Pillow environment on the authoritative source host:
+with the Python environment with Pillow, from the client-mod directory:
+
+```sh
+python3 \
+  source/build_logo.py
+```
 
 Intentional branding continues to use `opencj_logo_nobg`. Missing map imagery
 uses the separate question-mark material `opencj_missing_image`.

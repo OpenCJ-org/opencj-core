@@ -1,5 +1,8 @@
 # Final editable visual assets
 
+This is the client-mod asset library. Keep final artwork and the inputs needed
+to edit or regenerate it here and under `source/`; do not add brainstorm previews.
+
 | Asset | Editable source / build recipe | Review artwork |
 | --- | --- | --- |
 | Competitive Top 10 | `ranks/competitive/competitive.svg`, `source/build_competitive_icon.py` | `ranks/competitive/` |

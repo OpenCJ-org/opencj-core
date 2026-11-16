@@ -1,4 +1,10 @@
-# Approved continuous-ring ranks
+# Continuous-ring ranks
+
+The rounded continuous ring, one color per rank,
+with a spectrum finish at rank 10. A solid dark backing connects the center
+to the outer ring so world scenery cannot show through the gap. Every rank retains the same neutral center,
+white numeral, circle geometry and stroke weight. Progress is rank / 10,
+clockwise from twelve o'clock.
 
 ## Edit and rebuild
 
@@ -12,13 +18,17 @@
 - `manifest.json` records source and output hashes; `size-preview.png` shows
   the actual 15, 26 and 28 pixel samples as well as an enlarged row.
 
-From the authoritative client-mod checkout:
+From the client-mod directory:
+
+    python3 source/build_rank_icons.py
 
 For direct manual SVG edits, preserve them with:
 
+    python3 source/build_rank_icons.py --render-only
+
 Dependencies: Pillow, CairoSVG and Nimbus Sans Bold from fonts-urw-base35.
 The SVG font fallback can be changed in palette.json before rebuilding.
-The font is installed on the source host; it is not redistributed as an asset.
+Install the font separately; it is not redistributed as an asset.
 
 Rank 10 uses overlapping color sectors under one circular SVG mask. All ten
 textures render at 4x size and downsample with Lanczos, then receive a complete

@@ -96,7 +96,7 @@ def initialize(args):
     env = HERE / ".env"
     env.write_text("".join(f"{key}={dotenv(value)}\n" for key, value in settings.items()), encoding="utf-8")
     env.chmod(0o600)
-    print("Initialized. Follow docs/getting-started.md: create the external volume, start db, bootstrap the empty schema, then build and start the server.")
+    print("Initialized. Follow ../docs/setup/development.md: create the external volume, start db, bootstrap the empty schema, then build and start the server.")
 
 
 def main():

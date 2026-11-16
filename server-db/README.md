@@ -17,7 +17,7 @@ Shop purchase safety: `shopBuyOrEquip` serializes requests per player inside one
 
 ## Checkpoint layout migration
 
-Apply `migrations/012-checkpoint-retirement.sql` before deploying the default CPC migration scripts. This additive column keeps removed checkpoint IDs and their historical statistics while excluding them from the active graph. `!cp finalize` automatically migrates supported small standalone-route edits in one transaction, retains completed results, archives unfinished old-layout runs, and marks old demos `ready=2` without deleting their payloads. See `dev-tools/CHECKPOINTS.md` for the edit limits and backups.
+Apply `migrations/012-checkpoint-retirement.sql` before deploying the default CPC migration scripts. This additive column keeps removed checkpoint IDs and their historical statistics while excluding them from the active graph. `!cp finalize` automatically migrates supported small standalone-route edits in one transaction, retains completed results, archives unfinished old-layout runs, and marks old demos `ready=2` without deleting their payloads. See `docs/reference/checkpoints/editor.md` for the edit limits and backups.
 
 ## Shared map pool and authors
 
@@ -35,8 +35,8 @@ uber-admins can select every installed map, including ones without DB metadata.
 An empty/failed catalogue read exposes no maps to regular players.
 
 Release provenance and the future download authorization design are documented
-in `dev-tools/docs/proposals/alpha-map-pool.md` and
-`dev-tools/docs/proposals/203-map-download-authorization.md`.
+in `docs/reference/maps/catalogue.md` and
+`docs/proposals/map-download-authorization.md`.
 
 ## Preferred names and name moderation
 
@@ -98,7 +98,7 @@ The receipt survives payload cleanup so repeated calls and lost commit replies
 cannot republish an obsolete candidate. It is removed only when its parent
 player run is deleted. Receipts do not make a retired recording playable.
 
-See dev-tools/docs/sql-capacity-190.md for concurrency and workload verification.
+See docs/development/performance.md for concurrency and workload verification.
 
 ## Stable route identity (#174)
 
@@ -134,7 +134,7 @@ manifest and authoring labels move together. The route catalogue name changes
 once; demo, challenge and run references do not change. Renaming a shared
 opening leaves the names of its descendant routes alone.
 
-See dev-tools/docs/route-identity-174.md for validation and deployment details.
+See docs/reference/database/route-identity.md for validation and deployment details.
 
 
 ## Separate database cleanup (migration 020)
@@ -166,7 +166,7 @@ the catalogue. Equipment slots follow catalogue slot changes atomically.
 Prices paid, saved state, checkpoint results, demo summaries and recordings
 remain preserved.
 
-See dev-tools/docs/database-cleanup.md and tests/database-cleanup.py.
+See docs/reference/database/data-model.md and tests/database-cleanup.py.
 
 ## Data safety and tracked migrations (021–023)
 
@@ -181,7 +181,7 @@ while preserving competitive rank rules.
 
 Apply tools/runtime_access.py after migrations to remove gameplay schema/deletion
 powers while retaining required operations and stored routines. See
-../dev-tools/docs/database-safety.md for commands, tests and recovery details.
+../docs/operations/database.md for commands, tests and recovery details.
 
 
 ## Query ranking indexes (026)
@@ -191,4 +191,4 @@ and checkpoint/RPG ordering, with runID as the ranking tie-break. The time index
 also covers load/save counts for leaderboard reads. Apply with the tracked migration
 runner after the normal backup and stopped-writer check. No data, routines or
 permissions change. Deploy the matching checkpoint notice query so its equivalent
-cs.runID tie-break can use the index. See dev-tools/docs/query-performance.md.
+cs.runID tie-break can use the index. See docs/reference/database/query-performance.md.

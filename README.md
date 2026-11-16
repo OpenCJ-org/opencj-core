@@ -11,15 +11,17 @@ retain their own build and runtime responsibilities.
 | `server-ext/` | OpenCJ native extensions |
 | `server-db/` | Schema, migrations and database administration tools |
 | `discord-integration/` | Optional Discord bridge |
-| `dev-tools/` | Development setup, tests and documentation |
+| `dev-tools/` | Development setup and tests |
+| `docs/` | Setup, reference, development and operations guides |
+| `.github/` | Agent instructions and GitHub workflows |
 | `cod4x-server/` | Pinned CoD4 engine submodule |
 | `libcod/` | Pinned CoD2 engine extension submodule |
 
 ## Start here
 
 Read the [development guide](dev-tools/README.md),
-[documentation index](dev-tools/docs/index.md) and
-[test guide](dev-tools/docs/testing.md).
+[documentation index](docs/README.md) and
+[test guide](docs/development/testing.md).
 The base game, Windows Mod Tools and installed maps are external prerequisites;
 they are not supplied by this repository.
 
@@ -42,10 +44,15 @@ routine setup step: it bypasses the recorded revision.
 
 ## History and licensing
 
+Component history predates the unified checkout. Use `git log --follow -- <path>`
+when following files across directory moves. Current-tree cleanup and publication
+history review are separate steps; neither implies that private historical
+content is cleared for release.
+
 The default project license is [AGPL-3.0](LICENSE). The Discord bridge retains
 its [GPL-3.0 license](discord-integration/LICENSE). Component and third-party
 asset notices continue to apply; the root license does not replace them.
 Dev-tools is licensed under [AGPL-3.0](dev-tools/LICENSE).
 
-The [coding guidelines](dev-tools/docs/proposals/code-readability-guidelines.md)
+The [coding guidelines](dev-tools/agent-guidelines/drafts/coding-guidelines.md)
 are an **inactive draft**. Their presence here does not activate them.

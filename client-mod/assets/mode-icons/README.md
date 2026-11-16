@@ -1,6 +1,11 @@
 # Stacked mode badges
 
-Build on the source host with:
+title-case FPS names, Ele lift arrow, Any% route
+fork, side-by-side A/D keys for Halfbeat, and the TAS bot.
+
+Run from the client-mod directory with the artwork dependencies installed:
+
+    python3 source/build_mode_icons.py
 
 FPS badges render at 24:20; modifiers at 16:20. The square 512-pixel IWI
 textures deliberately pre-compensate for those display ratios. Do not draw
@@ -34,6 +39,8 @@ ships in licenses/lucide.txt in the IWD, alongside existing license entries.
 ## Optional Oldschool badge
 
 The approved amber bunny + OS badge is exported separately for future use:
+
+    python3 source/build_mode_icons.py --oldschool-only
 
 `oldschool/` contains the 16:20 PNG, standalone transparent rabbit SVG/PNG,
 pre-scaled game TGA/IWI, attribution and hashes. `oldschool-bunny.zip` bundles

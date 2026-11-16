@@ -7,6 +7,9 @@ server. Data is supplied by [DB-IP](https://db-ip.com/db/lite.php), under
 client archive retain attribution. Country lookup is an approximate IP-based
 location, not proof of nationality or physical location.
 
+Automatic updates are opt-in. Use the manual import procedure below unless
+you deliberately enable the separate background updater.
+
 ## Install on a new host
 
 Keep server-db and dev-tools as sibling directories. Supply MySQL 8.0 and a
@@ -37,17 +40,26 @@ host's name, filesystem layout, cron or systemd. It does not create the game DB.
    mounted 0600 file. A remote MySQL service needs equivalent least-privilege
    account provisioning; never pass its password as a command argument.
 
-4. Build, populate, and start the separate updater project:
+4. Build the image and import once, without enabling automatic updates:
 
        docker compose -f compose.geoip.yaml build updater
        docker compose -f compose.geoip.yaml run --rm --no-deps updater --minimum-ranges 50000
-       docker compose -f compose.geoip.yaml up -d --no-deps updater
 
-   The explicit argument makes the initial import one-shot; the normal service
-   starts with --daemon.
+   The explicit argument makes the import one-shot. It exits without leaving a
+   background job running. This project never starts or restarts the game or
+   database service.
 
-   Inspect logs with docker compose -f compose.geoip.yaml logs --tail=20 updater.
-   This project never starts or restarts the game or database service.
+## Optional: enable automatic updates
+
+Only on the host where you deliberately want automatic updates, run from dev-tools:
+
+    docker compose -f compose.geoip.yaml up -d --no-deps updater
+
+This starts the background mode (--daemon) and enables restart after a reboot.
+Inspect logs with docker compose -f compose.geoip.yaml logs --tail=20 updater.
+To disable it again, use docker compose -f compose.geoip.yaml down. This removes
+only the updater project; it keeps imported country data and the password file.
+No recurring job is needed for manual imports.
 
 ## Updates and failure behavior
 

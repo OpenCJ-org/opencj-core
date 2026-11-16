@@ -1,4 +1,4 @@
-"""Isolated Windows build runner; the authoritative copy lives on the SSH host."""
+"""Build client assets in an isolated directory using explicit installation paths."""
 from pathlib import Path
 import ctypes as C,hashlib,json,os,shutil,struct,subprocess,sys,runpy,contextlib,io,zipfile
 ROOT=Path(__file__).resolve().parents[1]

@@ -22,21 +22,19 @@ buffer. Tiny scoreboard icons naturally cannot display subpixel emblem detail.
 
 ## Regenerate and build
 
-Run source/build_flag_atlas.py on the authoritative server with Pillow and
+Run source/build_flag_atlas.py from the client-mod directory with Pillow and
 CairoSVG available. It writes the eight images/materials, technique/techsets,
 source/flag_atlas_manifest.json and sibling server-gsc/opencj/flagatlas.gsc.
 Keep all of those outputs together. Existing country order is explicit in the
 provenance file; every change must regenerate the GSC mapping too.
 
-Client builds use the unchanged installed Windows makeMod.py. The tracked
-source/build_client_assets_windows.py is copied into a private _<task>/source
-folder inside the permitted Mod Tools Mods/opencj/cod4 directory. Copy
-source/flag_atlas.hlsl there as opencj_flag_atlas.hlsl. Put the approved cod4
-inputs in _<task>/stage and the license files in stage/licenses. Transfer these
-server-owned build inputs, never a local source checkout. Preserve currently
-deployed versions of unrelated unfinished menus and IWD entries when staging.
+Client builds use the unchanged installed Windows makeMod.py. Stage source/build_client_assets_windows.py in a private _<task>/source folder
+under the selected Mod Tools Mods/opencj/cod4 directory. Stage the HLSL source
+as opencj_flag_atlas.hlsl and the intended cod4 inputs under _<task>/stage.
+Include license files. Preserve the installation's custom files and avoid
+mixing unrelated unfinished assets into the staged build.
 
-Run the helper with Windows Python; --mod-tools and --game-dir can select an
+Run the helper with Windows Python; --mod-tools and --game-dir must identify an
 existing installation. It compiles the shader through Windows d3dcompiler_47,
 registers it only in its private shader lookup, invokes the original makeMod.py
 in the isolated toolroot, and copies missing stock dependencies there. Outputs
@@ -46,5 +44,5 @@ logs and hashes proving shared build inputs/outputs stayed unchanged.
 Before deployment, unlink and compare the full build with the live package,
 verify all SVG cells against decoded pixels, check both licenses and the image
 loader budget, and run exact-release GSC tests. Follow
-../../../dev-tools/docs/runbooks/client-asset-deployment.md for matching client/
+../../../docs/operations/client-assets.md for matching client/
 server installation and the required full server-process restart.

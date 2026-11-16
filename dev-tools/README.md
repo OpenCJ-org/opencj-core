@@ -4,8 +4,8 @@ These tools belong to `opencj-core`; do not clone the former component
 repositories as siblings. Build and test on a Linux development host. Windows
 CoD4 Mod Tools is required separately for client fastfiles.
 
-Start with [getting started](docs/getting-started.md), then the
-[test guide](docs/testing.md). Browse the [documentation index](docs/index.md)
+Start with [getting started](../docs/setup/development.md), then the
+[test guide](../docs/development/testing.md). Browse the [documentation index](../docs/README.md)
 for current component behavior, operating procedures and unresolved proposals.
 
 The supported database bootstrap creates the complete recorded schema only in
@@ -15,7 +15,7 @@ map binaries, private configuration and player data are not included.
 
 ## Everyday development
 
-Open `opencj.code-workspace` over Remote SSH. Core components share one Git
+Open `opencj.code-workspace` in the configured Linux development environment. Core components share one Git
 history; CoD4 and CoD2 engines appear as separate submodule repositories.
 
 From this directory:
@@ -27,18 +27,32 @@ python3 dev.py up
 python3 dev.py logs
 ```
 
+`build` stops the development server and performs a clean engine build. For a
+running installation, follow the [native/script deployment runbook](../docs/operations/native-scripts.md)
+and build a separate executable before a guarded deployment. The legacy engine
+makefile does not track all header dependencies.
+
+Current CoD4 helpers are built directly from `server-ext`; the standalone libcod
+submodule is for CoD2. See [native helpers](../docs/reference/native/helpers.md).
+Client assets need a separate Windows build and verified deployment;
+[matching files on disk alone may not prevent a download](../docs/operations/client-assets.md).
+
 ## Optional tools
 
 The Discord bridge uses the Compose `discord` profile and a private config file
 under `local/`. See [its configuration format](../discord-integration/README.md).
 
+Artwork scripts use the dependencies in `requirements-art.txt`. They require
+licensed map/game inputs supplied by the operator. See the
+[preview asset guide](../docs/development/map-previews.md).
+
 Manual backups, runtime permissions and upgrades are covered in
-[database safety](docs/database-safety.md). No automatic backups, game-client
+[database safety](../docs/operations/database.md). No automatic backups, game-client
 control, or coding-guideline activation happens during setup.
 
 ## Local records
 
 Keep credentials, captures, dumps, deployment evidence and machine-specific
 notes under ignored `local/`. Read private operator instructions when present.
-The [coding guidelines](docs/proposals/code-readability-guidelines.md) remain an
-**inactive draft**. Original migration recovery refs and stashes are local-only.
+The [coding guidelines](agent-guidelines/drafts/coding-guidelines.md) remain an
+**inactive draft**. Personal setup and recovery records remain private.

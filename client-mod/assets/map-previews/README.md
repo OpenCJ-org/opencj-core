@@ -1,56 +1,56 @@
-# Map-list previews (#203)
+# Map-list previews
 
-The existing menu asks for a material named `loadscreen_<mapname>`. The original
-map packages generally supply an image with that name behind `$levelbriefing`
-in the map's loading zone; they do not supply the named UI material for browsing
-other maps. The mod bundles ten matching map-preview materials plus a dedicated missing-image material.
+The menu requests `loadscreen_<mapname>` materials. Original map archives
+usually provide loading images without the UI materials needed to browse other
+maps. The mod supplies matching preview materials and a missing-image fallback.
 
-`source/map_previews.json` records source paths, archive/image hashes and capture
-details. It is an asset inventory, not a voting allowlist. Game eligibility still
-comes exclusively from `mapids.inRotation`. Maps outside that pool use
-`opencj_missing_image` through the shared GSC preview helper, including uber-admin
-votes and the map-list menu. End-map voting uses the same helper.
+Eight previews reuse original map-package imagery. Bouncer Training and Futile
+use actual game captures of their starting areas. These are recorded images,
+not generated reconstructions. The source catalogue records image provenance,
+hashes and conversion details.
 
-## Build and deploy
+`source/map_previews.json` is an asset inventory, not a voting allowlist.
+Eligibility comes from `mapids.inRotation`. The shared preview helper serves
+the map list and end-map votes; absent artwork uses `opencj_missing_image`.
+Intentional branding continues to use `opencj_logo_nobg`.
 
-1. Add the preview image and provenance entry when preparing a new pool map.
-2. On the authoritative source host, run `source/build_map_previews.py` with
-   Python 3 and Pillow. It verifies source hashes and produces the 2D material
-   binaries and `mod.csv` entries. Existing original IWI pixels are unchanged.
-3. Stage the resulting images, materials, material_properties and `mod.csv` in
-   the existing Windows Mod Tools build directory. Preserve its custom files
-   and run its existing `makeMod.py` unchanged.
-4. Retain `licenses/flag-icons.txt` in the final IWD: the legacy packer currently
-   includes only images and weapons. Verify pre-existing IWD entries are
-   byte-for-byte unchanged before deployment.
-5. Deploy matching `mod.ff` and `z_opencj.iwd` to the server and client. Restart
-   OpenCJ safely, retaining its active map; clients must reload the mod/reconnect.
+## Generate and package
 
-## Bouncer Training artwork, 14 November 2026
+Run from the client-mod directory with Python and Pillow:
 
-Build on the authoritative host with:
+```sh
+python3 source/build_map_previews.py
+```
 
-## Dedicated missing-image fallback, 14 November 2026
+The generator verifies source hashes and writes images, 2D materials and mod.csv
+entries. Original reused IWI pixels remain unchanged. Inspect the compiled
+materials and images, preserve unrelated IWD entries, and retain all license
+files. Follow the [preview guide](../../../docs/development/map-previews.md)
+and [client deployment procedure](../../../docs/operations/client-assets.md).
 
-Map previews without bundled artwork now use `opencj_missing_image`: the same
-dark question mark used for Bouncer Training's replacement pictures. The
-`fallback` entry in `source/map_previews.json` builds its independent 2D material
-and image. It is not a map or a pool-membership entry. The shared GSC helper
-serves both map-list and end-vote previews; ordinary OpenCJ branding still uses
-`opencj_logo_nobg`. The isolated menu fixture passed all 40 checks.
+## Bouncer Training replacements
 
-### Engine-wide missing material fallback
+The starting-area image replaces the loading image and map-list preview.
+The map's `christina` and `compass_map_mp_bouncer_training` pictures use the
+question-mark artwork in `../map-replacements/mp_bouncer_training/`.
+The replacement preserves the original image headers, dimensions, compression
+formats and byte lengths; it does not alter map geometry or scripts.
 
-CoD4 also has a built-in `default` material, independently of the map-preview
-fallback above. Its `cod4/images/default.iwi` now uses the same question-mark
-artwork. Rebuild it with `python source/build_missing_image.py` before the normal
-Windows Mod Tools build. This also regenerates `source/texture_source/default.tga`
-and uses lossless BGRA pixels while preserving the original dimensions, flags
-and mip levels. The map-list placeholder also uses lossless pixels at 1024x1024.
-The `default` material and its properties stay intact. The intentional
-`opencj_logo_nobg` branding remains separate.
+Supply the original archive and a separate output directory explicitly.
+From the repository root:
 
-The shared placeholder now has a flat dark background and the original question
-mark, without a gradient, grid, circle or decorative frame. UI textures avoid
-block compression; the in-map Bouncer replacements retain their original DXT1
-image headers/layout and use the same simplified artwork.
+```sh
+python3 dev-tools/scripts/build-bouncer-art.py --map-iwd "$MAP_IWD" --output-dir "$OUTPUT_DIR"
+```
+
+Keep the input archive and deployment backups private. For an image-only mod
+IWD update, replace only the intended image entries and preserve all other
+content. Stage the matching source inputs so later builds retain the change.
+
+## Missing-image materials
+
+The dedicated preview fallback and built-in `default` image use the same dark
+question-mark artwork. They remain separate from the logo.
+`python3 source/build_missing_image.py` regenerates the default IWI and TGA,
+preserving dimensions, flags and mip levels. UI placeholders use lossless
+pixels; in-map replacements retain their original DXT1 layout.
