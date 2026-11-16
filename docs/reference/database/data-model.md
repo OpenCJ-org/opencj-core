@@ -7,21 +7,23 @@ The label is kept in runLabels and can be changed without changing the ID,
 statistics, saves or recording. Two different runs may have the same label.
 Only the unused second label column in playerRuns was removed.
 
-## Changes
+## Relationships
 
-- Challenges reference mapID instead of copying mapName. Eleven map names already
-  present in challenge definitions receive catalogue IDs, with inRotation=0.
-  Map identity alone does not publish a route or approve a map for voting.
-- Removed three empty obsolete tables: playerSaves_test, playerRecordings,
-  demoEvents. Removed their unused createEvent, prepareAllDemos, prepareDemo,
-  savePosition_test and storeDemoFrame functions. Current GSC/native code had
-  no references to them.
-- Removed unused routeShaderColor/endShaderColor palette fields. Existing RGB
-  colors are unchanged; CoD2's legacy read path remains untouched.
-- Removed the unused shopEquipped.category copy. Kept slot because one player
-  can equip only one item per slot, and enforced its agreement with shopCatalog.
-- Added matching-reference constraints for checkpoint-area maps,
-  challenge-route maps and demo-winner categories.
+- Challenges bind `mapID` and `routeID`, with permanent `challengeKey` ownership.
+  A map can exist in the catalogue while `inRotation=0`; identity alone does not
+  publish a route or approve a map for voting.
+- Checkpoint areas must belong to their checkpoint's map. A challenge route must
+  belong to its map, and a demo winner's category must match its recording.
+- Equipment has one item per player/slot. Its slot must agree with the catalogue;
+  display category comes from the catalogue rather than a separate equipment copy.
+- Route and section colors use RGB metadata; route identity is described in
+  [stable route IDs](route-identity.md).
+- Historical runs, checkpoint statistics, saves and earned rewards have
+  [reference and deletion protections](../../operations/database.md#historical-data-protection-021).
+
+Migration 020 defines the cleanup and matching-reference constraints;
+later migrations strengthen data safety. The [migration procedure](../../operations/database.md)
+is the authority for installation and upgrades, not a list of old feature notes.
 
 ## Why some repeated values stay
 

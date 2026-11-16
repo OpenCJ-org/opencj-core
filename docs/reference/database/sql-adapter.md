@@ -45,9 +45,10 @@ No worker invokes the GSC VM. The main game thread owns completion delivery
 and frees result handles. The unused unmanaged NoRows result-pointer path now
 delegates to the normal no-result wrapper.
 
-Leaderboard, Runsboard and Challenges gained onClose notifications; Clips
-already provided its close notification. The compiled asset comparison checks
-the complete 275-menu inventory; only these three menu definitions change.
+Leaderboard, Runsboard, Challenges and Clips notify their owners when closed.
+Keep these close notifications in matching compiled client assets so stale menu
+reads are cancelled. Verify the affected compiled menus when changing this flow;
+a menu count from an earlier comparison is not a current acceptance check.
 
 ## Deadlines and outcomes
 
@@ -62,7 +63,7 @@ A new worker connection is established before a new statement when necessary.
 Automatic reconnection/replay is disabled during statement execution. A lost
 reply after submitting a write is outcome UNKNOWN: the write may have committed.
 Neither the adapter nor wrappers blindly retry it. Existing synchronous
-transactions retain their #192 connection/error handling; async jobs may not
+transactions use their own connection/error handling; async jobs may not
 leave a transaction open on a pooled connection.
 
 Outcome codes:
@@ -91,6 +92,8 @@ use beginMenuRead/menuReadCurrent and mysqlAsyncMenuQuery, and must stop their
 render path when a result is undefined or its request token is stale.
 Use explicit stable run/player/upload keys where order matters.
 
-Implementation lives in server-ext/mysql_async_pool.cpp/.hpp, the thin
-gsc_custom_mysql.cpp bridge, and server-gsc/opencj/mysql.gsc. cod4x-server's
-makefile tracks the new interface/registration dependencies.
+Implementation: [worker pool](../../../server-ext/mysql_async_pool.cpp),
+[pool interface](../../../server-ext/mysql_async_pool.hpp),
+[GSC bridge](../../../server-ext/gsc_custom_mysql.cpp) and
+[script wrappers](../../../server-gsc/opencj/mysql.gsc). The CoD4x makefile
+tracks these interface/registration dependencies.

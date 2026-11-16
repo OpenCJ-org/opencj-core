@@ -4,7 +4,7 @@ The database catalogue defines shared pool membership and mapper metadata.
 
 Related design: [#203 map download authorization](../../proposals/map-download-authorization.md).
 
-## Existing table
+## Catalogue schema
 
 Database/table: `openCJ_cod4.mapids`.
 
@@ -18,26 +18,29 @@ Database/table: `openCJ_cod4.mapids`.
 There is no separate active-map or map-pool membership table in the inspected
 schema. Reuse `inRotation` as the shared pool flag.
 
-## Applied alpha pool
+## Initial alpha pool
 
-These are the applied values, in the database's actual column order. All map IDs
-are preserved existing IDs. The previously empty dates now contain the historical
-release metadata below.
+Migration [015-alpha-map-pool.sql](../../../server-db/migrations/015-alpha-map-pool.sql)
+seeds the map names, release metadata and author credits below. It resolves
+existing maps by name and preserves their IDs; missing maps receive IDs from
+that database. **Numeric map and mapper IDs are installation-specific.**
+The seed is not a live list of an operator's current enabled maps.
 
-Approximate dates distinguish release announcements, distribution dates and inferred dates. They do not determine pool membership.
+Approximate dates distinguish announcements, distribution dates and inferred
+dates. They do not determine pool membership.
 
-| mapID | mapname | releaseDate | inRotation |
-| ---: | --- | --- | ---: |
-| 3975 | mp_dark | 2012-01-02 | 1 |
-| 4163 | mp_cj_sky_bounce | 2013-04-24 | 1 |
-| 4121 | mp_all_in | 2010-06-11 | 1 |
-| 4100 | mp_bouncer_training | 2010-01-26 | 1 |
-| 4640 | mp_futile_fixed | 2013-01-24 | 1 |
-| 4141 | mp_blue2 | 2013-05-14 | 1 |
-| 4202 | mp_descent_v2 | 2014-02-02 | 1 |
-| 4529 | mp_to_the_moon | 2011-11-11 | 1 |
-| 4280 | mp_galaxy | 2015-01-02 | 1 |
-| 4402 | mp_mystic_v3 | 2013-10-25 | 1 |
+| Map name | Seed release date | Mapper |
+| --- | --- | --- |
+| mp_dark | 2012-01-02 | kie |
+| mp_cj_sky_bounce | 2013-04-24 | SoBerries |
+| mp_all_in | 2010-06-11 | all_in |
+| mp_bouncer_training | 2010-01-26 | [TB]Mike |
+| mp_futile_fixed | 2013-01-24 | pcbouncer |
+| mp_blue2 | 2013-05-14 | Chucky. |
+| mp_descent_v2 | 2014-02-02 | =.VaRtaZiaN.= |
+| mp_to_the_moon | 2011-11-11 | =.VaRtaZiaN.= |
+| mp_galaxy | 2015-01-02 | ZeeZ |
+| mp_mystic_v3 | 2013-10-25 | Wez |
 
 ## Related tables and stored authors
 
@@ -57,8 +60,8 @@ Approximate dates distinguish release announcements, distribution dates and infe
 
 The pair (`mapID`, `mapperID`) is unique. Both foreign keys cascade on update
 and delete. This is a many-to-many relationship: maps can have multiple mappers,
-and a mapper can have multiple maps. Nine mapper rows and ten numeric links were
-added to the previously empty author tables.
+and a mapper can have multiple maps. The seed adds missing author/link rows
+without requiring these tables to be empty.
 
 Mapper names and public source attribution are recorded below. Numeric mapper IDs are allocated by each database and are not portable identifiers.
 
@@ -138,11 +141,11 @@ the original Mystic v3 walkthrough credits Wez.
     describes the newly released map and points to its download via the
     [launch walkthrough](https://www.youtube.com/watch?v=Nt6eL095Wqc), which credits Wez.
 
-## Applied membership and catalogue behavior
+## Membership and runtime behavior
 
 Migration `server-db/migrations/015-alpha-map-pool.sql` establishes the initial ten-map pool while preserving existing map identities. Re-running it deliberately resets membership to that initial pool; use ordinary `mapids.inRotation` updates for subsequent maintenance.
 
-The server now loads `mapids`, `mapMappers` and `mappers` with one joined query
+The server loads `mapids`, `mapMappers` and `mappers` with one joined query
 at map initialization. It caches installed-map metadata and the enabled pool,
 then publishes the complete cache after filesystem discovery finishes.
 `alphaMapNames()` and its hard-coded fallback have been removed.
@@ -159,4 +162,4 @@ map initialization; menus and vote checks do not issue per-map SQL queries.
 
 The future #203 HTTP gateway can read this same membership flag and separately
 apply the main-server active-map exception. HTTP download authorization remains
-a documented design; it was not configured or implemented in this change.
+an unimplemented proposal, not an access-control service supplied by this repository.

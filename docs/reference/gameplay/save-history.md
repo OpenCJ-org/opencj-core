@@ -1,9 +1,9 @@
-# Older save history (#175)
+# Older save history
 
 OpenCJ automatically prefetches older saves, with a hard limit of 100
 recent saves per player. This includes restored history and new saves in the
-current session. Database history is retained; this change does not delete
-persisted saves or add a schema migration.
+current session. Persisted database saves remain available for future sessions;
+the cap applies to loaded history, not to stored records.
 
 ## Player behavior
 

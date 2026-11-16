@@ -1,4 +1,24 @@
-# Demo viewing (#24)
+# Demo viewing
+
+Recording formats and retention are described in [recording and storage](recording.md).
+Automatic help selection is described in [selection](selection.md).
+
+## Playback controls
+
+Melee toggles pause; each strafe-left/right press steps through
+-4x, -2x, -1x, 1x, 2x, 4x. Lean-left/right selects the previous/next recorded
+checkpoint boundary for non-any-percent runs. Previous always selects the preceding checkpoint, even during a jump.
+Reverse pauses at the start and resets to forward 1x for the next Play. Navigation
+from a local jump segment opens the full recording timeline, and preserves pause.
+Load still exits to the original run. Commands `!demo pause`, `!demo resume`,
+`!demo speed -2`, `!demo previous` and `!demo next` provide bindable alternatives.
+The time display describes retained recording time (20 frames/second), not
+leaderboard time that may include discarded attempts. The normal progress bar
+is hidden during playback and restored on exit.
+On CoD4 a transparent mouse menu opens automatically with Pause/Resume, all six
+signed speeds, checkpoint navigation, and Exit Demo. Escape hides/reopens
+the controls. The menu requires matching compiled mod.ff; keyboard controls remain
+available while the menu is closed. Menu responses are ignored outside playback.
 
 ## Player behavior
 
@@ -23,8 +43,8 @@
   player setting, blocks new requests and exits existing other-player views.
   Players can still view their own history. !sharehistory on enables it again.
 
-No personal demo-type preference, full-route chat option, ghost racing, guided
-loop or combined walkthrough was added. These features remain outside the current implementation.
+Personal demo-type preferences, ghost racing, guided loops and combined
+walkthroughs are not implemented.
 
 ## Conversion and resource boundaries
 
@@ -69,7 +89,7 @@ has no inferred category.
 
 ## Converted camera limitations
 
-The viewing pattern now stays anchored to takeoff: WA -> D -> WA, or WD -> A -> WD.
+The viewing pattern stays anchored to takeoff: WA -> D -> WA, or WD -> A -> WD.
 The opposite phase converts from its first recorded sample. Bounce and RPG
 events do not change the pattern or disable conversion. The existing 150 ms
 history confirmation still applies. Native phase metadata accompanies history

@@ -22,7 +22,9 @@ Levels are cumulative: 20 = checkpoint editor, 40 = moderator (mute/unmute),
 achievement points. Set the account's playerInformation.adminLevel in the
 OpenCJ database; reconnect to reload the role. Per-player editor allowlists
 are no longer used. The editor still requires opencj_checkpoint_editor 1.
-Disable the editor on normal public servers. No client-mod rebuild is needed.
+Disable the editor on normal public servers. Use matching native code, scripts
+and compiled client assets; the current property panel uses client UI assets.
+See [native/script deployment](../../operations/native-scripts.md).
 
 ## Create a route
 
@@ -86,6 +88,12 @@ Additional commands:
 | `!cp delete area` | Remove only the currently selected/cycled area; Confirm applies it. Removing the last area leaves this checkpoint selected for replacement |
 | `!cp delete` | Delete the selected checkpoint from the draft; later checkpoints reconnect sequentially |
 | `!cp double` | Toggle double-RPG permission **while approaching this checkpoint**; Confirm applies it |
+| `!cp ele` | Toggle elevator permission for the checkpoint |
+| `!cp ground` | Toggle required ground contact |
+| `!cp allowsave` | Toggle saving permission at the checkpoint |
+| `!cp height [units]` | Edit the volume's added height; no value enters interactive height editing |
+| `!cp postsert` / `!cp presert` | Begin a new checkpoint after / before the selection; Confirm inserts it |
+| `!cp discard` | Delete the selected confirmed checkpoint, or discard the new selection while appending |
 | `!cp save` | Explicitly save the current draft, including unfinished corner placement |
 | `!cp stop` | Save and leave the editor |
 
@@ -96,23 +104,45 @@ In this Compose setup that is
 Two alternating snapshots retain the previous complete save if a write is
 interrupted. Reopening validates the map, route, format and confirmed geometry.
 CPC4 snapshots store the route color and alternative areas, and still read existing CPC2/CPC3 drafts. They intentionally do not claim compatibility with the old
-native branch's `.cpc` format. Neither export nor publishing clears the draft.
+native branch's `.cpc` format. Legacy branches use CPC6 and retain CPC5
+compatibility. [Shared section networks](shared-sections.md) additionally require
+their CPN1 manifests and every referenced section draft. Publishing clears none
+of these recovery files.
 
 ## Runtime and publication
 
-The existing `routes` table stores one `colorRGB` (unsigned 24-bit integer) per route, keyed by the first checkpoint ID. No color is duplicated in `checkpointAreas`. Runtime `checkpoint.routeInfo` references shared metadata containing the start ID, route name, hex color, and RGB vector. Existing published editor routes receive their name-based default when migration 002 is applied.
+The `routes` table uses permanent `routeID` keys, with a unique map/name pair
+and optional start-checkpoint metadata. Route names and colors are editable
+metadata, not identity. Shared section colors are stored in
+`checkpointSectionColors`. See [route identity](../database/route-identity.md)
+and [shared sections](shared-sections.md).
 
 Finalizing requires valid confirmed areas and at least one finish. Multiple finish checkpoints must follow all ordinary checkpoints; each is connected to the last ordinary checkpoint and can complete the route. `!cp publish` remains an alias for finalizing. Finalizing creates
 normal checkpoint IDs and connections plus `checkpointAreas` geometry. The
-editor and gameplay share the same grounded point-in-polygon and height test:
-the player's feet must be within the perimeter and between 2 units below and
-4 units above the surface plane at their position. On slopes, the upper bound also includes the player's capsule support offset, so standing on the landing is sufficient. Corners must share one walkable plane; vertical faces and warped surfaces are rejected. The drawn volume uses the same bounds. Area checkpoints honor the existing `onGround` flag: airborne checkpoints skip ground contact, but still require containment. This editor currently creates grounded checkpoints only. Timing uses observed contact, without
-the old radius-based interpolation. Old radius checkpoints are unchanged.
+editor and gameplay share the same convex-footprint and height test. The player's
+feet must be inside the perimeter, no lower than 2 units below its plane, and
+no higher than 4 units plus the slope support offset and configured added height.
+The drawn volume uses the same bounds. Grounded checkpoints also apply the
+[contact speed/duration rules](ground-contact.md); `!cp ground` can disable that
+ground requirement while preserving containment.
+
+`!cp height <units>` accepts an added height from 0 through 16384. Without a
+value, it enters height editing; Numpad Plus/Minus adjust the height rather than
+placing a corner or undoing an edit, in 4-unit steps. Select at least three valid
+corners first. A nonplanar manual selection can be flattened to its lowest corner,
+with height extended to cover the selected corner elevations. Whole moving
+platforms do not use height offsets. Height increases and Confirm check overlap
+before applying the volume. Inspect the resulting footprint and height.
 
 Double-RPG allowance comes from the next checkpoint and does not require being
-inside its area. Equivalent next landing areas share that permission. An ambiguous next checkpoint at a distinct route choice does not grant
-the exception. Split-route allowance policy is deferred. Elevator and FPS
-exceptions are not exposed by this initial editor.
+inside its area. Equivalent next landing areas share that permission; an ambiguous
+next checkpoint at a distinct route choice does not grant it. `!cp ele` and
+`!cp allowsave` edit elevator and saving permissions. FPS exceptions have no
+editor command.
+
+For branches that share landings, use [split/merge editing](shared-sections.md)
+instead of confirming overlapping copies. The restrictions below concern small
+standalone route edits; network publication has its own recorded-geometry guards.
 
 Finalizing an edited standalone CPC route automatically replaces its layout while
 retaining completed times and low-RPG results. Start and finish must remain unchanged.
@@ -131,8 +161,10 @@ without beating the retained historical result. Other players must reset an open
 run on this route before it can be migrated. In-flight demo saves briefly block
 migration; retry finalizing after they finish.
 
-Apply `server-db/migrations/012-checkpoint-retirement.sql` before loading these
-scripts. Restarting alone does not apply database migrations.
+Use the full [migration procedure](../../operations/database.md) before
+deploying matching scripts. Migration 012 introduced retirement; later
+migrations add route identity and data-safety requirements. Restarting alone
+does not apply any of them.
 
 Editing and preview testing suppress normal checkpoint scoring. Starting or
 loading a run while the editor is active does not re-enable checkpoint scoring.
@@ -142,10 +174,9 @@ The progress bar is cyan. On leaving the editor, reset your run to start normal 
 ## HUD and geometry visuals
 
 The CoD4x server copies at most 31 current and 31 archived HUD elements per
-player. Alpha-zero elements still consume slots. The old branch disabled the
-spectator-list HUD, plausibly freeing the slot its CPC HUD needed. This editor
-uses four archived text elements and leaves the spectator list enabled. It does
-not change protocol limits. Each text block is capped at 240 characters: the
+player. Alpha-zero elements still consume slots. The editor uses three text
+blocks plus the client property panel and leaves the spectator list enabled.
+It does not change protocol limits. Each text block is capped at 240 characters: the
 client HUD formatter silently rejects strings longer than 255 characters even
 though the server accepts them. World outlines and corner labels use CoD4x debug
 drawing commands sent only to the editor. The previous checkpoint is gray and
@@ -170,14 +201,21 @@ CPC, just as with the old cfg. Normal save/load bindings are untouched.
 | --- | --- |
 | 0 / Insert (also 5) | Detect platform |
 | Enter | Confirm selection |
-| + / - | Add aimed corner / undo |
-| 8 / 9 | Toggle approach double RPG / finish |
+| + / - | Add aimed corner / undo; adjust height while height editing |
+| 1 / End | Toggle approach double RPG |
+| 2 / Down | Toggle ground requirement |
+| 3 / Page Down | Toggle saving permission |
+| 8 / Up | Toggle elevator permission |
+| 9 / Page Up | Toggle finish |
 | 4 / 6 | Previous / next confirmed checkpoint |
-| 7 | New checkpoint |
-| / | Add an alternative to the selected checkpoint (or the last confirmed one when preparing a new step) |
-| * | Cycle the selected area within the current checkpoint |
+| 7 / Home | Edit height |
+| Delete | Delete selected / discard new / delete last, as labeled by the HUD |
+| / | Add an alternative area |
+| * | Cycle the selected area |
 
-Publishing and deletion have no default shortcuts. Use `!cp stop` to leave.
+Use `!cp new` to prepare a new checkpoint. Publishing has no default shortcut;
+`!cp stop` leaves the editor. The bindings above come from
+[`checkpointcreation.gsc`](../../../server-gsc/opencj/checkpointcreation.gsc).
 
 ## Alternative landing areas
 
@@ -195,8 +233,9 @@ area. Confirm applies the group edit. `!cp delete` deletes the entire step.
 Publication uses the existing `checkpointBrothers` relationship. Each landing
 has its own geometry and physical location; records use the canonical checkpoint.
 All previous areas connect to all areas of the next step. No schema change is
-needed. Published groups with recorded runs cannot be changed, and republishing
-requires the same area counts and grouping to preserve checkpoint identities.
+needed. Republishing preserves checkpoint identity and recorded history.
+Changes outside the supported standalone-layout migration rules are rejected;
+shared networks retain their stricter recorded-geometry guards.
 Restoring a draft announces it in chat and queues a teleport to the center of
 the active landing. An unfinished alternative falls back to an existing sibling;
 an empty next selection falls back to the last confirmed checkpoint. Empty drafts
@@ -216,10 +255,9 @@ Legacy checkpoints retain their old shader behavior.
 Finishing saves checkpoint statistics before marking the run complete. The
 leaderboard uses the finish snapshot of FPS mode, elevator use, any%, halfbeat
 allowance, and hard-TAS use. Paused/cheated runs are not recorded as valid finishes.
-Migration 003 adds those fields and updates the database finish function; apply it
-as the database owner. Historical halfbeat use cannot be recovered and is treated
-conservatively as allowed. The regression suite uses transaction/rollback for
-synthetic normal and any% finishes, so no test results remain in the leaderboard.
+Migration 003 introduced the finish snapshot. Historical halfbeat use predating
+it cannot be recovered and is treated conservatively as allowed. Installations
+must use the complete migration set, not just that feature migration.
 
 ## Replace a multi-area checkpoint in the middle of a route
 
@@ -248,7 +286,7 @@ routes; shared networks need a separate network-aware restore.
 
 ### Num Del follows the selection
 
-While editing a confirmed checkpoint, Num Del / `!cp discard` now acts like
+While editing a confirmed checkpoint, Num Del / `!cp discard` acts like
 `!cp delete`: it deletes the selected checkpoint and reconnects its neighbors.
 While appending, it discards unconfirmed new geometry first; only an empty new
 slot offers **Delete last**. The HUD labels these targets explicitly. Use

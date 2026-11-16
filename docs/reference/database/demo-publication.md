@@ -1,10 +1,12 @@
 # Background demo publication
 
-Publication is implemented in server-db/migrations/018-demo-publication.sql
-and server-gsc/opencj/demorecording.gsc. The existing four pthread workers and their
-per-worker connections execute one CALL publishDemo(runID), under the background
-policy with a shared publication ordering key. There is no new worker/thread and
-no new native SQL execution API.
+[Migration 018](../../../server-db/migrations/018-demo-publication.sql) introduces
+publication receipts; [migration 019](../../../server-db/migrations/019-route-identity.sql)
+defines the current route-ID procedure.
+[`demorecording.gsc`](../../../server-gsc/opencj/demorecording.gsc) submits
+`CALL publishDemo(runID)` through the SQL adapter's four workers, under the
+background policy with a shared publication ordering key. Each call stays on
+one worker connection.
 
 The procedure obtains the same map-row lock used by route publication/rename,
 then reads current candidate metadata and winner rows. It validates contiguous,
@@ -13,10 +15,10 @@ winners, readiness and obsolete-payload cleanup; and inserts a durable receipt
 before committing. Any SQL exception rolls back and propagates an error.
 Different maps can publish concurrently from independent connections.
 
-The additive demoPublications table retains only runID and publishedAt. A receipt
+The demoPublications table retains only runID and publishedAt. A receipt
 survives removal of a losing recording, and follows its parent run's lifetime.
 It makes duplicate calls and lost commit replies unambiguous. It never restores
-retired footage. No existing records are backfilled or rewritten by migration.
+retired footage.
 
 The GSC caller retries only this idempotent operation, at most three attempts:
 deadlock/lock-timeout errors are retried after rollback; uncertain writes first

@@ -1,4 +1,4 @@
-# #203: Map download authorization
+# Map download authorization
 
 Status: proposed; the HTTP gateway and download-grant flow are not implemented.
 
@@ -117,8 +117,8 @@ Primary sources inspected:
 - [CoD4x server connection and redirect code](https://github.com/callofduty4x/CoD4x_Server/blob/master/src/sv_client.c)
 - [CoD4x client HTTP download handling](https://github.com/callofduty4x/CoD4x_Client_pub/blob/master/src/cl_main.c#L6762)
 - [CoD4x HTTP request implementation](https://github.com/callofduty4x/CoD4x_Client_pub/blob/master/src/httpftp.c)
-- Authoritative local server source: `the repository root/cod4x-server/src/sv_client.c`.
-- Current map policy: `the repository root/server-gsc/opencj/maps.gsc`.
+- Authoritative local server source: `cod4x-server/src/sv_client.c`.
+- Current map policy: `server-gsc/opencj/maps.gsc`.
 
 ## Shared database pool
 

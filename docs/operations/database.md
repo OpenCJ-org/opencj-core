@@ -60,15 +60,38 @@ reconstruct its original value.
 
 server-db/tools/migrate.py maintains schemaMigrations: version, filename, SHA-256,
 state, application time, and a schema fingerprint for explicit baseline adoption.
-After stopping OpenCJ writers and making a backup, from server-db:
+Select the intended installation before invoking an administrative tool.
+From its `dev-tools` directory, with that installation's Compose variables set:
 
-    python3 tools/migrate.py adopt-020 --confirm-database openCJ_cod4
-    python3 tools/migrate.py apply --confirm-database openCJ_cod4
-    python3 tools/migrate.py status
+```sh
+DB_CONTAINER="$(docker compose ps --status running --quiet db)"
+```
 
-Adoption checks the known post-020 schema and records those earlier migrations as
-adopted, not newly executed. It is not a fresh bootstrap or an automatic upgrade
-from an arbitrary old database. For an empty development database, use the separate [bootstrap procedure](../setup/development.md).
+Check that this resolves exactly one intended database container. For a standalone
+database, set `DB_CONTAINER` explicitly instead. The migration and permission
+tools have a default container name, so pass `--container` rather than relying
+on that default. The commands below run from `server-db` in the same shell.
+
+For a database already managed by the migration ledger, first inspect status.
+After stopping gameplay writers and making a verified backup, apply pending
+migrations:
+
+```sh
+python3 tools/migrate.py status --container "$DB_CONTAINER"
+python3 tools/migrate.py apply --container "$DB_CONTAINER" --confirm-database openCJ_cod4
+```
+
+Only a verified **post-020 legacy database without a migration ledger** uses the
+one-time adoption action:
+
+```sh
+python3 tools/migrate.py adopt-020 --container "$DB_CONTAINER" --confirm-database openCJ_cod4
+```
+
+Adoption validates that specific legacy schema and records its earlier migrations
+as adopted, not newly executed. It is neither a fresh bootstrap nor an automatic
+upgrade from an arbitrary older database. Then use the normal apply/status path.
+For an empty development database, use the [bootstrap procedure](../setup/development.md).
 
 Applied migrations are not rerun. Changed checksums, missing versions, concurrent
 runners and interrupted migrations are refused. MySQL DDL commits implicitly;
@@ -79,7 +102,7 @@ intentionally instead of bypassing that marker. Future changes use new migration
 
 From server-db:
 
-    python3 tools/runtime_access.py --confirm-database openCJ_cod4
+    python3 tools/runtime_access.py --container "$DB_CONTAINER" --confirm-database openCJ_cod4
 
 Gameplay cannot create/alter/drop tables, rewrite migration history, update old
 award amounts or directly delete accounts, runs, saves, statistics, checkpoints,
@@ -91,14 +114,16 @@ An optional legacy test database can be made read-only to gameplay with the
 `--readonly-database` option. Destructive tests use disposable containers and their own test/admin identity. Migration/recovery
 admin access remains available. No other host service/database is changed.
 
-Compose now treats the existing opencj-dev_database volume as external. Teardown,
-including down --volumes, cannot remove it. Explicit administrator deletion is
+Compose treats the configured `DATABASE_VOLUME` as external (default:
+`opencj-dev_database`). Normal teardown, including `down --volumes`, preserves it. Explicit administrator deletion is
 still possible: this is protection against teardown mistakes, not a backup.
 Fresh development setups must create that external volume before starting Compose.
 
 ## Verification and recovery
 
-From dev-tools, the migration rehearsal needs the pre-021 backup:
+From a [separate test installation](../setup/development.md#separate-test-installations),
+with its Compose variables selected, the migration rehearsal needs a pre-021 backup.
+Run from `dev-tools`:
 
     python3 tests/database-safety.py /path/to/private/pre-021-backup/databases.sql.gz
 
@@ -119,7 +144,7 @@ The engine stage also cleans up the first stage's disposable DB and credentials.
 - tests/database-safety-engine.py consumes that fixture, runs the CPC and history
   suites, then initializes real scripts under the restricted gameplay account.
   It removes the isolated DB/engine and private credentials.
-- tests/database-volume.py verifies the production volume name is unchanged and
+- tests/database-volume.py verifies the selected installation's volume matches its configuration and
   proves a disposable external volume survives Compose down --volumes.
 
 Synthetic-client startup and stock-map physics workarounds remain confined to the

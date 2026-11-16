@@ -1,4 +1,4 @@
-# Action feedback and record notices (#72)
+# Action feedback and record notices
 
 Text is the default. Optional checkpoint/save/load flashes appear only along
 the left and right screen edges. Finished-run results can use a stronger

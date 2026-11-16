@@ -1,10 +1,8 @@
-# Enable client downloads during connection (#200)
+# Enable client downloads during connection
 
-Issue: https://github.com/OpenCJ-dev/server-gsc/issues/200
+## Connection behavior
 
-## Change and purpose
-
-The CoD4 branch of `server-gsc/opencj/cvars.gsc::onInit` now calls the existing
+The CoD4 branch of `server-gsc/opencj/cvars.gsc::onInit` calls
 `forceDLCvars()` function. That function is already available in our CoD4x
 runtime and registers `cl_allowDownload=1` and `cl_wwwDownload=1` with
 `CVAR_SYSTEMINFO | CVAR_ROM` (the existing native code uses `0x48`).
@@ -20,7 +18,7 @@ files. This happens during connection, before map loading. The registration
 runs at server initialization, not in a callback that requires the player to
 have loaded the map already.
 
-The read-only flag applies to the server's registered variables. This change
+The read-only flag applies to the server's registered variables. It
 does not add a permanent client lock or restore a player's previous setting on
 disconnect; it sets the client download preferences to 1 through systeminfo.
 

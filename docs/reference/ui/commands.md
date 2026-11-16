@@ -1,4 +1,4 @@
-# Command browser (#217)
+# Command browser
 
 Use `!help` or `!commands` to open the command browser. Type to search
 **command names and aliases only**. Exact matches come first, followed by

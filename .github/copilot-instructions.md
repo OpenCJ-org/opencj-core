@@ -8,7 +8,8 @@ Before adding, moving or expanding files or entries, read the active
 It covers folder choice, public/private content and Git tracking.
 
 Also follow the active [audit maintenance rules](instructions/audit-maintenance.instructions.md)
-to preserve privacy, licensing, fresh-install support and tool portability.
+to preserve privacy, licensing, fresh-install support, tool portability and current
+documentation.
 Extend the relevant maintenance rule when completing another audit step.
 
 Read [development setup](../docs/setup/development.md) and the

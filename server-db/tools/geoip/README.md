@@ -12,18 +12,31 @@ you deliberately enable the separate background updater.
 
 ## Install on a new host
 
-Keep server-db and dev-tools as sibling directories. Supply MySQL 8.0 and a
-Docker network reachable by the updater. This service does not depend on this
-host's name, filesystem layout, cron or systemd. It does not create the game DB.
+Use `server-db/` and `dev-tools/` inside the same core checkout. Supply MySQL 8.0
+and a Docker network reachable by the updater. It does not create the game DB.
+Start with [database setup/upgrades](../../../docs/operations/database.md).
+
+Run the commands below from `dev-tools` with the intended installation's Compose
+variables selected. Resolve its database and choose a separate updater project:
+
+```sh
+DB_CONTAINER="$(docker compose ps --status running --quiet db)"
+GEOIP_PROJECT=opencj-geoip
+```
+
+Check that `DB_CONTAINER` names exactly one intended container. Keep
+`GEOIP_PROJECT` set for every updater command; choose a different name when
+running another installation. The explicit `-p` below prevents an exported
+core `COMPOSE_PROJECT_NAME` from merging updater and gameplay resources.
 
 1. Stop gameplay writers, take and verify a private database backup, and apply
-   migration 025 with the tracked migration runner. On the development host:
+   all pending migrations with the tracked runner (025 introduces GeoIP):
 
-       python3 ../server-db/tools/migrate.py apply --confirm-database openCJ_cod4
+       python3 ../server-db/tools/migrate.py apply --container "$DB_CONTAINER" --confirm-database openCJ_cod4
 
 2. Provision a dedicated account and an ignored, mode-0600 secret file:
 
-       python3 ../server-db/tools/geoip/provision.py --confirm-database openCJ_cod4 --secret-file ./local/geoip/password
+       python3 ../server-db/tools/geoip/provision.py --container "$DB_CONTAINER" --confirm-database openCJ_cod4 --secret-file ./local/geoip/password
 
    Run from dev-tools. For another DB/container use --container and --database,
    and match --confirm-database. Set --gameplay-account when its name differs.
@@ -35,15 +48,16 @@ host's name, filesystem layout, cron or systemd. It does not create the game DB.
 
 3. Configure non-secret deployment settings through environment variables:
    GEOIP_NETWORK, GEOIP_DB_HOST, GEOIP_DB_PORT, GEOIP_DB_NAME, GEOIP_DB_USER,
-   GEOIP_PASSWORD_FILE and DEV_UID/DEV_GID. Defaults target the existing OpenCJ
-   development Docker network. The container user must be able to read the
+   GEOIP_PASSWORD_FILE and DEV_UID/DEV_GID. Defaults target the default OpenCJ development network. Set
+   `GEOIP_NETWORK` explicitly for a custom Compose project; it must be the
+   selected database's network. The container user must be able to read the
    mounted 0600 file. A remote MySQL service needs equivalent least-privilege
    account provisioning; never pass its password as a command argument.
 
 4. Build the image and import once, without enabling automatic updates:
 
-       docker compose -f compose.geoip.yaml build updater
-       docker compose -f compose.geoip.yaml run --rm --no-deps updater --minimum-ranges 50000
+       docker compose -p "$GEOIP_PROJECT" -f compose.geoip.yaml build updater
+       docker compose -p "$GEOIP_PROJECT" -f compose.geoip.yaml run --rm --no-deps updater --minimum-ranges 50000
 
    The explicit argument makes the import one-shot. It exits without leaving a
    background job running. This project never starts or restarts the game or
@@ -53,11 +67,11 @@ host's name, filesystem layout, cron or systemd. It does not create the game DB.
 
 Only on the host where you deliberately want automatic updates, run from dev-tools:
 
-    docker compose -f compose.geoip.yaml up -d --no-deps updater
+    docker compose -p "$GEOIP_PROJECT" -f compose.geoip.yaml up -d --no-deps updater
 
 This starts the background mode (--daemon) and enables restart after a reboot.
-Inspect logs with docker compose -f compose.geoip.yaml logs --tail=20 updater.
-To disable it again, use docker compose -f compose.geoip.yaml down. This removes
+Inspect logs with docker compose -p "$GEOIP_PROJECT" -f compose.geoip.yaml logs --tail=20 updater.
+To disable it again, use docker compose -p "$GEOIP_PROJECT" -f compose.geoip.yaml down. This removes
 only the updater project; it keeps imported country data and the password file.
 No recurring job is needed for manual imports.
 
@@ -110,4 +124,6 @@ Run python3 -B server-db/tools/geoip/test_update.py from the workspace root.
 The real MySQL fixture is python3 -B dev-tools/tests/run-geoip-database.py;
 it creates and removes its own temporary schema/account/secret and checks exact
 range boundaries, gaps, atomic failure, retention and restricted privileges.
-It requires the opencj-geoip-updater image and the development database container.
+It requires an updater image and the selected Compose test database.
+See the [test guide](../../../docs/development/testing.md) for image construction,
+`--image` and separate-installation requirements.

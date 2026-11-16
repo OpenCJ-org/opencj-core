@@ -9,7 +9,7 @@
 - savePosition locks its run row, checks ownership explicitly and accepts an
   exact repeat of the latest stored save without inserting it again. Equal
   counters alone do not suppress a different saved position. Save numbering is
-  serialized. No automatic write retries were added.
+  serialized. These writes are not automatically retried.
 - An unsuccessful demo upload cannot become ready or replace a playable winner.
   Promotion also requires the expected number of contiguous, non-empty chunks.
   A failed demo upload leaves the leaderboard finish intact.

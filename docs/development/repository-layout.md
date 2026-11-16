@@ -17,6 +17,11 @@ server-ext build relationship.
 - `.github/`: Copilot instructions and GitHub workflow configuration.
 - `dev-tools/agent-guidelines/drafts/`: inactive guideline drafts.
 
+Use one maintained page for each procedure or behavior. Component READMEs should
+point to it; avoid separate manuals that must be edited in parallel. See the
+[documentation index](../README.md#which-pages-describe-current-behavior) for
+current-reference versus decision/proposal/research status.
+
 Personal host instructions, deployment records, backup inventories, raw test
 outputs and recovery archives are private operating material, not project
 documentation. Paths and accounts belong in local configuration.

@@ -1,6 +1,9 @@
 # Research: overlays and movement automation
 
 Status: exploratory design, not an implemented or qualified detection system.
+The implementation sequence below is a research recommendation, not approval to
+deploy monitoring or enforcement. Source feasibility and measured client behavior
+must be distinguished when this work is revisited.
 
 ## Feasibility limits
 

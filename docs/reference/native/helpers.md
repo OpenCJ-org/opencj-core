@@ -45,13 +45,13 @@ The standard CoD4 build includes server-ext automatically. scripts/build.sh no
 longer builds/copies libcod4_1_8x.so, dev.py no longer generates its loadPlugin
 line, and scripts/server.sh no longer requires the plugin file.
 
-37 test tools no longer copy/link or load libcod. The generic fixture runner
-checks process mappings before accepting a pass, so a forgotten plugin cannot
-silently satisfy the migrated APIs. Download and FPS regression runners accept
+CoD4 fixtures must not load libcod to satisfy these APIs. The generic fixture
+runner checks process mappings before accepting a pass, so a leftover plugin
+cannot silently provide them. Download and FPS regression runners accept
 an exact script release as well as a candidate executable.
 
 Before native edits, follow [native-script-deployment.md](../../operations/native-scripts.md).
-Build a separate target; do not replace the running executable while compiling:
+From `dev-tools`, build a separate target; do not replace the running executable while compiling:
 
 ~~~sh
 docker compose run --rm --no-deps --entrypoint make build \
@@ -59,8 +59,9 @@ docker compose run --rm --no-deps --entrypoint make build \
 ~~~
 
 Header-only changes require rebuilding the affected objects because the legacy
-makefile does not track all header dependencies. This migration rebuilt the
-registration object and changed implementations before linking.
+makefile does not track all header dependencies. Rebuild the registration object
+and affected implementations, or use a clean candidate build; an old migration
+record is not evidence that the current objects match.
 
 Run a focused fixture from the repository root:
 

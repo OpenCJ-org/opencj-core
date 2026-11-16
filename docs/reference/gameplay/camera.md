@@ -1,4 +1,4 @@
-# Third-person camera (#34)
+# Third-person camera
 
 The camera is controlled through **chat commands**, available while playing,
 spectating, and viewing demos/clips.

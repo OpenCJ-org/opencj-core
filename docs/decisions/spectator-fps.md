@@ -1,5 +1,8 @@
 # Spectator FPS decisions
 
+Status: accepted. This page records the choice and its constraints; the linked
+reference describes the maintained behavior.
+
 Detailed is the default, with Compact and Off as alternatives. Live was removed;
 saved Live preferences fall back to Detailed. All views confirm a strafe after
 150 ms of held input and preserve its FPS sequence from the first sample.

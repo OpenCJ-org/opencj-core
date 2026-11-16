@@ -1,6 +1,4 @@
-# Map-controlled specular strength (#201)
-
-Issue: https://github.com/OpenCJ-dev/server-gsc/issues/201
+# Map-controlled specular strength
 
 ## Behavior
 

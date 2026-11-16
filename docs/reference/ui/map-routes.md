@@ -1,4 +1,4 @@
-# Map-list route overview (#109)
+# Map-list route overview
 
 The panel provides route overview; it does not show map type tags or numerical
 difficulty ratings. The existing preview, author, release date,

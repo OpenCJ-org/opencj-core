@@ -92,6 +92,41 @@ missing or invalid prerequisites. Record each suite's command, dependencies and
 effects in the [test guide](../../docs/development/testing.md). Unit-test success
 does not establish engine, database, asset or performance success.
 
+## Current documentation and historical records
+
+When changing behavior, interfaces, commands, configuration, schema or test
+prerequisites, review the affected current documentation in the same change.
+Verify statements against the relevant source and supported command arguments.
+Update or remove contradicted text in place; do not append a newer paragraph
+while leaving an older instruction that says the opposite.
+
+Use one maintained page for each procedure or behavior. Keep component READMEs
+as navigation when a guide already exists. Before replacing a duplicate manual,
+preserve its unique current guidance in the right reference or operations page
+and update its incoming links. Migration files and Git history already record
+implementation chronology; current guides should not become feature changelogs.
+
+Keep reusable accepted decisions, proposals and research in their established
+folders with explicit status and assumptions. Do not treat a proposal, research
+recommendation or old investigation as implementation approval. A superseded
+decision must point to its replacement and leave the normal setup path. Retain
+compatibility requirements and useful reasons; age alone does not make them
+obsolete. Do not invent acceptance or measured results to fill a gap.
+
+Keep installation inventories, observed row counts, deployment receipts,
+one-off benchmarks, raw logs and personal investigation timelines private.
+Extract reusable findings with their scope and limits. An old result or the
+presence of a test is not evidence that the current code passes. Mark actual
+tool limitations and unfinished work instead of documenting an intended future
+capability as if it exists.
+
+After moving or editing documentation, check local links, heading anchors and
+referenced source paths, and search for duplicate or superseded instructions.
+Check changed CLI examples against the parser or safe `--help` output; do not
+execute write/deployment procedures merely to proofread them. Report source
+review separately from builds, integration tests and in-game verification.
+Documentation-only edits do not require a server restart.
+
 ## Completing further audit steps
 
 When finishing another audit step, add or refine the reusable requirement in

@@ -1,4 +1,4 @@
-# Preferred record names and name moderation (#103)
+# Preferred record names and name moderation
 
 Preferred names are optional account metadata linked by playerID. Record tables,
 challenge standings, demos and clips use the preferred name when set, including
@@ -50,6 +50,7 @@ regular names receive a temporary fallback and new preferred-name claims wait.
 
 Each operator supplies their own moderation policy. Review coverage and false positives, use exceptions where appropriate, and reset abusive preferred names missed by the filter. Updating rules does not silently rewrite existing account records.
 
-See `server-db/README.md` and `server-db/tools/manage-name-rules.py` for hidden
-input, rule import/list/disable/exception commands, pinned source and license.
+See [name-rule maintenance](../../operations/name-moderation.md) for hidden
+input, import/list/disable/exception commands, the helper's current container
+limitation, pinned source and license.
 No raw player names are sent to an external moderation service.

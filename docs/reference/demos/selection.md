@@ -1,4 +1,4 @@
-# Automatic demo selection (#184)
+# Automatic demo selection
 
 ## Agreed behavior
 

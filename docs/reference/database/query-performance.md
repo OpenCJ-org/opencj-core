@@ -1,8 +1,10 @@
 # Query performance
 
-The query changes below preserve eligibility, returned fields, category rules, counts and paging, while making exact-tie selection explicit. They add no caching interval and delete no player history.
+The current queries use explicit ranking ties and bounded result selection.
+They preserve player history. Treat eligibility, returned fields, category rules,
+counts and paging as part of the query contract.
 
-## Changes
+## Query behavior
 
 - Runs board: select the owner's maximum saveNumber using the existing unique
   (runID, saveNumber) index, rather than numbering every save for the map. Mode
@@ -37,21 +39,20 @@ leaderboard/HUD SQL, then compare every returned field with the optimized query.
 They do not pretend the original SQL guaranteed the same arbitrary tie choice.
 Runs-board latest-save selection and finish-sound/notice tie rules are unchanged.
 
-## Audit scope
+## Coverage and limits
 
-Reviewed GSC SQL call sites, the native binary demo chunk reads/writes, and the
-savePosition, historyLoad, checkpointPassed, runFinished and publishDemo routines.
+The growth harness covers menu reads, saves, demo transfer/publication and
+synthetic history growth. See the [workload definition](../../development/performance.md)
+and [test prerequisites](../../development/testing.md). Its results apply to the
+tested revisions, inputs and resource limits; an earlier audit is not a pass for
+new SQL or a larger deployment.
 
-Frequent save/load/restore paths use primary/unique indexes; these routines and
-their ownership locks were retained. Native demo transfers remain bounded,
-ordered batches with the same publication transaction and integrity checks.
-Challenge award writes, points and shop ownership logic were not changed.
-Representative challenge/menu totals, map/settings reads, and cleanup selection
-plans were inspected and timed. Checkpoint-authoring/admin graph writes and
-startup catalogue/name-rule reads were reviewed for access patterns, but are not
-claimed as a mature public-load benchmark.
+Frequent save/load/restore paths use primary/unique indexes and ownership locks.
+Native demo transfers use ordered batches and the publication transaction.
+Checkpoint-authoring/admin graph writes and startup catalogue/name-rule reads
+are separate from the steady gameplay workload.
 
 The growth fixture does not model millions of retained clips or challenge awards.
 Challenge totals still aggregate account awards; record lists still process the
-selected checkpoint's history. These are growth costs to monitor, not an assertion
+selected checkpoint's history. These are growth costs to monitor, not a claim
 that every future dataset fits two cores.
