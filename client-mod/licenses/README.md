@@ -4,6 +4,7 @@ These files identify specific third-party inputs:
 
 - `flag-icons.txt`: flag-icons v7.5.0, MIT.
 - `db-ip.txt`: DB-IP Lite data attribution, CC BY 4.0.
+- `pixabay-audio.txt`: route-finish sound creators, source URLs and Pixabay Content License.
 
 Matching copies live under `../cod4/licenses/` so client builders include them
 in `z_opencj.iwd`. The Lucide 0.468.0 notice also lives there and in the optional

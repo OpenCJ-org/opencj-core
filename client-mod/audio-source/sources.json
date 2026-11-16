@@ -1,0 +1,29 @@
+{
+  "license_notice": "../licenses/pixabay-audio.txt",
+  "assets": [
+    {
+      "title": "Level Complete",
+      "creator": "freesound_gamestudio",
+      "source_url": "https://pixabay.com/sound-effects/film-special-effects-level-complete-394515/",
+      "license": "Pixabay Content License",
+      "license_url": "https://pixabay.com/service/terms/",
+      "source_file": "freesound_gamestudio-level-complete-394515.mp3",
+      "source_sha256": "3a5eedee18ee3ed83654f16a4e7f1058b81dfed87b8e60bf5e0ea9b9f7b9bb0a",
+      "game_file": "cod4/sound/opencj/route_complete.wav",
+      "game_sha256": "27119a7002667c192f8bc9c02e978d7201f8343d780d1320713bc2f5c51f8313",
+      "modifications": "Converted to 44.1 kHz PCM16 WAV; peak/RMS-limited without amplification."
+    },
+    {
+      "title": "Victory Fanfare",
+      "creator": "Universfield",
+      "source_url": "https://pixabay.com/sound-effects/musical-victory-fanfare-152480/",
+      "license": "Pixabay Content License",
+      "license_url": "https://pixabay.com/service/terms/",
+      "source_file": "universfield-victory-fanfare-152480.mp3",
+      "source_sha256": "3c1c005c2c8140a361b22ac5fa7ee5ec9f597bf44c330afa2bd9ca3433449ca5",
+      "game_file": "cod4/sound/opencj/route_record.wav",
+      "game_sha256": "f3ec3cb18d202b0a5ad197cae39f8448c15426f1f66027bdd1e6e53347c211df",
+      "modifications": "Converted to 44.1 kHz PCM16 WAV; peak/RMS-limited without amplification."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+OpenCJ route finish audio — third-party notices
+
+Level Complete — freesound_gamestudio
+https://pixabay.com/sound-effects/film-special-effects-level-complete-394515/
+Source: freesound_gamestudio-level-complete-394515.mp3
+Game asset: sound/opencj/route_complete.wav
+
+Victory Fanfare — Universfield
+https://pixabay.com/sound-effects/musical-victory-fanfare-152480/
+Source: universfield-victory-fanfare-152480.mp3
+Game asset: sound/opencj/route_record.wav
+
+License: Pixabay Content License
+https://pixabay.com/service/terms/
+Summary: https://pixabay.com/service/license-summary/
+
+These clips accompany OpenCJ's route-completion feature and retain their own
+license. They are not relicensed under OpenCJ's AGPL license. Pixabay permits
+use and adaptation subject to its terms, including restrictions on standalone
+redistribution. Attribution does not override those restrictions or imply
+endorsement by the creators.
+
+OpenCJ converts the supplied MP3s to 44.1 kHz PCM16 WAV and reduces volume.
+The source catalogue records the original and converted file hashes.

@@ -26,6 +26,14 @@ unverified third-party material. A submodule does not supply a missing license.
 | Ele, Any% and TAS geometry, optional rabbit badge | [Lucide 0.468.0](https://github.com/lucide-icons/lucide/tree/0.468.0), ISC with upstream attribution | [Version-matched notice](../../client-mod/cod4/licenses/lucide.txt); adapted geometry, color, stroke and composition |
 | Country lookup data | [DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0 | [Data notice](../../server-db/tools/geoip/LICENSE-DATA.txt); download separately and retain attribution for converted/indexed data |
 
+The two [route-finish sounds](../../client-mod/audio-source/README.md) are
+included as assets of that feature under the Pixabay Content License.
+Their [notice](../../client-mod/licenses/pixabay-audio.txt) and
+[source catalogue](../../client-mod/audio-source/sources.json) identify both
+creators, original pages, file hashes and conversion changes. The project AGPL
+license does not relicense this audio. Redistribution must comply with the
+Pixabay terms, including the restriction on standalone redistribution.
+
 Client notices are staged under `client-mod/cod4/licenses/` and packaged as
 `licenses/` in the IWD. Keep the relevant notices with separately distributed
 asset exports too. A notice for one asset does not license unrelated assets.
@@ -34,14 +42,6 @@ asset exports too. A notice for one asset does not license unrelated assets.
 
 These records identify unresolved issues, not permission to redistribute.
 
-- **Finish audio:** [Level Complete by freesound_gamestudio](https://pixabay.com/sound-effects/film-special-effects-level-complete-394515/)
-  and [Victory Fanfare by Universfield](https://pixabay.com/sound-effects/musical-victory-fanfare-152480/)
-  use the Pixabay Content License, not AGPL or CC0.
-  Pixabay's [terms](https://pixabay.com/service/terms/) restrict standalone
-  redistribution. The source MP3s and lightly converted WAVs need separate
-  handling from sound incorporated into a game. Obtain explicit redistribution
-  permission, replace them with suitable material, or supply them separately
-  as local build inputs before publishing the source repository.
 - **Map preview artwork:** the [manifest](../../client-mod/source/map_previews.json)
   records eight original loading images and two game captures. Hashes, mapper
   credit and public downloads establish provenance, not permission to
