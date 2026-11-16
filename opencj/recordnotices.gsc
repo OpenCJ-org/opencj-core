@@ -4,24 +4,47 @@
 // must never turn an any% result into an improvement over a checkpoint run.
 finishQuery(runID)
 {
-    return "WITH finished AS ("+
-        "SELECT r.runID,r.playerID,r.mapID,r.FPSMode,r.ele,r.anyPct,r.hb,r.hardTAS,c.finishRouteID AS routeID,route.routeName,s.timePlayed,s.explosiveJumps,p.playerName "+
-        "FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID AND c.retired=0 JOIN routes route ON route.routeID=c.finishRouteID "+
-        "JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID "+
-        "JOIN playerDisplayNames p ON p.playerID=r.playerID WHERE r.runID="+runID+" AND r.finishTimeStamp IS NOT NULL), eligible AS ("+
-        "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps FROM finished f "+
-        "JOIN playerRuns r ON r.mapID=f.mapID AND r.FPSMode=f.FPSMode AND r.ele=f.ele AND r.anyPct=f.anyPct AND r.hb=f.hb AND r.hardTAS=f.hardTAS "+
-        "JOIN checkpoints c ON c.cpID=r.finishcpID AND c.finishRouteID=f.routeID AND c.retired=0 "+
-        "JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID "+
-        "WHERE r.finishTimeStamp IS NOT NULL AND r.runID<>f.runID), scoped AS ("+
-        "SELECT 0 AS scope,e.* FROM eligible e UNION ALL SELECT 1 AS scope,e.* FROM eligible e JOIN finished f ON e.playerID=f.playerID), ranked AS ("+
-        "SELECT e.*,ROW_NUMBER() OVER(PARTITION BY scope ORDER BY timePlayed,explosiveJumps,runID) AS timeRank,"+
-        "ROW_NUMBER() OVER(PARTITION BY scope ORDER BY explosiveJumps,timePlayed,runID) AS rpgRank FROM scoped e), boards AS ("+
-        "SELECT 0 AS scope,0 AS metric UNION ALL SELECT 0,1 UNION ALL SELECT 1,0 UNION ALL SELECT 1,1) "+
-        "SELECT b.scope,b.metric,f.routeName,f.FPSMode,f.ele,f.anyPct,f.hb,f.hardTAS,f.timePlayed,f.explosiveJumps,"+
-        "old.timePlayed,old.explosiveJumps,f.playerName,f.playerID,f.runID "+
-        "FROM finished f CROSS JOIN boards b LEFT JOIN ranked old ON old.scope=b.scope "+
-        "AND ((b.metric=0 AND old.timeRank=1) OR (b.metric=1 AND old.rpgRank=1)) ORDER BY b.scope,b.metric";
+    // Reuse eligible rows; only each scope/metric winner is needed.
+    return "WITH finished AS ( " +
+        "SELECT r.runID,r.playerID,r.mapID,r.FPSMode,r.ele,r.anyPct,r.hb,r.hardTAS,c.finishRouteID AS routeID,route.routeName,s.timePlayed,s.explosiveJumps,p.playerName  " +
+        "FROM playerRuns r  " +
+        "JOIN checkpoints c ON c.cpID=r.finishcpID  " +
+        "AND c.retired=0  " +
+        "JOIN routes route ON route.routeID=c.finishRouteID  " +
+        "JOIN checkpointStatistics s ON s.runID=r.runID  " +
+        "AND s.cpID=r.finishcpID  " +
+        "JOIN playerDisplayNames p ON p.playerID=r.playerID  " +
+        "WHERE r.runID=" + runID + "  " +
+        "AND r.finishTimeStamp IS NOT NULL), eligible AS ( " +
+        "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps  " +
+        "FROM finished f  " +
+        "JOIN playerRuns r ON r.mapID=f.mapID  " +
+        "AND r.FPSMode=f.FPSMode  " +
+        "AND r.ele=f.ele  " +
+        "AND r.anyPct=f.anyPct  " +
+        "AND r.hb=f.hb  " +
+        "AND r.hardTAS=f.hardTAS  " +
+        "JOIN checkpoints c ON c.cpID=r.finishcpID  " +
+        "AND c.finishRouteID=f.routeID  " +
+        "AND c.retired=0  " +
+        "JOIN checkpointStatistics s ON s.runID=r.runID  " +
+        "AND s.cpID=r.finishcpID  " +
+        "WHERE r.finishTimeStamp IS NOT NULL  " +
+        "AND r.runID<>f.runID) " +
+        ", " +
+        "prior AS ( " +
+        "(SELECT /*+ NO_MERGE(e) */ 0 AS scope,0 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e ORDER BY e.timePlayed,e.explosiveJumps,e.runID LIMIT 1) " +
+        "UNION ALL " +
+        "(SELECT /*+ NO_MERGE(e) */ 0 AS scope,1 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e ORDER BY e.explosiveJumps,e.timePlayed,e.runID LIMIT 1) " +
+        "UNION ALL " +
+        "(SELECT /*+ NO_MERGE(e) */ 1 AS scope,0 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e JOIN finished f ON e.playerID=f.playerID ORDER BY e.timePlayed,e.explosiveJumps,e.runID LIMIT 1) " +
+        "UNION ALL " +
+        "(SELECT /*+ NO_MERGE(e) */ 1 AS scope,1 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e JOIN finished f ON e.playerID=f.playerID ORDER BY e.explosiveJumps,e.timePlayed,e.runID LIMIT 1) " +
+        ") " +
+        ", boards AS (SELECT 0 AS scope,0 AS metric UNION ALL SELECT 0,1 UNION ALL SELECT 1,0 UNION ALL SELECT 1,1) " +
+        "SELECT b.scope,b.metric,f.routeName,f.FPSMode,f.ele,f.anyPct,f.hb,f.hardTAS,f.timePlayed,f.explosiveJumps, " +
+        "old.timePlayed,old.explosiveJumps,f.playerName,f.playerID,f.runID FROM finished f CROSS JOIN boards b " +
+        "LEFT JOIN prior old ON old.scope=b.scope AND old.metric=b.metric ORDER BY b.scope,b.metric ";
 }
 category(fps,ele,any,hb,tas)
 {
@@ -86,10 +109,10 @@ checkpointQuery(runID,cpID,fps,ele,any,hb,tas,metric)
 {
     sort="cs.timePlayed,cs.explosiveJumps";
     if(metric=="rpgs")sort="cs.explosiveJumps,cs.timePlayed";
-    return "SELECT cs.timePlayed,cs.explosiveJumps FROM checkpointStatistics cs JOIN playerRuns r ON r.runID=cs.runID "+
+    return "SELECT cs.timePlayed,cs.explosiveJumps FROM checkpointStatistics cs STRAIGHT_JOIN playerRuns r ON r.runID=cs.runID "+
         "WHERE cs.cpID="+cpID+" AND r.runID<>"+runID+" AND r.finishTimeStamp IS NOT NULL "+
         "AND r.FPSMode="+dbStr(fps)+" AND r.ele="+int(ele)+" AND r.anyPct="+int(any)+" AND r.hb="+int(hb)+" AND r.hardTAS="+int(tas)+
-        " ORDER BY "+sort+",r.runID LIMIT 1";
+        " ORDER BY "+sort+",cs.runID LIMIT 1";
 }
 checkpoint(runID,cpID,timePlayed)
 {

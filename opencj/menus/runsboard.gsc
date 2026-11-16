@@ -77,10 +77,12 @@ fetchUpdatedData()
     // - playerRuns has startTimeStamp which we can use as run date/age
     // - runLabels contains the run labels
     sortStr = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
+    // Select the owner's latest save first; mode/FPS filters below must apply
+    // to that save, never to an older matching position in the same run.
     query = "SELECT COUNT(*) OVER() AS totalNr, a.runID, rl.runLabel, a.timePlayed, a.explosiveJumps, a.loadCount, a.startTimeStamp, a.FPSMode, a.flags " +
                 "FROM(" + 
-                    "SELECT ROW_NUMBER() OVER (PARTITION BY pr.runID ORDER BY saveNumber DESC) AS rn, pr.playerID, pr.mapID, pr.runID, pr.timePlayed, ps.explosiveJumps, pr.loadCount, pr.saveCount, pr.startTimeStamp, ps.FPSMode, ps.flags " +
-                    "FROM playerSaves ps INNER JOIN playerRuns AS pr ON pr.runID = ps.runID WHERE finishTimeStamp IS NULL AND finishcpID IS NULL AND archived = False AND mapID = " + openCJ\mapID::getMapID() + self getRunStr() +
+                    "SELECT 1 AS rn, pr.playerID, pr.mapID, pr.runID, pr.timePlayed, ps.explosiveJumps, pr.loadCount, pr.saveCount, pr.startTimeStamp, ps.FPSMode, ps.flags " +
+                    "FROM playerRuns AS pr INNER JOIN playerSaves ps ON ps.runID = pr.runID AND ps.saveNumber = (SELECT MAX(latest.saveNumber) FROM playerSaves latest WHERE latest.runID = pr.runID) WHERE pr.playerID = " + playerID + " AND finishTimeStamp IS NULL AND finishcpID IS NULL AND archived = False AND mapID = " + openCJ\mapID::getMapID() + self getRunStr() +
                 ") a LEFT JOIN runLabels rl ON a.runID = rl.runID" + 
                 " WHERE a.rn = 1" +
                 " AND a.playerID = " + playerID + 

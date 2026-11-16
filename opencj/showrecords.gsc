@@ -206,11 +206,14 @@ _getRecords(checkpoints, persist, timems)
     //  - resolving the current record name through playerDisplayNames
     //  - only selecting one best run per player (that's what the @prev is for, it compares it to the previous entry as it's sorted by playerID)
 
-    query = "SELECT COUNT(*) OVER() AS totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.playerID FROM (" +
-                "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, pr.FPSMode, pr.ele, pr.anyPct, pr.hb, pr.hardTas, cs.runID, cs.saveCount, (" +
+    // Rank narrow indexed rows; fetch names/details only for this page.
+    // Exact ties use the oldest run, then checkpoint ID, consistently with finish ranking.
+    query = "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.playerID FROM (" +
+        "SELECT COUNT(*) OVER() AS totalNr, a.* FROM (" +
+        "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, cs.runID, cs.cpID, cs.saveCount, (" +
                     "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY playerID, " + sortStr +
-                ")) AS rn " +
-                "FROM checkpointStatistics cs INNER JOIN playerRuns pr ON pr.runID = cs.runID " +
+                ", cs.runID ASC, cs.cpID ASC)) AS rn " +
+                "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID " +
                 "WHERE cs.cpID IN " + checkpointString +
                 " AND pr.finishcpID IS NOT NULL" +
                 " AND pr.finishTimeStamp IS NOT NULL" +
@@ -220,9 +223,10 @@ _getRecords(checkpoints, persist, timems)
                 " AND pr.hb <= " + self openCJ\halfBeat::isHalfBeatAllowed() +
                 " AND pr.hardTAS <= " + self openCJ\tas::hasHardTAS() +
                 " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self openCJ\fps::getCurrentFPSMode()) +
-            " ) a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
-            "WHERE a.rn = 1 ORDER BY " + sortStr +
-            " LIMIT " + level.nrRecords;
+        ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" +
+        " LIMIT " + level.nrRecords +
+    ") a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
+    "ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC";
 
     printf("getRecords query:\n" + query + "\n"); // Debug
 

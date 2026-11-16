@@ -96,11 +96,14 @@ fetchUpdatedData()
         // - playerInformation has playerName
         // the more difficult part of the query is the ROW_NUMBER() with PARTITION and rowNr = 1, which is used to make sure we only obtain one run per playerID
         sortStr = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
-        query = "SELECT COUNT(*) OVER() AS totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.finishTimeStamp, a.FPSMode, a.ele, a.anyPct, a.hb, a.hardTas, a.runID FROM (" +
-                    "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, pr.FPSMode, pr.ele, pr.anyPct, pr.hb, pr.hardTas, cs.runID, cs.saveCount, (" +
+        // Rank narrow indexed rows; fetch names/details only for this page.
+        // Exact ties use the oldest run, then checkpoint ID, consistently with finish ranking.
+        query = "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.finishTimeStamp, r.FPSMode, r.ele, r.anyPct, r.hb, r.hardTAS, a.runID FROM (" +
+            "SELECT COUNT(*) OVER() AS totalNr, a.* FROM (" +
+            "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, cs.runID, cs.cpID, cs.saveCount, (" +
                         "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY " + sortStr +
-                    ")) AS rn " +
-                    "FROM checkpointStatistics cs INNER JOIN playerRuns pr ON pr.runID = cs.runID " +
+                    ", cs.runID ASC, cs.cpID ASC)) AS rn " +
+                    "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID " +
                     "WHERE cs.cpID IN " + finishCPIds +
                     " AND pr.finishcpID IS NOT NULL" +
                     " AND pr.finishTimeStamp IS NOT NULL" +
@@ -109,10 +112,12 @@ fetchUpdatedData()
                     " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
                     " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] +
                     " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
-                " ) a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
-                "WHERE a.rn = 1 ORDER BY " + sortStr +
-                " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
-                " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
+            ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" +
+            " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
+            " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]) +
+        ") a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
+        "INNER JOIN (SELECT runID,FPSMode,ele,anyPct,hb,hardTAS FROM playerRuns) r ON r.runID = a.runID " +
+        "ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC";
 
         // Example output (pretend there are 10 rows instead of 2 though):
         // -----------------------------------------------------------------------------------------------------------------------------|
