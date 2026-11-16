@@ -8,7 +8,7 @@ main()
     list=openCJ\scoreboard::sortByPoints(list);
     if(list[0]==b && list[1]==a && list[2]==c && list[3]==d && openCJ\scoreboard::points(d)==0)
         printf("SCOREBOARD POINTS PASS descending stable order and uninitialized player\n");
-    else printf("SCOREBOARD POINTS FAIL\n");
+    else {printf("SCOREBOARD POINTS FAIL\n");return;}
 
     for(j=0;j<=32;j++)
     {
@@ -23,5 +23,5 @@ main()
     }
     v=openCJ\scoreboard::viewLayout(17,2,1);
     if(v.first!=0 || v.count!=2 || !v.split){printf("SCOREBOARD SCROLL FAIL shrinking list\n");return;}
-    printf("SCOREBOARD SCROLL PASS 32-player bounds, all team splits, shrinking list\n");
+    printf("SCOREBOARD POINTS COMPLETE failures=0\n");
 }

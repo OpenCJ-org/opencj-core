@@ -121,34 +121,20 @@ Fresh development setups must create that external volume before starting Compos
 
 ## Verification and recovery
 
-From a [separate test installation](../setup/development.md#separate-test-installations),
-with its Compose variables selected, the migration rehearsal needs a pre-021 backup.
-Run from `dev-tools`:
+Use the current [test guide](../development/testing.md) and catalogue.
+From the core root, the fresh bootstrap regression creates its own network-isolated
+database and verifies migrations, repeat-run preservation, runtime DDL denial and
+a synthetic backup/restore:
 
-    python3 tests/database-safety.py /path/to/private/pre-021-backup/databases.sql.gz
+```sh
+python3 -B dev-tools/tests/bootstrap-database.py
+```
 
-Use the SAFE_FIXTURE directory printed by that command for the engine stage:
-
-    python3 tests/database-safety-engine.py local/database-safety-<printed-id>
-    python3 tests/database-volume.py
-
-These recovery rehearsals require an operator-supplied private backup; they are
-not fresh-install regression fixtures. Never commit the input or generated data.
-The engine stage also cleans up the first stage's disposable DB and credentials.
-
-
-- tests/database-safety.py restores the manual backup into a separate container,
-  reproduces the statistics bug, migrates via the tracked runner, checks all old
-  base-table projections by hash, and tests deletion/reference rejection, rewards,
-  purchases, runtime permissions and 36 exact-mode record comparisons.
-- tests/database-safety-engine.py consumes that fixture, runs the CPC and history
-  suites, then initializes real scripts under the restricted gameplay account.
-  It removes the isolated DB/engine and private credentials.
-- tests/database-volume.py verifies the selected installation's volume matches its configuration and
-  proves a disposable external volume survives Compose down --volumes.
-
-Synthetic-client startup and stock-map physics workarounds remain confined to the
-test copy, as in the route-identity suite. No game UI control is used.
+From a separately selected disposable Compose installation, use `database-volume`
+for external-volume preservation, `feature-sql` for current route/shop behavior,
+and `sql-adapter` for save ownership and pool failures. These are regression tests
+on synthetic data, not a substitute for rehearsing an installation's actual backup
+and version-specific upgrade.
 
 Recovery requires matching database and source versions. Keep the server stopped
 while restoring the pre-migration dump and previous GSC files. Re-provision the

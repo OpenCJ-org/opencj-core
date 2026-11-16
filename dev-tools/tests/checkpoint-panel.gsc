@@ -1,5 +1,7 @@
 main()
 {
+ level.fixtureFailures=0;
+ precacheShader("white");
  wait 2;
  cp=openCJ\checkpointCreation::_empty();
  cp.points=[];cp.points[0]=(0,0,0);cp.points[1]=(100,0,0);cp.points[2]=(100,100,0);cp.points[3]=(0,100,0);
@@ -18,9 +20,9 @@ main()
  hud=newHudElem();openCJ\checkpointCreation::configureHud(hud);
  check(hud.x==124 && hud.y==6 && hud.archived,"panel is right of minimap in archived HUD pool");
  hud.color=(0,0,0);hud.alpha=0.65;hud.sort=-1;hud setShader("white",320,104);hud destroy();
- printf("PANEL SELFTEST COMPLETE\n");
+ printf("PANEL SELFTEST COMPLETE failures="+level.fixtureFailures+"\n");
 }
 check(ok,text)
 {
- if(ok)printf("PANEL PASS "+text+"\n");else printf("PANEL FAIL "+text+"\n");
+ if(ok)printf("PANEL PASS "+text+"\n");else {level.fixtureFailures++;printf("PANEL FAIL "+text+"\n");}
 }

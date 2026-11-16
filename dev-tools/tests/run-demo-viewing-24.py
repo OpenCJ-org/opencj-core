@@ -29,6 +29,23 @@ for mapname in options.maps or ['mp_killhouse']:
 
     (home/'steamclient.so').symlink_to('/game/steamclient.so')
     shutil.copyfile(options.fixture,mod/'opencj/platformtest.gsc')
+    # These fixtures observe native HUD calls through forwarding wrappers.
+    # Install the wrappers only in this run's script copy, never in production.
+    if options.fixture.name == 'hud-display.gsc':
+        source=mod/'opencj/huds/hudfps.gsc'
+        original=source.read_text()
+        assert original.count('self setClientCvar(')==1
+        source.write_text(original.replace(
+            'self setClientCvar(', 'self openCJ'+chr(92)+'platformTest::recordClientCvar('))
+    if options.fixture.name == 'hud-settings.gsc':
+        source=mod/'opencj/checkpointpointers.gsc'
+        original=source.read_text()
+        assert original.count(' setWaypoint(')==2
+        assert original.count(' setShader(')==1
+        original=original.replace(' setWaypoint(', ' openCJ'+chr(92)+'platformTest::waypoint(')
+        original=original.replace(' setShader(', ' openCJ'+chr(92)+'platformTest::recordShader(')
+        source.write_text(original)
+
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     # Test clients must not reach account/database callbacks in this isolated fixture.

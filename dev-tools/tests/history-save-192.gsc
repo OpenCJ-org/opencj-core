@@ -297,7 +297,7 @@ duplicateSave(query, instance)
 incompleteDemoChecks(candidate, winner)
 {
     // Recreate only a disposable candidate; exercise the promotion gate directly.
-    sql("INSERT INTO demoRuns SELECT " + candidate + ",mapID,routeName,FPSMode,modeMask,900,explosiveJumps,70,0,createdAt FROM demoRuns WHERE runID=" + winner);
+    sql("INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount,ready,createdAt) SELECT " + candidate + ",mapID,routeID,FPSMode,modeMask,900,explosiveJumps,70,0,createdAt FROM demoRuns WHERE runID=" + winner);
     check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + candidate + " AND ready=0") == 1, "incomplete demo candidate fixture exists");
     check(!openCJ\demoRecording::promote(candidate), "promotion rejects a candidate with no chunks");
     sql("INSERT INTO demoChunks VALUES(" + candidate + ",0,'a')");

@@ -1,93 +1,116 @@
 # Tests and prerequisites
 
-Run commands from the core root unless stated otherwise. Test sources remain in
-`dev-tools/tests/`; generated outputs belong in ignored `dev-tools/local/`.
-Test requirements differ by suite. A setup-unit-test pass is not an engine,
-database, asset or performance pass.
+Run commands from the core root on Linux. Start with the portable checks:
 
-| Suite | Entry point | Requirements and effects |
-| --- | --- | --- |
-| Setup | `python3 -B -m unittest discover -s dev-tools/tests` | Standard library; temporary directories |
-| Fresh database | `python3 -B dev-tools/tests/bootstrap-database.py` | Docker/MySQL; isolated synthetic database and backup restore |
-| GSC fixtures | `python3 dev-tools/tests/run-demo-viewing-24.py --help` | Initialized Compose, engine, licensed game and compiled mod; isolated server |
-| Native movement | `python3 dev-tools/tests/run-sticky-walls-native.py` | Compiler/build objects and map assets; [suite details](sticky-walls.md) |
-| Native protocol | `python3 dev-tools/tests/run-snapshot-recovery.py` | Build container; native protocol fixtures; no network traffic |
-| Player memory | `python3 dev-tools/tests/run-player-memory-audit.py` | Engine/assets; isolated synthetic player, no database |
-| Capacity | `python3 dev-tools/tests/run-sql-capacity-190.py` | Initialized development schema, Docker, engine/assets and substantial CPU time |
-| Query growth | `python3 dev-tools/tests/run-query-capacity.py` | Initialized development schema; disposable synthetic growth data |
-| Client assets | `check-command-menu-assets.py`, `check-map-route-menu.py`, `check_client_init_menu.py`, `check_demo_menu.py` | Explicit compiled/unlinked asset inputs; runner arguments describe each input |
-| GeoIP | `run-geoip-database.py`, `run-geoip-smoke.py` | Initialized development DB/updater image or explicit compiled assets |
+```sh
+python3 -B dev-tools/scripts/test.py portable
+```
 
-Most GSC files are fixtures loaded through an engine runner; they are not
-standalone commands. Native C/C++ sources similarly need their documented build
-harness. Python files without the `test_*.py` name are not discovered by unittest.
+This validates the test catalogue, then runs the explicitly reviewed setup,
+discovery, GeoIP and Discord unit tests plus source/asset checks. It requires
+Python 3 and Git, but no Docker, initialized installation, database credentials,
+game assets or network access. Discord uses a temporary Unix socket. Failures,
+empty unit suites and skipped unit tests produce a nonzero exit status.
 
-## Select a test installation
+CI uses this same command. A portable pass is not an engine, database,
+compiled-client or performance pass.
+
+## Find the right tests
+
+```sh
+python3 -B dev-tools/scripts/test.py list
+python3 -B dev-tools/scripts/test.py list focused-gsc
+python3 -B dev-tools/scripts/test.py check
+```
+
+The maintained [catalogue](../../dev-tools/tests/catalogue.json) groups every
+test source, fixture and helper by purpose. Each group records its command,
+prerequisites and effects. `list GROUP` shows those details and its files.
+Commands containing uppercase placeholders require your own reviewed inputs.
+
+The launcher executes only `portable` groups. You can select a subset, such as
+`portable setup-unit geoip-unit`; an unknown or nonportable group is rejected
+before any test starts. Run integration and diagnostic commands explicitly
+after preparing their prerequisites. There is no automatic “run everything”
+command that starts databases, imports player data or launches game servers.
+
+Do not recursively import every Python file or assume `--help` is harmless on
+old scripts. Several integration files execute work at import time or use
+positional arguments without an argument parser. GSC and C/C++ files are inputs
+to their listed harnesses, not standalone commands.
+
+| Change | Catalogue group |
+| --- | --- |
+| Setup/configuration/target selection | `setup-unit` |
+| Test registration or launcher | `discovery-unit` |
+| GeoIP parsing and import | `geoip-unit`, `geoip-database`, `geoip-engine` |
+| Fresh schema, permissions or backup | `database-bootstrap`, `database-volume` |
+| Challenge routes, shop or finish ranking | `feature-sql`, `notification-sql` |
+| Save ownership or SQL pool | `sql-adapter` |
+| Demo view receipts | `demo-view-sql` |
+| Demo playback or camera | `demo-engine`, `camera-engine`, `native-unit` |
+| Checkpoint editor/contact/HUD | `checkpoint-engine`, `checkpoint-matching`, `focused-gsc` |
+| Platform or movement code | `platform-engine`, `movement-engine`, `sticky-walls`, `native-unit` |
+| Menus or notification artwork | `compiled-menus`, `demo-menu-source`, `notification-assets` |
+| Query growth or capacity | `capacity` |
+| Discord listener | `discord-socket` |
+
+## Integration prerequisites and isolation
 
 Use a [separate test worktree and database](../setup/development.md#separate-test-installations).
-Keep its `COMPOSE_PROJECT_NAME` and `DATABASE_VOLUME` set in the shell used
-for tests. Database runners resolve the running `db` service from that worktree's
-Compose project, including custom project names. They fail if the service is
-missing or ambiguous; they do not fall back to a globally named container.
-Runners that need a shared fixture network resolve it from that service.
+Keep its `COMPOSE_PROJECT_NAME` and `DATABASE_VOLUME` set in the shell used for
+tests. A separate project name does not isolate an explicitly named external
+volume. Database runners resolve the selected project's `db` service and refuse
+a missing or ambiguous target. Never select a live gameplay database.
 
-Some suites create temporary schemas or users on the selected database; others
-copy its schema or inspect its contents. Use synthetic data in the test
-installation, never a live server's database. Each runner's prerequisites below
-still apply.
+Use synthetic data. Route/shop checks need administrative access for fixture
+setup; they roll back or remove their own rows. Other runners create temporary
+schemas, accounts or containers. Keep output in ignored `dev-tools/local/`;
+raw logs, recordings and database exports remain private.
 
-The native protocol runner creates temporary Compose `build` containers. Build
-that service first (`docker compose build build` from `dev-tools`); a running
-game server is not required.
+Build the Compose services needed by the selected runner. Native protocol tests
+need the `build` image, but no game server. Engine fixtures need a matching CoD4
+binary, licensed game/maps and compiled mod assets. They launch their own server
+and do not require a live server restart. Test scripts and native interfaces must
+match; see [native/script deployment](../operations/native-scripts.md).
 
-Engine runners start in their own fixture directory, where they prepare the
-Steam bridge link. They must not depend on a previous normal-server launch to
-create files in the shared runtime directory.
-
-The query-capacity runner selects the first two CPU cores allowed to the
-calling process. `--cpu-set` can select another pair of available cores,
-including a range such as `0-1`. One-core hosts cannot reproduce this suite's
-two-core comparison.
+The `camera-engine` runner builds its probe from tracked source by default.
+The `native-unit` command requires g++ with C++17 and 32-bit development libraries,
+but no game assets. Focused GSC commands name their fixture and completion marker;
+checkpoint contact uses `mp_futile_fixed`, not the stock map used by the other
+focused fixtures. HUD observation wrappers are installed only in the fixture copy.
 
 Build the GeoIP updater image before its database integration test:
 
 ```sh
 docker build -t opencj-geoip-updater:latest server-db/tools/geoip
-python3 dev-tools/tests/run-geoip-database.py --image opencj-geoip-updater:latest
+python3 -B dev-tools/tests/run-geoip-database.py --image opencj-geoip-updater:latest
 ```
 
-The GeoIP test creates a synthetic schema, a temporary updater account and a
-private password file, then removes them. It does not need a MaxMind account
-or a downloaded database.
+This uses synthetic input; no MaxMind account or download is needed.
+Capacity testing needs two available CPU cores and substantial runtime.
+`run-query-capacity.py --cpu-set` can select a different available pair.
 
-## Legacy and operator-assisted checks
+Compiled menu checks require actual Unlinker output from the build being reviewed.
+The source-only demo-menu check does not establish that a fastfile or game client
+works. The recording trace tool accepts an explicit export or a synthetic
+database run/clip; it is a diagnostic, not a standard regression suite.
 
-Some runners depend on an initialized development database, generated
-configuration, old schema or historical binary. Their presence does not make
-them fresh-install tests.
+## Maintaining the test set
 
-- `database-cleanup.py`, `route-identity-174.py`, `database-safety.py` and
-  `demo-viewing-db-24.py` rehearse migrations using existing schema/data or
-  explicitly supplied historical backups. Inputs and outputs remain private.
-- `challenge-route-link.py`, `shop-purchases.py` and `finish-sounds.py`
-  currently expect a separately prepared legacy test schema.
-- `run-sql-adapter.py --baseline-binary PATH` includes the historical queue
-  comparison in `sql-adapter-benchmark.py`. Supply the matching pre-pool #192
-  engine yourself; the runner does not assume an old investigation left one
-  behind. The baseline must exist inside this checkout so Compose can mount it.
-  The existing `OPENCJ_SKIP_POOL=1` diagnostic mode omits pool and benchmark
-  checks and must not be reported as a full pass.
-- `run-camera-smoke.py --binary PATH --plugin PATH` needs a matching camera test
-  engine and `camera_engine.so`. Both paths must name files inside this checkout.
-  This is an operator-assisted historical fixture, not a standard engine test.
-- `run-finish-sounds-smoke.py` uses the compiled mod assets configured by
-  `dev.py init --mod-dir`, mounted read-only at `/mod-assets`.
-- `trace-fps-demo.py` reads an operator-selected recording or exported file.
-  Stored run/clip IDs, recordings and traces are private diagnostic inputs.
-- The former `run-clip-smoke.py` depended on a personal pre-existing container
-  and has been retained privately. The reusable `clip-buffers.gsc` fixture
-  remains public.
+Register new or moved tests in the catalogue in the same change. The checker
+compares it with Git's tracked and nonignored test inventory, including component
+`test_*.py` files, without importing integration code. Ignored experiments are
+not discovered. Keep fixtures with their owning group and shared helpers in
+`support`; each executable group needs a maintained command.
 
-Do not run destructive tests against a live database. A runner must remove only
-its own disposable resources. Native binaries and script snapshots must match;
-see [native/script deployment](../operations/native-scripts.md).
+Repair still-relevant tests when their setup, schema or interfaces change.
+Remove completed one-off comparisons and obsolete acceptance snapshots instead
+of retaining broken scripts with an “old” label. Preserve useful compatibility
+and regression checks; age or an issue number alone is not a reason to delete
+them. Recover historical investigation material through Git or private recovery
+records, not through the current test entry point.
+
+Report exactly which groups ran, which inputs/builds they used, and what remains
+unverified. Passing a listed command once does not establish that other groups
+pass or that future changes preserve the result.

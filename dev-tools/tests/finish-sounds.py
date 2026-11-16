@@ -20,7 +20,7 @@ cases=[]
 def case(name,others=(),current=None,expected=1,cps=None):
     runs=[current or run(100,pid=10)]+list(others)
     stats=[[r['values'][0],r['values'][3],r['time'],r['rpg']] for r in runs if r['stats']]
-    fixtures=[cte('playerRuns',cols,[r['values'] for r in runs]),cte('checkpoints',['cpID','ender'],cps or [[1,'easy'],[2,'easy'],[3,'hard']]),cte('checkpointStatistics',['runID','cpID','timePlayed','explosiveJumps'],stats or [[0,0,0,0]])]
+    fixtures=[cte('playerRuns',cols,[r['values'] for r in runs]),cte('checkpoints',['cpID','finishRouteID'],cps or [[1,'easy'],[2,'easy'],[3,'hard']]),cte('checkpointStatistics',['runID','cpID','timePlayed','explosiveJumps'],stats or [[0,0,0,0]])]
     q='WITH '+','.join(fixtures)+','+query[5:]+';'
     cases.append((name,q,expected))
 better=[run(i,time=i*100,rpg=i) for i in (1,2,3)]
@@ -53,7 +53,7 @@ case('125 included in hax',[run(i,time=i*100,rpg=i,fps='125') for i in (1,2,3)],
 for mode in ['ele','anyPct','hb','tas']:
     case(mode+' disallowed runs excluded',[run(i,time=i*100,rpg=i,**{mode:1}) for i in (1,2,3)])
     case(mode+' includes clean runs',better,current=run(100,pid=10,**{mode:1}),expected=0)
-p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test','opencj_test_cod4'],input='\n'.join(q for _,q,_ in cases),text=True,capture_output=True)
+p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test','openCJ_cod4'],input='\n'.join(q for _,q,_ in cases),text=True,capture_output=True)
 if p.returncode:raise RuntimeError(p.stderr)
 results=p.stdout.splitlines();assert len(results)==len(cases),(len(results),len(cases))
 for (name,_,expected),result in zip(cases,results):

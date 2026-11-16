@@ -1,5 +1,6 @@
 main()
 {
+ level.fixtureFailures=0;
  wait 2;
  editor=spawnStruct();editor.cpc=spawnStruct();
  editor.cpc.path="checkpoints/tests/travel-persistence";
@@ -19,9 +20,9 @@ main()
   check(distanceSquared(restored.savedPosition.origin,editor.cpc.savedPosition.origin)<0.02,"position survives serialization");
   check(distanceSquared(restored.savedPosition.angles,editor.cpc.savedPosition.angles)<0.0001,"view angles survive serialization");
  }
- printf("TRAVEL SELFTEST COMPLETE\n");
+ printf("TRAVEL SELFTEST COMPLETE failures="+level.fixtureFailures+"\n");
 }
 check(ok,name)
 {
- if(ok)printf("TRAVEL PASS "+name+"\n");else printf("TRAVEL FAIL "+name+"\n");
+ if(ok)printf("TRAVEL PASS "+name+"\n");else {level.fixtureFailures++;printf("TRAVEL FAIL "+name+"\n");}
 }

@@ -6,7 +6,7 @@ def verify(db):
  checks=0
  # Existing hand-authored sound expectations, updated only for stable route IDs.
  source=(ROOT/'dev-tools/tests/finish-sounds.py').read_text()
- source=source[:source.index("p=subprocess.run(")].replace("['cpID','ender']","['cpID','finishRouteID']")
+ source=source[:source.index("p=subprocess.run(")]
  namespace={'__file__':str(ROOT/'dev-tools/tests/finish-sounds.py')}
  exec(compile(source,'finish-sound-fixtures','exec'),namespace)
  for name,sql,expected in namespace['cases']:

@@ -127,6 +127,37 @@ execute write/deployment procedures merely to proofread them. Report source
 review separately from builds, integration tests and in-game verification.
 Documentation-only edits do not require a server restart.
 
+## Test organization and discovery
+
+When adding, moving or changing tests, update the maintained
+[test catalogue](../../dev-tools/tests/catalogue.json) with their purpose,
+owning fixtures/helpers, command, prerequisites and effects. Every retained
+executable group must have a usable entry point. Run the catalogue check and
+the affected suites; CI and local portable testing must use the same command.
+
+Keep automatic discovery restricted to reviewed offline entry points. A file
+named `test_*.py` can open a database or replace a socket at import time; do not
+recursively import unrelated integration scripts to discover tests. Adding a
+portable entry requires checking its imports and effects. It must not depend
+on a private configuration, running service, game asset or historical output.
+
+Fix still-relevant tests when their schema, interfaces or setup change.
+Use current synthetic fixtures and build probes from maintained source.
+Remove obsolete one-off audits and completed before/after investigations from
+the current tree; preserve required recovery material privately or in Git.
+Do not merely rename them "legacy" or "unsupported" and leave them as clutter.
+Keep tests for supported compatibility and real regressions; age alone is not
+grounds for deletion. Check incoming references before removing a fixture.
+
+A passing command must execute its intended checks. Treat zero discovered tests,
+missing completion markers, failed subprocesses and skipped required checks as
+incomplete or failing, never as a full pass. Report the scope actually exercised.
+
+Test harnesses must own their temporary sockets, accounts, schemas, containers
+and outputs. Use unique temporary resources and clean them on failure as well as
+success. Forwarding observation hooks belong only in the fixture's source copy.
+Test-only and documentation changes do not justify restarting a live server.
+
 ## Completing further audit steps
 
 When finishing another audit step, add or refine the reusable requirement in

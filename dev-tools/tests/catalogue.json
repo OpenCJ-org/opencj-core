@@ -1,0 +1,558 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "setup-unit",
+      "category": "portable",
+      "description": "Setup preservation and explicit Compose/database target selection.",
+      "requires": "Python 3 standard library; no initialized installation.",
+      "effects": "Temporary directories and mocked external commands.",
+      "files": [
+        "dev-tools/tests/test_setup.py",
+        "dev-tools/tests/test_bootstrap_target.py",
+        "dev-tools/tests/test_compose_environment.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
+      "id": "discovery-unit",
+      "category": "portable",
+      "description": "Test catalogue validation and safe selection failures.",
+      "requires": "Python 3 standard library and Git.",
+      "effects": "Temporary synthetic repositories; no application services.",
+      "files": [
+        "dev-tools/tests/test_test_catalogue.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
+      "id": "geoip-unit",
+      "category": "portable",
+      "description": "GeoIP input parsing, overlaps, gzip integrity and country mapping.",
+      "requires": "Python 3 standard library; no provider download or database driver.",
+      "effects": "Temporary compressed inputs and SQLite files.",
+      "files": [
+        "server-db/tools/geoip/test_update.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
+      "id": "demo-menu-source",
+      "category": "portable",
+      "description": "Demo toolbar source wiring, command tokens, controls and layout assertions.",
+      "requires": "Tracked GSC and client menu sources.",
+      "effects": "Read-only source checks; does not build or render a menu.",
+      "files": [
+        "dev-tools/tests/check_demo_menu.py"
+      ],
+      "commands": [],
+      "mode": "script"
+    },
+    {
+      "id": "notification-assets",
+      "category": "portable",
+      "description": "Notification glow texture and material consistency.",
+      "requires": "Tracked client IWI textures and materials; Python standard library.",
+      "effects": "Read-only asset checks; no game or rendering.",
+      "files": [
+        "dev-tools/tests/notification-glow-assets-72.py"
+      ],
+      "commands": [],
+      "mode": "script"
+    },
+    {
+      "id": "database-bootstrap",
+      "category": "integration",
+      "description": "Empty database bootstrap, repeat preservation, runtime rights and backup restore.",
+      "requires": "Docker and mysql:8.0 image; resources for a separate database.",
+      "effects": "Creates then removes a network-isolated container and credentials; keeps private evidence.",
+      "files": [
+        "dev-tools/tests/bootstrap-database.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/bootstrap-database.py"
+      ]
+    },
+    {
+      "id": "database-volume",
+      "category": "integration",
+      "description": "External volume survives Compose teardown.",
+      "requires": "Initialized disposable Compose installation and running db; Docker/mysql:8.0.",
+      "effects": "Inspects selected mount; creates/removes only a separate probe volume and project.",
+      "files": [
+        "dev-tools/tests/database-volume.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/database-volume.py"
+      ]
+    },
+    {
+      "id": "geoip-database",
+      "category": "integration",
+      "description": "GeoIP import, publication and lookup against synthetic data.",
+      "requires": "Selected disposable Compose database and locally built GeoIP updater image.",
+      "effects": "Creates/removes temporary schema, account and password file; helper runs inside updater image.",
+      "files": [
+        "dev-tools/tests/run-geoip-database.py",
+        "server-db/tools/geoip/test_database.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-geoip-database.py --image opencj-geoip-updater:latest"
+      ]
+    },
+    {
+      "id": "notification-sql",
+      "category": "integration",
+      "description": "Exact-category notification SQL cases.",
+      "requires": "Selected disposable Compose database with current schema.",
+      "effects": "Connection-local read-only CTE fixtures using the runtime account.",
+      "files": [
+        "dev-tools/tests/record-notices-72.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/record-notices-72.py"
+      ]
+    },
+    {
+      "id": "native-protocol",
+      "category": "integration",
+      "description": "Snapshot delta and packet acknowledgement recovery.",
+      "requires": "Initialized CoD4 submodule; Docker Compose build image and compiler.",
+      "effects": "Temporary build containers and local binaries; no network traffic or game server.",
+      "files": [
+        "dev-tools/tests/run-snapshot-recovery.py",
+        "dev-tools/tests/snapshot-recovery.c",
+        "dev-tools/tests/packet-ack-recovery.c"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-snapshot-recovery.py"
+      ]
+    },
+    {
+      "id": "checkpoint-engine",
+      "category": "integration",
+      "description": "Checkpoint corners, elevators, list, replacement and reset fixtures.",
+      "requires": "Initialized Compose, matching built engine, licensed game/compiled mod and selected maps.",
+      "effects": "Starts isolated fixture servers and writes private logs; no live players or database.",
+      "files": [
+        "dev-tools/tests/run-checkpoint-corners-smoke.py",
+        "dev-tools/tests/checkpoint-corners.gsc",
+        "dev-tools/tests/run-checkpoint-ele-smoke.py",
+        "dev-tools/tests/checkpoint-ele.gsc",
+        "dev-tools/tests/run-checkpoint-list-smoke.py",
+        "dev-tools/tests/checkpoint-list.gsc",
+        "dev-tools/tests/run-checkpoint-replacement-smoke.py",
+        "dev-tools/tests/checkpoint-replacement.gsc",
+        "dev-tools/tests/run-checkpoint-reset-smoke.py",
+        "dev-tools/tests/checkpoint-reset.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-checkpoint-corners-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-checkpoint-ele-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-checkpoint-list-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-checkpoint-replacement-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-checkpoint-reset-smoke.py mp_killhouse"
+      ]
+    },
+    {
+      "id": "checkpoint-matching",
+      "category": "integration",
+      "description": "Checkpoint migration matching without a database.",
+      "requires": "Initialized Compose, matching current engine and licensed game/compiled mod.",
+      "effects": "Isolated fixture server and private logs.",
+      "files": [
+        "dev-tools/tests/run-checkpoint-migration-smoke.py",
+        "dev-tools/tests/checkpoint-migration.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-checkpoint-migration-smoke.py mp_killhouse"
+      ]
+    },
+    {
+      "id": "platform-engine",
+      "category": "integration",
+      "description": "Brush/moving support, checkpoint alternatives, height and insertion.",
+      "requires": "Initialized Compose, matching engine, compiled mod and map assets; variants select different fixtures.",
+      "effects": "Isolated fixture servers and private logs.",
+      "files": [
+        "dev-tools/tests/run-platform-support-smoke.py",
+        "dev-tools/tests/platform-brushes.gsc",
+        "dev-tools/tests/platform-moving.gsc",
+        "dev-tools/tests/checkpoint-alternatives.gsc",
+        "dev-tools/tests/checkpoint-height.gsc",
+        "dev-tools/tests/checkpoint-insert.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-platform-support-smoke.py mp_galaxy",
+        "python3 -B dev-tools/tests/run-platform-support-smoke.py --moving mp_qube",
+        "python3 -B dev-tools/tests/run-platform-support-smoke.py --alternatives mp_dark",
+        "python3 -B dev-tools/tests/run-platform-support-smoke.py --height mp_dark",
+        "python3 -B dev-tools/tests/run-platform-support-smoke.py --insert mp_dark"
+      ]
+    },
+    {
+      "id": "movement-engine",
+      "category": "integration",
+      "description": "Aim teleport, measurement, moon boost and FPS history.",
+      "requires": "Initialized Compose, matching engine, game/compiled mod and relevant maps; FPS history compiles a plugin.",
+      "effects": "Isolated fixture servers, synthetic players and private logs; no gameplay database.",
+      "files": [
+        "dev-tools/tests/run-aim-teleport-smoke.py",
+        "dev-tools/tests/aim-teleport.gsc",
+        "dev-tools/tests/run-measure-smoke.py",
+        "dev-tools/tests/measure.gsc",
+        "dev-tools/tests/run-moon-boost-smoke.py",
+        "dev-tools/tests/moon-boost.gsc",
+        "dev-tools/tests/run-fps-history-smoke.py",
+        "dev-tools/tests/fps-history.gsc",
+        "dev-tools/tests/strafe-engine.cpp"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-aim-teleport-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-measure-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-moon-boost-smoke.py",
+        "python3 -B dev-tools/tests/run-fps-history-smoke.py mp_killhouse"
+      ]
+    },
+    {
+      "id": "map-finishes",
+      "category": "integration",
+      "description": "Blue2 and Descent finish handlers.",
+      "requires": "Initialized Compose, matching engine/compiled mod and the named map assets.",
+      "effects": "Isolated fixture servers; no human clients or database writes.",
+      "files": [
+        "dev-tools/tests/run-blue2-finish-smoke.py",
+        "dev-tools/tests/blue2-finish.gsc",
+        "dev-tools/tests/run-descent-v2-finish-smoke.py",
+        "dev-tools/tests/descent-v2-finish.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-blue2-finish-smoke.py",
+        "python3 -B dev-tools/tests/run-descent-v2-finish-smoke.py"
+      ]
+    },
+    {
+      "id": "client-state-engine",
+      "category": "integration",
+      "description": "Command menu, download cvars, finish aliases, FPS registration, connecting scoreboard and specular settings.",
+      "requires": "Initialized Compose, matching engine and licensed game/compiled assets; specular checks also use mp_crash.",
+      "effects": "Isolated servers, mocked client IO and private evidence. Does not verify a human client's rendering.",
+      "files": [
+        "dev-tools/tests/run-command-menu-smoke.py",
+        "dev-tools/tests/command-menu.gsc",
+        "dev-tools/tests/run-download-cvars-smoke.py",
+        "dev-tools/tests/download-cvars.gsc",
+        "dev-tools/tests/run-finish-sounds-smoke.py",
+        "dev-tools/tests/finish-sounds.gsc",
+        "dev-tools/tests/run-fps-registration-smoke.py",
+        "dev-tools/tests/fps-registration.gsc",
+        "dev-tools/tests/run-scoreboard-connecting-smoke.py",
+        "dev-tools/tests/scoreboard-connecting.gsc",
+        "dev-tools/tests/run-specular-scale-smoke.py",
+        "dev-tools/tests/specular-scale.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-command-menu-smoke.py",
+        "python3 -B dev-tools/tests/run-download-cvars-smoke.py",
+        "python3 -B dev-tools/tests/run-finish-sounds-smoke.py",
+        "python3 -B dev-tools/tests/run-fps-registration-smoke.py",
+        "python3 -B dev-tools/tests/run-scoreboard-connecting-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-specular-scale-smoke.py"
+      ]
+    },
+    {
+      "id": "demo-engine",
+      "category": "integration",
+      "description": "Demo lifecycle, viewing and timeline fixtures; selection SQL replay.",
+      "requires": "Initialized Compose, matching engine and game/compiled assets. Selection SQL replay also requires a selected disposable current database and captured fixture log.",
+      "effects": "Isolated servers and private logs; selection replay uses temporary SQL tables.",
+      "files": [
+        "dev-tools/tests/run-demo-lifecycle-205.py",
+        "dev-tools/tests/demo-lifecycle-205.gsc",
+        "dev-tools/tests/run-demo-viewing-24.py",
+        "dev-tools/tests/demo-viewing-24.gsc",
+        "dev-tools/tests/run-demo-timelines-smoke.py",
+        "dev-tools/tests/demo-timelines.gsc",
+        "dev-tools/tests/demo-selection.gsc",
+        "dev-tools/tests/check-demo-selection.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-demo-lifecycle-205.py",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py",
+        "python3 -B dev-tools/tests/run-demo-timelines-smoke.py",
+        "python3 -B dev-tools/tests/check-demo-selection.py FIXTURE_LOG"
+      ]
+    },
+    {
+      "id": "geoip-engine",
+      "category": "integration",
+      "description": "Country/flag behavior through an isolated engine.",
+      "requires": "Initialized Compose, matching engine and explicit compiled assets; --scripts can select the prepared release.",
+      "effects": "Isolated server and private output; no live restart.",
+      "files": [
+        "dev-tools/tests/run-geoip-smoke.py",
+        "dev-tools/tests/geoip.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-geoip-smoke.py --asset-dir COMPILED_MOD_DIR mp_killhouse"
+      ]
+    },
+    {
+      "id": "native-memory",
+      "category": "integration",
+      "description": "Player allocation and save-history memory behavior.",
+      "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets.",
+      "effects": "Isolated synthetic players and test plugins; no gameplay database.",
+      "files": [
+        "dev-tools/tests/run-player-memory-audit.py",
+        "dev-tools/tests/player-memory-audit.gsc",
+        "dev-tools/tests/player-memory-audit.cpp",
+        "dev-tools/tests/run-history-175.py",
+        "dev-tools/tests/history-175.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-player-memory-audit.py",
+        "python3 -B dev-tools/tests/run-history-175.py"
+      ]
+    },
+    {
+      "id": "notifications-engine",
+      "category": "integration",
+      "description": "Notification HUD, preferences and record announcements.",
+      "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets.",
+      "effects": "Isolated synthetic players and HUD plugin; private logs.",
+      "files": [
+        "dev-tools/tests/run-notifications-72.py",
+        "dev-tools/tests/notifications-72.gsc",
+        "dev-tools/tests/notification-hud-audit-72.cpp"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-notifications-72.py"
+      ]
+    },
+    {
+      "id": "player-names",
+      "category": "integration",
+      "description": "Preferred names and regular-name policy.",
+      "requires": "Selected disposable current database, matching engine and game/compiled assets.",
+      "effects": "Disposable database/engine fixture and synthetic names; private evidence.",
+      "files": [
+        "dev-tools/tests/run-player-names.py",
+        "dev-tools/tests/player-names.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-player-names.py"
+      ]
+    },
+    {
+      "id": "capacity",
+      "category": "integration",
+      "description": "SQL capacity, real GSC query growth and before/current query equivalence.",
+      "requires": "Selected disposable current database, Docker build/server images, matching engine/assets, two available CPU cores and substantial time. Use documented CPU/fixture options.",
+      "effects": "Separate synthetic growth databases, engine clients and private measurements; helper scripts need the runner's temporary container/schema.",
+      "files": [
+        "dev-tools/tests/run-query-capacity.py",
+        "dev-tools/tests/run-sql-capacity-190.py",
+        "dev-tools/tests/query-capacity-menu.gsc",
+        "dev-tools/tests/sql-capacity-190.gsc",
+        "dev-tools/tests/sql-capacity-clock.cpp",
+        "dev-tools/tests/demo-publication-190.gsc",
+        "dev-tools/tests/demo-publication-190.py",
+        "dev-tools/tests/query-equivalence.py",
+        "dev-tools/tests/query-rank-equivalence.py",
+        "dev-tools/tests/query_sql.py",
+        "dev-tools/tests/fixtures/query-performance-before.json"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-query-capacity.py",
+        "python3 -B dev-tools/tests/run-sql-capacity-190.py"
+      ]
+    },
+    {
+      "id": "sticky-walls",
+      "category": "integration",
+      "description": "Native sticky-wall parity and recovery against map geometry.",
+      "requires": "Existing CoD4 build objects, compiler/assembler, Compose engine and mp_galaxy assets; see docs/development/sticky-walls.md.",
+      "effects": "Builds an instrumented local engine and starts isolated fixture servers; private logs.",
+      "files": [
+        "dev-tools/tests/run-sticky-walls-native.py",
+        "dev-tools/tests/sticky-walls-native.c",
+        "dev-tools/tests/run-sticky-walls-server.py",
+        "dev-tools/tests/sticky-walls.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-sticky-walls-native.py"
+      ]
+    },
+    {
+      "id": "compiled-menus",
+      "category": "manual",
+      "description": "Current compiled command, startup and route menus.",
+      "requires": "Explicit current Unlinker output; no historical build required.",
+      "effects": "Reads extracted assets; optional private JSON evidence. Does not verify rendering.",
+      "files": [
+        "dev-tools/tests/check-command-menu-assets.py",
+        "dev-tools/tests/check-map-route-menu.py",
+        "dev-tools/tests/check_client_init_menu.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/check-command-menu-assets.py UNLINKED_MENU_ROOT",
+        "python3 -B dev-tools/tests/check_client_init_menu.py UNLINKED_MENU_ROOT",
+        "python3 -B dev-tools/tests/check-map-route-menu.py UNLINKED_MENU_ROOT"
+      ]
+    },
+    {
+      "id": "camera-engine",
+      "category": "integration",
+      "description": "Camera settings, body animation and visibility using the current engine.",
+      "requires": "Initialized Compose build image, matching current engine and licensed game/compiled mod. Builds the probe from tracked source unless --plugin is supplied.",
+      "effects": "Isolated server; replay uses temporary SQL tables; private output.",
+      "files": [
+        "dev-tools/tests/run-camera-smoke.py",
+        "dev-tools/tests/camera.gsc",
+        "dev-tools/tests/camera-engine.cpp",
+        "dev-tools/tests/check-camera-settings.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-camera-smoke.py",
+        "python3 -B dev-tools/tests/check-camera-settings.py FIXTURE_LOG"
+      ]
+    },
+    {
+      "id": "demo-view-sql",
+      "category": "integration",
+      "description": "Concurrent clip-view receipts, exclusions and cleanup on the current schema.",
+      "requires": "Docker/mysql:8.0 and resources for a separate database; no existing database.",
+      "effects": "Bootstraps a network-isolated database with synthetic clips; removes container and credentials.",
+      "files": [
+        "dev-tools/tests/demo-viewing-db-24.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/demo-viewing-db-24.py"
+      ]
+    },
+    {
+      "id": "feature-sql",
+      "category": "integration",
+      "description": "Current challenge-route binding, shop transactions and finish ranking.",
+      "requires": "Selected disposable current-schema Compose database; administrative fixture access for route/shop setup.",
+      "effects": "Route rows roll back; shop synthetic rows are removed; finish ranking uses read-only CTEs.",
+      "files": [
+        "dev-tools/tests/challenge-route-link.py",
+        "dev-tools/tests/shop-purchases.py",
+        "dev-tools/tests/finish-sounds.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/challenge-route-link.py",
+        "python3 -B dev-tools/tests/shop-purchases.py",
+        "python3 -B dev-tools/tests/finish-sounds.py"
+      ]
+    },
+    {
+      "id": "sql-adapter",
+      "category": "integration",
+      "description": "Current save ownership, fault handling, native pool and VM behavior.",
+      "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod.",
+      "effects": "Creates/removes a temporary schema, grants and engine; private output.",
+      "files": [
+        "dev-tools/tests/run-history-save-192.py",
+        "dev-tools/tests/history-save-192.gsc",
+        "dev-tools/tests/run-sql-adapter.py",
+        "dev-tools/tests/sql-adapter.gsc",
+        "dev-tools/tests/sql-adapter.cpp"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-sql-adapter.py",
+        "python3 -B dev-tools/tests/run-history-save-192.py"
+      ]
+    },
+    {
+      "id": "recording-trace",
+      "category": "manual",
+      "description": "Replay an operator-selected demo and inspect FPS history.",
+      "requires": "Matching engine/assets and a reviewed recording export, or selected disposable database with synthetic run/clip IDs.",
+      "effects": "Reads recordings and writes private traces; recorded player data must stay private.",
+      "files": [
+        "dev-tools/tests/trace-fps-demo.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/trace-fps-demo.py PRIVATE_RECORDING_JSON LABEL"
+      ]
+    },
+    {
+      "id": "discord-socket",
+      "category": "portable",
+      "description": "Real Discord listener message delivery on a private temporary socket.",
+      "requires": "Linux/Python standard library; no Discord account or running bridge.",
+      "effects": "Temporary Unix socket; listener/client tasks and sockets are closed.",
+      "files": [
+        "discord-integration/test_listener.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
+      "id": "shared-support",
+      "category": "support",
+      "description": "Compose prerequisite resolution shared by integration runners.",
+      "requires": "Imported by a runner after its installation is selected.",
+      "effects": "Resolves the selected installation; not a standalone test.",
+      "files": [
+        "dev-tools/tests/compose_environment.py"
+      ],
+      "commands": []
+    },
+    {
+      "id": "focused-gsc",
+      "category": "integration",
+      "description": "Focused checkpoint, client startup, HUD, native-helper and map-hint regressions.",
+      "requires": "Initialized Compose, current engine, licensed game/compiled mod; each command selects its fixture and completion marker. Checkpoint contact requires mp_futile_fixed; other listed fixtures use mp_killhouse.",
+      "effects": "Isolated servers and synthetic clients; private logs/drafts, no gameplay database.",
+      "files": [
+        "dev-tools/tests/checkpoint-contact.gsc",
+        "dev-tools/tests/checkpoint-panel.gsc",
+        "dev-tools/tests/checkpoint-travel.gsc",
+        "dev-tools/tests/client-startup.gsc",
+        "dev-tools/tests/hud-display.gsc",
+        "dev-tools/tests/hud-settings.gsc",
+        "dev-tools/tests/mapcleanup.gsc",
+        "dev-tools/tests/native-helpers.gsc",
+        "dev-tools/tests/notifications-opacity.gsc",
+        "dev-tools/tests/progress-bar.gsc",
+        "dev-tools/tests/scoreboard-points.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_futile_fixed --fixture dev-tools/tests/checkpoint-contact.gsc --completion-marker \"CHECKPOINT CONTACT COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/checkpoint-panel.gsc --completion-marker \"PANEL SELFTEST COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/checkpoint-travel.gsc --completion-marker \"TRAVEL SELFTEST COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/client-startup.gsc --completion-marker \"STARTUP SELFTEST COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/hud-display.gsc --completion-marker \"DISPLAY SELFTEST COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/hud-settings.gsc --completion-marker \"HUD SELFTEST COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/mapcleanup.gsc --completion-marker \"MAP HINT SELFTEST COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/native-helpers.gsc --completion-marker \"NATIVE HELPERS COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/notifications-opacity.gsc --completion-marker \"NOTIFICATION OPACITY COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/progress-bar.gsc --completion-marker \"PROGRESS BAR COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/scoreboard-points.gsc --completion-marker \"SCOREBOARD POINTS COMPLETE\""
+      ]
+    },
+    {
+      "id": "native-unit",
+      "category": "integration",
+      "description": "Current demo technique, wall geometry and collision source regressions.",
+      "requires": "g++ with C++17 and 32-bit development libraries; initialized CoD4 headers, no game assets.",
+      "effects": "Temporary binaries removed on success/failure; no application services.",
+      "commands": [
+        "python3 -B dev-tools/tests/run-native-unit.py"
+      ],
+      "files": [
+        "dev-tools/tests/demo-technique-24.cpp",
+        "dev-tools/tests/platform-collision-sources.cpp",
+        "dev-tools/tests/platform-wall-geometry.cpp",
+        "dev-tools/tests/run-native-unit.py"
+      ]
+    }
+  ]
+}

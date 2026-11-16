@@ -1,8 +1,9 @@
-"""#109: validate the actual compiled route panel and preserve other menus."""
+"""Validate the current compiled route panel geometry and controls."""
 from pathlib import Path
 import argparse,json,re
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument("compiled",type=Path);p.add_argument("--before",type=Path,required=True);p.add_argument("--output",type=Path,required=True)
+p.add_argument("compiled",type=Path)
+p.add_argument("--output",type=Path)
 args=p.parse_args();checks={}
 def check(label,value):checks[label]=bool(value)
 def items(text):return re.split(r"\bitemDef\s*\{",text)[1:]
@@ -12,11 +13,6 @@ def rect(item):
 path="ui_mp/scriptmenus/opencj_maplist.menu"
 text=(args.compiled/path).read_text();parts=items(text)
 def named(name):return next(x for x in parts if re.search(r'\bname\s+"'+re.escape(name)+'"',x))
-before={str(x.relative_to(args.before)):x.read_bytes() for x in args.before.rglob("*.menu")}
-after={str(x.relative_to(args.compiled)):x.read_bytes() for x in args.compiled.rglob("*.menu")}
-check("same menu inventory",before.keys()==after.keys())
-changed=[k for k in before if before[k]!=after[k]]
-check("only route overview and voting label menus changed",set(changed)=={path,"ui_mp/scriptmenus/opencj_ingame.menu"})
 colors=[0xffffff,0x0000ff,0x00ffff,0x00ff00,0xffff00,0xff8800,0xff7777,0xaa55ff,0x00ccff,0xff0000,0xaa0000,0xff80cc]
 boxes=[];valid=True;palette=True
 for i in range(10):
@@ -38,6 +34,8 @@ check("no route page controls",not any(s in text for s in ["routeprev","routenex
 check("preview and metadata retained",all('opencj_ui_maplist_'+x in text for x in ["loadimage","selectedname","date","author"]))
 check("empty and unavailable state field",'"opencj_ui_maplist_routemessage"' in text)
 check("existing red exit preserved",'"X"' in named("exit") and "close self;" in named("exit"))
-report={"checks":len(checks),"failures":sum(not x for x in checks.values()),"results":checks,"menuCount":len(after),"changedMenus":changed}
-args.output.write_text(json.dumps(report,indent=2)+"\n");print(json.dumps(report,indent=2))
+report={"checks":len(checks),"failures":sum(not x for x in checks.values()),"results":checks}
+if args.output:
+    args.output.write_text(json.dumps(report,indent=2)+"\n")
+print(json.dumps(report,indent=2))
 assert not report["failures"],"Compiled menu validation failed"

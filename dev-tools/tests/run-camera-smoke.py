@@ -5,12 +5,13 @@ import argparse,shutil,subprocess,time,uuid,sys
 root=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('maps',nargs='*',default=['mp_killhouse'])
-parser.add_argument('--binary',required=True,help='Camera test engine file inside this checkout')
-parser.add_argument('--plugin',required=True,help='Matching camera_engine.so file inside this checkout')
+parser.add_argument('--binary',default=str(root/'cod4x-server/bin/cod4x18_dedrun'),help='Matching current engine inside this checkout')
+parser.add_argument('--plugin',help='Optional matching probe inside this checkout; otherwise build from source')
 options=parser.parse_args()
 try:
     options.binary=workspace_path(options.binary)
-    options.plugin=workspace_path(options.plugin)
+    if options.plugin:
+        options.plugin=workspace_path(options.plugin)
 except ValueError as error:
     parser.error(str(error))
 for mapname in options.maps or ['mp_killhouse']:
@@ -59,7 +60,15 @@ for mapname in options.maps or ['mp_killhouse']:
     original=original.replace(loadcall,'    rows = level.cameraStoredRows;')
     original=original.replace('    self openCJ'+chr(92)+'events'+chr(92)+'playerLogin::main();','    // Account callbacks are outside this isolated setting fixture.')
     settings.write_text(original)
-    (home/'plugins/camera_engine.so').symlink_to(options.plugin)
+    if options.plugin:
+        (home/'plugins/camera_engine.so').symlink_to(options.plugin)
+    else:
+        plugin_path='/workspace/'+str(home.relative_to(root))+'/plugins/camera_engine.so'
+        subprocess.run([
+            'docker','compose','run','--rm','--no-deps','build',
+            'g++','-m32','-std=c++11','-msse2','-mfpmath=sse','-fPIC','-shared',
+            '-DCOD4','/workspace/dev-tools/tests/camera-engine.cpp','-o',plugin_path
+        ],cwd=root/'dev-tools',check=True,capture_output=True)
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     # Test clients must not reach account/database callbacks in this isolated fixture.

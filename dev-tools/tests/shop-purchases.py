@@ -1,18 +1,21 @@
 """Transaction regression tests, isolated database only; all fixtures removed."""
 from compose_environment import database_container
 import concurrent.futures, subprocess
-DB='opencj_test_cod4'
+DB='openCJ_cod4'
 PID=-2147483000
 PREFIX='shop.test.'
 def sql(q):
- p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test',DB],input=q,text=True,capture_output=True,check=True)
+ p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$1"','test',DB],input=q,text=True,capture_output=True,check=True)
  return p.stdout.strip()
 def call(key,equip=0):return sql(f"CALL shopBuyOrEquip({PID},'{PREFIX}{key}',{equip},{60 if key in ['a','b'] else 10});")
 def cleanup():
- sql(f"DELETE FROM shopEquipped WHERE playerID={PID}; DELETE FROM shopPurchases WHERE playerID={PID}; DELETE FROM shopAccounts WHERE playerID={PID}; DELETE FROM challengeCompletions WHERE playerID={PID}; DELETE FROM playerInformation WHERE playerID={PID}; DELETE FROM challenges WHERE challengeKey='{PREFIX}earned'; DELETE FROM shopCatalog WHERE itemKey LIKE '{PREFIX}%';")
+ sql(f"DELETE FROM shopEquipped WHERE playerID={PID}; DELETE FROM shopPurchases WHERE playerID={PID}; DELETE FROM shopAccounts WHERE playerID={PID}; DELETE FROM challengeCompletions WHERE playerID={PID}; DELETE FROM playerInformation WHERE playerID={PID}; DELETE FROM challenges WHERE challengeKey='{PREFIX}earned'; DELETE FROM shopCatalog WHERE itemKey LIKE '{PREFIX}%'; DELETE FROM mapids WHERE mapID={PID};")
 assert sql(f'SELECT COUNT(*) FROM playerInformation WHERE playerID={PID};')=='0'
+assert sql(f"SELECT COUNT(*) FROM mapids WHERE mapID={PID} OR mapname='shop_fixture';")=='0'
+assert sql(f"SELECT COUNT(*) FROM challenges WHERE challengeKey='{PREFIX}earned';")=='0'
+assert sql(f"SELECT COUNT(*) FROM shopCatalog WHERE itemKey LIKE '{PREFIX}%';")=='0'
 try:
- sql(f"INSERT INTO playerInformation(playerID,playerName) VALUES({PID},'Shop test'); INSERT INTO challenges(challengeKey,tier,points,mapName,routeLabel) VALUES('{PREFIX}earned',1,100,'test','test'); INSERT INTO challengeCompletions(playerID,challengeKey) VALUES({PID},'{PREFIX}earned');")
+ sql(f"INSERT INTO mapids(mapID,mapname) VALUES({PID},'shop_fixture'); INSERT INTO playerInformation(playerID,playerName) VALUES({PID},'Shop test'); INSERT INTO challenges(challengeKey,tier,points,mapID,routeLabel) VALUES('{PREFIX}earned',1,100,{PID},'test'); INSERT INTO challengeCompletions(playerID,challengeKey,pointsAwarded) VALUES({PID},'{PREFIX}earned',100);")
  for key,slot,price,available in [('a','deserteagle_mp',60,1),('b','rpg_mp',60,1),('off','rpg_mp',1,0),('c','deserteagle_mp',10,1),('d','beretta_mp',10,1)]:
   sql(f"INSERT INTO shopCatalog(itemKey,category,slot,price,available) VALUES('{PREFIX}{key}',1,'{slot}',{price},{available});")
  assert call('off')=='unavailable'

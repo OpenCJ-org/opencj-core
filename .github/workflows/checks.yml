@@ -12,8 +12,8 @@ jobs:
           fetch-depth: 0
           submodules: false
           persist-credentials: false
-      - name: Setup preservation tests
-        run: python3 -B -m unittest discover -s dev-tools/tests
+      - name: Portable tests and catalogue
+        run: python3 -B dev-tools/scripts/test.py portable
       - name: Changed-commit whitespace
         run: git show --format= --check HEAD
       - name: Public history secret scan

@@ -37,6 +37,12 @@ submodule is for CoD2. See [native helpers](../docs/reference/native/helpers.md)
 Client assets need a separate Windows build and verified deployment;
 [matching files on disk alone may not prevent a download](../docs/operations/client-assets.md).
 
+## Tests
+
+From the core root, run `python3 -B dev-tools/scripts/test.py portable`.
+Use `python3 -B dev-tools/scripts/test.py list` to find the current integration
+suites and their explicit prerequisites. See the [test guide](../docs/development/testing.md).
+
 ## Optional tools
 
 The Discord bridge uses the Compose `discord` profile and a private config file

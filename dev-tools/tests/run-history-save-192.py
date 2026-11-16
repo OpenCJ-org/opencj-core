@@ -1,20 +1,11 @@
 """#192 verification with a disposable schema/engine and test-only fault injection."""
-from compose_environment import database_container, workspace_file
+from compose_environment import database_container
 from pathlib import Path
 import argparse, hashlib, json, os, re, shutil, subprocess, time, uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--baseline-binary", type=Path, help="Historical #192 engine file inside this checkout")
 options = parser.parse_args()
-benchmark_enabled = globals().get("SQL_ADAPTER_VERIFY") and (os.environ.get("OPENCJ_SKIP_POOL") != "1" or os.environ.get("OPENCJ_BENCH_ONLY") == "1")
-if benchmark_enabled:
-    if options.baseline_binary is None:
-        parser.error("--baseline-binary is required for the historical queue comparison")
-    try:
-        options.baseline_binary = workspace_file(options.baseline_binary)
-    except ValueError as error:
-        parser.error(str(error))
 token = uuid.uuid4().hex[:8]
 tag = "history-save-192-" + token
 database = "opencj_verify_192_" + token + "_cod4"
@@ -66,13 +57,14 @@ try:
     db("CREATE DATABASE " + database + " CHARACTER SET " + metadata[0] + " COLLATE " + metadata[1] + ";")
     created = True
     db(schema, database)
-    db((ROOT / "server-db/migrations/016-save-position-ownership.sql").read_text(), database)
     db("GRANT ALL PRIVILEGES ON " + database + ".* TO 'opencj'@'%';")
     granted = True
     assert db("SELECT COUNT(*) FROM playerRuns;", database) == "0"
     db("INSERT INTO playerInformation(playerID,playerName) VALUES(1,'Verification A'),(2,'Verification B');"
        "INSERT INTO mapids(mapID,mapname) VALUES(1,'history192_fixture'),(2,'history192_other');"
-       "INSERT INTO checkpoints(cpID,mapID,ender) VALUES(1,1,'verification');", database)
+       "INSERT INTO checkpoints(cpID,mapID) VALUES(1,1);"
+       "INSERT INTO routes(routeID,mapID,cpID,routeName) VALUES(1,1,1,'verification');"
+       "UPDATE checkpoints SET finishRouteID=1 WHERE cpID=1;", database)
     print("Prepared empty schema/routine copy and isolated fixtures.", flush=True)
     for folder in ("opencj", "maps"):
         shutil.copytree(ROOT / "server-gsc" / folder, mod / folder)
@@ -129,28 +121,21 @@ try:
             if match: values[match.group(1)] = match.group(2).strip()
         pool_private.write_text("\n".join([values["db_host"],values["db_user"],values["db_pass"],database,values["db_port"]])+"\n")
         pool_private.chmod(0o600)
+        pool_binary = "/workspace/" + str(home.relative_to(ROOT)) + "/pool-test"
         build = ["docker","compose","run","--rm","--no-deps","--entrypoint","bash","server","-lc",
-                 "g++ -m32 -std=c++11 -O0 -g -pthread /workspace/dev-tools/tests/sql-adapter.cpp /workspace/server-ext/mysql_async_pool.cpp -lmysqlclient -o /workspace/dev-tools/local/sql-adapter/pool-test"]
+                 "g++ -m32 -std=c++11 -O0 -g -pthread /workspace/dev-tools/tests/sql-adapter.cpp /workspace/server-ext/mysql_async_pool.cpp -lmysqlclient -o " + pool_binary]
         compiled = subprocess.run(build,cwd=ROOT/"dev-tools",capture_output=True,text=True)
         (home/"pool-build.log").write_text(compiled.stdout+compiled.stderr)
         assert compiled.returncode==0,"Pool test compile failed"
-        command=["docker","compose","run","--rm","--no-deps","--entrypoint","/workspace/dev-tools/local/sql-adapter/pool-test","server",
+        command=["docker","compose","run","--rm","--no-deps","--entrypoint",pool_binary,"server",
                  "/workspace/dev-tools/local/"+tag+"/pool.cfg"]
-        import os
-        if os.environ.get("OPENCJ_SKIP_POOL")=="1":
-            pool = subprocess.CompletedProcess(command,0,"SQLPOOL development iteration skipped\n","")
-        else:
-            pool = subprocess.run(command,cwd=ROOT/"dev-tools",capture_output=True,text=True,timeout=90)
+        pool = subprocess.run(command,cwd=ROOT/"dev-tools",capture_output=True,text=True,timeout=90)
         (home/"pool.log").write_text(redact(pool.stdout+pool.stderr))
         (home/"pool.log").chmod(0o600)
         for line in pool.stdout.splitlines():
             if line.startswith(("SQLPOOL METRIC","SQLPOOL COMPLETE","SQLPOOL FAILURE","SQLPOOL CHECK 0:")):print(line,flush=True)
         assert pool.returncode==0,"Pool regression failed; inspect pool.log"
-        report["poolCompleted"]=os.environ.get("OPENCJ_SKIP_POOL")!="1"
-        if os.environ.get("OPENCJ_SKIP_POOL")!="1" or os.environ.get("OPENCJ_BENCH_ONLY")=="1":
-            import runpy
-            benchmark=runpy.run_path(str(ROOT/"dev-tools/tests/sql-adapter-benchmark.py"))
-            report["queueBenchmark"]=benchmark["run_benchmark"](ROOT,home,private,redact,options.baseline_binary)
+        report["poolCompleted"]=True
     cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server",
            "/workspace/cod4x-server/bin/cod4x18_dedrun"]
     for key, val in [

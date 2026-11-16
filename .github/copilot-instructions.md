@@ -9,7 +9,7 @@ It covers folder choice, public/private content and Git tracking.
 
 Also follow the active [audit maintenance rules](instructions/audit-maintenance.instructions.md)
 to preserve privacy, licensing, fresh-install support, tool portability and current
-documentation.
+documentation, test organization and discovery.
 Extend the relevant maintenance rule when completing another audit step.
 
 Read [development setup](../docs/setup/development.md) and the
