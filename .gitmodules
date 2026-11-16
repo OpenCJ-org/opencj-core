@@ -1,0 +1,8 @@
+[submodule "cod4x-server"]
+	path = cod4x-server
+	url = https://github.com/OpenCJ-org/cod4x-server.git
+	branch = opencj
+[submodule "libcod"]
+	path = libcod
+	url = https://github.com/OpenCJ-org/libcod.git
+	branch = opencj
