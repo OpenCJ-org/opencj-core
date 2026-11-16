@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">
+<title>OpenCJ rank 3: Green</title>
+<circle id="backing" cx="50" cy="50" r="42" fill="#171f26"/>
+<circle id="center" cx="50" cy="50" r="35.5" fill="#24313b"/>
+<circle id="track" cx="50" cy="50" r="42" fill="none" stroke="#3b4b57" stroke-width="7"/>
+<path id="progress" d="M53.49595 8.14575 A42 42 0 0 1 90.88607 59.60883" fill="none" stroke="#4dc88b" stroke-width="7" stroke-linecap="round"/>
+<text id="number" x="50" y="63.300" text-anchor="middle" font-family="Nimbus Sans" font-weight="700" font-size="38" fill="#edf2f5">3</text>
+</svg>

@@ -1,0 +1,140 @@
+#include "ui/menudef.h"
+#include "ui_mp/scriptmenus/opencj_common.inc"
+
+#define CMD_DVAR(value) "opencj_ui_commands_"value
+#define CMD_BG .015 .025 .03 .98
+#define CMD_PANEL .065 .09 .105 1
+#define CMD_TEXT .90 .94 .95 1
+#define CMD_MUTED .50 .59 .62 1
+#define CMD_HOVER .08 .38 .44 1
+
+#define COMMAND_ROW(num) \
+    itemDef { \
+        name "command_"#num \
+        rect DEFAULT_RECT(32 (150 + num * 18) 200 18) \
+        type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED \
+        backcolor CMD_PANEL forecolor CMD_TEXT \
+        textfont UI_FONT_NORMAL textscale .24 textalign ITEM_ALIGN_MIDDLE_LEFT textalignx 5 \
+        dvar CMD_DVAR("row"#num) \
+        visible when(dvarString(CMD_DVAR("row"#num)) != "") \
+        mouseEnter { setitemcolor "command_"#num backcolor CMD_HOVER; } \
+        mouseExit { setitemcolor "command_"#num backcolor CMD_PANEL; } \
+        action { play "mouse_click"; scriptMenuResponse "select_"#num; } \
+    } \
+    itemDef { \
+        rect DEFAULT_RECT(32 (150 + num * 18) 2 18) \
+        style WINDOW_STYLE_FILLED backcolor HIGHLIGHT_COLOR decoration \
+        visible when(dvarString(CMD_DVAR("row"#num)) != "" && dvarInt(CMD_DVAR("selected")) == num) \
+    }
+
+#define DETAIL_LINE(num) \
+    itemDef { \
+        FIXED_RECT_TEXT_BASE(UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, .24, ITEM_ALIGN_LEFT, 0, 12, NO_COLOR, CMD_TEXT, 248, (182 + num * 16), 360, 16) \
+        dvar CMD_DVAR("line"#num) visible 1 \
+    }
+
+#define COMMAND_BUTTON(name, label, response, condition, x, y, w) \
+    itemDef { \
+        BUTTON_RECT_BASE(name, UI_FONT_NORMAL, CMD_PANEL, CMD_TEXT, .24, x, y, w, 20) \
+        text label visible when(condition) \
+        mouseEnter { setitemcolor name backcolor CMD_HOVER; } \
+        mouseExit { setitemcolor name backcolor CMD_PANEL; } \
+        action { play "mouse_click"; scriptMenuResponse response; } \
+    }
+
+{
+    menuDef
+    {
+        name opencj_commands
+        rect DEFAULT_RECT(0 0 640 480)
+        style WINDOW_STYLE_EMPTY
+        focuscolor CMD_TEXT
+        blurWorld 5
+        onOpen { scriptMenuResponse "open_commands"; }
+        onClose { scriptMenuResponse "close_commands"; }
+        onEsc { close self; }
+
+        FIXED_RECT(CMD_BG, 20, 60, 600, 360)
+        FIXED_RECT(HIGHLIGHT_COLOR, 20, 60, 600, 3)
+        FIXED_RECT_TXTLEFT_SCALED("Commands", .40, NO_COLOR, CMD_TEXT, 32, 70, 400, 30)
+        OPENCJ_CLOSE_BUTTON(exit, close self, 582, 76)
+        FIXED_RECT_BORDER(CMD_PANEL, .5, WHITE_TRANSPARENT_COLOR, 32, 114, 500, 22)
+        FIXED_RECT_DVARLEFT_SCALED(CMD_DVAR("search"), NO_COLOR, CMD_TEXT, .25, 36, 114, 490, 22)
+        FIXED_RECT_TXTLEFT_WHEN("Type to search command names or aliases...", (dvarString(CMD_DVAR("search")) == ""), NO_COLOR, CMD_MUTED, 36, 114, 490, 22)
+        COMMAND_BUTTON(clear, "Clear", "clear", 1, 548, 115, 60)
+        FIXED_RECT(CMD_PANEL, 32, 148, 200, 226)
+        FIXED_RECT(CMD_PANEL, 244, 148, 364, 226)
+        execKey "0" { exec "inputkey 0"; }
+        execKey "1" { exec "inputkey 1"; }
+        execKey "2" { exec "inputkey 2"; }
+        execKey "3" { exec "inputkey 3"; }
+        execKey "4" { exec "inputkey 4"; }
+        execKey "5" { exec "inputkey 5"; }
+        execKey "6" { exec "inputkey 6"; }
+        execKey "7" { exec "inputkey 7"; }
+        execKey "8" { exec "inputkey 8"; }
+        execKey "9" { exec "inputkey 9"; }
+        execKey "a" { exec "inputkey a"; }
+        execKey "b" { exec "inputkey b"; }
+        execKey "c" { exec "inputkey c"; }
+        execKey "d" { exec "inputkey d"; }
+        execKey "e" { exec "inputkey e"; }
+        execKey "f" { exec "inputkey f"; }
+        execKey "g" { exec "inputkey g"; }
+        execKey "h" { exec "inputkey h"; }
+        execKey "i" { exec "inputkey i"; }
+        execKey "j" { exec "inputkey j"; }
+        execKey "k" { exec "inputkey k"; }
+        execKey "l" { exec "inputkey l"; }
+        execKey "m" { exec "inputkey m"; }
+        execKey "n" { exec "inputkey n"; }
+        execKey "o" { exec "inputkey o"; }
+        execKey "p" { exec "inputkey p"; }
+        execKey "q" { exec "inputkey q"; }
+        execKey "r" { exec "inputkey r"; }
+        execKey "s" { exec "inputkey s"; }
+        execKey "t" { exec "inputkey t"; }
+        execKey "u" { exec "inputkey u"; }
+        execKey "v" { exec "inputkey v"; }
+        execKey "w" { exec "inputkey w"; }
+        execKey "x" { exec "inputkey x"; }
+        execKey "y" { exec "inputkey y"; }
+        execKey "z" { exec "inputkey z"; }
+        execKey "_" { exec "inputkey _"; }
+        execKeyInt 127 { exec "inputkey backspace"; }
+
+        COMMAND_ROW(0)
+        COMMAND_ROW(1)
+        COMMAND_ROW(2)
+        COMMAND_ROW(3)
+        COMMAND_ROW(4)
+        COMMAND_ROW(5)
+        COMMAND_ROW(6)
+        COMMAND_ROW(7)
+        COMMAND_ROW(8)
+        COMMAND_ROW(9)
+        COMMAND_ROW(10)
+        COMMAND_ROW(11)
+
+        FIXED_RECT_DVARLEFT_SCALED(CMD_DVAR("title"), NO_COLOR, HIGHLIGHT_COLOR, .32, 248, 148, 360, 25)
+        DETAIL_LINE(0)
+        DETAIL_LINE(1)
+        DETAIL_LINE(2)
+        DETAIL_LINE(3)
+        DETAIL_LINE(4)
+        DETAIL_LINE(5)
+        DETAIL_LINE(6)
+        DETAIL_LINE(7)
+        DETAIL_LINE(8)
+        DETAIL_LINE(9)
+        DETAIL_LINE(10)
+
+        COMMAND_BUTTON(prev, "<", "prev", (dvarInt(CMD_DVAR("page")) > 1), 32, 386, 24)
+        COMMAND_BUTTON(next, ">", "next", (dvarInt(CMD_DVAR("page")) < dvarInt(CMD_DVAR("maxpage"))), 208, 386, 24)
+        FIXED_RECT_DVARLEFT_SCALED(CMD_DVAR("pages"), NO_COLOR, CMD_MUTED, .21, 62, 386, 145, 20)
+        COMMAND_BUTTON(detail_prev, "<", "detail_prev", (dvarInt(CMD_DVAR("detailpage")) > 1), 458, 386, 24)
+        COMMAND_BUTTON(detail_next, ">", "detail_next", (dvarInt(CMD_DVAR("detailpage")) < dvarInt(CMD_DVAR("maxdetailpage"))), 584, 386, 24)
+        FIXED_RECT_DVARLEFT_SCALED(CMD_DVAR("detailpages"), NO_COLOR, CMD_MUTED, .24, 504, 386, 72, 20)
+        FIXED_RECT_TXTLEFT_SCALED("Details", .22, NO_COLOR, CMD_MUTED, 248, 386, 100, 20)
+    }
+}

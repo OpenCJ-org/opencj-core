@@ -1,0 +1,16 @@
+#include "ui/menudef.h"
+#include "ui_mp/scriptmenus/opencj_fps_registration.inc"
+{
+    menuDef
+    {
+        name "opencj_fps_userinfo"
+        rect 0 0 640 480
+        focuscolor COLOR_FOCUSED
+        style WINDOW_STYLE_EMPTY
+        onOpen
+        {
+            OPENCJ_REGISTER_FPS(execNow)
+            close opencj_fps_userinfo;
+        }
+    }
+}

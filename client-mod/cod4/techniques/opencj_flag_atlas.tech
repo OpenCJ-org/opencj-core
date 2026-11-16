@@ -1,0 +1,8 @@
+{
+ stateMap "default2d";
+ vertexShader 1.1 "vertcol_simple.hlsl" { }
+ pixelShader 2.0 "opencj_flag_atlas" { colorMapSampler = material.colorMap; }
+ vertex.position = code.position;
+ vertex.color[0] = code.color;
+ vertex.texcoord[0] = code.texcoord[0];
+}

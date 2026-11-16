@@ -1,0 +1,73 @@
+{
+  "version": 2,
+  "approved": "2026-11-16",
+  "texture_size": 512,
+  "supersample": 4,
+  "radius": 42,
+  "stroke_width": 7,
+  "center_radius": 35.5,
+  "center_color": "#24313b",
+  "track_color": "#3b4b57",
+  "number_color": "#edf2f5",
+  "number_size": 38,
+  "font_family": "Nimbus Sans",
+  "font_file": "/usr/share/fonts/opentype/urw-base35/NimbusSans-Bold.otf",
+  "colors": [
+    "#a8b1b9",
+    "#91bc8e",
+    "#4dc88b",
+    "#58b9e4",
+    "#708ff0",
+    "#e8c35a",
+    "#ee9a4d",
+    "#ee7770",
+    "#ed507f"
+  ],
+  "names": [
+    "Gray",
+    "Sage",
+    "Green",
+    "Sky",
+    "Blue",
+    "Gold",
+    "Orange",
+    "Red",
+    "Crimson",
+    "Spectrum"
+  ],
+  "spectrum_stops": [
+    [
+      0,
+      "#b980fa"
+    ],
+    [
+      0.15,
+      "#708ff0"
+    ],
+    [
+      0.29,
+      "#58b9e4"
+    ],
+    [
+      0.43,
+      "#4dc88b"
+    ],
+    [
+      0.57,
+      "#e8c35a"
+    ],
+    [
+      0.68,
+      "#ee9a4d"
+    ],
+    [
+      0.83,
+      "#ed507f"
+    ],
+    [
+      1,
+      "#b980fa"
+    ]
+  ],
+  "backing_color": "#171f26"
+}

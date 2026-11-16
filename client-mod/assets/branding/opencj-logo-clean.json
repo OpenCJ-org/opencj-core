@@ -1,0 +1,22 @@
+{
+  "tool": "built-in image_gen",
+  "intent": "conservative cleanup of existing icon",
+  "source": "opencj-logo-clean.png",
+  "sourceSHA256": "1a93a01e541c6f295711f0d9d28e67df26c1b21bbb095b7f17f665d75538a392",
+  "imageSHA256": "41ee18138185440c449df59f5ee0ed288008111bda992f3d89499b4751f3ec2f",
+  "preserved": [
+    "pose",
+    "weapon",
+    "orientation",
+    "blue-gray palette",
+    "transparent background",
+    "1024x1024 DXT5 format and mip layout"
+  ],
+  "changes": [
+    "filled accidental interior holes",
+    "removed white fringing",
+    "smoothed edges",
+    "added thin dark outline"
+  ],
+  "prompt": "Conservative cleanup of the supplied OpenCJ jumping soldier holding an RPG. Preserve pose, proportions, silhouette, color palette, composition, and padding. Fill accidental interior alpha pinholes while preserving real gaps between limbs. Remove white fringe and stray pixels, add a thin continuous dark outline, retain a genuinely transparent background. No new text, objects, glow, or design changes."
+}

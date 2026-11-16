@@ -1,0 +1,482 @@
+#include "ui/menudef.h"
+
+#define WEAPON_TEXTSCALE .3
+
+// Voting
+#define VOTE_BG_SIZE_X      120
+#define VOTE_BG_SIZE_Y      70
+#define VOTE_BG_ORG_X       ((-1 * VOTE_BG_SIZE_X) - 10)
+#define VOTE_BG_ORG_Y       ((-1 * VOTE_BG_SIZE_Y) - 15) //  Progress bar takes up some space
+
+#define VOTE_HEADER_SIZE_X  VOTE_BG_SIZE_X
+#define VOTE_HEADER_SIZE_Y  20
+#define VOTE_HEADER_ORG_X   (VOTE_BG_ORG_X + 5)
+#define VOTE_HEADER_ORG_Y   (VOTE_BG_ORG_Y + 13)
+
+#define VOTE_TIME_SIZE_X    20
+#define VOTE_TIME_SIZE_Y    20
+#define VOTE_TIME_ORG_X     (VOTE_BG_ORG_X + VOTE_BG_SIZE_X - 15)
+#define VOTE_TIME_ORG_Y     VOTE_HEADER_ORG_Y
+
+#define VOTE_COUNT_SIZE_X   30
+#define VOTE_COUNT_SIZE_Y   30
+#define VOTE_COUNT_ORG_X    VOTE_HEADER_ORG_X
+#define VOTE_COUNT_ORG_Y    (VOTE_BG_ORG_Y + VOTE_BG_SIZE_Y - 15)
+
+#define VOTE_IMAGE_SIZE_X   53
+#define VOTE_IMAGE_SIZE_Y   30
+#define VOTE_IMAGE_ORG_X    (VOTE_BG_ORG_X + VOTE_BG_SIZE_X - VOTE_IMAGE_SIZE_X - 5)
+#define VOTE_IMAGE_ORG_Y    (VOTE_BG_ORG_Y + VOTE_BG_SIZE_Y - VOTE_IMAGE_SIZE_Y - 5)
+
+
+// Menu and itemDefs
+{
+	assetGlobalDef
+	{
+		fadeClamp 1.0					// sets the fadeup alpha
+		fadeCycle 1						// how often fade happens in milliseconds
+		fadeAmount 0.1					// amount to adjust alpha per cycle
+	}
+	menuDef
+	{
+		name "Onscreen Records"
+		fullScreen MENU_FALSE
+		visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+		rect 0 0 0 0 HORIZONTAL_ALIGN_RIGHT VERTICAL_ALIGN_TOP
+		itemDef
+		{
+			name "checkpointRecords"
+			visible MENU_TRUE
+			//rect -200 50 60 20
+			rect 0 0 0 0
+			origin -200 50
+			forecolor 1.0 1.0 1.0 1.0
+			dvar "openCJ_records_names"
+			textfont UI_FONT_NORMAL
+			textscale 0.25
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			textaligny 0
+			decoration
+		}
+		itemDef
+		{
+			name "checkpointRecordsTime"
+			visible MENU_TRUE
+			rect 0 0 0 0
+			origin -50 50
+			forecolor 1.0 1.0 1.0 1.0
+			dvar "openCJ_records_times"
+			textfont UI_FONT_NORMAL
+			textscale 0.25
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			textaligny 0
+			decoration
+		}
+	}
+
+    menuDef
+    {
+		name "Statistics"
+		fullScreen MENU_FALSE
+		visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+		rect 0 0 0 0 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_BOTTOM
+        itemDef
+		{
+			name "statistics"
+			visible MENU_TRUE
+			rect 0 0 0 0
+			origin 6 -60
+			forecolor 1.0 1.0 1.0 1.0
+			dvar "openCJ_statistics"
+			textfont UI_FONT_NORMAL
+			textscale 0.25
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			textaligny 0
+			decoration
+		}
+    }
+	
+	// Mantle Hint
+	menuDef 
+	{
+    	name "MantleHint"
+    	fullScreen MENU_FALSE
+    	visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+      	rect 0 130 40 40 HORIZONTAL_ALIGN_CENTER VERTICAL_ALIGN_CENTER
+
+		itemDef 
+		{
+			name "chRect"
+			decoration
+			visible MENU_TRUE
+			rect 0 0 40 40
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWEDMORE
+			ownerdraw CG_MANTLE_HINT
+		}
+	}
+
+	//	CURSOR HINTS
+	menuDef 
+	{
+    	name "Cursorhints"
+    	fullScreen MENU_FALSE
+    	visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+      	rect 0 70 40 40 HORIZONTAL_ALIGN_CENTER VERTICAL_ALIGN_CENTER
+
+		itemDef 
+		{
+			name "chRect"
+			decoration
+			visible MENU_TRUE
+			rect 0 0 40 40 // 64x64
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWEDMORE
+			ownerdraw CG_CURSORHINT
+		}
+	}
+	
+	#define HUD_ALPHA 0.65
+	#define HUD_FOREGROUND_ALPHA 0.75
+	#define	BOTTOM_RECT_X 0
+	#define	BOTTOM_RECT_Y 0
+
+	#define WEAPINFO_X -4
+	#define WEAPINFO_Y -36
+
+	menuDef
+	{
+		name			"weaponinfo"
+		rect			BOTTOM_RECT_X BOTTOM_RECT_Y 0 0 HORIZONTAL_ALIGN_RIGHT VERTICAL_ALIGN_BOTTOM
+		exp				rect Y( BOTTOM_RECT_Y - (ONLINEGAME * ONLINEGAME_OFFSET) );
+		fullScreen		0
+		visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on" && NOT_SPECTATING) );
+		itemDef
+		{
+			name			"weapname"
+			rect			(WEAPINFO_X - 40) (WEAPINFO_Y + 20) 1 1
+			textstyle		ITEM_TEXTSTYLE_SHADOWED
+			textscale		TEXTSIZE_SMALL
+			textfont		UI_FONT_OBJECTIVE
+			forecolor		1 1 1 HUD_FOREGROUND_ALPHA
+			ownerdraw		CG_PLAYER_WEAPON_NAME
+//			visible when ( dvarBool( hiDef ) == 1 );
+			visible 		1
+			decoration
+		}
+	}
+    
+    // Vote menu
+    menuDef
+    {
+        name "Vote"
+        fullScreen MENU_FALSE
+        visible	when ( dvarString("openCJ_voteHeaderString") != "" && !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+        rect 0 0 0 0 HORIZONTAL_ALIGN_RIGHT VERTICAL_ALIGN_BOTTOM
+        itemDef
+        {
+            name            "openCJ voteBackground"
+            rect            0 0 VOTE_BG_SIZE_X VOTE_BG_SIZE_Y
+            origin          VOTE_BG_ORG_X VOTE_BG_ORG_Y
+            style           WINDOW_STYLE_SHADER
+            background      "white"
+            forecolor       0.1 0.1 0.1 0.9
+            dvartest        "openCJ_voteHeaderString"
+            hidedvar        { "" }
+            visible         MENU_TRUE
+            decoration
+        }
+        itemDef
+        {
+            name        "openCJ_mapImage"
+            rect        0 0 VOTE_IMAGE_SIZE_X VOTE_IMAGE_SIZE_Y
+            origin      VOTE_IMAGE_ORG_X VOTE_IMAGE_ORG_Y
+            style       WINDOW_STYLE_DVAR_SHADER
+            dvar        "openCJ_mapvoteImage"
+            dvarTest    "openCJ_voteHeaderString"
+            hideDvar    { "" }
+            visible     MENU_TRUE
+            decoration
+        }
+        itemDef
+        {
+            name        "openCJ voteHeaderString"
+            rect        0 0 VOTE_HEADER_SIZE_X VOTE_HEADER_SIZE_Y
+            origin      VOTE_HEADER_ORG_X VOTE_HEADER_ORG_Y
+            forecolor   1.0 1.0 1.0 1.0
+            textfont    UI_FONT_NORMAL
+            textscale   0.24
+            textstyle   ITEM_TEXTSTYLE_SHADOWED
+            textaligny  0
+            dvar        "openCJ_voteHeaderString"
+            dvartest    "openCJ_voteHeaderString"
+            hidedvar    { "" }
+            visible     MENU_TRUE
+            decoration
+        }
+        itemDef
+        {
+            name        "openCJ timeString"
+            rect        0 0 VOTE_TIME_SIZE_X VOTE_TIME_SIZE_Y
+            origin      VOTE_TIME_ORG_X VOTE_TIME_ORG_Y
+            forecolor   1.0 1.0 1.0 1.0
+            textfont    UI_FONT_NORMAL
+            textscale   0.25
+            textstyle   ITEM_TEXTSTYLE_SHADOWED
+            textaligny  0
+            dvar        "openCJ_voteTimeString"
+            dvartest    "openCJ_voteHeaderString"
+            hidedvar    { "" }
+            visible     MENU_TRUE
+            decoration
+        }
+        itemDef
+        {
+            name        "openCJ voteCount"
+            visible     MENU_TRUE
+            rect        0 0 VOTE_COUNT_SIZE_X VOTE_COUNT_SIZE_Y
+            origin      VOTE_COUNT_ORG_X VOTE_COUNT_ORG_Y
+            forecolor   1.0 1.0 1.0 1.0
+            dvar        "openCJ_voteCounts"
+            textfont    UI_FONT_NORMAL
+            textscale   0.25
+            textstyle   ITEM_TEXTSTYLE_SHADOWED
+            textaligny  0
+            dvartest    "openCJ_voteHeaderString"
+            hidedvar    { "" }
+            decoration
+        }
+    }
+
+
+    // Compact minimap: compassSize 0.65 makes the 102-unit map 66.3 units.
+    // Keep stock world/player pointer draws and the subtle outer border.
+    #define OCJ_MAP_RECT 0 0 102 102
+    #define OCJ_MAP_ORIGIN 6 6
+    menuDef
+    {
+        name "Compass_old"
+        rect 0 0 125 125 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
+        fullScreen 0
+        visible when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString(createfx) != "on") );
+        itemDef
+        {
+            name "minimapBG"
+            rect -1 -1 68.3 68.3
+            origin OCJ_MAP_ORIGIN
+            style WINDOW_STYLE_FILLED
+            backcolor 0.035 0.045 0.04 0.38
+            border 1
+            bordersize 1
+            bordercolor 0.62 0.67 0.66 0.38
+            visible when ( !selecting_location() );
+            decoration
+        }
+        itemDef
+        {
+            name "mini_map"
+            rect OCJ_MAP_RECT
+            origin OCJ_MAP_ORIGIN
+            forecolor 1 1 1 1
+            background "compass_map_default"
+            ownerdraw CG_PLAYER_COMPASS_MAP
+            visible when ( !selecting_location() );
+            decoration
+        }
+        itemDef
+        {
+            name "compasspointers"
+            rect OCJ_MAP_RECT
+            origin OCJ_MAP_ORIGIN
+            forecolor 1 1 1 1
+            background "objective_line"
+            ownerdraw CG_PLAYER_COMPASS_POINTERS
+            visible when ( !selecting_location() );
+            decoration
+        }
+        itemDef
+        {
+            name "compassfriendlies"
+            rect OCJ_MAP_RECT
+            origin OCJ_MAP_ORIGIN
+            forecolor 1 1 1 1
+            ownerdraw CG_PLAYER_COMPASS_FRIENDS
+            visible when ( !selecting_location() );
+            decoration
+        }
+        itemDef
+        {
+            name "compassenemies"
+            rect OCJ_MAP_RECT
+            origin OCJ_MAP_ORIGIN
+            forecolor 1 1 1 1
+            ownerdraw CG_PLAYER_COMPASS_ENEMIES
+            visible when ( !selecting_location() );
+            decoration
+        }
+        itemDef
+        {
+            name "compassplayer"
+            rect OCJ_MAP_RECT
+            origin OCJ_MAP_ORIGIN
+            forecolor 1 1 1 1
+            background "compassping_player"
+            ownerdraw CG_PLAYER_COMPASS_PLAYER
+            visible when ( !selecting_location() );
+            decoration
+        }
+    }
+
+	// game messages
+	menuDef
+	{
+		name			"gamemessages"
+		// (todo: use VERTICAL_ALIGN_TOP in SP)
+		rect			6 -105 10 10 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_BOTTOM
+		fullScreen		0
+		visible			when( !inkillcam() );
+		
+		itemDef
+		{
+			origin				0 0
+			type				ITEM_TYPE_GAME_MESSAGE_WINDOW
+			gamemsgwindowindex	0
+			gamemsgwindowmode	MODE_BOTTOMUP_ALIGN_BOTTOM
+			textfont			UI_FONT_DEFAULT
+			textstyle			ITEM_TEXTSTYLE_SHADOWED
+			textalign			ITEM_ALIGN_LEFT
+			textscale			(TEXTSIZE_SMALL*0.75)
+			visible				when ( dvarint( ui_hud_obituaries ) == 1 && !ui_active() );
+		}
+	}
+	menuDef
+	{
+		name			"boldgamemessages"
+		// (todo: use VERTICAL_ALIGN_TOP in SP, origin 0 180)
+		rect			0 -60 10 10 HORIZONTAL_ALIGN_CENTER_SAFEAREA VERTICAL_ALIGN_CENTER_SAFEAREA
+		fullScreen		0
+		visible			when( !inkillcam() );
+		
+		itemDef
+		{
+			origin				0 0
+			type				ITEM_TYPE_GAME_MESSAGE_WINDOW
+			gamemsgwindowindex	1
+			gamemsgwindowmode	MODE_BOTTOMUP_ALIGN_BOTTOM
+			textfont			UI_FONT_OBJECTIVE
+			textstyle			ITEM_TEXTSTYLE_SHADOWED
+			textalign			ITEM_ALIGN_CENTER
+			textscale			0.417 // SP: 0.5
+			visible				when ( dvarint( ui_hud_obituaries ) == 1 && !ui_active() );
+		}
+	}
+
+	//	Local Talking Status
+	menuDef 
+	{
+        name "amitalking"
+        fullScreen MENU_FALSE
+        visible MENU_TRUE
+        rect 100 5 24 24 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
+
+		itemDef 
+		{
+			name "talkingRect"
+			decoration
+			visible MENU_TRUE
+			rect 0 0 24 24 
+			forecolor 1.0 1.0 1.0 1.0
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			ownerdraw UI_AMITALKING
+		}
+	}
+
+	// Remote Talking Status
+	menuDef 
+	{
+        name "talkers"
+        fullScreen MENU_FALSE
+        visible MENU_TRUE
+		rect 60 30 16 16 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
+
+		itemDef 
+		{
+			name "talker1Rect"
+			decoration
+			visible MENU_TRUE
+			rect 0 0 16 16
+			forecolor 1.0 1.0 1.0 1.0
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			ownerdraw UI_TALKER1
+		}
+
+		itemDef 
+		{
+			name "talker2Rect"
+			decoration
+			visible MENU_TRUE
+			rect 0 16 16 16
+			forecolor 1.0 1.0 1.0 1.0
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			ownerdraw UI_TALKER2
+		}
+
+		itemDef 
+		{
+			name "talker3Rect"
+			decoration
+			visible MENU_TRUE
+			rect 0 32 16 16
+			forecolor 1.0 1.0 1.0 1.0
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			ownerdraw UI_TALKER3
+		}
+
+		itemDef 
+		{
+			name "talker4Rect"
+			decoration
+			visible MENU_TRUE
+			rect 0 48 16 16
+			forecolor 1.0 1.0 1.0 1.0
+			textscale .21
+			textstyle ITEM_TEXTSTYLE_SHADOWED
+			ownerdraw UI_TALKER4
+		}
+	}
+    // Script HUD fontScale is network-limited to 1.4; menu text can be smaller.
+    menuDef
+    {
+        name "OpenCJ CPC properties"
+        fullScreen MENU_FALSE
+        rect 0 0 0 0 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
+        visible when (dvarString(opencj_cpc_properties) != "" && !ui_active() && !dvarInt("opencj_sb_held"));
+        itemDef
+        {
+            name "background"
+            rect 116 0 344 104 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
+            exp rect H (dvarFloat("opencj_cpc_panel_height"))
+            style WINDOW_STYLE_FILLED
+            backcolor 0 0 0 0.55
+            visible MENU_TRUE
+            decoration
+        }
+        itemDef
+        {
+            name "properties"
+            rect 282 27 170 72 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
+            visible MENU_TRUE
+            decoration
+            dvar "opencj_cpc_properties"
+            textfont UI_FONT_NORMAL
+            textscale 0.2
+            textaligny 10
+            textstyle ITEM_TEXTSTYLE_SHADOWED
+            forecolor 1 1 1 1
+        }
+    }
+}
