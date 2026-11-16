@@ -2,6 +2,15 @@ Rem IMPORTANT: this makeMod.bat needs to be in the Mods/opencj/cod4 folder for t
 
 @Rem Some variables that are used multiple times or need to be remembered
 @echo off
+@Rem Use an installed 7-Zip; check it before changing any build output.
+if not defined OPENCJ_7ZIP set "OPENCJ_7ZIP=7z.exe"
+"%OPENCJ_7ZIP%" i >nul 2>&1
+if errorlevel 1 (
+    echo 7-Zip is unavailable. Install it and add 7z.exe to PATH, 1>&2
+    echo or set OPENCJ_7ZIP to its full executable path. 1>&2
+    exit /B 1
+)
+
 SET OPENCJ_COD4_DIR=%cd%
 SET OPENCJ_DIR=%OPENCJ_COD4_DIR%\..
 SET ROOT_DIR=%OPENCJ_COD4_DIR%\..\..\..
@@ -76,7 +85,12 @@ copy "%ZONE_DIR%\english\mod.ff" "%OPENCJ_DIR%\"
 @for %%x in (images weapons licenses) do (
     @if exist %%x\ (
         @set /A nr_folders_zip+=1
-        CALL 7za a -r -tzip "%OPENCJ_DIR%\%OPENCJ_IWD%" %%x
+        "%OPENCJ_7ZIP%" a -r -tzip "%OPENCJ_DIR%\%OPENCJ_IWD%" %%x
+        if errorlevel 1 (
+            @echo Failed to package %%x into the IWD. 1>&2
+            @endlocal
+            @exit /B 1
+        )
     ) else (
         @echo No %%x folder to add to zip
     )

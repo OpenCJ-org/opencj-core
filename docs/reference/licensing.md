@@ -48,13 +48,6 @@ These records identify unresolved issues, not permission to redistribute.
   redistribute images separately. Obtain relevant terms/permission or supply
   these images as external inputs. The [map catalogue](maps/catalogue.md)
   records source attribution.
-- **Bundled 7-Zip:** `client-mod/cod4/7za.exe` identifies itself as version 4.42.
-  Version-matched notices and corresponding-source arrangements are not
-  recorded here. The old batch builder invokes it; the Python builder uses
-  Python archive support. Prefer an externally installed tool, or complete
-  the exact-version distribution requirements before publishing the binary.
-  See [7-Zip licensing](https://www.7-zip.org/license.txt); current-version
-  notices are not evidence for the exact old binary.
 - **Older artwork and game-derived content:** retain original author and
   permission records for branding/rank inputs and copied game/map files.
   Editing, converting or using ImageGen on an existing image does not
@@ -80,6 +73,14 @@ kept privately. The current menus do not use these icons.
 Obtain base games, Windows Mod Tools and map packages separately under their
 respective terms. Do not copy installations or license keys into the repository.
 A generator's source license does not license its inputs.
+
+The legacy Windows batch builder uses an externally installed
+[7-Zip](https://www.7-zip.org/download.html); see the
+[build instructions](../operations/client-assets.md#legacy-batch-builder).
+The bundled 4.42 executable has been removed, including from the history
+intended for publication. Private recovery copies remain available.
+The Python builder has no 7-Zip dependency. Any future installer or container
+that redistributes this tool must follow the license of the version it supplies.
 
 Artwork/audio tooling installs [Pillow](https://pillow.readthedocs.io/en/stable/about.html),
 [CairoSVG](https://cairosvg.org/documentation/) and

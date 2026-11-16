@@ -25,6 +25,18 @@ Run this from its staged private build directory, as described in the
 [flag asset guide](../../client-mod/assets/flags/README.md).
 The helper validates its placement beneath the selected Mod Tools installation.
 
+## Legacy batch builder
+
+`client-mod/cod4/makeMod.bat` needs a separately installed
+[7-Zip](https://www.7-zip.org/download.html). Add its `7z.exe` directory to
+`PATH`, or set `OPENCJ_7ZIP` to the full executable path before running the
+batch file. The value is an executable path, without surrounding quotes or
+extra arguments. Paths containing spaces are supported.
+
+The builder checks the tool before changing build output and stops if archive
+creation fails. It still requires the Windows CoD4 Mod Tools installation.
+The Python builder uses Python's archive support and does not require 7-Zip.
+
 ## Install and verify
 
 Install matching compiled mod files into the server and client destinations
