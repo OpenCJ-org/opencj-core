@@ -1,23 +1,49 @@
 """Persistent mysql CLI connection; credentials stay inside Docker."""
-import os, re, selectors, subprocess, time, uuid
+
+import os
+import re
+import selectors
+import subprocess
+import time
+import uuid
+
 
 class MySQL:
     def __init__(self, container, database, runtime=False):
         for value in (container, database):
             if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
                 raise ValueError("Invalid container/database identifier")
-        identity = 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u "$MYSQL_USER"' if runtime else 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -u root'
+        identity = (
+            'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u "$MYSQL_USER"'
+            if runtime
+            else 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -u root'
+        )
         self.process = subprocess.Popen(
-            ["docker", "exec", "-i", container, "sh", "-c",
-             identity + " --batch --raw --skip-column-names --unbuffered --binary-as-hex " + database],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
+            [
+                "docker",
+                "exec",
+                "-i",
+                container,
+                "sh",
+                "-c",
+                identity
+                + " --batch --raw --skip-column-names --unbuffered --binary-as-hex "
+                + database,
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=0,
+        )
         self.pending = b""
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
 
     def query(self, sql, timeout=180):
         marker = "OCJ_SQL_END_" + uuid.uuid4().hex
-        self.process.stdin.write(("DELIMITER ;\n" + sql + "\nDELIMITER ;\nSELECT '" + marker + "';\n").encode())
+        self.process.stdin.write(
+            ("DELIMITER ;\n" + sql + "\nDELIMITER ;\nSELECT '" + marker + "';\n").encode()
+        )
         lines = []
         deadline = time.monotonic() + timeout
         while True:
