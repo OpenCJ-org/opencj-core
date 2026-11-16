@@ -552,7 +552,7 @@
 
 // Mode artwork uses 16:20 proportions; the separate rail denotes filter state.
 #define MODE_FILTER_RECT_WHEN(_name, _shader, _stateColor, _iconColor, _visibility, orgX, orgY, sizeX, sizeY) \
-    SEL_SHADER_RECT_WHEN(_name, _shader, _iconColor, _visibility, (orgX+(sizeX-sizeY*0.8)/2), orgY, (sizeY*0.8), sizeY) \
+    itemDef { name _name rect DEFAULT_RECT(((sizeX-sizeY*0.8)/2) 0 (sizeY*0.8) sizeY) origin orgX orgY style WINDOW_STYLE_SHADER background _shader type ITEM_TYPE_BUTTON forecolor _iconColor visible when(_visibility) action { scriptMenuResponse "click_"#_name; play "mouse_click"; } mouseEnter { play "mouse_over"; } } \
     itemDef \
     { \
         name mode_filter_state \

@@ -1,0 +1,35 @@
+{
+  "texture_size": [
+    512,
+    256
+  ],
+  "mip_levels": 10,
+  "supersample": 4,
+  "menu_icon_size": [
+    64,
+    32
+  ],
+  "transparent_background": true,
+  "files": {
+    "assets/ranks/competitive/competitive.svg": {
+      "sha256": "8bc5bd2086f015538f832c6ef8c834e7ab4c3e6d5d464eba05192759fd91e235",
+      "bytes": 1456
+    },
+    "source/build_competitive_icon.py": {
+      "sha256": "4c8642cc0134f364764a4b34054cf2cbfccf4e312e72927795a72451e9ec5698",
+      "bytes": 1655
+    },
+    "assets/ranks/competitive/competitive.png": {
+      "sha256": "42da2ba6a2f5eef0c41c3fbe62b9502acd30840f81689f4304896b739fb2ab36",
+      "bytes": 19959
+    },
+    "source/texture_source/opencj_competitive.tga": {
+      "sha256": "09de30b54fec4cdc6bb0e3032cb9a87a46695db179872b5026706d92bca136e5",
+      "bytes": 524332
+    },
+    "cod4/images/opencj_competitive.iwi": {
+      "sha256": "8feda591973a0384f52680b686a002fa5c05652e68445d82e7ca73cb82029c40",
+      "bytes": 699080
+    }
+  }
+}

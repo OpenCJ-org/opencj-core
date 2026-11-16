@@ -1,0 +1,173 @@
+{
+  "config": "palette.json",
+  "sources": {
+    "assets/ranks/rings/rank-1.svg": {
+      "sha256": "fb530f69e045161a43f97760f7a560b17a52eeb2b14df73c60996e03d2ad19e5",
+      "bytes": 627
+    },
+    "assets/ranks/rings/rank-2.svg": {
+      "sha256": "c554a4e5ead1b9d11abfd832f244d27a3a419b1fc1c66a3b099ccb4a8326b759",
+      "bytes": 627
+    },
+    "assets/ranks/rings/rank-3.svg": {
+      "sha256": "735f09988db4d3f2a78de78f0667d5286585a89cee9857a455acd6782c1fd6cd",
+      "bytes": 628
+    },
+    "assets/ranks/rings/rank-4.svg": {
+      "sha256": "c80ff623373df5d3684f3e8fec19df52a2c879b9985779a94f67336cb711a512",
+      "bytes": 626
+    },
+    "assets/ranks/rings/rank-5.svg": {
+      "sha256": "ef8ba27102e0970b6767f5c49292d54803370f77da14663cbc5d0a8969344699",
+      "bytes": 627
+    },
+    "assets/ranks/rings/rank-6.svg": {
+      "sha256": "1dab15e3ee7bdfa5e45ac3e3df6397000c902ebd3e0eb20cd053d01765d8ffb6",
+      "bytes": 627
+    },
+    "assets/ranks/rings/rank-7.svg": {
+      "sha256": "06d4929715547c1bf80913328a9574c2d8ee4e6e807a084d4988548abc5ec68d",
+      "bytes": 629
+    },
+    "assets/ranks/rings/rank-8.svg": {
+      "sha256": "744ee971eedafafc8a677610bba9d404902fe997a30a3beade149d6c20631cd1",
+      "bytes": 625
+    },
+    "assets/ranks/rings/rank-9.svg": {
+      "sha256": "a62b7ad5b6fb583714eb0098cb4436896b7a17b83aef12704600aa3b09ccba61",
+      "bytes": 630
+    },
+    "assets/ranks/rings/rank-10.svg": {
+      "sha256": "70bebe6125b4a2a2ab99367e1368dfa65324f395277c5bf586a1360cd71c2b66",
+      "bytes": 62947
+    }
+  },
+  "outputs": {
+    "assets/ranks/rings/rank-1.png": {
+      "sha256": "e3325cc6e9893eb0632c9f318dc1ff20aa8e2a2c8e8f1f8198212d3e2ebf4577",
+      "bytes": 42540
+    },
+    "source/texture_source/opencj_rank_1.tga": {
+      "sha256": "11b0e2713e2873898fea98d07d039175a6c5d0cbe525999ff037dd8a5d752c0a",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_1.iwi": {
+      "sha256": "7c20bf563db77f39c6ac992fc8d77333ad0da3bbabffe63ce98cbe92b5746679",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-2.png": {
+      "sha256": "c234d81015b99ff89d1d2193e894cbcd3ff354ce135223d194ed2fa43ac3073c",
+      "bytes": 49646
+    },
+    "source/texture_source/opencj_rank_2.tga": {
+      "sha256": "15d7b1e953c70656073e0d1ba994dbd3c05c49dc2a2595e9e1588e7b1fb4754f",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_2.iwi": {
+      "sha256": "7f04a6b14290c15872e7c8ac81a1308636c7a132c3f9c19d31bea47d133c3728",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-3.png": {
+      "sha256": "8b2779ef3647960548b3fc97dc30e802854d2a27c4bfcab6145286a8b496d017",
+      "bytes": 51721
+    },
+    "source/texture_source/opencj_rank_3.tga": {
+      "sha256": "9d4bd9505fac875f386ba652bb82d189ebf194c3cbacd09ba0db8581287de3aa",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_3.iwi": {
+      "sha256": "e4364a15d61232cab5c0bf4a7f6bef0cd28ffd324b96144aa182d07807b9de14",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-4.png": {
+      "sha256": "cdbccfa4a5cbea6df77d6cdf4a6d8b7972fb082998aaaa0d695f67753c6fae12",
+      "bytes": 47484
+    },
+    "source/texture_source/opencj_rank_4.tga": {
+      "sha256": "837e77b32bb257b62d2e5f7c3552496b881a0755bbe32d2c30b2383df7b9c1e5",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_4.iwi": {
+      "sha256": "d3e5161111e79716f9c2ef3123b10eb3b95f09cea6bf0f3cf6bac87d7043b860",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-5.png": {
+      "sha256": "411a9bdea1abb2a80543638d82267bbc65850ab016010d504188e3999efca0bc",
+      "bytes": 52950
+    },
+    "source/texture_source/opencj_rank_5.tga": {
+      "sha256": "7f3748abeef580121b447a9762fc6de31acb874b010ca9953b403e9a65735fab",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_5.iwi": {
+      "sha256": "9bc40da9efae597b64111c3286d447c6ed912caba22c98f5b3119a75f5af0796",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-6.png": {
+      "sha256": "7470d8f0f3f2980c0002c2a20b9259967492c6d754307b33812ddab6ebba3b0f",
+      "bytes": 55877
+    },
+    "source/texture_source/opencj_rank_6.tga": {
+      "sha256": "6a63a5ab7fb93654030d5ccde4e281cc3eafd971a62491fedc86d9e555cc441b",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_6.iwi": {
+      "sha256": "e508d9c10a5adfacacce60294fc04c913abb96023d83fce7839f5620814b145b",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-7.png": {
+      "sha256": "f626bfe73edcdccb82e0c32ba9abf7cface5b9ce5cdeda3c08e00afb16d752df",
+      "bytes": 50321
+    },
+    "source/texture_source/opencj_rank_7.tga": {
+      "sha256": "bb22971740b333cb4dcd2b0c156ec3b08611917bd9aa732e5518adfc4b137537",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_7.iwi": {
+      "sha256": "f6ef4185c5a44262e0c6ed2dc8a6bb71d7ff3fdfc019e0d58edb8cd7f87fb8c3",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-8.png": {
+      "sha256": "479f96c539bc4a431177d41c3b5ccec05eed89716c6aefeacf0e9bb110bd72ea",
+      "bytes": 57322
+    },
+    "source/texture_source/opencj_rank_8.tga": {
+      "sha256": "d810a8fe23c08b8cc463f54119613abeec6635fcbd842f7ae6e334f1a86cb8fd",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_8.iwi": {
+      "sha256": "47dfcb51ed58af26776f467f45edbfc2db54b80d64d265b40e3f47fc9d989108",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-9.png": {
+      "sha256": "189d4f12d579897b5dc0b0213a71ddf88db80fed0cb7716652795126f2f54c66",
+      "bytes": 57022
+    },
+    "source/texture_source/opencj_rank_9.tga": {
+      "sha256": "9939555bb57eb4425ed0c31794d2a09d752106b82c115358961d34e1ded68ff2",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_9.iwi": {
+      "sha256": "2d210a5d2eed7ca7e115fe90efbc93caeeb75b57cc7aa2ebeb2aac0bc38200f4",
+      "bytes": 1398128
+    },
+    "assets/ranks/rings/rank-10.png": {
+      "sha256": "27278721b3fceff8e26914be96485f54475993c3e47050c8a1b041e93f38a326",
+      "bytes": 120750
+    },
+    "source/texture_source/opencj_rank_10.tga": {
+      "sha256": "1a455b6e7960a6c66d16093f77abeeaffd6e8bfbaaa42f99f770c1addf9cb700",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_rank_10.iwi": {
+      "sha256": "1498c90f6c4673077ce6d39c8487d22e98a1e3a346033d4e0e8081fecb0bc55e",
+      "bytes": 1398128
+    }
+  },
+  "consumers": {
+    "challenge_tabs": 28,
+    "challenge_own_rank": 26,
+    "escape_menu": 15,
+    "scoreboard": "75% of row height, centered in its slot"
+  }
+}

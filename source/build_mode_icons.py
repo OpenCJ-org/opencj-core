@@ -5,7 +5,7 @@ Textures remain power-of-two squares; drawing is pre-scaled so rendering at
 Ele, split-route and bot geometry derives from Lucide 0.468.0 (ISC license).
 """
 from pathlib import Path
-import hashlib,json,math,struct
+import hashlib,io,json,math,struct,sys,zipfile
 from PIL import Image,ImageDraw,ImageFont
 ROOT=Path(__file__).resolve().parents[1]
 S=32
@@ -44,6 +44,15 @@ def badge(name,label,kind):
             a=xy(4,8);b=xy(20,20)
             d.rounded_rectangle((*a,*b),radius=2*scale*S,outline=color,width=stroke)
             for p in [[(2,14),(4,14)],[(20,14),(22,14)],[(15,13),(15,15)],[(9,13),(9,15)]]:line(p)
+        elif name=='oldschool':
+            # Keep the approved Lucide rabbit silhouette; rasterize its curves
+            # at source resolution before creating game-sized mipmaps.
+            import cairosvg
+            source=(ROOT/'source/mode-icons/rabbit.svg').read_text()
+            source=source.replace('currentColor',color).replace('stroke-width="2"','stroke-width="2.2"')
+            raw=cairosvg.svg2png(bytestring=source.encode(),output_width=round(11.5*S),output_height=round(11.5*S))
+            glyph=Image.open(io.BytesIO(raw)).convert('RGBA')
+            im.alpha_composite(glyph,(round(ox*S),round(oy*S)))
         elif name=='halfbeat':
             # Equal-height, side-by-side keys, with a clear gap at small sizes.
             for letter,x in [('A',1.2),('D',8.4)]:
@@ -73,4 +82,49 @@ def main():
         small=logical.resize((width*2,40),Image.Resampling.LANCZOS);sheet.alpha_composite(small,(i*136+10,120))
     sheet.save(output/'contact-sheet.png');(output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print('Built seven mode badges; FPS 24x20, modifiers 16x20.')
-if __name__=='__main__':main()
+def export_oldschool():
+    """Export the approved optional badge without changing the seven live modes."""
+    import cairosvg
+    output=ROOT/'assets/mode-icons/oldschool'
+    output.mkdir(parents=True,exist_ok=True)
+    logical=badge('oldschool','OS','expanded')
+    logical.save(output/'oldschool-badge.png')
+    texture=logical.resize((512,512),Image.Resampling.LANCZOS)
+    texture.save(output/'opencj_icon_oldschool.tga')
+    (output/'opencj_icon_oldschool.iwi').write_bytes(iwi(texture))
+    source=(ROOT/'source/mode-icons/rabbit.svg').read_text()
+    source=source.replace('currentColor',COLORS['expanded']).replace('stroke-width="2"','stroke-width="2.2"')
+    (output/'oldschool-symbol.svg').write_text(source)
+    cairosvg.svg2png(bytestring=source.encode(),output_width=512,output_height=512,write_to=str(output/'oldschool-symbol.png'))
+    (output/'LICENSE-lucide.txt').write_bytes((ROOT/'cod4/licenses/lucide.txt').read_bytes())
+    (output/'README.txt').write_text("""OpenCJ Oldschool bunny badge
+Approved concept: 16 November 2026. Amber rabbit with the OS label.
+
+oldschool-badge.png: 512 x 640 RGBA artwork, correct 16:20 display ratio.
+oldschool-symbol.svg / .png: standalone amber rabbit, transparent background.
+opencj_icon_oldschool.tga / .iwi: 512 x 512 pre-scaled game texture.
+Draw the game texture at 16 x 20 HUD units (or another 4:5 rectangle).
+Do not draw the square texture at a square display size.
+The IWI includes all ten mip levels. Lucide 0.468.0, ISC; see LICENSE-lucide.txt.
+
+Prepared for later integration; not registered in mod.csv or any live mode.
+Integration will need the matching material and appropriate UI/HUD slot.
+Regenerate on the source host with the existing image-venv Python:
+  source/build_mode_icons.py --oldschool-only
+Dependencies: Pillow, CairoSVG, DejaVuSans-Bold.ttf.
+""")
+    paths=sorted(p for p in output.iterdir() if p.is_file() and p.name!='manifest.json')
+    manifest={'mode':'oldschool','label':'OS','logical_dimensions':[16,20],
+              'glyph_source':'https://github.com/lucide-icons/lucide/blob/0.468.0/icons/rabbit.svg',
+              'files':{p.name:{'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for p in paths}}
+    (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    bundle=ROOT/'assets/mode-icons/oldschool-bunny.zip'
+    with zipfile.ZipFile(bundle,'w',zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(output.iterdir()):
+            if p.is_file():z.write(p,p.name)
+    print('Exported Oldschool bunny badge and reusable symbol: '+str(bundle))
+
+if __name__=='__main__':
+    if sys.argv[1:]==['--oldschool-only']:export_oldschool()
+    elif not sys.argv[1:]:main()
+    else:raise SystemExit('Usage: build_mode_icons.py [--oldschool-only]')

@@ -20,10 +20,22 @@ Consumers audited:
 - Challenges: 18x15 FPS; 12x15 modifiers; one-unit gaps. Counts preceding FPS
   badges for each dynamic row. Maximum 3 FPS + 4 modifiers ends at x=446,
   before the points column at x=448.
-- Leaderboard/runsboard: FPS entries remain text. Modifier filter badges are
-  centered at 12x15 in existing 15-unit cells; separate green/red state rails
-  and dimming preserve filter meaning without recoloring the artwork.
+- Leaderboard/runsboard: passive FPS entry badges draw at 12x10 (6:5).
+  Modifier column badges are centered at 12x15 in existing 15-unit cells,
+  with floating offsets in `rect` rather than the integer-evaluated `origin`.
+  Filters live in a shared toolbar with Allowed/Excluded labels and
+  cyan/neutral fills. The FPS popup uses text for category names and values;
+  clicking outside closes it without changing the selection.
 - Main Escape menu and FPS dropdown contain no mode materials to widen.
 
 Lucide 0.468.0 source references are in source/mode-icons. Its ISC attribution
 ships in licenses/lucide.txt in the IWD, alongside existing license entries.
+
+## Optional Oldschool badge
+
+The approved amber bunny + OS badge is exported separately for future use:
+
+`oldschool/` contains the 16:20 PNG, standalone transparent rabbit SVG/PNG,
+pre-scaled game TGA/IWI, attribution and hashes. `oldschool-bunny.zip` bundles
+those exports. The optional renderer also uses CairoSVG. This does not add a
+mode, change the live seven-badge build, or register a material in mod.csv.

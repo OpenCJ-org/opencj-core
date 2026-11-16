@@ -1,0 +1,39 @@
+{
+  "mode": "oldschool",
+  "label": "OS",
+  "logical_dimensions": [
+    16,
+    20
+  ],
+  "glyph_source": "https://github.com/lucide-icons/lucide/blob/0.468.0/icons/rabbit.svg",
+  "files": {
+    "LICENSE-lucide.txt": {
+      "sha256": "1e7290b35280a048667bbf0ebabac1c7fd52a75300e8b2946ac165715997f2bc",
+      "bytes": 880
+    },
+    "README.txt": {
+      "sha256": "3dba08786b95999b15b1508b50be0cf73b97dd90b94b1580691853dea23d992d",
+      "bytes": 845
+    },
+    "oldschool-badge.png": {
+      "sha256": "e2ed06ea506221645635689af6424fd8890e1f12a4c7ecbf9e24003755fa751c",
+      "bytes": 25782
+    },
+    "oldschool-symbol.png": {
+      "sha256": "64bf386b31af0e166435fe93b71eb89c1bfef435d975f2ba581db06861d96896",
+      "bytes": 22884
+    },
+    "oldschool-symbol.svg": {
+      "sha256": "d1a22b6487f16471815aec88d1d601d88d51fdd576c3a1d48a73794d3e0028cf",
+      "bytes": 500
+    },
+    "opencj_icon_oldschool.iwi": {
+      "sha256": "1b5f2bcdf9d15a963e9567f08d98be0dfa3c2939de8a16e8118f798d1ba7578e",
+      "bytes": 1398128
+    },
+    "opencj_icon_oldschool.tga": {
+      "sha256": "e36ff37e42be4ed1839842299f34c6a52edc6c005c1cbdcad095ee6a1535c04b",
+      "bytes": 1048620
+    }
+  }
+}
