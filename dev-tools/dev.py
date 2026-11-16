@@ -10,11 +10,24 @@ import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
-REPOS = {
-    "cod4x-server": "opencj", "server-ext": "master", "server-gsc": "master",
-    "server-db": "master", "client-mod": "master", "libcod": "opencj",
-    "discord-integration": None,
-}
+COMPONENTS = ("server-ext", "server-gsc", "server-db", "client-mod", "discord-integration")
+
+
+def prepare_engine(root):
+    """Initialize only a missing CoD4 submodule; preserve existing local work."""
+    engine = root / "cod4x-server"
+    if (engine / ".git").exists():
+        checkout = subprocess.check_output(
+            ["git", "-C", str(engine), "rev-parse", "--show-toplevel"], text=True
+        ).strip()
+        if Path(checkout).resolve() != engine.resolve():
+            raise ValueError("The CoD4 engine must be its own submodule checkout.")
+        print("Keeping the existing CoD4 engine checkout and local changes.")
+        return
+    if engine.exists() and any(engine.iterdir()):
+        raise ValueError("The CoD4 engine directory is not empty and has no Git checkout.")
+    run("git", "-C", str(root), "submodule", "update", "--init", "--", "cod4x-server")
+
 
 
 def run(*args):
@@ -36,7 +49,7 @@ def dotenv(value):
 
 def initialize(args):
     if HERE.name != "dev-tools":
-        raise ValueError("Place this repository in a directory named dev-tools.")
+        raise ValueError("Run this helper from the dev-tools directory inside opencj-core.")
     if (HERE / ".env").exists():
         raise ValueError("Already initialized. Edit .env and local/runtime/mods/opencj/opencj-dev.cfg to adjust settings; existing configuration was preserved.")
     root = HERE.parent
@@ -52,19 +65,12 @@ def initialize(args):
     ipaddress.IPv4Address(args.bind_ip)
     for path in (root, game, mod):
         dotenv(path)
-    for name, branch in REPOS.items():
-        target = root / name
-        url = f"https://github.com/OpenCJ-org/{name}.git"
-        if target.exists():
-            origin = subprocess.check_output(["git", "-C", str(target), "remote", "get-url", "origin"], text=True).strip()
-            if origin.removesuffix(".git").lower() not in {
-                url.removesuffix(".git").lower(),
-                f"git@github.com:OpenCJ-org/{name}".lower(),
-            }:
-                raise ValueError(f"Unexpected origin for {target}: {origin}")
-            print(f"Keeping existing checkout: {name} (no fetch, reset or branch switch)")
-        else:
-            run("git", "clone", *(["--branch", branch] if branch else []), url, str(target))
+    if not (root / ".gitmodules").is_file():
+        raise ValueError("Expected the complete opencj-core checkout, including .gitmodules.")
+    for name in COMPONENTS:
+        if not (root / name).is_dir():
+            raise ValueError(f"Missing core component: {name}. Restore the complete checkout.")
+    prepare_engine(root)
     runtime = HERE / "local" / "runtime"
     runtime.mkdir(parents=True, exist_ok=True)
     (runtime / "plugins").mkdir(exist_ok=True)
@@ -90,13 +96,13 @@ def initialize(args):
     env = HERE / ".env"
     env.write_text("".join(f"{key}={dotenv(value)}\n" for key, value in settings.items()), encoding="utf-8")
     env.chmod(0o600)
-    print("Initialized. Create the external data volume with docker volume create opencj-dev_database, then run python3 dev.py build and python3 dev.py up.")
+    print("Initialized. Follow docs/getting-started.md: create the external volume, start db, bootstrap the empty schema, then build and start the server.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init", help="Clone missing repositories and create local configuration")
+    init = commands.add_parser("init", help="Initialize the CoD4 submodule and create local configuration")
     init.add_argument("--game-dir", required=True, help="Existing CoD4 directory containing main/ and zone/")
     init.add_argument("--mod-dir", help="Compiled assets directory; defaults to GAME_DIR/mods/opencj")
     init.add_argument("--map", default="mp_killhouse")
@@ -115,7 +121,9 @@ def main():
             compose("build", "build", "server")
             compose("run", "--rm", "--no-deps", "build")
         elif args.command == "up":
-            compose("up", "-d", "--wait", "db", "server")
+            compose("up", "-d", "--wait", "db")
+            run(sys.executable, str(HERE / "scripts/bootstrap-db.py"), "--check")
+            compose("up", "-d", "--wait", "server")
         elif args.command == "restart":
             compose("restart", "server")
         elif args.command == "down":

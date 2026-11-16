@@ -17,6 +17,9 @@ class SetupTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.here = self.root / "dev-tools"
         self.here.mkdir()
+        (self.root / ".gitmodules").write_text('[submodule "cod4x-server"]\n')
+        for name in dev.COMPONENTS:
+            (self.root / name).mkdir()
         self.game = self.root / "game files"
         (self.game / "main").mkdir(parents=True)
         (self.game / "zone").mkdir()
@@ -30,12 +33,10 @@ class SetupTests(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def test_initializes_and_preserves_configuration(self):
+    def test_initializes_only_cod4_and_preserves_configuration(self):
         with patch.object(dev, "run") as run:
             dev.initialize(self.args)
-        self.assertEqual(run.call_count, 7)
-        calls = run.call_args_list
-        self.assertIn("opencj", calls[0].args)
+        run.assert_called_once_with("git", "-C", str(self.root), "submodule", "update", "--init", "--", "cod4x-server")
         env = (self.here / ".env").read_text()
         config_path = self.here / "local/runtime/mods/opencj/opencj-dev.cfg"
         config = config_path.read_text()
@@ -48,29 +49,48 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(config_path.read_text(), config)
         self.assertEqual((self.here / ".env").read_text(), env)
 
-    def test_wrong_origin_does_not_modify_checkout(self):
-        (self.root / "cod4x-server").mkdir()
-        with patch.object(dev.subprocess, "check_output", return_value="https://github.com/example/server.git\n"), patch.object(dev, "run") as run:
-            with self.assertRaisesRegex(ValueError, "Unexpected origin"):
+    def test_existing_engine_work_is_preserved(self):
+        engine = self.root / "cod4x-server"
+        engine.mkdir()
+        (engine / ".git").write_text("gitdir: ../.git/modules/cod4x-server\n")
+        pending = engine / "pending.cpp"
+        pending.write_text("uncommitted engine work\n")
+        with patch.object(dev.subprocess, "check_output", return_value=str(engine)), patch.object(dev, "run") as run:
+            dev.initialize(self.args)
+            run.assert_not_called()
+        self.assertEqual(pending.read_text(), "uncommitted engine work\n")
+
+    def test_nonempty_engine_without_git_is_preserved(self):
+        engine = self.root / "cod4x-server"
+        engine.mkdir()
+        (engine / "keep.txt").write_text("local work")
+        with patch.object(dev, "run") as run:
+            with self.assertRaisesRegex(ValueError, "not empty"):
+                dev.initialize(self.args)
+            run.assert_not_called()
+        self.assertEqual((engine / "keep.txt").read_text(), "local work")
+        self.assertFalse((self.here / ".env").exists())
+
+    def test_missing_component_is_not_replaced_by_a_clone(self):
+        (self.root / "server-gsc").rmdir()
+        with patch.object(dev, "run") as run:
+            with self.assertRaisesRegex(ValueError, "Missing core component"):
                 dev.initialize(self.args)
             run.assert_not_called()
         self.assertFalse((self.here / ".env").exists())
 
-    def test_invalid_paths_fail_before_clone(self):
+    def test_invalid_paths_fail_before_submodule_initialization(self):
         self.args.game_dir = str(self.root / "missing")
         with patch.object(dev, "run") as run:
             with self.assertRaisesRegex(ValueError, "Required directory"):
                 dev.initialize(self.args)
             run.assert_not_called()
 
-    def test_existing_checkouts_are_not_updated(self):
-        for name in dev.REPOS:
-            (self.root / name).mkdir()
-        def origin(command, **kwargs):
-            name = Path(command[2]).name
-            return f"git@github.com:OpenCJ-org/{name}.git\n"
-        with patch.object(dev.subprocess, "check_output", side_effect=origin), patch.object(dev, "run") as run:
-            dev.initialize(self.args)
+    def test_component_copy_without_core_metadata_is_refused(self):
+        (self.root / ".gitmodules").unlink()
+        with patch.object(dev, "run") as run:
+            with self.assertRaisesRegex(ValueError, "complete opencj-core"):
+                dev.initialize(self.args)
             run.assert_not_called()
 
 

@@ -18,7 +18,7 @@ for mapname in options.maps or ['mp_killhouse']:
         paths=subprocess.check_output(['git','ls-files','opencj','maps'],cwd=root/'server-gsc',text=True).splitlines()
         for name in paths:
             target=mod/name;target.parent.mkdir(parents=True,exist_ok=True)
-            target.write_bytes(subprocess.check_output(['git','show','HEAD:'+name],cwd=root/'server-gsc'))
+            target.write_bytes(subprocess.check_output(['git','show','HEAD:server-gsc/'+name],cwd=root/'server-gsc'))
     sourceHashes={str(p.relative_to(mod)):hashlib.sha256(p.read_bytes()).hexdigest() for folder in ['opencj','maps'] for p in (mod/folder).rglob('*.gsc')}
     for name in ['mod.ff','z_opencj.iwd']:(mod/name).symlink_to('/mod-assets/'+name)
     (home/'usermaps').symlink_to('/game/usermaps')

@@ -23,9 +23,14 @@ mod.mkdir(parents=True)
 for folder in ("opencj", "maps"):
     shutil.copytree(args.scripts / folder, mod / folder)
 if args.cvars_revision:
+    path = "server-gsc/opencj/cvars.gsc"
+    probe = subprocess.run(
+        ["git", "cat-file", "-e", args.cvars_revision + ":" + path],
+        cwd=ROOT, capture_output=True)
+    if probe.returncode:
+        path = "opencj/cvars.gsc"  # Original component history predates the import.
     source = subprocess.check_output(
-        ["git", "show", args.cvars_revision + ":opencj/cvars.gsc"],
-        cwd=ROOT / "server-gsc", text=True)
+        ["git", "show", args.cvars_revision + ":" + path], cwd=ROOT, text=True)
     (mod / "opencj/cvars.gsc").write_text(source)
 for name in ("mod.ff", "z_opencj.iwd"):
     (mod / name).symlink_to("/mod-assets/" + name)

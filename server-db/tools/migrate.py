@@ -86,10 +86,10 @@ def adopt020(db, migrations):
     db.query("INSERT INTO schemaMigrations VALUES " + ",".join(values) + ";")
     return fingerprint
 
-def apply(db, migrations):
+def apply(db, migrations, *, allow_empty=False):
     rows = ledger(db)
     validate(rows, migrations)
-    if not rows:
+    if not rows and not allow_empty:
         raise RuntimeError("Untracked database: explicitly adopt the verified post-020 baseline first")
     done = []
     for version, (name, checksum, sql) in migrations.items():

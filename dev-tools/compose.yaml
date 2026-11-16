@@ -28,44 +28,8 @@ services:
     command: ["--log-bin-trust-function-creators=1"]
     volumes:
       - database:/var/lib/mysql
-      - type: bind
-        source: ${SOURCE_ROOT}/server-db/exports/openCJ_cod4.sql
-        target: /docker-entrypoint-initdb.d/10-schema.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${SOURCE_ROOT}/server-db/migrations/001-checkpoint-areas.sql
-        target: /docker-entrypoint-initdb.d/20-checkpoint-areas.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${SOURCE_ROOT}/server-db/migrations/002-route-colors.sql
-        target: /docker-entrypoint-initdb.d/21-route-colors.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${SOURCE_ROOT}/server-db/migrations/003-finish-settings.sql
-        target: /docker-entrypoint-initdb.d/22-finish-settings.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${SOURCE_ROOT}/server-db/migrations/004-shared-demos.sql
-        target: /docker-entrypoint-initdb.d/23-shared-demos.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${SOURCE_ROOT}/server-db/migrations/012-checkpoint-retirement.sql
-        target: /docker-entrypoint-initdb.d/31-checkpoint-retirement.sql
-        read_only: true
-        bind:
-          create_host_path: false
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u opencj openCJ_cod4 -e 'SELECT COUNT(*) FROM playerRuns' >/dev/null"]
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u opencj openCJ_cod4 -e 'SELECT 1' >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 60
