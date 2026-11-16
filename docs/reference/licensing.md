@@ -48,14 +48,6 @@ These records identify unresolved issues, not permission to redistribute.
   redistribute images separately. Obtain relevant terms/permission or supply
   these images as external inputs. The [map catalogue](maps/catalogue.md)
   records source attribution.
-- **Obsolete exit and gear icons:** current menus reference neither icon, but
-  both remain in `mod.csv`, images, compiled materials and source inputs.
-  They therefore still reach builds. Retire the unused assets and registrations
-  during publication cleanup and review their historical versions as well.
-  Existing [credits](../../client-mod/credits.txt) record the downloads.
-  IcoMoon Free offers a CC BY 4.0 option for the exit icon; the gear download
-  labels its license differently from current upstream Octicons, so no
-  blanket project license is asserted for either legacy input.
 - **Bundled 7-Zip:** `client-mod/cod4/7za.exe` identifies itself as version 4.42.
   Version-matched notices and corresponding-source arrangements are not
   recorded here. The old batch builder invokes it; the Python builder uses
@@ -75,6 +67,13 @@ These records identify unresolved issues, not permission to redistribute.
 Where material must be excluded, deleting it from the current tree is not
 enough: review the Git history that would be published too. Keep required local
 inputs and recovery copies private.
+
+## Retired assets
+
+The unused exit and gear icon files and their CSV/GDT registrations have been
+removed. Their historical asset files and registrations are excluded from the
+history intended for publication; original copies and revision mappings are
+kept privately. The current menus do not use these icons.
 
 ## External tools and data
 
