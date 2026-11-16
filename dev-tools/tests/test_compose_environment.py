@@ -1,4 +1,5 @@
 """Prerequisite checks must not silently select another installation."""
+
 import json
 from pathlib import Path
 import tempfile
@@ -24,13 +25,25 @@ class ComposeEnvironmentTests(unittest.TestCase):
         self.addCleanup(environment.database_network.cache_clear)
 
     def test_selects_and_caches_this_projects_running_database(self):
-        with patch.object(environment.subprocess, "check_output", return_value="fixture-id\n") as query:
+        with patch.object(
+            environment.subprocess, "check_output", return_value="fixture-id\n"
+        ) as query:
             self.assertEqual(environment.database_container(), "fixture-id")
             self.assertEqual(environment.database_container(), "fixture-id")
         query.assert_called_once_with(
-            ["docker", "compose", "--env-file", str(self.root / "dev-tools/.env"),
-             "ps", "--status", "running", "--quiet", "db"],
-            cwd=self.root / "dev-tools", text=True,
+            [
+                "docker",
+                "compose",
+                "--env-file",
+                str(self.root / "dev-tools/.env"),
+                "ps",
+                "--status",
+                "running",
+                "--quiet",
+                "db",
+            ],
+            cwd=self.root / "dev-tools",
+            text=True,
         )
 
     def test_missing_or_ambiguous_database_has_no_fallback(self):
@@ -48,16 +61,22 @@ class ComposeEnvironmentTests(unittest.TestCase):
             query.assert_not_called()
 
     def test_network_accepts_a_custom_project_name(self):
-        with patch.object(environment, "database_container", return_value="fixture-id"), \
-             patch.object(environment.subprocess, "check_output", return_value=json.dumps({"custom_default": {}})) as query:
+        with patch.object(
+            environment, "database_container", return_value="fixture-id"
+        ), patch.object(
+            environment.subprocess, "check_output", return_value=json.dumps({"custom_default": {}})
+        ) as query:
             self.assertEqual(environment.database_network(), "custom_default")
         self.assertEqual(query.call_args.args[0][-1], "fixture-id")
 
     def test_missing_or_ambiguous_network_is_rejected(self):
         for networks in ({}, {"one": {}, "two": {}}):
             with self.subTest(networks=networks):
-                with patch.object(environment, "database_container", return_value="fixture-id"), \
-                     patch.object(environment.subprocess, "check_output", return_value=json.dumps(networks)):
+                with patch.object(
+                    environment, "database_container", return_value="fixture-id"
+                ), patch.object(
+                    environment.subprocess, "check_output", return_value=json.dumps(networks)
+                ):
                     with self.assertRaisesRegex(RuntimeError, "one network"):
                         environment.database_network()
 

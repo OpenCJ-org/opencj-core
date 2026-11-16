@@ -1,6 +1,7 @@
 """#200: run production CoD4 initialization before any client in an isolated server.
 Checks initial systeminfo and restart behavior without configuring file hosting.
 """
+
 from pathlib import Path
 import argparse
 import json
@@ -25,22 +26,21 @@ for folder in ("opencj", "maps"):
 if args.cvars_revision:
     path = "server-gsc/opencj/cvars.gsc"
     probe = subprocess.run(
-        ["git", "cat-file", "-e", args.cvars_revision + ":" + path],
-        cwd=ROOT, capture_output=True)
+        ["git", "cat-file", "-e", args.cvars_revision + ":" + path], cwd=ROOT, capture_output=True
+    )
     if probe.returncode:
         path = "opencj/cvars.gsc"  # Original component history predates the import.
     source = subprocess.check_output(
-        ["git", "show", args.cvars_revision + ":" + path], cwd=ROOT, text=True)
+        ["git", "show", args.cvars_revision + ":" + path], cwd=ROOT, text=True
+    )
     (mod / "opencj/cvars.gsc").write_text(source)
 for name in ("mod.ff", "z_opencj.iwd"):
     (mod / name).symlink_to("/mod-assets/" + name)
 (home / "plugins").mkdir()
 
 (home / "steamclient.so").symlink_to("/game/steamclient.so")
-shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc",
-                mod / "opencj/downloadcvarstest.gsc")
-(mod / "maps/mp/gametypes/cj.gsc").write_text(
-    'main() { level.script = getCvar("mapname"); }\n')
+shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc", mod / "opencj/downloadcvarstest.gsc")
+(mod / "maps/mp/gametypes/cj.gsc").write_text('main() { level.script = getCvar("mapname"); }\n')
 (mod / "maps/mp/gametypes/_callbacksetup.gsc").write_text(
     'CodeCallback_StartGameType()\n{\n'
     '    level.downloadConnections = 0;\n'
@@ -48,19 +48,42 @@ shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc",
     '    level.downloadInitRan = true;\n'
     '    thread openCJ\\downloadCvarsTest::main();\n}\n'
     'CodeCallback_PlayerConnect() { level.downloadConnections++; }\n'
-    + "\n".join("CodeCallback_" + name + "() {}" for name in
-                ["PlayerDisconnect", "PlayerDamage", "PlayerKilled", "PlayerLastStand"]))
+    + "\n".join(
+        "CodeCallback_" + name + "() {}"
+        for name in ["PlayerDisconnect", "PlayerDamage", "PlayerKilled", "PlayerLastStand"]
+    )
+)
 (mod / "maps/mp/mp_killhouse.gsc").write_text("main() {}\n")
 name = "opencj-" + tag
-cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server",
-       args.binary]
+cmd = [
+    "docker",
+    "compose",
+    "run",
+    "-d",
+    "--no-deps",
+    "--name",
+    name,
+    "--workdir",
+    "/workspace/" + str(home.relative_to(ROOT)),
+    "server",
+    args.binary,
+]
 for key, val in [
-    ("fs_basepath", "/game"), ("fs_homepath", "/workspace/dev-tools/local/" + tag),
-    ("fs_game", "mods/opencj"), ("dedicated", "2"), ("net_port", "28971"),
-    ("sv_maxclients", "1"), ("sv_authorizemode", "0"), ("com_hunkMegs", "1024"),
-    ("developer", "1"), ("g_gametype", "cj"),
-    ("cl_allowDownload", "0"), ("cl_wwwDownload", "0"),
-    ("sv_allowDownload", "0"), ("sv_wwwDownload", "0"), ("sv_wwwBaseURL", ""),
+    ("fs_basepath", "/game"),
+    ("fs_homepath", "/workspace/dev-tools/local/" + tag),
+    ("fs_game", "mods/opencj"),
+    ("dedicated", "2"),
+    ("net_port", "28971"),
+    ("sv_maxclients", "1"),
+    ("sv_authorizemode", "0"),
+    ("com_hunkMegs", "1024"),
+    ("developer", "1"),
+    ("g_gametype", "cj"),
+    ("cl_allowDownload", "0"),
+    ("cl_wwwDownload", "0"),
+    ("sv_allowDownload", "0"),
+    ("sv_wwwDownload", "0"),
+    ("sv_wwwBaseURL", ""),
 ]:
     cmd += ["+set", key, val]
 cmd += ["+map", "mp_killhouse"]
@@ -78,15 +101,25 @@ try:
     for error in errors[:2]:
         if error in log:
             start = log.index(error)
-            print(log[start:start + 800], flush=True)
-    passed = ("DOWNLOAD TEST COMPLETE failures=0" in log
-              and "DOWNLOAD TEST STAGE COMPLETE 0" in log
-              and not any(e in log for e in errors))
+            print(log[start : start + 800], flush=True)
+    passed = (
+        "DOWNLOAD TEST COMPLETE failures=0" in log
+        and "DOWNLOAD TEST STAGE COMPLETE 0" in log
+        and not any(e in log for e in errors)
+    )
     checks = sum(l.startswith("DOWNLOAD TEST 1:") for l in log.splitlines())
-    (home / "result.json").write_text(json.dumps({
-        "passed": passed, "checks": checks, "cvarsRevision": args.cvars_revision,
-        "coverage": "Server initialization/systeminfo before clients and after restart."
-    }, indent=2) + "\n")
+    (home / "result.json").write_text(
+        json.dumps(
+            {
+                "passed": passed,
+                "checks": checks,
+                "cvarsRevision": args.cvars_revision,
+                "coverage": "Server initialization/systeminfo before clients and after restart.",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     assert passed, "Download-cvar regression failed; inspect " + str(home / "console.log")
     print("PASS:", checks, "checks", flush=True)
 finally:

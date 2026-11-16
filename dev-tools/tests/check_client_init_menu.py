@@ -3,6 +3,7 @@ Usage: python3 dev-tools/tests/check_client_init_menu.py UNLINKED_MENU_ROOT
 This checks the actual linked scripts, not source macro expansion. It models
 only their immediate/deferred command behavior; it is not a live-client test.
 """
+
 from pathlib import Path
 import json
 import re
@@ -11,6 +12,7 @@ import sys
 
 root = Path(sys.argv[1]) / "ui_mp/scriptmenus"
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|[^\s;]+|;')
+
 
 def actions(name):
     text = (root / (name + ".menu")).read_text()
@@ -26,11 +28,18 @@ def actions(name):
     assert not action, action
     return result
 
+
 class Client:
     def __init__(self, fps="333", register=True):
-        self.cvars = dict(com_maxfps=fps, temp="user-owned",
-                          opencj_init_once="1", opencj_init_fps=str(int(register)),
-                          sm_sunEnable="1", sm_spotEnable="0", r_blur="2")
+        self.cvars = dict(
+            com_maxfps=fps,
+            temp="user-owned",
+            opencj_init_once="1",
+            opencj_init_fps=str(int(register)),
+            sm_sunEnable="1",
+            sm_spotEnable="0",
+            r_blur="2",
+        )
         self.userinfo = set()
         self.queued = []
         self.responses = []
@@ -69,6 +78,7 @@ class Client:
             else:
                 raise AssertionError(("unexpected menu operation", a))
 
+
 for fps in ("43", "76", "125", "250", "333", "0", "500", "999"):
     c = Client(fps)
     for _ in range(3):
@@ -86,8 +96,14 @@ c = Client()
 c.open("opencj_client_init")
 saved = {k: v for k, v in c.cvars.items() if k.startswith("opencj_gfx_map_")}
 # Model settings application and a player holding Tab after initial success.
-c.cvars.update(sm_sunEnable="0", sm_spotEnable="1", r_blur="0",
-               opencj_sb_held="1", opencj_sb_active="1", com_maxfps="125")
+c.cvars.update(
+    sm_sunEnable="0",
+    sm_spotEnable="1",
+    r_blur="0",
+    opencj_sb_held="1",
+    opencj_sb_active="1",
+    com_maxfps="125",
+)
 c.open("opencj_client_init")
 assert c.cvars["com_maxfps"] == "125", "late retry must preserve the current FPS"
 assert all(c.cvars[k] == v for k, v in saved.items()), "late retry recaptured map defaults"
@@ -111,4 +127,6 @@ d.open("opencj_client_init")
 assert c.cvars["opencj_sb_up"] == d.cvars["opencj_sb_up"]
 assert c.cvars["opencj_sb_down"] == d.cvars["opencj_sb_down"]
 assert 'bind TAB "+scores; vstr opencj_sb_up; set opencj_sb_release"' in c.cvars["opencj_sb_down"]
-print("PASS: linked menu preserves FPS across batched/late retries; map defaults, held scoreboard, user temp and binding quotes are preserved; acknowledgement follows immediate setup.")
+print(
+    "PASS: linked menu preserves FPS across batched/late retries; map defaults, held scoreboard, user temp and binding quotes are preserved; acknowledgement follows immediate setup."
+)

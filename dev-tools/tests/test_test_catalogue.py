@@ -25,17 +25,26 @@ class CatalogueTests(unittest.TestCase):
         tests.mkdir(parents=True)
         (tests / "test_example.py").write_text("import unittest\n")
         self.group = {
-            "id": "example", "category": "portable", "mode": "unit",
-            "description": "Synthetic unit test.", "requires": "Python.",
-            "effects": "None.", "commands": [],
+            "id": "example",
+            "category": "portable",
+            "mode": "unit",
+            "description": "Synthetic unit test.",
+            "requires": "Python.",
+            "effects": "None.",
+            "commands": [],
             "files": ["dev-tools/tests/test_example.py"],
         }
         self.save()
 
     def save(self):
-        (self.root / runner.CATALOGUE).write_text(json.dumps({
-            "version": 1, "groups": [self.group],
-        }))
+        (self.root / runner.CATALOGUE).write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "groups": [self.group],
+                }
+            )
+        )
 
     def test_new_test_must_be_catalogued(self):
         (self.root / "dev-tools/tests/test_forgotten.py").write_text("")

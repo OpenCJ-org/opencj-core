@@ -1,4 +1,5 @@
 """Resolve prerequisites for tests in the selected development installation."""
+
 from functools import lru_cache
 import json
 import os
@@ -16,9 +17,19 @@ def database_container():
     if not env_file.is_file():
         raise RuntimeError("Run dev.py init in a separate test installation first.")
     containers = subprocess.check_output(
-        ["docker", "compose", "--env-file", str(env_file),
-         "ps", "--status", "running", "--quiet", "db"],
-        cwd=directory, text=True,
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            str(env_file),
+            "ps",
+            "--status",
+            "running",
+            "--quiet",
+            "db",
+        ],
+        cwd=directory,
+        text=True,
     ).split()
     if len(containers) != 1:
         raise RuntimeError(
@@ -30,11 +41,18 @@ def database_container():
 
 @lru_cache(maxsize=1)
 def database_network():
-    networks = json.loads(subprocess.check_output(
-        ["docker", "inspect", "--format", "{{json .NetworkSettings.Networks}}",
-         database_container()],
-        text=True,
-    ))
+    networks = json.loads(
+        subprocess.check_output(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .NetworkSettings.Networks}}",
+                database_container(),
+            ],
+            text=True,
+        )
+    )
     if len(networks) != 1:
         raise RuntimeError("Expected one network for the selected test database.")
     return next(iter(networks))

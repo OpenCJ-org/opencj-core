@@ -1,6 +1,11 @@
 """Exercise actual mp_descent_v2 finish handlers without clients or database writes."""
+
 from pathlib import Path
-import shutil, subprocess, time, uuid
+import shutil
+import subprocess
+import time
+import uuid
+
 root = Path(__file__).resolve().parents[2]
 dev = root / "dev-tools"
 tag = "descent-v2-finish-" + uuid.uuid4().hex[:8]
@@ -22,35 +27,83 @@ shutil.copyfile(dev / "tests/descent-v2-finish.gsc", mod / "opencj/descentv2test
 p = mod / "maps/mp/gametypes/cj.gsc"
 s = p.read_text()
 assert "main()\n{" in s
-p.write_text(s.replace("main()\n{", "main()\n{\n    thread openCJ" + chr(92) + "descentv2test::main();", 1))
+p.write_text(
+    s.replace("main()\n{", "main()\n{\n    thread openCJ" + chr(92) + "descentv2test::main();", 1)
+)
 # Suppress player event side effects in this isolated test; test code spawns the bot.
 p = mod / "maps/mp/gametypes/_callbacksetup.gsc"
 s = p.read_text()
 import re
+
 matches = list(re.finditer(r"CodeCallback_(?!StartGameType)[A-Za-z0-9_]+\([^)]*\)\s*\{", s))
 for match in reversed(matches):
     start = match.end()
     end = start
     depth = 1
     while depth:
-        if s[end] == "{": depth += 1
-        elif s[end] == "}": depth -= 1
+        if s[end] == "{":
+            depth += 1
+        elif s[end] == "}":
+            depth -= 1
         end += 1
-    s = s[:start] + "\n" + s[end-1:]
+    s = s[:start] + "\n" + s[end - 1 :]
 p.write_text(s)
 # Replace only client HUD output so the real finish logic accepts a script entity.
 p = mod / "maps/mp/mp_descent_v2.gsc"
 s = p.read_text().replace("player iPrintLnBold(", "iPrintLnBold(")
 p.write_text(s)
 container = "opencj-" + tag
-args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "--workdir", "/workspace/" + str(smoke.relative_to(root)), "server",
-        "/workspace/cod4x-server/bin/cod4x18_dedrun", "+set", "fs_basepath", "/game",
-        "+set", "fs_homepath", "/workspace/dev-tools/local/" + tag,
-        "+set", "fs_game", "mods/opencj", "+set", "dedicated", "2", "+set", "net_port", "28964",
-        "+set", "sv_maxclients", "1", "+set", "sv_authorizemode", "0",
-        "+set", "com_hunkMegs", "1024", "+set", "developer", "1", "+set", "g_gametype", "cj",
-        "+set", "g_log", "blue2-test.log", "+set", "g_logSync", "1",
-        "+map", "mp_descent_v2"]
+args = [
+    "docker",
+    "compose",
+    "run",
+    "-d",
+    "--no-deps",
+    "--name",
+    container,
+    "--workdir",
+    "/workspace/" + str(smoke.relative_to(root)),
+    "server",
+    "/workspace/cod4x-server/bin/cod4x18_dedrun",
+    "+set",
+    "fs_basepath",
+    "/game",
+    "+set",
+    "fs_homepath",
+    "/workspace/dev-tools/local/" + tag,
+    "+set",
+    "fs_game",
+    "mods/opencj",
+    "+set",
+    "dedicated",
+    "2",
+    "+set",
+    "net_port",
+    "28964",
+    "+set",
+    "sv_maxclients",
+    "1",
+    "+set",
+    "sv_authorizemode",
+    "0",
+    "+set",
+    "com_hunkMegs",
+    "1024",
+    "+set",
+    "developer",
+    "1",
+    "+set",
+    "g_gametype",
+    "cj",
+    "+set",
+    "g_log",
+    "blue2-test.log",
+    "+set",
+    "g_logSync",
+    "1",
+    "+map",
+    "mp_descent_v2",
+]
 try:
     subprocess.run(args, cwd=dev, check=True, capture_output=True)
     logfile = mod / "blue2-test.log"

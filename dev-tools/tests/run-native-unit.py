@@ -24,9 +24,17 @@ def main():
         for source in sources:
             output = Path(directory) / Path(source).stem
             command = [
-                compiler, "-std=c++17", "-O2", "-m32", "-DCOD4",
-                "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-                str(ROOT / "dev-tools/tests" / source), "-o", str(output),
+                compiler,
+                "-std=c++17",
+                "-O2",
+                "-m32",
+                "-DCOD4",
+                "-ffunction-sections",
+                "-fdata-sections",
+                "-Wl,--gc-sections",
+                str(ROOT / "dev-tools/tests" / source),
+                "-o",
+                str(output),
             ]
             subprocess.run(command, check=True, cwd=ROOT)
             subprocess.run([str(output)], check=True, cwd=ROOT)

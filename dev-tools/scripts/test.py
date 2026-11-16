@@ -17,9 +17,10 @@ CATEGORIES = {"portable", "integration", "manual", "support"}
 def test_files(root):
     """Use Git's inventory so ignored local experiments never become test inputs."""
     result = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "--cached", "--others",
-         "--exclude-standard", "-z"],
-        check=True, capture_output=True, text=True,
+        ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        check=True,
+        capture_output=True,
+        text=True,
     )
     files = set()
     for name in result.stdout.split("\0"):
@@ -83,7 +84,9 @@ def load_catalogue(root=ROOT):
     if listed_files != inventory:
         missing = sorted(inventory - listed_files)
         extra = sorted(listed_files - inventory)
-        raise ValueError("Catalogue mismatch; unlisted=" + repr(missing) + "; unexpected=" + repr(extra))
+        raise ValueError(
+            "Catalogue mismatch; unlisted=" + repr(missing) + "; unexpected=" + repr(extra)
+        )
     if not any(group["category"] == "portable" for group in groups):
         raise ValueError("No portable test groups")
     return groups
@@ -96,7 +99,9 @@ def select_portable(groups, requested):
         if identifier not in by_id:
             raise ValueError("Unknown test group: " + identifier)
         if by_id[identifier]["category"] != "portable":
-            raise ValueError("Group requires its explicit integration/manual command: " + identifier)
+            raise ValueError(
+                "Group requires its explicit integration/manual command: " + identifier
+            )
         selected.append(by_id[identifier])
     if not requested:
         selected = [group for group in groups if group["category"] == "portable"]
@@ -133,7 +138,9 @@ def run_portable(groups, root=ROOT):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    listing = commands.add_parser("list", help="List groups; optionally show full details for one group")
+    listing = commands.add_parser(
+        "list", help="List groups; optionally show full details for one group"
+    )
     listing.add_argument("group", nargs="?")
     commands.add_parser("check", help="Verify every test file has a maintained catalogue entry")
     portable = commands.add_parser("portable", help="Run the reviewed offline checks")
@@ -155,8 +162,9 @@ def main():
                 for group in groups:
                     print(group["id"] + " [" + group["category"] + "] " + group["description"])
         elif options.command == "_unit":
-            allowed = {name for group in groups if group.get("mode") == "unit"
-                       for name in group["files"]}
+            allowed = {
+                name for group in groups if group.get("mode") == "unit" for name in group["files"]
+            }
             if options.file not in allowed:
                 raise ValueError("Not a reviewed unit-test entry point: " + options.file)
             return run_unit(ROOT / options.file)

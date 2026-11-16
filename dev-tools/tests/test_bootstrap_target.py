@@ -26,9 +26,19 @@ class BootstrapTargetTests(unittest.TestCase):
         with patch.object(bootstrap.subprocess, "check_output", return_value="abc123\n") as query:
             self.assertEqual(bootstrap.compose_database_container(), "abc123")
         query.assert_called_once_with(
-            ["docker", "compose", "--env-file", str(self.directory / ".env"),
-             "ps", "--status", "running", "--quiet", "db"],
-            cwd=self.directory, text=True,
+            [
+                "docker",
+                "compose",
+                "--env-file",
+                str(self.directory / ".env"),
+                "ps",
+                "--status",
+                "running",
+                "--quiet",
+                "db",
+            ],
+            cwd=self.directory,
+            text=True,
         )
 
     def test_missing_or_ambiguous_database_never_falls_back(self):
@@ -46,21 +56,27 @@ class BootstrapTargetTests(unittest.TestCase):
             query.assert_not_called()
 
     def test_default_check_connects_only_to_selected_database(self):
-        with patch.object(bootstrap.sys, "argv", ["bootstrap-db.py", "--check"]), \
-             patch.object(bootstrap, "compose_database_container", return_value="isolated-db") as select, \
-             patch.object(bootstrap, "MySQL") as mysql, \
-             patch.object(bootstrap.migrate, "lock"), \
-             patch.object(bootstrap, "check", return_value=25):
+        with patch.object(bootstrap.sys, "argv", ["bootstrap-db.py", "--check"]), patch.object(
+            bootstrap, "compose_database_container", return_value="isolated-db"
+        ) as select, patch.object(bootstrap, "MySQL") as mysql, patch.object(
+            bootstrap.migrate, "lock"
+        ), patch.object(
+            bootstrap, "check", return_value=25
+        ):
             bootstrap.main()
         select.assert_called_once_with()
         mysql.assert_called_once_with("isolated-db", "openCJ_cod4")
 
     def test_explicit_container_does_not_require_compose(self):
-        with patch.object(bootstrap.sys, "argv", ["bootstrap-db.py", "--container", "fixture-db", "--check"]), \
-             patch.object(bootstrap, "compose_database_container") as select, \
-             patch.object(bootstrap, "MySQL") as mysql, \
-             patch.object(bootstrap.migrate, "lock"), \
-             patch.object(bootstrap, "check", return_value=25):
+        with patch.object(
+            bootstrap.sys, "argv", ["bootstrap-db.py", "--container", "fixture-db", "--check"]
+        ), patch.object(bootstrap, "compose_database_container") as select, patch.object(
+            bootstrap, "MySQL"
+        ) as mysql, patch.object(
+            bootstrap.migrate, "lock"
+        ), patch.object(
+            bootstrap, "check", return_value=25
+        ):
             bootstrap.main()
         select.assert_not_called()
         mysql.assert_called_once_with("fixture-db", "openCJ_cod4")

@@ -25,22 +25,35 @@ class SetupTests(unittest.TestCase):
         (self.game / "zone").mkdir()
         self.mod = self.root / "compiled assets"
         self.mod.mkdir()
-        self.args = argparse.Namespace(game_dir=str(self.game), mod_dir=str(self.mod),
-                                       map="mp_killhouse", port=28961, bind_ip="127.0.0.1")
-        for patcher in (patch.object(dev, "HERE", self.here),
-                        patch.object(dev.os, "getuid", return_value=1000, create=True),
-                        patch.object(dev.os, "getgid", return_value=1000, create=True)):
+        self.args = argparse.Namespace(
+            game_dir=str(self.game),
+            mod_dir=str(self.mod),
+            map="mp_killhouse",
+            port=28961,
+            bind_ip="127.0.0.1",
+        )
+        for patcher in (
+            patch.object(dev, "HERE", self.here),
+            patch.object(dev.os, "getuid", return_value=1000, create=True),
+            patch.object(dev.os, "getgid", return_value=1000, create=True),
+        ):
             patcher.start()
             self.addCleanup(patcher.stop)
 
     def test_initializes_only_cod4_and_preserves_configuration(self):
         with patch.object(dev, "run") as run:
             dev.initialize(self.args)
-        run.assert_called_once_with("git", "-C", str(self.root), "submodule", "update", "--init", "--", "cod4x-server")
+        run.assert_called_once_with(
+            "git", "-C", str(self.root), "submodule", "update", "--init", "--", "cod4x-server"
+        )
         env = (self.here / ".env").read_text()
         config_path = self.here / "local/runtime/mods/opencj/opencj-dev.cfg"
         config = config_path.read_text()
-        password = next(line.split("=", 1)[1].strip("'") for line in env.splitlines() if line.startswith("DB_PASSWORD="))
+        password = next(
+            line.split("=", 1)[1].strip("'")
+            for line in env.splitlines()
+            if line.startswith("DB_PASSWORD=")
+        )
         self.assertIn(f'set db_pass "{password}"', config)
         self.assertIn("SERVER_PORT='28961'", env)
         self.assertFalse((self.game / "mods").exists())
@@ -55,7 +68,9 @@ class SetupTests(unittest.TestCase):
         (engine / ".git").write_text("gitdir: ../.git/modules/cod4x-server\n")
         pending = engine / "pending.cpp"
         pending.write_text("uncommitted engine work\n")
-        with patch.object(dev.subprocess, "check_output", return_value=str(engine)), patch.object(dev, "run") as run:
+        with patch.object(dev.subprocess, "check_output", return_value=str(engine)), patch.object(
+            dev, "run"
+        ) as run:
             dev.initialize(self.args)
             run.assert_not_called()
         self.assertEqual(pending.read_text(), "uncommitted engine work\n")

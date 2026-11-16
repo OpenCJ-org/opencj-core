@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """OpenCJ development environment; Python standard library only."""
+
 import argparse
 import ipaddress
 import os
@@ -29,7 +30,6 @@ def prepare_engine(root):
     run("git", "-C", str(root), "submodule", "update", "--init", "--", "cod4x-server")
 
 
-
 def run(*args):
     subprocess.run(args, cwd=HERE, check=True)
 
@@ -51,7 +51,9 @@ def initialize(args):
     if HERE.name != "dev-tools":
         raise ValueError("Run this helper from the dev-tools directory inside opencj-core.")
     if (HERE / ".env").exists():
-        raise ValueError("Already initialized. Edit .env and local/runtime/mods/opencj/opencj-dev.cfg to adjust settings; existing configuration was preserved.")
+        raise ValueError(
+            "Already initialized. Edit .env and local/runtime/mods/opencj/opencj-dev.cfg to adjust settings; existing configuration was preserved."
+        )
     root = HERE.parent
     game = Path(args.game_dir).expanduser().resolve()
     mod = Path(args.mod_dir).expanduser().resolve() if args.mod_dir else game / "mods" / "opencj"
@@ -78,11 +80,17 @@ def initialize(args):
     (HERE / "local" / "sockets").mkdir(exist_ok=True)
     password = secrets.token_hex(24)
     settings = {
-        "SOURCE_ROOT": root, "GAME_DIR": game, "MOD_DIR": mod,
-        "DEV_UID": os.getuid(), "DEV_GID": os.getgid(),
+        "SOURCE_ROOT": root,
+        "GAME_DIR": game,
+        "MOD_DIR": mod,
+        "DEV_UID": os.getuid(),
+        "DEV_GID": os.getgid(),
         "GAME_GID": game.stat().st_gid,
-        "DB_PASSWORD": password, "DB_ROOT_PASSWORD": secrets.token_hex(24),
-        "SERVER_PORT": args.port, "BIND_IP": args.bind_ip, "START_MAP": args.map,
+        "DB_PASSWORD": password,
+        "DB_ROOT_PASSWORD": secrets.token_hex(24),
+        "SERVER_PORT": args.port,
+        "BIND_IP": args.bind_ip,
+        "START_MAP": args.map,
     }
     config = runtime / "mods" / "opencj" / "opencj-dev.cfg"
     if config.exists():
@@ -91,23 +99,39 @@ def initialize(args):
         'set sv_hostname "OpenCJ Development"\n'
         'set sv_punkbuster "0"\nset sv_allowDownload "1"\n'
         'set db_host "db"\nset db_port "3306"\nset db_user "opencj"\n'
-        f'set db_pass "{password}"\nset db_base "openCJ_cod"\n', encoding="utf-8")
+        f'set db_pass "{password}"\nset db_base "openCJ_cod"\n',
+        encoding="utf-8",
+    )
     config.chmod(0o600)
     env = HERE / ".env"
-    env.write_text("".join(f"{key}={dotenv(value)}\n" for key, value in settings.items()), encoding="utf-8")
+    env.write_text(
+        "".join(f"{key}={dotenv(value)}\n" for key, value in settings.items()), encoding="utf-8"
+    )
     env.chmod(0o600)
-    print("Initialized. Follow ../docs/setup/development.md: create the external volume, start db, bootstrap the empty schema, then build and start the server.")
+    print(
+        "Initialized. Follow ../docs/setup/development.md: create the external volume, start db, bootstrap the empty schema, then build and start the server."
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init", help="Initialize the CoD4 submodule and create local configuration")
-    init.add_argument("--game-dir", required=True, help="Existing CoD4 directory containing main/ and zone/")
-    init.add_argument("--mod-dir", help="Compiled assets directory; defaults to GAME_DIR/mods/opencj")
+    init = commands.add_parser(
+        "init", help="Initialize the CoD4 submodule and create local configuration"
+    )
+    init.add_argument(
+        "--game-dir", required=True, help="Existing CoD4 directory containing main/ and zone/"
+    )
+    init.add_argument(
+        "--mod-dir", help="Compiled assets directory; defaults to GAME_DIR/mods/opencj"
+    )
     init.add_argument("--map", default="mp_killhouse")
     init.add_argument("--port", default=28961, type=int)
-    init.add_argument("--bind-ip", default="127.0.0.1", help="Host IP to publish; use the server's LAN/VPN IP for remote play")
+    init.add_argument(
+        "--bind-ip",
+        default="127.0.0.1",
+        help="Host IP to publish; use the server's LAN/VPN IP for remote play",
+    )
     for command in ("build", "up", "down", "logs", "restart", "check", "db-shell"):
         commands.add_parser(command)
     args = parser.parse_args()
@@ -131,11 +155,23 @@ def main():
         elif args.command == "logs":
             compose("logs", "-f", "server")
         elif args.command == "db-shell":
-            compose("exec", "db", "sh", "-c", 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u opencj openCJ_cod4')
+            compose(
+                "exec",
+                "db",
+                "sh",
+                "-c",
+                'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u opencj openCJ_cod4',
+            )
         else:
             compose("config", "--quiet")
             compose("ps")
-            compose("exec", "db", "sh", "-c", 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u opencj openCJ_cod4 -e "SHOW TABLES; SHOW FUNCTION STATUS WHERE Db = DATABASE();"')
+            compose(
+                "exec",
+                "db",
+                "sh",
+                "-c",
+                'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u opencj openCJ_cod4 -e "SHOW TABLES; SHOW FUNCTION STATUS WHERE Db = DATABASE();"',
+            )
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
