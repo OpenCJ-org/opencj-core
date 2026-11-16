@@ -2,6 +2,7 @@
 """Initialize an empty CoD4 development database from the versioned schema."""
 import argparse
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,15 +45,35 @@ def bootstrap(db):
     return check(db)
 
 
+def compose_database_container():
+    """Select this installation's running database, including custom projects."""
+    directory = ROOT / "dev-tools"
+    env_file = directory / ".env"
+    if not env_file.is_file():
+        raise RuntimeError("Run dev.py init first, or supply an explicit --container.")
+    containers = subprocess.check_output(
+        ["docker", "compose", "--env-file", str(env_file),
+         "ps", "--status", "running", "--quiet", "db"],
+        cwd=directory, text=True,
+    ).split()
+    if len(containers) != 1:
+        raise RuntimeError(
+            "Expected one running db service in the selected Compose project. "
+            "Start it with docker compose up -d --wait db."
+        )
+    return containers[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--container", default="opencj-dev-db-1")
+    parser.add_argument("--container", help="Explicit database container; otherwise use the selected Compose project")
     parser.add_argument("--confirm-empty", action="store_true")
     parser.add_argument("--check", action="store_true", help="Only validate the existing migration ledger")
     args = parser.parse_args()
     if not args.check and not args.confirm_empty:
         parser.error("Creation requires --confirm-empty; this command never replaces an existing schema.")
-    with MySQL(args.container, DATABASE) as db:
+    container = args.container or compose_database_container()
+    with MySQL(container, DATABASE) as db:
         migrate.lock(db, DATABASE)
         count = check(db) if args.check else bootstrap(db)
     print(f"Database verified: {count} recorded migrations.")

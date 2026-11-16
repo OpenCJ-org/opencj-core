@@ -2,7 +2,7 @@
 
 Use an Ubuntu 24.04 x86_64 development host with Docker Engine, Compose v2,
 Git and Python 3. The container build supplies the 32-bit compiler toolchain.
-The optional host helper is `scripts/install-host.sh`; review it before use.
+The optional host helper is `dev-tools/scripts/install-host.sh`; review it before use.
 
 Obtain the complete core checkout and initialize only the needed engine:
 
@@ -50,6 +50,29 @@ Compose's database healthcheck tests connectivity only. `dev.py up` also checks
 that the full migration ledger matches the checkout before starting gameplay.
 The named database volume is external: normal Compose teardown preserves it.
 Backups are still necessary.
+
+## Separate test installations
+
+Each installation needs its own source worktree, generated configuration,
+Compose project, database volume and host port. Before running the same setup
+commands in a separate worktree, select unique names in that shell:
+
+```sh
+export COMPOSE_PROJECT_NAME=opencj-test
+export DATABASE_VOLUME=opencj-test_database
+python3 dev.py init --game-dir "$GAME_DIR" --mod-dir "$MOD_DIR" --port 28962
+docker volume create "$DATABASE_VOLUME"
+docker compose up -d --wait db
+python3 scripts/bootstrap-db.py --confirm-empty
+python3 dev.py build
+python3 dev.py up
+```
+
+Run these commands from that worktree's `dev-tools` directory. Keep both variables
+set for later commands against that installation; changing only the project name
+would still use the default database volume. The bootstrap/check helper selects
+the running `db` service from the same Compose project. Its optional
+`--container` argument is for explicitly selected standalone test containers.
 
 ## Existing databases
 
