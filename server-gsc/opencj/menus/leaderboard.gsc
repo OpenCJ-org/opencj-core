@@ -1,0 +1,266 @@
+#include openCJ\util;
+
+onInit()
+{
+    // First, register leaderboard specific setting(s)
+    openCJ\settings::addSettingString("lbsort", 1, 25, "time:asc", "Set persistent sorting for leaderboard", ::_onLBSortSettingChange);
+
+    // Then, do common board initialization
+    openCJ\menus\board_base::initBoard("lb", "leaderboard", "opencj_leaderboard", ::fetchUpdatedData, ::onBoardSortChange);
+}
+
+onBoardSortChange(sortType, sortOrder)
+{
+    sortOrderStr = "asc";
+    if (sortOrder == 2)
+    {
+        sortOrderStr = "desc";
+    }
+
+    fullSortStr = sortType + ":" + sortOrderStr;
+    if ((sortType == "time") || (sortType == "rpgs") || (sortType == "loads")) // These sorts are supported for records HUD
+    {
+        self sendLocalChatMessage("Applying sort " + fullSortStr + " to records HUD", false);
+    }
+    else
+    {
+        self sendLocalChatMessage("Not applying sort " + fullSortStr + " to records HUD", false);
+    }
+
+    self openCJ\settings::setSettingByScript("lbsort", fullSortStr);
+    self openCJ\showRecords::onSortingChanged(); // Re-determine the records based on new sorting
+}
+
+_onLBSortSettingChange(newSortStr)
+{
+    newSortStr = toLower(newSortStr);
+    if (newSortStr.size < 3) // x:x
+    {
+        return false;
+    }
+    if (!isSubStr(newSortStr, ":"))
+    {
+        return false;
+    }
+
+    arr = strTok(newSortStr, ":");
+    if (arr.size != 2)
+    {
+        return false;
+    }
+    if ((arr[1] != "asc") && (arr[1] != "desc"))
+    {
+        return false;
+    }
+    if (!openCJ\menus\board_base::isValidSortCol(arr[0]) && (arr[0] != "date")) // "date" gets converted to "startDate" or "finishDate"
+    {
+        return false;
+    }
+
+    return true;
+}
+
+// TODO: fetch and process 'your' best finished run as well
+
+fetchUpdatedData()
+{
+    // In order to obtain run data per route, we first need to check what checkpoint ID(s) match the finish checkpoint(s) for the selected route
+    routeIdx = self.currentBoard["filter"]["route"] - 1;
+
+    // Debug information might still be useful for now
+    routeName = undefined;
+    if (self.currentBoard["routes"].size > routeIdx)
+    {
+        routeName = self.currentBoard["routes"][routeIdx];
+    }
+    else
+    {
+        printf("WARNING: route for idx: " + routeIdx + " is not available. Have:\n");
+        for (i = 0; i < self.currentBoard["routes"].size; i++)
+        {
+            printf("route[" + i + "] = " + self.currentBoard["routes"][i] + "\n"); // Debug
+        }
+    }
+
+    finishCPIds = getEndCheckpointIdsForRoute(routeName);
+
+    rows = [];
+    if (isDefined(finishCPIds))
+    {
+        // Based on player's current filter (ele, any %, tas, fps) and sorting (time, rpg, loads, date), asc/desc criteria:
+        // - grab up to 10 rows (leaderboard pages show 10)
+        // the information we need is stored across multiple tables as follows:
+        // - checkPointStatistics has explosiveJumps, loadCount, timePlayed, and all filters (any%, ele, tas, fps)
+        // - playerRuns has runID that we can use to match a playerID which in turn gives us the playername
+        // - playerRuns has finishTimestamp which we can use as date
+        // - playerInformation has playerName
+        // the more difficult part of the query is the ROW_NUMBER() with PARTITION and rowNr = 1, which is used to make sure we only obtain one run per playerID
+        sortStr = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
+        // Rank narrow indexed rows; fetch names/details only for this page.
+        // Exact ties use the oldest run, then checkpoint ID, consistently with finish ranking.
+        query = "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.finishTimeStamp, r.FPSMode, r.ele, r.anyPct, r.hb, r.hardTAS, a.runID FROM (" +
+            "SELECT COUNT(*) OVER() AS totalNr, a.* FROM (" +
+            "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, cs.runID, cs.cpID, cs.saveCount, (" +
+                        "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY " + sortStr +
+                    ", cs.runID ASC, cs.cpID ASC)) AS rn " +
+                    "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID " +
+                    "WHERE cs.cpID IN " + finishCPIds +
+                    " AND pr.finishcpID IS NOT NULL" +
+                    " AND pr.finishTimeStamp IS NOT NULL" +
+                    " AND pr.ele <= " + self.currentBoard["filter"]["ele"] +
+                    " AND pr.anyPct <= " + self.currentBoard["filter"]["any"] +
+                    " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
+                    " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] +
+                    " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
+            ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" +
+            " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
+            " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]) +
+        ") a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
+        "INNER JOIN (SELECT runID,FPSMode,ele,anyPct,hb,hardTAS FROM playerRuns) r ON r.runID = a.runID " +
+        "ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC";
+
+        // Example output (pretend there are 10 rows instead of 2 though):
+        // -----------------------------------------------------------------------------------------------------------------------------|
+        // | totalNr | playerName    | timePlayed | explosiveJumps | loadCount | finishTimeStamp     | FPSMode | ele | anyPct | hardTAS |
+        // |----------------------------------------------------------------------------------------------------------------------------|
+        // | 13      | 3xP' Rextrus  | 416800     | 0              | 38        | 2022-09-04 08:22:12 | all     | 0   | 0      | 0       |
+        // |---------|---------------|------------|----------------|-----------|---------------------|---------|-----|--------|---------|
+        // | 13      | Styx|Ridgepig | 657000     | 1              | 69        | 2022-09-04 09:53:58 | all     | 0   | 0      | 0       |
+        // |---------|---------------|------------|----------------|-----------|---------------------|---------|-----|--------|---------|
+        // | ....
+
+        // Might remain useful for now to print the query
+        printf("Leaderboard query:\n" + query + "\n"); // Debug
+
+        rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "board");
+    if (!isDefined(rows)) return false;
+    }
+
+    self.currentBoard["demoRunIDs"] = [];
+    self.currentBoard["cols"] = []; // Hope this clears the previously used memory
+
+    if (isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
+    {
+        self.currentBoard["nrTotalEntries"] = int(rows[0][0]); // totalNr
+        self.currentBoard["nrEntriesThisPage"] = rows.size;
+    }
+    else
+    {
+        self.currentBoard["nrTotalEntries"] = 0;
+        self.currentBoard["nrEntriesThisPage"] = 0;
+    }
+
+    // Now that the data is there, we need to fill in the values into the local variables
+    firstItemOnPage = openCJ\menus\board_base::getAbsFirstItemNrCurrentPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
+    for (i = 0; i < self.currentBoard["maxEntriesPerPage"]; i++)
+    {
+        if (i < self.currentBoard["nrEntriesThisPage"])
+        {
+            self.currentBoard["demoRunIDs"][i] = int(rows[i][11]);
+            self.currentBoard["cols"][i]["nr"] = (i + firstItemOnPage);
+            self.currentBoard["cols"][i]["name"] = "^7" + rows[i][1] + "^7"; // playerName
+            self.currentBoard["cols"][i]["time"] = int(rows[i][2]);
+            self.currentBoard["cols"][i]["rpgs"] = int(rows[i][3]);
+            self.currentBoard["cols"][i]["loads"] = int(rows[i][4]);
+            self.currentBoard["cols"][i]["date"] = rows[i][5];
+            self.currentBoard["cols"][i]["fps"] = openCJ\menus\board_base::dbFPSToFullName(rows[i][6]);
+            self.currentBoard["cols"][i]["ele"] = xOrEmpty(int(rows[i][7]));
+            self.currentBoard["cols"][i]["any"] = xOrEmpty(int(rows[i][8]));
+            self.currentBoard["cols"][i]["hb"] = xOrEmpty(int(rows[i][9]));
+            self.currentBoard["cols"][i]["tas"] = xOrEmpty(int(rows[i][10]));
+        }
+        else
+        {
+            self.currentBoard["cols"][i]["nr"] = -1;
+            self.currentBoard["cols"][i]["name"] = "";
+            self.currentBoard["cols"][i]["time"] = 0;
+            self.currentBoard["cols"][i]["rpgs"] = 0;
+            self.currentBoard["cols"][i]["loads"] = 0;
+            self.currentBoard["cols"][i]["date"] = "";
+            self.currentBoard["cols"][i]["fps"] = "";
+            self.currentBoard["cols"][i]["ele"] = false;
+            self.currentBoard["cols"][i]["any"] = false;
+            self.currentBoard["cols"][i]["hb"] = false;
+            self.currentBoard["cols"][i]["tas"] = false;
+        }
+    }
+}
+
+getSortStr(col, order) // Also used by showRecords.gsc for top-right records sorting
+{
+    orderTypeStr = "ASC"; // Default sort by ASC
+
+    // Some scripts provide "ASC", "DESC". Some provide 1, 2
+    if (isString(order))
+    {
+        order = toLower(order);
+        if (order == "desc")
+        {
+            orderTypeStr = "DESC";
+        }
+    }
+    else if (order == 2)
+    {
+        orderTypeStr = "DESC";
+    }
+
+    // For leaderboard, date means finishDate
+    if (col == "date")
+    {
+        col = "finishDate";
+    }
+
+    // First add the sort that the user specified, however we want to add more sorts to nicely sort data even if it has the same main value as the next-in-line run
+    orderStr = openCJ\menus\board_base::convertSortCol(col, orderTypeStr);
+    orderStr += ", " + openCJ\menus\board_base::convertSortCol("time", orderTypeStr); // It's OK to specify the same sort twice in there, at least no SQL error
+    orderStr += ", " + openCJ\menus\board_base::convertSortCol("rpgs", orderTypeStr);
+    //orderStr += ", " + openCJ\menus\board_base::convertSortCol("loads", orderTypeStr);
+    //orderStr += ", " + openCJ\menus\board_base::convertSortCol("saves", orderTypeStr);
+    //orderStr += ", " + openCJ\menus\board_base::convertSortCol("finishDate", orderTypeStr);
+
+    return orderStr;
+}
+
+getEndCheckpointIdsForRoute(routeName)
+{
+    if (!isDefined(routeName) || !isDefined(level.routeEnders[routeName]))
+    {
+        return undefined;
+    }
+
+    cpSqlStr = "";
+    isFirstCp = true;
+    for (i = 0; i < level.routeEnders[routeName].size; i++)
+    {
+        cpID = openCJ\checkpoints::getCheckpointID(level.routeEnders[routeName][i]);
+        if (isDefined(cpID))
+        {
+            if (!isFirstCp)
+            {
+                cpSqlStr += ", ";
+            }
+
+            cpSqlStr += cpID;
+            isFirstCp = false;
+        }
+    }
+
+    if (cpSqlStr.size <= 0)
+    {
+        return undefined;
+    }
+
+    return "(" + cpSqlStr + ")";
+}
+
+handleDemo(button)
+{
+    if(self.currentMenu!="opencj_leaderboard")return;
+    index=int(getSubStr(button,8))-1;
+    if(index<0 || index>=self.currentBoard["nrEntriesThisPage"])return;
+    id=self.currentBoard["demoRunIDs"][index];
+    if(!isDefined(id))return;
+    self openCJ\demos::cancelRequest();
+    self closeMenu();
+    self thread openCJ\demos::playRun(id,true);
+}

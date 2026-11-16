@@ -1,0 +1,329 @@
+#include openCJ\util;
+
+onInit()
+{
+    level.runInfoShader["fps_any"] = "opencj_icon_fps_any";
+    level.runInfoShader["fps_classic"] = "opencj_icon_fps_classic";
+    level.runInfoShader["fps_standard"] = "opencj_icon_fps_standard";
+    level.runInfoShader["ele"] = "opencj_icon_ele";
+    level.runInfoShader["anyPct"] = "opencj_icon_anypct";
+    level.runInfoShader["halfBeat"] = "opencj_icon_halfbeat";
+    level.runInfoShader["hardTAS"] = "opencj_icon_tas";
+    level.iconWidth = 16;
+    level.fpsIconWidth = 24;
+    level.iconHeight = 20;
+    // Reserve the statistics column for route names and checkpoint counts.
+    // Match its left-aligned UI scale so this gap holds on widescreen too.
+    level.firstIconX = 128;
+    level.spaceBetweenIcons = 5;
+    precacheShader(level.runInfoShader["fps_any"]);
+    precacheShader(level.runInfoShader["fps_classic"]);
+    precacheShader(level.runInfoShader["fps_standard"]);
+    precacheShader(level.runInfoShader["ele"]);
+    precacheShader(level.runInfoShader["anyPct"]);
+    precacheShader(level.runInfoShader["halfBeat"]);
+    precacheShader(level.runInfoShader["hardTAS"]);
+}
+
+onRunCreated()
+{
+
+}
+
+onRunStarted()
+{
+
+}
+
+onRunStopped()
+{
+    specs = self getSpectatorList(true);
+    for (i = 0; i < specs.size; i++)
+    {
+        specs[i] _hideRunIcons();
+        specs[i] _hideRunStatus();
+    }
+}
+
+onRunRestored()
+{
+
+}
+
+onRunPaused()
+{
+
+}
+
+onRunResumed()
+{
+
+}
+
+whileAlive()
+{
+    shouldShowIcons = (self openCJ\playerRuns::hasRunID()) && (self openCJ\playerRuns::hasRunStarted());
+
+    spectators = getSpectatorList(true); // true -> also consider yourself a spectator
+    for(i = 0; i < spectators.size; i++)
+    {
+        // Show run status
+        spectators[i] _showRunStatus(self);
+
+        // Check if icons should be shown
+        if (shouldShowIcons)
+        {
+            spectators[i] _showRunIcons(self);
+        }
+        else
+        {
+            spectators[i] _hideRunIcons();
+        }
+    }
+}
+
+onSpectatorClientChanged(newClient)
+{
+    if (isDefined(newClient))
+    {
+        self _showRunIcons(newClient);
+        self _showRunStatus(newClient);
+    }
+    else
+    {
+        self _hideRunStatus();
+        self _hideRunIcons();
+    }
+}
+
+onSpawnSpectator()
+{
+    self _hideRunIcons();
+    self _hideRunStatus();
+}
+
+onSpawnPlayer()
+{
+    self _showRunIcons(self);
+    self _showRunStatus(self);
+}
+
+onPlayerConnect()
+{
+    self _createRunInfoHud();
+}
+
+onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, psOffsetTime, deathAnimDuration)
+{
+    spectators = getSpectatorList(false);
+    for(i = 0; i < spectators.size; i++)
+    {
+        spectators[i] _hideRunIcons();
+        spectators[i] _hideRunStatus();
+    }
+}
+
+_showRunStatus(player)
+{
+    if (player openCJ\checkpointCreation::isEditing())
+    {
+        self _hideRunStatus();
+        return;
+    }
+    // Run status
+    if (player.sessionState == "playing")
+    {
+        if (!player openCJ\playerRuns::hasRunID())
+        {
+            self.hudRunInfo["status"] setText("^1Not in a run");
+            self.hudRunInfo["status"].alpha = 1;
+        }
+        else if (player openCJ\playerRuns::isRunPaused())
+        {
+            self.hudRunInfo["status"] setText("^5Run is paused");
+            self.hudRunInfo["status"].alpha = 1;
+        }
+        else
+        {
+            self.hudRunInfo["status"].alpha = 0;
+        }
+    }
+    else
+    {
+        self.hudRunInfo["status"].alpha = 0;
+    }
+}
+
+_hideRunStatus()
+{
+    self.hudRunInfo["status"].alpha = 0;
+}
+
+_showRunIcons(player)
+{
+    if (player openCJ\checkpointCreation::isEditing())
+    {
+        self _hideRunIcons();
+        return;
+    }
+    // FPS
+    // TODO: CoD2 specific FPS don't have a shader (yet)..
+    FPSMode = player openCJ\fps::getCurrentFPSMode();
+    if (FPSMode == "hax")
+    {
+        self.hudRunInfo["fps"] setShader(level.runInfoShader["fps_any"], level.fpsIconWidth, level.iconHeight);
+        self.hudRunInfo["fps"].alpha = 1;
+    }
+    else if (FPSMode == "mix")
+    {
+        self.hudRunInfo["fps"] setShader(level.runInfoShader["fps_standard"], level.fpsIconWidth, level.iconHeight);
+        self.hudRunInfo["fps"].alpha = 1;
+    }
+    else //todo: cod2 fpsses
+    {
+        self.hudRunInfo["fps"] setShader(level.runInfoShader["fps_classic"], level.fpsIconWidth, level.iconHeight);
+        self.hudRunInfo["fps"].alpha = 1;
+    }
+
+    iconCount = 1;
+
+    // Ele
+    if (player openCJ\elevate::hasUsedEle())
+    {
+        self.hudRunInfo["ele"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (level.spaceBetweenIcons + level.iconWidth) * iconCount;
+        self.hudRunInfo["ele"].alpha = 1;
+        iconCount++;
+    }
+    else
+    {
+        self.hudRunInfo["ele"].alpha = 0;
+    }
+
+    // Any %
+    if (player openCJ\anyPct::hasAnyPct())
+    {
+        self.hudRunInfo["anyPct"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (level.spaceBetweenIcons + level.iconWidth) * iconCount;
+        self.hudRunInfo["anyPct"].alpha = 1;
+        iconCount++;
+    }
+    else
+    {
+        self.hudRunInfo["anyPct"].alpha = 0;
+    }
+
+    // Halfbeat
+    if (player openCJ\halfBeat::isHalfBeatAllowed())
+    {
+        self.hudRunInfo["halfBeat"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (level.spaceBetweenIcons + level.iconWidth) * iconCount;
+        self.hudRunInfo["halfBeat"].alpha = 1;
+        iconCount++;
+    }
+    else
+    {
+        self.hudRunInfo["halfBeat"].alpha = 0;
+    }
+
+    // Hard TAS
+    if (player openCJ\tas::hasHardTAS())
+    {
+        self.hudRunInfo["hardTAS"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (level.spaceBetweenIcons + level.iconWidth) * iconCount;
+        self.hudRunInfo["hardTAS"].alpha = 1;
+        iconCount++;
+    }
+    else
+    {
+        self.hudRunInfo["hardTAS"].alpha = 0;
+    }
+}
+
+_hideRunIcons()
+{
+    self.hudRunInfo["fps"].alpha = 0;
+    self.hudRunInfo["ele"].alpha = 0;
+    self.hudRunInfo["anyPct"].alpha = 0;
+    self.hudRunInfo["halfBeat"].alpha = 0;
+    self.hudRunInfo["hardTAS"].alpha = 0;
+}
+
+_createRunInfoHud()
+{
+    self.hudRunInfo = [];
+
+    // The following is a HUD in the top of your screen that shows the current run status of the player (Not in a run or Paused. Otherwise nothing is shown)
+    self.hudRunInfo["status"] = newClientHudElem(self);
+    self.hudRunInfo["status"].horzAlign = "center_safearea";
+    self.hudRunInfo["status"].vertAlign = "center_safearea";
+    self.hudRunInfo["status"].alignX = "center";
+    self.hudRunInfo["status"].alignY = "top";
+    self.hudRunInfo["status"].x = 0;
+    self.hudRunInfo["status"].y = -150;
+    self.hudRunInfo["status"].alpha = 0;
+    self.hudRunInfo["status"].archived = false;
+    self.hudRunInfo["status"].fontScale = 1.6;
+    self.hudRunInfo["status"].hideWhenInMenu = true;
+
+    // Scale icon widths with the normal 640x480 HUD space, like the menus.
+    // Fullscreen X placement stretches artwork horizontally on widescreen.
+    // The following are icons in bottom left corner
+
+    yAboveProgressBar = 467; // Right above progress bar
+    self.hudRunInfo["fps"] = newClientHudElem(self);
+    self.hudRunInfo["fps"].horzAlign = "left";
+    self.hudRunInfo["fps"].vertAlign = "fullscreen";
+    self.hudRunInfo["fps"].alignX = "left";
+    self.hudRunInfo["fps"].alignY = "bottom";
+    self.hudRunInfo["fps"].x = level.firstIconX;
+    self.hudRunInfo["fps"].y = yAboveProgressBar;
+    self.hudRunInfo["fps"].alpha = 0;
+    self.hudRunInfo["fps"].archived = false;
+    self.hudRunInfo["fps"].hideWhenInMenu = true;
+    self.hudRunInfo["fps"] setShader(level.runInfoShader["fps_classic"], level.fpsIconWidth, level.iconHeight);
+
+    self.hudRunInfo["ele"] = newClientHudElem(self);
+    self.hudRunInfo["ele"].horzAlign = "left";
+    self.hudRunInfo["ele"].vertAlign = "fullscreen";
+    self.hudRunInfo["ele"].alignX = "left";
+    self.hudRunInfo["ele"].alignY = "bottom";
+    self.hudRunInfo["ele"].x = level.firstIconX + level.spaceBetweenIcons + level.fpsIconWidth;
+    self.hudRunInfo["ele"].y = yAboveProgressBar;
+    self.hudRunInfo["ele"].alpha = 0;
+    self.hudRunInfo["ele"].archived = false;
+    self.hudRunInfo["ele"].hideWhenInMenu = true;
+    self.hudRunInfo["ele"] setShader(level.runInfoShader["ele"], level.iconWidth, level.iconHeight);
+
+    self.hudRunInfo["anyPct"] = newClientHudElem(self);
+    self.hudRunInfo["anyPct"].horzAlign = "left";
+    self.hudRunInfo["anyPct"].vertAlign = "fullscreen";
+    self.hudRunInfo["anyPct"].alignX = "left";
+    self.hudRunInfo["anyPct"].alignY = "bottom";
+    self.hudRunInfo["anyPct"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (2 * (level.spaceBetweenIcons + level.iconWidth));
+    self.hudRunInfo["anyPct"].y = yAboveProgressBar;
+    self.hudRunInfo["anyPct"].alpha = 0;
+    self.hudRunInfo["anyPct"].archived = false;
+    self.hudRunInfo["anyPct"].hideWhenInMenu = true;
+    self.hudRunInfo["anyPct"] setShader(level.runInfoShader["anyPct"], level.iconWidth, level.iconHeight);
+
+    self.hudRunInfo["halfBeat"] = newClientHudElem(self);
+    self.hudRunInfo["halfBeat"].horzAlign = "left";
+    self.hudRunInfo["halfBeat"].vertAlign = "fullscreen";
+    self.hudRunInfo["halfBeat"].alignX = "left";
+    self.hudRunInfo["halfBeat"].alignY = "bottom";
+    self.hudRunInfo["halfBeat"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (3 * (level.spaceBetweenIcons + level.iconWidth));
+    self.hudRunInfo["halfBeat"].y = yAboveProgressBar;
+    self.hudRunInfo["halfBeat"].alpha = 0;
+    self.hudRunInfo["halfBeat"].archived = false;
+    self.hudRunInfo["halfBeat"].hideWhenInMenu = true;
+    self.hudRunInfo["halfBeat"] setShader(level.runInfoShader["halfBeat"], level.iconWidth, level.iconHeight);
+
+    self.hudRunInfo["hardTAS"] = newClientHudElem(self);
+    self.hudRunInfo["hardTAS"].horzAlign = "left";
+    self.hudRunInfo["hardTAS"].vertAlign = "fullscreen";
+    self.hudRunInfo["hardTAS"].alignX = "left";
+    self.hudRunInfo["hardTAS"].alignY = "bottom";
+    self.hudRunInfo["hardTAS"].x = level.firstIconX + level.fpsIconWidth - level.iconWidth + (4 * (level.spaceBetweenIcons + level.iconWidth));
+    self.hudRunInfo["hardTAS"].y = yAboveProgressBar;
+    self.hudRunInfo["hardTAS"].alpha = 0;
+    self.hudRunInfo["hardTAS"].archived = false;
+    self.hudRunInfo["hardTAS"].hideWhenInMenu = true;
+    self.hudRunInfo["hardTAS"] setShader(level.runInfoShader["hardTAS"], level.iconWidth, level.iconHeight);
+}

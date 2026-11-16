@@ -1,0 +1,315 @@
+#include openCJ\util;
+
+// Local HUD visibility follows the client's hold bind. Only visible viewers
+// receive changed rows; no database queries or server HUD elements are needed.
+onInit()
+{
+    if(getCodVersion()!=4)return;
+    if(getCvar("opencj_public_hostname")=="")setCvar("opencj_public_hostname","eu.opencj.org");
+    precacheMenu("opencj_scoreboard_setup");
+    precacheMenu("opencj_scoreboard_input");
+}
+
+// A connecting client can exist before it has the "player" classname.
+// Track the connect callback itself, just as the stock scoreboard tracks slots.
+onPlayerConnecting()
+{
+    if(!isDefined(level.scoreboardClients))level.scoreboardClients=[];
+    level.scoreboardClients[self getEntityNumber()]=self;
+    level.scoreboardNextUpdate=0;
+}
+
+onPlayerDisconnected()
+{
+    if(isDefined(level.scoreboardClients))level.scoreboardClients[self getEntityNumber()]=undefined;
+    level.scoreboardNextUpdate=0;
+}
+
+onPlayerConnected()
+{
+    if(getCodVersion()!=4)return;
+    self onPlayerConnecting();
+    self.scoreboardCache=[];
+    self setClientCvar("opencj_sb_held",0);
+    self setClientCvar("opencj_sb_active",0);
+    self thread watch();
+    self thread scrollInput();
+}
+
+watch()
+{
+    self endon("disconnect");
+    self openCJ\clientInit::waitUntilFinished();
+    nextUpdate=0;inputOpen=false;
+    for(;;)
+    {
+        if(self getUserinfo("opencj_sb_active")=="1")
+        {
+            if(!inputOpen){self openMenu("opencj_scoreboard_input");inputOpen=true;}
+            if(getTime()>=nextUpdate)
+            {
+                self update();
+                nextUpdate=getTime()+1000;
+            }
+        }
+        else
+        {
+            nextUpdate=0;self.scoreboardOffset=0;
+            if(inputOpen){self closeMenu("opencj_scoreboard_input");inputOpen=false;}
+        }
+        wait 0.2;
+    }
+}
+
+scrollInput()
+{
+    self endon("disconnect");
+    for(;;)
+    {
+        self waittill("menuresponse",menu,response);
+        if(menu!="opencj_scoreboard_input")continue;
+        if(response=="close")
+        {
+            self setClientCvar("opencj_sb_held",0);
+            self setClientCvar("opencj_sb_active",0);
+            self closeMenu(menu);continue;
+        }
+        if(self getUserinfo("opencj_sb_active")!="1")continue;
+        if(response!="up" && response!="down")continue;
+        if(isDefined(self.scoreboardScrollTime) && getTime()-self.scoreboardScrollTime<75)continue;
+        self.scoreboardScrollTime=getTime();
+        if(!isDefined(self.scoreboardOffset))self.scoreboardOffset=0;
+        if(response=="up")self.scoreboardOffset-=3;else self.scoreboardOffset+=3;
+        self update();
+    }
+}
+
+connecting(player)
+{
+    return !isDefined(player.isFullyConnected) || !player.isFullyConnected;
+}
+
+spectatorRow(player)
+{
+    // Connecting clients have not chosen a playing state yet.
+    if(connecting(player))return true;
+    // Playback uses spectator presentation but remains a jumper activity.
+    return player.sessionState=="spectator" && !player openCJ\demos::isPlayingDemo() && !isDefined(player.cpc);
+}
+
+status(player)
+{
+    if(connecting(player))return "^3Connecting...";
+    if(isDefined(player.cpc))return "^5CPC";
+    if(isDefined(player.clipEdit))return "^5Clip editor";
+    if(isDefined(player.clipPreview))return "^5Clip preview";
+    if(player openCJ\demos::isPlayingDemo())
+    {
+        if(isDefined(player.clipPlayback))return "^5Clip";
+        return "^5Demo";
+    }
+    if(isDefined(player.isAFK) && player.isAFK)return "^3AFK";
+    if(spectatorRow(player))return "Spectating";
+    if(isDefined(player.clipRecording))return "^1Recording";
+    if(player openCJ\playerRuns::isRunFinished())return "^2Finished";
+    if(!player openCJ\playerRuns::hasRunStarted())return "Ready";
+    if(player openCJ\playerRuns::isRunPaused())return "^3Paused";
+    return "^2Jumping";
+}
+
+// Quoted engine dvar transport must never contain player-controlled delimiters.
+clean(text,limit)
+{
+    if(!isDefined(text))return "";
+    text=""+text;out="";
+    for(i=0;i<text.size && out.size<limit;i++)
+        if(text[i]!="\"" && text[i]!="\\" && text[i]!="\n" && text[i]!="\r")out+=text[i];
+    if(out.size && out[out.size-1]=="^")out=getSubStr(out,0,out.size-1);
+    return out;
+}
+
+// Safe before player initialization: no login, gameplay or network stats needed.
+connectingRow(name)
+{
+    r=[];r["name"]=clean(name,20);r["points"]=0;r["rank"]="";
+    r["country"]="";flag=openCJ\flagAtlas::resolve("??");
+    r["flag"]=flag.material;r["flagSelector"]=flag.selector;r["ping"]=-1;r["pingText"]="-";
+    r["route"]="^3Connecting...";r["progress"]=-1;r["time"]="-";r["rpg"]="-";
+    r["fps"]=0;r["ele"]=0;r["hb"]=0;r["tas"]=0;r["any"]=0;
+    return r;
+}
+
+row(player)
+{
+    if(connecting(player))return connectingRow(player.name);
+    r=[];
+    r["name"]=clean(player.name,20);
+    r["points"]=points(player);
+    rank=1;if(isDefined(player.challengeRank))rank=player.challengeRank;
+    r["rank"]="opencj_rank_"+rank;
+    r["country"]=clean(player openCJ\country::getCountry(),2);
+    flag=openCJ\flagAtlas::resolve(r["country"]);
+    r["flag"]=flag.material;
+    r["flagSelector"]=flag.selector;
+    r["ping"]=""+player getPing();
+    variation=player getPingVariation();
+    r["pingText"]=r["ping"];
+    if(variation>=0)r["pingText"]+=" (+/- "+variation+" ms)";
+    r["route"]="-";r["progress"]=-1;r["time"]="-";r["rpg"]="-";
+    r["fps"]=0;r["ele"]=0;r["hb"]=0;r["tas"]=0;r["any"]=0;
+    if(isDefined(player.cpc))
+    {
+        r["route"]=player.cpc.route;
+        return r;
+    }
+    if(player openCJ\demos::isPlayingDemo() || spectatorRow(player))return r;
+    if(!player openCJ\playerRuns::hasRunID() || !player openCJ\playerRuns::hasRunStarted())return r;
+    if(isDefined(player.route))r["route"]=player.route;
+    current=player openCJ\checkpoints::getCurrentCheckpoint();
+    if(isDefined(current))
+    {
+        route=openCJ\checkpoints::getRouteNameForCheckpoint(current);
+        if(isDefined(route))r["route"]=route;
+        if(!player openCJ\anyPct::hasAnyPct())
+        {
+            passed=openCJ\checkpoints::getPassedCheckpointCount(current);
+            remaining=openCJ\checkpoints::getRemainingCheckpointCount(current);
+            if(isDefined(remaining) && passed+remaining>0)
+                r["progress"]=int(100.0*passed/(passed+remaining));
+        }
+    }
+    if(player openCJ\anyPct::hasAnyPct())r["progress"]=-1;
+    else if(player openCJ\playerRuns::isRunFinished())r["progress"]=100;
+    r["time"]=formatTimeString(player openCJ\playTime::getTimePlayed(),true);
+    r["rpg"]=player openCJ\statistics::getExplosiveJumps();
+    fps=player openCJ\fps::getCurrentFPSMode();
+    r["fps"]=1;
+    if(fps=="mix")r["fps"]=2;
+    if(fps=="hax")r["fps"]=3;
+    r["ele"]=int(player openCJ\elevate::hasUsedEle());
+    r["hb"]=int(player openCJ\halfBeat::isHalfBeatAllowed());
+    r["tas"]=int(player openCJ\tas::hasHardTAS());
+    r["any"]=int(player openCJ\anyPct::hasAnyPct());
+    return r;
+}
+
+// A fixed viewport keeps ranks, modes and player text readable at full capacity.
+viewLayout(offset,total,jumpers)
+{
+    v=spawnStruct();v.maxOffset=total-15;if(v.maxOffset<0)v.maxOffset=0;
+    v.first=offset;if(v.first<0)v.first=0;if(v.first>v.maxOffset)v.first=v.maxOffset;
+    v.count=total-v.first;if(v.count>15)v.count=15;
+    v.split=jumpers>v.first && jumpers<v.first+v.count;
+    v.height=69+v.count*22;if(v.split)v.height+=17;
+    v.top=(480-v.height)/2;if(v.top>90)v.top=90;
+    return v;
+}
+
+update()
+{
+    if(self getQueuedReliableMessages()>16)return;
+    if(!isDefined(level.scoreboardNextUpdate) || getTime()>=level.scoreboardNextUpdate)
+        buildSnapshot();
+    self sendChanged(level.scoreboardValues);
+    if(!isDefined(self.scoreboardOffset))self.scoreboardOffset=0;
+    v=viewLayout(self.scoreboardOffset,level.scoreboardPlayers.size,level.scoreboardJumperCount);
+    self.scoreboardOffset=v.first;
+    personal=[];
+    personal["opencj_sb_rowheight"]=22;personal["opencj_sb_iconsize"]=20;
+    personal["opencj_sb_top"]=v.top;personal["opencj_sb_height"]=v.height;
+    personal["opencj_sb_footer"]=v.top+v.height-16;
+    personal["opencj_sb_spec_visible"]=int(v.split);
+    personal["opencj_sb_specy"]=v.top+43+(level.scoreboardJumperCount-v.first)*22;
+    title="Jumpers ("+level.scoreboardJumperCount+")";
+    if(v.first>=level.scoreboardJumperCount && v.count>0)title=level.scoreboardValues["opencj_sb_spectators"];
+    personal["opencj_sb_section"]=title;
+    personal["opencj_sb_scroll_visible"]=int(v.maxOffset>0);
+    personal["opencj_sb_scroll_label"]=(v.first+1)+"-"+(v.first+v.count)+" / "+level.scoreboardPlayers.size+"   Mouse wheel";
+    personal["opencj_sb_track_y"]=v.top+43;
+    trackHeight=v.count*22;if(v.split)trackHeight+=17;
+    personal["opencj_sb_track_h"]=trackHeight;
+    thumbHeight=trackHeight;
+    if(level.scoreboardPlayers.size>0)thumbHeight=trackHeight*v.count/level.scoreboardPlayers.size;
+    personal["opencj_sb_thumb_h"]=thumbHeight;
+    thumbY=v.top+43;if(v.maxOffset>0)thumbY+=(trackHeight-thumbHeight)*v.first/v.maxOffset;
+    personal["opencj_sb_thumb_y"]=thumbY;
+    for(i=0;i<15;i++)
+    {
+        key="opencj_sb_r"+i+"_";personal[key+"exists"]=int(i<v.count);
+        if(i>=v.count)continue;
+        index=v.first+i;y=v.top+43+i*22;
+        if(v.split && index>=level.scoreboardJumperCount)y+=17;
+        personal[key+"y"]=y;
+        personal[key+"self"]=int(level.scoreboardPlayers[index]==self);
+        data=level.scoreboardRows[index];keys=getArrayKeys(data);
+        for(j=0;j<keys.size;j++)personal[key+keys[j]]=data[keys[j]];
+    }
+    self sendChanged(personal);
+}
+
+points(player)
+{
+    if(isDefined(player.challengePoints))return player.challengePoints;
+    return 0;
+}
+
+sortByPoints(players)
+{
+    for(i=1;i<players.size;i++)
+    {
+        player=players[i];j=i;
+        while(j>0 && points(players[j-1])<points(player))
+        {
+            players[j]=players[j-1];j--;
+        }
+        players[j]=player;
+    }
+    return players;
+}
+
+buildSnapshot()
+{
+    players=[];jumpers=[];spectators=[];
+    if(isDefined(level.scoreboardClients))
+    {
+        slots=getArrayKeys(level.scoreboardClients);
+        for(i=0;i<slots.size;i++)
+            if(isDefined(level.scoreboardClients[slots[i]]))players[players.size]=level.scoreboardClients[slots[i]];
+    }
+    // Stable point ordering within each team; tied players retain entity order.
+    for(i=0;i<players.size;i++)
+    {
+        if(spectatorRow(players[i]))spectators[spectators.size]=players[i];
+        else jumpers[jumpers.size]=players[i];
+    }
+    jumpers=sortByPoints(jumpers);spectators=sortByPoints(spectators);
+    values=[];level.scoreboardPlayers=[];level.scoreboardRows=[];
+    total=jumpers.size+spectators.size;if(total>32)total=32;
+    level.scoreboardJumperCount=jumpers.size;
+    values["opencj_sb_map"]=getCvar("mapname");
+    values["opencj_sb_servername"]=getCvar("sv_hostname");
+    values["opencj_sb_hostname"]=getCvar("opencj_public_hostname")+":"+getCvar("net_port");
+    values["opencj_sb_spectators"]="Spectators ("+spectators.size+")";
+    for(i=0;i<total;i++)
+    {
+        if(i<jumpers.size)player=jumpers[i];else player=spectators[i-jumpers.size];
+        level.scoreboardPlayers[i]=player;level.scoreboardRows[i]=row(player);
+    }
+    level.scoreboardValues=values;
+    level.scoreboardNextUpdate=getTime()+1000;
+}
+
+sendChanged(values)
+{
+    if(!isDefined(self.scoreboardCache))self.scoreboardCache=[];
+    keys=getArrayKeys(values);command="v";
+    for(i=0;i<keys.size;i++)
+    {
+        value=clean(values[keys[i]],160);
+        if(isDefined(self.scoreboardCache[keys[i]]) && self.scoreboardCache[keys[i]]==value)continue;
+        pair=" "+keys[i]+" \""+value+"\"";
+        if(command.size+pair.size>800){self SV_GameSendServerCommand(command,true);command="v";}
+        command+=pair;self.scoreboardCache[keys[i]]=value;
+    }
+    if(command!="v")self SV_GameSendServerCommand(command,true);
+}
