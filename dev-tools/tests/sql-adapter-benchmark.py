@@ -1,4 +1,5 @@
 """Compare the real #192 binary with the new pool using identical admitted work."""
+from compose_environment import workspace_file
 from pathlib import Path
 import subprocess, time, re, statistics, hashlib
 GSC = r"""
@@ -43,7 +44,8 @@ main()
 menuQuery(query) { return MENU_SUBMIT; }
 progressQuery(query) { return PROGRESS_SUBMIT; }
 """
-def run_benchmark(root, home, private, redact):
+def run_benchmark(root, home, private, redact, baseline_binary):
+    baseline_binary=workspace_file(baseline_binary)
     report={}
     for variant in ("baseline","bounded"):
         target=home/("bench-"+variant);mod=target/"mods/opencj";mod.mkdir(parents=True)
@@ -63,8 +65,8 @@ def run_benchmark(root, home, private, redact):
         (target/"plugins").mkdir()
 
         name="opencj-sqlbench-"+home.name[-8:]+"-"+variant
-        binary=root/("dev-tools/local/sql-adapter/baseline-dedrun" if variant=="baseline" else "cod4x-server/bin/cod4x18_dedrun")
-        command=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/"+str(binary.relative_to(root))]
+        binary=baseline_binary if variant=="baseline" else root/"cod4x-server/bin/cod4x18_dedrun"
+        command=["docker","compose","run","-d","--no-deps","--name",name,"--workdir", "/workspace/" + str(target.relative_to(root)), "server","/workspace/"+str(binary.relative_to(root))]
         for key,value in [("fs_basepath","/game"),("fs_homepath","/workspace/"+str(target.relative_to(root))),
             ("fs_game","mods/opencj"),("dedicated","2"),("net_port","28973"),("sv_maxclients","2"),
             ("sv_authorizemode","0"),("com_hunkMegs","1024"),("developer","1"),("g_gametype","cj")]:

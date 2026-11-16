@@ -2,6 +2,7 @@
 Disposable schema-only copy plus synthetic rows. Two shared cores, 1/1.5 GiB caps.
 Use --mature --extended-reads --seconds 60 for the hosting workload.
 """
+from compose_environment import database_container, database_network, capacity_cpu_set
 from pathlib import Path
 import sys,threading,os
 import argparse,hashlib,json,math,re,secrets,shutil,statistics,struct,subprocess,time,uuid,zlib,runpy
@@ -18,9 +19,13 @@ parser.add_argument("--binary",type=Path,default=ROOT/"cod4x-server/bin/cod4x18_
 parser.add_argument("--mature",action="store_true")
 parser.add_argument("--extended-reads",action="store_true")
 parser.add_argument("--baseline-queries",action="store_true")
-parser.add_argument("--cpu-set",default="4,5")
+parser.add_argument("--cpu-set",help="Two available CPU cores; defaults to the first two allowed cores")
 parser.add_argument("--scripts",type=Path,default=ROOT/"server-gsc")
 args=parser.parse_args()
+try:
+    args.cpu_set=capacity_cpu_set(args.cpu_set)
+except ValueError as error:
+    parser.error(str(error))
 mature=args.mature
 args.scripts=args.scripts.resolve()
 assert args.scripts.is_relative_to(ROOT) and (args.scripts/"opencj").is_dir()
@@ -52,7 +57,7 @@ source_files=("server-gsc/opencj/mysql.gsc","server-gsc/opencj/demos.gsc","serve
 report["sourceHashes"]={rel:hashlib.sha256((ROOT/rel).read_bytes()).hexdigest() for rel in source_files}
 def run(cmd,**kw):return command(cmd,**kw)
 def db(sql,source=False):
-    target="opencj-dev-db-1" if source else dbname
+    target=database_container() if source else dbname
     command=["docker","exec","-i",target,"sh","-c",
              'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --max_allowed_packet=64M -N -u root']
     p=run(command,input=sql,timeout=90)
@@ -190,9 +195,9 @@ def capacity_menu():
     return template
 
 try:
-    image=run(["docker","inspect","-f","{{.Config.Image}}","opencj-dev-db-1"]).stdout.strip()
-    network=run(["docker","inspect","-f","{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}","opencj-dev-db-1"]).stdout.strip()
-    assert image=="mysql:8.0" and re.fullmatch(r"opencj[-\w]+",network)
+    image=run(["docker","inspect","-f","{{.Config.Image}}",database_container()]).stdout.strip()
+    network=database_network()
+    assert image=="mysql:8.0"
     p=run(["docker","run","-d","--name",dbname,"--network",network,"--memory","1536m"]+
           (["--cpus",str(args.db_cpus)] if args.db_cpus else [])+
           ["--env-file",str(private),image,"--log-bin-trust-function-creators=1"])
@@ -203,7 +208,7 @@ try:
         if p.returncode==0:break
         time.sleep(1)
     else:raise RuntimeError("Disposable database did not become ready")
-    dump=run(["docker","exec","opencj-dev-db-1","sh","-c",
+    dump=run(["docker","exec",database_container(),"sh","-c",
               'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'])
     assert dump.returncode==0 and not re.search(r"^INSERT INTO",dump.stdout,re.M)
     schema=dump.stdout.replace("openCJ_cod4",database)
@@ -281,7 +286,7 @@ _request(query, policy, key, scope, deadline, save)
                "g++ -m32 -std=c++11 -fPIC -shared /workspace/dev-tools/tests/sql-capacity-clock.cpp -o /workspace/"+relative+"/plugins/capacity_clock.so"],cwd=ROOT/"dev-tools",timeout=90)
     (home/"build.log").write_text(build.stdout+build.stderr)
     assert build.returncode==0,"Clock plugin build failed"
-    cmd=["docker","compose","run","-d","--no-deps","--name",engine,"server","/workspace/"+str(binary.relative_to(ROOT))]
+    cmd=["docker","compose","run","-d","--no-deps","--name",engine,"--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server","/workspace/"+str(binary.relative_to(ROOT))]
     for key,value in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),
                       ("net_port",28975),("sv_maxclients",32),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),
                       ("g_gametype","cj"),("capacity_frames",args.frames),("capacity_ticks",args.seconds*20)]:

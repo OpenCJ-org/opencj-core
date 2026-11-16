@@ -1,8 +1,20 @@
 """#192 verification with a disposable schema/engine and test-only fault injection."""
+from compose_environment import database_container, workspace_file
 from pathlib import Path
-import hashlib, json, re, shutil, subprocess, time, uuid
+import argparse, hashlib, json, os, re, shutil, subprocess, time, uuid
 
 ROOT = Path(__file__).resolve().parents[2]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--baseline-binary", type=Path, help="Historical #192 engine file inside this checkout")
+options = parser.parse_args()
+benchmark_enabled = globals().get("SQL_ADAPTER_VERIFY") and (os.environ.get("OPENCJ_SKIP_POOL") != "1" or os.environ.get("OPENCJ_BENCH_ONLY") == "1")
+if benchmark_enabled:
+    if options.baseline_binary is None:
+        parser.error("--baseline-binary is required for the historical queue comparison")
+    try:
+        options.baseline_binary = workspace_file(options.baseline_binary)
+    except ValueError as error:
+        parser.error(str(error))
 token = uuid.uuid4().hex[:8]
 tag = "history-save-192-" + token
 database = "opencj_verify_192_" + token + "_cod4"
@@ -18,7 +30,7 @@ pool_private = home / "pool.cfg"
 report = {"database": database, "schemaOnly": True, "productionWrites": False}
 
 def db(q, target=None):
-    cmd = ["docker", "exec", "-i", "opencj-dev-db-1", "sh", "-c",
+    cmd = ["docker", "exec", "-i", database_container(), "sh", "-c",
            'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$@"', "history192"]
     if target:
         assert target == database
@@ -39,7 +51,7 @@ try:
     assert db("SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='" + database + "';") == "0"
     assert db("SELECT COUNT(*) FROM mysql.user WHERE User='opencj' AND Host='%';") == "1"
     dump = subprocess.run([
-        "docker", "exec", "opencj-dev-db-1", "sh", "-c",
+        "docker", "exec", database_container(), "sh", "-c",
         'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'
     ], capture_output=True, text=True)
     assert dump.returncode == 0, "Schema-only export failed"
@@ -138,8 +150,8 @@ try:
         if os.environ.get("OPENCJ_SKIP_POOL")!="1" or os.environ.get("OPENCJ_BENCH_ONLY")=="1":
             import runpy
             benchmark=runpy.run_path(str(ROOT/"dev-tools/tests/sql-adapter-benchmark.py"))
-            report["queueBenchmark"]=benchmark["run_benchmark"](ROOT,home,private,redact)
-    cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "server",
+            report["queueBenchmark"]=benchmark["run_benchmark"](ROOT,home,private,redact,options.baseline_binary)
+    cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server",
            "/workspace/cod4x-server/bin/cod4x18_dedrun"]
     for key, val in [
         ("fs_basepath", "/game"), ("fs_homepath", "/workspace/dev-tools/local/" + tag),

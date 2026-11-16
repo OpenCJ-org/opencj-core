@@ -43,7 +43,7 @@ p = mod / "maps/mp/mp_descent_v2.gsc"
 s = p.read_text().replace("player iPrintLnBold(", "iPrintLnBold(")
 p.write_text(s)
 container = "opencj-" + tag
-args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "server",
+args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "--workdir", "/workspace/" + str(smoke.relative_to(root)), "server",
         "/workspace/cod4x-server/bin/cod4x18_dedrun", "+set", "fs_basepath", "/game",
         "+set", "fs_homepath", "/workspace/dev-tools/local/" + tag,
         "+set", "fs_game", "mods/opencj", "+set", "dedicated", "2", "+set", "net_port", "28964",

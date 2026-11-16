@@ -31,7 +31,7 @@ for mapname in sys.argv[1:] or ['mp_dark']:
         source=source[:start]+'\n'+source[end-1:]
     callback.write_text(source)
     name='opencj-'+tag
-    args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_teleport_test']
+    args=['docker','compose','run','-d','--no-deps','--name',name,"--workdir", "/workspace/" + str(home.relative_to(root)), 'server','/workspace/cod4x-server/bin/cod4x18_teleport_test']
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28963'),('sv_maxclients','1'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj')]:args+=['+set',k,v]
     args+=['+map',mapname]
     try:

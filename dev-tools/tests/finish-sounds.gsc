@@ -12,7 +12,9 @@ main()
     rows[0][0]="1";
     check(openCJ\finishSounds::soundForResult(rows)=="opencj_route_record","top three finish");
     query=openCJ\finishSounds::recordQuery(100);
-    check(query.size==1155,"ranking query constructed");
+    // Shared SQL can change length; the requested run must still affect the query.
+    otherQuery=openCJ\finishSounds::recordQuery(101);
+    check(isDefined(query) && query.size>0 && query!=otherQuery,"ranking query uses requested run");
     printf("[FINISH_QUERY]"+query+"\n");
     printf("FINISH SOUND SELFTEST COMPLETE failures="+level.finishSoundFailures+"\n");
 }

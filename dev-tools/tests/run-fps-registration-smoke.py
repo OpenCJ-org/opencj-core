@@ -90,7 +90,7 @@ assert needle in s
 p.write_text(s.replace(needle, needle + chr(10) + g("    thread openCJ@fpsRegistrationTest::main();"), 1))
 container = "opencj-" + tag
 args = [
-    "docker", "compose", "run", "-d", "--no-deps", "--name", container, "server",
+    "docker", "compose", "run", "-d", "--no-deps", "--name", container, "--workdir", "/workspace/" + str(smoke.relative_to(root)), "server",
     "/workspace/cod4x-server/bin/cod4x18_dedrun",
     "+set", "fs_basepath", "/game",
     "+set", "fs_homepath", "/workspace/dev-tools/local/" + tag,

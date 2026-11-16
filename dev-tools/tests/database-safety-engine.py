@@ -18,7 +18,7 @@ def launch(user,marker):
     global started
     cfg=mod/"safety.cfg"
     cfg.write_text(f'set db_host "{name}"\nset db_user "{user}"\nset db_pass "{password}"\nset db_base "{database[:-1]}"\nset db_port "3306"\n');cfg.chmod(0o600)
-    command=["docker","compose","run","-d","--no-deps","--name",engine,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
+    command=["docker","compose","run","-d","--no-deps","--name",engine,"--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
     relative=str(home.relative_to(ROOT))
     for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28978),("sv_maxclients",4),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:
         command+=["+set",k,str(v)]

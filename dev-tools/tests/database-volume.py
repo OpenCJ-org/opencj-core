@@ -1,4 +1,5 @@
 """Verify external database volume protection using a disposable probe only."""
+from compose_environment import database_container
 from pathlib import Path
 import json,re,subprocess,uuid
 ROOT=Path(__file__).resolve().parents[2]
@@ -13,7 +14,7 @@ try:
     p=run(["docker","compose","config","--format","json"],cwd=ROOT/"dev-tools")
     assert not p.returncode
     resolved=json.loads(p.stdout)
-    actual=json.loads(run(["docker","inspect","--format","{{json .Mounts}}","opencj-dev-db-1"]).stdout)
+    actual=json.loads(run(["docker","inspect","--format","{{json .Mounts}}",database_container()]).stdout)
     current=next(m["Name"] for m in actual if m["Destination"]=="/var/lib/mysql")
     assert resolved["volumes"]["database"]["external"] is True
     assert resolved["volumes"]["database"]["name"]==current

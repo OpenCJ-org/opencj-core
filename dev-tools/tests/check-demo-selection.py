@@ -1,4 +1,5 @@
 """Execute engine-generated #184 selection queries against temporary SQL fixtures."""
+from compose_environment import database_container
 from pathlib import Path
 import argparse, json, re, subprocess
 
@@ -29,7 +30,7 @@ CREATE TEMPORARY TABLE demoWinners(runID INT,mapID INT,routeName VARCHAR(50),kin
         for kind in ("walkthrough","speedrun","lowrpg"):
             fixture+=f"INSERT INTO demoWinners VALUES({ident},{mapid},'{route}','{kind}',{mask},'{fps}');\n"
     sql=fixture+"\n".join(f"SELECT '{kind}';{query};" for kind,query in queries.items())
-    result=subprocess.run(["docker","exec","-i","opencj-dev-db-1","sh","-c",
+    result=subprocess.run(["docker","exec","-i",database_container(),"sh","-c",
         'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4'],
         input=sql,text=True,capture_output=True)
     assert result.returncode==0,result.stderr

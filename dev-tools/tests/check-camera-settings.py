@@ -1,4 +1,5 @@
 """Replay actual camera setting writes into connection-local temporary tables."""
+from compose_environment import database_container
 from pathlib import Path
 import argparse,json,re,subprocess
 
@@ -11,7 +12,7 @@ def run(log):
     # This is the same shape read by settings::loadSettingsFromDatabase.
     sql+="SELECT a.settingName,b.value FROM settings a INNER JOIN playerSettings b ON a.settingID=b.settingID WHERE b.playerID=7 ORDER BY a.settingName;"
     sql+="SELECT COUNT(*) FROM playerSettings;"
-    result=subprocess.run(["docker","exec","-i","opencj-dev-db-1","sh","-c",
+    result=subprocess.run(["docker","exec","-i",database_container(),"sh","-c",
         'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4'],
         input=sql,text=True,capture_output=True)
     assert result.returncode==0,result.stderr

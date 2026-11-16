@@ -96,7 +96,7 @@ for mapname in [a for a in sys.argv[1:] if a not in ['--menu-only', '--routes']]
         galaxy = mod/'maps/mp/mp_galaxy.gsc'
         galaxy.write_text(re.sub(r'(?i)\biprintln(?:bold)?\s*\(', r'openCJ\\platformTest::captureMessage(', galaxy.read_text()))
     name='opencj-'+tag
-    args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
+    args=['docker','compose','run','-d','--no-deps','--name',name,"--workdir", "/workspace/" + str(home.relative_to(root)), 'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28971'),('sv_maxclients','2'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj')]:args+=['+set',k,v]
     args+=['+map',mapname]
     try:

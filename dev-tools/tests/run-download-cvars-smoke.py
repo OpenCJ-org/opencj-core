@@ -52,7 +52,7 @@ shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc",
                 ["PlayerDisconnect", "PlayerDamage", "PlayerKilled", "PlayerLastStand"]))
 (mod / "maps/mp/mp_killhouse.gsc").write_text("main() {}\n")
 name = "opencj-" + tag
-cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "server",
+cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server",
        args.binary]
 for key, val in [
     ("fs_basepath", "/game"), ("fs_homepath", "/workspace/dev-tools/local/" + tag),

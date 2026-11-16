@@ -1,10 +1,11 @@
 """Transaction regression tests, isolated database only; all fixtures removed."""
+from compose_environment import database_container
 import concurrent.futures, subprocess
 DB='opencj_test_cod4'
 PID=-2147483000
 PREFIX='shop.test.'
 def sql(q):
- p=subprocess.run(['docker','exec','-i','opencj-dev-db-1','sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test',DB],input=q,text=True,capture_output=True,check=True)
+ p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test',DB],input=q,text=True,capture_output=True,check=True)
  return p.stdout.strip()
 def call(key,equip=0):return sql(f"CALL shopBuyOrEquip({PID},'{PREFIX}{key}',{equip},{60 if key in ['a','b'] else 10});")
 def cleanup():

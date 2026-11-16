@@ -1,3 +1,4 @@
+from compose_environment import database_container
 from pathlib import Path
 import ast,re,subprocess
 root=Path(__file__).resolve().parents[2]
@@ -41,7 +42,7 @@ INSERT INTO challenges(challengeKey,tier,points,mapName,routeLabel) VALUES
 SELECT challengeKey,COALESCE(routeName,'NULL') FROM challenges WHERE challengeKey LIKE 'route.test.%' ORDER BY challengeKey;
 ROLLBACK;
 """
-out=subprocess.check_output(['docker','exec','-i','opencj-dev-db-1','sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj opencj_test_cod4'],input=sql,text=True)
+out=subprocess.check_output(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj opencj_test_cod4'],input=sql,text=True)
 actual=dict(line.split('\t') for line in out.strip().splitlines())
 expected={'route.test.ambiguous':'NULL','route.test.ambiguousmain':'NULL','route.test.basic':'basic','route.test.intermediate':'INTERMEDIATE','route.test.advanced':'advanced','route.test.blueinter':'inter','route.test.one':'normal','route.test.timed':'normal','route.test.two':'NULL','route.test.exact':'other','route.test.hard':'NULL','route.test.labels':'NULL','route.test.labels2':'NULL','route.test.spaces':'fungal_hazards'}
 assert actual==expected,(actual,expected)

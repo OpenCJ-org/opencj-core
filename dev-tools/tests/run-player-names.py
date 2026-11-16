@@ -1,4 +1,5 @@
 """Verify preferred names and regular-name policy in a disposable DB/engine."""
+from compose_environment import database_container
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import hashlib,json,re,shutil,subprocess,time,uuid
@@ -10,7 +11,7 @@ home=ROOT/"dev-tools/local"/tag;mod=home/"mods/opencj";mod.mkdir(parents=True)
 container="opencj-"+tag;created=granted=started=False;secrets=[]
 report={"productionWrites":False,"checks":0,"failures":0}
 def db(query,target=None):
-    cmd=["docker","exec","-i","opencj-dev-db-1","sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$@"',"names103"]
+    cmd=["docker","exec","-i",database_container(),"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$@"',"names103"]
     if target:
         assert target==database;cmd.append(target)
     p=subprocess.run(cmd,input=query,text=True,capture_output=True)
@@ -28,7 +29,7 @@ def redact(text):
     return text
 try:
     assert db("SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='"+database+"';")=="0"
-    dump=subprocess.run(["docker","exec","opencj-dev-db-1","sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'],capture_output=True,text=True)
+    dump=subprocess.run(["docker","exec",database_container(),"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'],capture_output=True,text=True)
     assert dump.returncode==0 and not re.search(r"^INSERT INTO",dump.stdout,re.M)
     db("CREATE DATABASE "+database+" CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;");created=True
     db(dump.stdout.replace("openCJ_cod4",database),database)
@@ -78,7 +79,7 @@ try:
         if match:secrets.append(match[1])
     lines=[re.sub(r"(db_base\s+).*",lambda m:m[1]+'"'+database[:-1]+'"',line) for line in lines]
     private=mod/"names103.cfg";private.write_text("\n".join(lines)+"\n");private.chmod(0o600)
-    args=["docker","compose","run","-d","--no-deps","--name",container,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
+    args=["docker","compose","run","-d","--no-deps","--name",container,"--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
     for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/dev-tools/local/"+tag),("fs_game","mods/opencj"),("dedicated","2"),("net_port","28973"),("sv_maxclients","2"),("sv_authorizemode","0"),("com_hunkMegs","1024"),("developer","1"),("g_gametype","cj")]:args+=["+set",k,v]
     args+=["+exec","names103.cfg","+map","mp_killhouse"]
     subprocess.run(args,cwd=ROOT/"dev-tools",check=True,capture_output=True);started=True

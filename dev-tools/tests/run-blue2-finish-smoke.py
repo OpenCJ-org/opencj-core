@@ -39,7 +39,7 @@ for match in reversed(matches):
     s = s[:start] + "\n" + s[end-1:]
 p.write_text(s)
 container = "opencj-" + tag
-args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "server",
+args = ["docker", "compose", "run", "-d", "--no-deps", "--name", container, "--workdir", "/workspace/" + str(smoke.relative_to(root)), "server",
         "/workspace/cod4x-server/bin/cod4x18_dedrun", "+set", "fs_basepath", "/game",
         "+set", "fs_homepath", "/workspace/dev-tools/local/" + tag,
         "+set", "fs_game", "mods/opencj", "+set", "dedicated", "2", "+set", "net_port", "28964",

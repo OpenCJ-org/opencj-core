@@ -6,6 +6,7 @@ Or pass an exported JSON file with runID and [chunkNum, hexPayload] chunks.
 A numeric argument reads that demo's chunks from the OpenCJ DB using SELECT.
 No production writes, network ports, or human clients are used.
 """
+from compose_environment import database_container
 from pathlib import Path
 import sys,json,subprocess,shutil,time,re,uuid,hashlib
 root=Path(__file__).resolve().parents[2]
@@ -15,7 +16,7 @@ if sys.argv[1].isdigit() or is_clip:
     table="demoClipChunks" if is_clip else "demoChunks"
     key="clipID" if is_clip else "runID"
     query="SELECT chunkNum,HEX(payload) FROM "+table+" WHERE "+key+"="+str(run_id)+" ORDER BY chunkNum;"
-    cmd=["docker","exec","-i","opencj-dev-db-1","sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4']
+    cmd=["docker","exec","-i",database_container(),"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4']
     result=subprocess.run(cmd,input=query,text=True,capture_output=True)
     assert result.returncode==0,"Read-only demo export failed"
     recording={"runID":run_id,"chunks":[line.split("\t") for line in result.stdout.splitlines()]}
@@ -121,7 +122,7 @@ loader=r"""
 fixture=fixture.replace("RUN_ID",str(int(recording["runID"]))).replace("PLAYBACK_STYLE",str(int(recording.get("style",2)))).replace("LOAD_CHUNKS",loader)
 (mod/"opencj/platformtest.gsc").write_text(fixture)
 name="opencj-"+tag
-args=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
+args=["docker","compose","run","-d","--no-deps","--name",name,"--workdir", "/workspace/" + str(home.relative_to(root)), "server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
 for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/dev-tools/local/"+tag),("fs_game","mods/opencj"),("dedicated","2"),("net_port","28967"),("sv_maxclients","1"),("sv_authorizemode","0"),("com_hunkMegs","1024"),("developer","1"),("g_gametype","cj")]:args+=["+set",k,v]
 args+=["+map","mp_killhouse"]
 try:

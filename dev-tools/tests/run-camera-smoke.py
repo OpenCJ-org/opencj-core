@@ -1,11 +1,18 @@
 """Run chat-only camera tests on an isolated server; no production database writes or live players."""
+from compose_environment import workspace_path
 from pathlib import Path
 import argparse,shutil,subprocess,time,uuid,sys
 root=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('maps',nargs='*',default=['mp_killhouse'])
-parser.add_argument('--binary',default='/workspace/cod4x-server/bin/cod4x18_camera_test')
+parser.add_argument('--binary',required=True,help='Camera test engine file inside this checkout')
+parser.add_argument('--plugin',required=True,help='Matching camera_engine.so file inside this checkout')
 options=parser.parse_args()
+try:
+    options.binary=workspace_path(options.binary)
+    options.plugin=workspace_path(options.plugin)
+except ValueError as error:
+    parser.error(str(error))
 for mapname in options.maps or ['mp_killhouse']:
     tag='camera-'+uuid.uuid4().hex[:8]
     home=root/'dev-tools/local'/tag
@@ -52,7 +59,7 @@ for mapname in options.maps or ['mp_killhouse']:
     original=original.replace(loadcall,'    rows = level.cameraStoredRows;')
     original=original.replace('    self openCJ'+chr(92)+'events'+chr(92)+'playerLogin::main();','    // Account callbacks are outside this isolated setting fixture.')
     settings.write_text(original)
-    (home/'plugins/camera_engine.so').symlink_to('/workspace/dev-tools/local/third-person-34/camera_engine.so')
+    (home/'plugins/camera_engine.so').symlink_to(options.plugin)
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     # Test clients must not reach account/database callbacks in this isolated fixture.
@@ -71,7 +78,7 @@ for mapname in options.maps or ['mp_killhouse']:
         source=source[:start]+'\n'+source[end-1:]
     callback.write_text(source)
     name='opencj-'+tag
-    args=['docker','compose','run','-d','--no-deps','--name',name,'server',options.binary]
+    args=['docker','compose','run','-d','--no-deps','--name',name,"--workdir", "/workspace/" + str(home.relative_to(root)), 'server',options.binary]
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28974'),('sv_maxclients','2'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj'),('opencj_isolated_camera_test','1'),('cg_thirdPerson','1')]:args+=['+set',k,v]
     args+=['+loadplugin','camera_engine','+map',mapname]
     try:

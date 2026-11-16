@@ -1,4 +1,5 @@
 """Rehearse #24 migration and concurrent view counting in a disposable database."""
+from compose_environment import database_container
 from pathlib import Path
 import concurrent.futures,json,secrets,subprocess,sys,time,uuid
 root=Path(__file__).resolve().parents[2]
@@ -22,7 +23,7 @@ try:
             break
         except RuntimeError:time.sleep(1)
     else:raise RuntimeError("Fixture did not start")
-    with MySQL("opencj-dev-db-1","openCJ_cod4") as live:
+    with MySQL(database_container(),"openCJ_cod4") as live:
         schemas=[live.query("SHOW CREATE TABLE "+table+";").split("\t",1)[1]+";" for table in ["demoClipSessions","demoClips"]]
     with MySQL(name,database) as db:
         db.query("CREATE TABLE mapids(mapID INT PRIMARY KEY); CREATE TABLE playerInformation(playerID INT PRIMARY KEY);")

@@ -16,7 +16,7 @@ for mapname in sys.argv[1:] or ['mp_dark']:
     init=mod/'opencj/events/init.gsc';s=init.read_text();init.write_text(s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;',1))
     game=mod/'maps/mp/gametypes/cj.gsc';s=game.read_text();game.write_text(s.replace('main()\n{','main()\n{\n    thread openCJ'+chr(92)+'platformTest::main();',1))
     name='opencj-'+tag
-    args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
+    args=['docker','compose','run','-d','--no-deps','--name',name,"--workdir", "/workspace/" + str(home.relative_to(root)), 'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
     for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28963'),('sv_maxclients','1'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj')]:args+=['+set',k,v]
     args+=['+map',mapname]
     try:

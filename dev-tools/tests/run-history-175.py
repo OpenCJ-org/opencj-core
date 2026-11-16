@@ -1,4 +1,5 @@
 """#175: disposable 32-player save-history and temporary script-memory checks."""
+from compose_environment import database_container, database_network
 from pathlib import Path
 import subprocess,json,re,secrets,uuid,time,shutil,hashlib
 ROOT=Path(__file__).resolve().parents[2]
@@ -14,7 +15,7 @@ sources=["server-ext/gsc_saveposition.cpp","server-gsc/opencj/historysave.gsc","
 report["sourceHashes"]={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in sources}
 def run(command,**kw):return subprocess.run(command,text=True,capture_output=True,**kw)
 def db(query,source=False):
-    target="opencj-dev-db-1" if source else dbname
+    target=database_container() if source else dbname
     p=run(["docker","exec","-i",target,"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root'],input=query,timeout=60)
     if p.returncode:
         (home/"sql-error.txt").write_text(p.stderr.replace(password,"<redacted>"));(home/"sql-error.txt").chmod(0o600)
@@ -22,8 +23,7 @@ def db(query,source=False):
     return p.stdout.strip()
 def sql(query):return db("USE "+database+";\n"+query)
 try:
-    network=run(["docker","inspect","-f","{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}","opencj-dev-db-1"]).stdout.strip()
-    assert re.fullmatch(r"opencj[-\w]+",network)
+    network=database_network()
     p=run(["docker","run","-d","--name",dbname,"--network",network,"--memory","1536m","--env-file",str(private),"mysql:8.0","--log-bin-trust-function-creators=1"])
     assert p.returncode==0;created=True
     for _ in range(90):
@@ -31,7 +31,7 @@ try:
         if p.returncode==0:break
         time.sleep(1)
     else:raise RuntimeError("Disposable database did not become ready")
-    dump=run(["docker","exec","opencj-dev-db-1","sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'])
+    dump=run(["docker","exec",database_container(),"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'])
     assert dump.returncode==0 and not re.search(r"^INSERT INTO",dump.stdout,re.M)
     schema=re.sub(r"DEFINER=\S+\s","DEFINER=CURRENT_USER ",dump.stdout.replace("openCJ_cod4",database))
     db("CREATE DATABASE "+database+" CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
@@ -74,7 +74,7 @@ try:
     relative=str(home.relative_to(ROOT))
     build=run(["docker","compose","run","--rm","--no-deps","build","bash","-lc","g++ -m32 -std=c++11 -fPIC -shared -DCOD4 /workspace/dev-tools/tests/player-memory-audit.cpp -o /workspace/"+relative+"/plugins/memory_audit.so"],cwd=ROOT/"dev-tools",timeout=90)
     (home/"build.log").write_text(build.stdout+build.stderr);assert build.returncode==0,"Profiler build failed"
-    command=["docker","compose","run","-d","--no-deps","--name",engine,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
+    command=["docker","compose","run","-d","--no-deps","--name",engine,"--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
     for key,value in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28976),("sv_maxclients",32),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:command+=["+set",key,str(value)]
     command+=["+exec","history175.cfg","+loadplugin","memory_audit","+map","mp_killhouse"]
     p=run(command,cwd=ROOT/"dev-tools");assert p.returncode==0;started=True

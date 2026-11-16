@@ -44,7 +44,7 @@ callbacks = ["StartGameType", "PlayerConnect", "PlayerDisconnect", "PlayerDamage
     'main()\n{\n    setDvar("r_specularColorScale", "0.1");\n}\n')
 
 name = "opencj-" + tag
-cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "server",
+cmd = ["docker", "compose", "run", "-d", "--no-deps", "--name", name, "--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server",
        "/workspace/" + str(binary.relative_to(ROOT))]
 for key, value in [
     ("fs_basepath", "/game"), ("fs_homepath", "/workspace/dev-tools/local/" + tag),

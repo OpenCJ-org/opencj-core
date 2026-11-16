@@ -26,7 +26,7 @@ p=run(["docker","compose","run","--rm","--no-deps","build","bash","-lc",
 (home/"build.log").write_text(p.stdout+p.stderr)
 if p.returncode:print(p.stdout+p.stderr);raise SystemExit(p.returncode)
 name="opencj-"+tag
-cmd=["docker","compose","run","-d","--no-deps","--name",name,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
+cmd=["docker","compose","run","-d","--no-deps","--name",name,"--workdir", "/workspace/" + str(home.relative_to(root)), "server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
 for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28976),("sv_maxclients",2),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:
     cmd+=["+set",k,str(v)]
 cmd+=["+loadplugin","memory_audit","+map","mp_killhouse"]

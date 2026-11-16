@@ -1,4 +1,5 @@
 """Exercise the production finish-ranking SQL on MySQL using read-only CTE fixtures."""
+from compose_environment import database_container
 from pathlib import Path
 import ast, copy, json, re, subprocess
 root=Path(__file__).resolve().parents[2]
@@ -52,7 +53,7 @@ case('125 included in hax',[run(i,time=i*100,rpg=i,fps='125') for i in (1,2,3)],
 for mode in ['ele','anyPct','hb','tas']:
     case(mode+' disallowed runs excluded',[run(i,time=i*100,rpg=i,**{mode:1}) for i in (1,2,3)])
     case(mode+' includes clean runs',better,current=run(100,pid=10,**{mode:1}),expected=0)
-p=subprocess.run(['docker','exec','-i','opencj-dev-db-1','sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test','opencj_test_cod4'],input='\n'.join(q for _,q,_ in cases),text=True,capture_output=True)
+p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj "$1"','test','opencj_test_cod4'],input='\n'.join(q for _,q,_ in cases),text=True,capture_output=True)
 if p.returncode:raise RuntimeError(p.stderr)
 results=p.stdout.splitlines();assert len(results)==len(cases),(len(results),len(cases))
 for (name,_,expected),result in zip(cases,results):

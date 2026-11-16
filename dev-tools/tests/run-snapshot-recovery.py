@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build/run isolated native protocol regressions in the existing OpenCJ tool container.
+"""Build/run isolated native protocol regressions in an ephemeral Compose build container.
 
 Reads production C functions directly; no traffic is sent and no server is restarted.
 Run on the authoritative host: python3 dev-tools/tests/run-snapshot-recovery.py
@@ -9,7 +9,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / "dev-tools/local/snapshot-recovery"
-CONTAINER = "opencj-dev-server-1"
 LOCAL.mkdir(parents=True, exist_ok=True)
 
 
@@ -31,11 +30,18 @@ flags = ["gcc", "-m32", "-msse2", "-mfpmath=sse", "-O0", "-g", "-fcommon",
          "-D_GNU_SOURCE", "-Isrc", "-I../dev-tools/local/snapshot-recovery"]
 for test in ("packet-ack-recovery", "snapshot-recovery"):
     output = f"/workspace/dev-tools/local/snapshot-recovery/{test}"
-    subprocess.run(["docker", "exec", "-w", "/workspace/cod4x-server", CONTAINER]
-                   + flags + ["src/msg.c", f"../dev-tools/tests/{test}.c",
-                              "-Wl,--gc-sections", "-lm", "-o", output], check=True)
-    result = subprocess.run(["docker", "exec", CONTAINER, output], text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    subprocess.run(
+        ["docker", "compose", "run", "--rm", "--no-deps", "--workdir",
+         "/workspace/cod4x-server", "--entrypoint", flags[0], "build"]
+        + flags[1:] + ["src/msg.c", f"../dev-tools/tests/{test}.c",
+                      "-Wl,--gc-sections", "-lm", "-o", output],
+        cwd=ROOT / "dev-tools", check=True,
+    )
+    result = subprocess.run(
+        ["docker", "compose", "run", "--rm", "--no-deps", "--entrypoint", output, "build"],
+        cwd=ROOT / "dev-tools", text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
     (LOCAL / f"{test}-results.txt").write_text(result.stdout)
     lines = result.stdout.splitlines()
     print(f"{test}: {sum(line.startswith('PASS:') for line in lines)} checks passed", flush=True)

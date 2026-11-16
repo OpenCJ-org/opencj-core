@@ -1,4 +1,5 @@
 """Read-only #109 catalogue audit and session-local SQL exclusion fixtures."""
+from compose_environment import database_container
 from pathlib import Path
 import argparse,json,re,subprocess
 ROOT=Path(__file__).resolve().parents[2]
@@ -7,7 +8,7 @@ def query():
     body=text.split("query()\n{",1)[1].split("\n}",1)[0]
     return "".join(re.findall(r'"([^"]*)"',body))
 def db(sql):
-    p=subprocess.run(["docker","exec","-i","opencj-dev-db-1","sh","-c",
+    p=subprocess.run(["docker","exec","-i",database_container(),"sh","-c",
         'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4'],
         input=sql,text=True,capture_output=True)
     if p.returncode:raise RuntimeError("Map-route SQL verification failed: "+p.stderr.strip())

@@ -82,7 +82,7 @@ for fn,args,start,end in bodies(s):
  if fn.startswith('CodeCallback_'):s=s[:start]+'\n'+s[end:]
 p.write_text(s)
 name='opencj-'+tag
-args=['docker','compose','run','-d','--no-deps','--name',name,'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
+args=['docker','compose','run','-d','--no-deps','--name',name,"--workdir", "/workspace/" + str(home.relative_to(root)), 'server','/workspace/cod4x-server/bin/cod4x18_dedrun']
 for k,v in [('fs_basepath','/game'),('fs_homepath','/workspace/dev-tools/local/'+tag),('fs_game','mods/opencj'),('dedicated','2'),('net_port','28963'),('sv_maxclients','4'),('sv_authorizemode','0'),('com_hunkMegs','1024'),('developer','1'),('g_gametype','cj'),('sv_fps','20')]:args+=['+set',k,v]
 args+=['+map','mp_to_the_moon']
 try:

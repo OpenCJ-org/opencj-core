@@ -1,4 +1,5 @@
 """Rehearse database safety on a full disposable backup copy; never write live DB."""
+from compose_environment import database_network
 from pathlib import Path
 import concurrent.futures, gzip, hashlib, importlib.util, json, re, secrets, shutil, subprocess, sys, time, uuid
 ROOT=Path(__file__).resolve().parents[2]
@@ -24,8 +25,7 @@ def expect_failure(sql,runtime=False):
 def checksum(c,query):
     return hashlib.sha256("\n".join(sorted(c.query(query).splitlines())).encode()).hexdigest()
 try:
-    network=run(["docker","inspect","-f","{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}","opencj-dev-db-1"]).stdout.strip()
-    assert re.fullmatch(r"opencj[-\w]+",network)
+    network=database_network()
     p=run(["docker","run","-d","--name",name,"--network",network,"--memory","1536m","--env-file",str(private),"mysql:8.0","--log-bin-trust-function-creators=1"])
     assert not p.returncode;started=True
     for _ in range(90):

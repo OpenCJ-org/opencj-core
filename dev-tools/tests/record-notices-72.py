@@ -1,4 +1,5 @@
 """Read-only MySQL fixtures for production #72 exact-category comparison SQL."""
+from compose_environment import database_container
 from pathlib import Path
 import ast,json,re,subprocess
 ROOT=Path(__file__).resolve().parents[2]
@@ -56,7 +57,7 @@ def verify(sql):
     return checks
 if __name__=='__main__':
     def sql(query):
-        p=subprocess.run(['docker','exec','-i','opencj-dev-db-1','sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj openCJ_cod4'],input=query,text=True,capture_output=True)
+        p=subprocess.run(['docker','exec','-i',database_container(),'sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj openCJ_cod4'],input=query,text=True,capture_output=True)
         assert p.returncode==0,p.stderr
         return p.stdout.strip()
     print('NOTIFICATION SQL PASS',verify(sql))

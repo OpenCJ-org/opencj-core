@@ -1,4 +1,5 @@
 """Separate database cleanup: migrate and exercise a disposable copy only."""
+from compose_environment import database_container, database_network
 from pathlib import Path
 import subprocess,re,json,secrets,uuid,time,hashlib,shutil,sys,importlib.util,gzip
 ROOT=Path(__file__).resolve().parents[2]
@@ -10,7 +11,7 @@ private.write_text("MYSQL_ROOT_PASSWORD="+password+"\n");private.chmod(0o600)
 report={"liveDatabaseWrites":False};created=False;engineStarted=False;engine=name+"-engine"
 def run(args,**kw):return subprocess.run(args,text=True,capture_output=True,**kw)
 def db(query,source=False,fail=False):
- target="opencj-dev-db-1" if source else name
+ target=database_container() if source else name
  p=run(["docker","exec","-i",target,"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --binary-as-hex -N -u root'],input=query,timeout=120)
  if fail:
   assert p.returncode,"Expected SQL constraint failure"
@@ -27,8 +28,7 @@ def check(value,label):
 def rows(query):return sql(query).splitlines()
 def checksum(query):return hashlib.sha256("\n".join(sorted(sql(query).splitlines())).encode()).hexdigest()
 try:
- network=run(["docker","inspect","-f","{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}","opencj-dev-db-1"]).stdout.strip()
- assert re.fullmatch(r"opencj[-\w]+",network)
+ network=database_network()
  p=run(["docker","run","-d","--name",name,"--network",network,"--memory","1536m","--env-file",str(private),"mysql:8.0","--log-bin-trust-function-creators=1"])
  assert p.returncode==0;created=True
  for _ in range(90):
@@ -42,7 +42,7 @@ try:
  else:
   if db("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='openCJ_cod4' AND table_name='challenges' AND column_name='mapName';",source=True)!="1":
    raise RuntimeError("Live schema already migrated; pass --legacy-dump <pre-020 SQL or SQL.gz backup>")
-  dump=run(["docker","exec","opencj-dev-db-1","sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --single-transaction --hex-blob --routines --triggers --skip-comments --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'])
+  dump=run(["docker","exec",database_container(),"sh","-c",'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --single-transaction --hex-blob --routines --triggers --skip-comments --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4'])
   assert not dump.returncode
   raw=dump.stdout
  schema=re.sub(r"DEFINER=\S+\s","DEFINER=CURRENT_USER ",raw.replace("openCJ_cod4",database))
@@ -140,7 +140,7 @@ try:
  cfg=mod/"route174.cfg"
  cfg.write_text(f'set db_host "{name}"\nset db_user "fixture"\nset db_pass "{password}"\nset db_base "{database[:-1]}"\nset db_port "3306"\n');cfg.chmod(0o600)
  relative=str(home.relative_to(ROOT))
- command=["docker","compose","run","-d","--no-deps","--name",engine,"server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
+ command=["docker","compose","run","-d","--no-deps","--name",engine,"--workdir", "/workspace/" + str(home.relative_to(ROOT)), "server","/workspace/cod4x-server/bin/cod4x18_dedrun"]
  for k,v in [("fs_basepath","/game"),("fs_homepath","/workspace/"+relative),("fs_game","mods/opencj"),("dedicated",2),("net_port",28978),("sv_maxclients",4),("sv_authorizemode",0),("com_hunkMegs",1024),("developer",1),("g_gametype","cj")]:command+=["+set",k,str(v)]
  command+=["+exec","route174.cfg","+map","mp_killhouse"]
  p=run(command,cwd=ROOT/"dev-tools");assert not p.returncode;engineStarted=True
