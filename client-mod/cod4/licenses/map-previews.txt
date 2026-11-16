@@ -1,0 +1,37 @@
+OpenCJ map-preview attribution
+
+These images are used in the OpenCJ map-list and voting menus.
+
+Original map loading images (map — mapper):
+- mp_dark — kie
+- mp_cj_sky_bounce — SoBerries
+- mp_all_in — all_in
+- mp_blue2 — Chucky.
+- mp_descent_v2 — =.VaRtaZiaN.=
+- mp_to_the_moon — =.VaRtaZiaN.=
+- mp_galaxy — ZeeZ
+- mp_mystic_v3 — Wez
+
+OpenCJ game captures of starting areas (map — original mapper):
+- mp_bouncer_training — [TB]Mike (MiKeY-B0Y / pMod.MiKeY-B0Y)
+- mp_futile_fixed — pcbouncer; OpenCJ maintenance of the original mp_futile
+
+Map credits identify the mappers. Separate loading-screen artist credits
+were not found in the recorded sources.
+
+Public source records:
+- CoDJumper map catalogue: https://www.codjumper.com/maps/index2.php?game=cod4
+- Galaxy release: https://board.3xp-clan.com/thread/2785-mp-galaxy-release/?postID=24393
+- Mystic v3 release walkthrough: https://www.youtube.com/watch?v=Nt6eL095Wqc
+
+The source checkout contains detailed provenance and conversion records in
+client-mod/source/map_previews.json and docs/reference/maps/catalogue.md.
+The eight original loading-image pixels are reused unchanged; matching menu
+materials were added. The two game captures were converted for the menu;
+the manifest records their source hashes and any crop or encoding details.
+
+OpenCJ retains these previews based on the maintainer's understanding of
+the community's established map-sharing practice. No formal asset license
+or separate permission text has been recorded. This notice provides credits,
+not an additional license grant. It does not place the map artwork or
+underlying Call of Duty 4 assets under OpenCJ's AGPL license.

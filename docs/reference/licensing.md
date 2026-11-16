@@ -38,20 +38,27 @@ Client notices are staged under `client-mod/cod4/licenses/` and packaged as
 `licenses/` in the IWD. Keep the relevant notices with separately distributed
 asset exports too. A notice for one asset does not license unrelated assets.
 
+## Map preview artwork
+
+The [manifest](../../client-mod/source/map_previews.json) records eight original
+loading images and two game captures. OpenCJ retains them based on the
+maintainer's understanding of the community's established map-sharing practice.
+No formal asset license or separate permission text has been recorded; this
+retention decision is not a verified unrestricted license grant.
+
+The [attribution notice](../../client-mod/licenses/map-previews.txt) records
+mapper credits and source links and is included in client packages.
+The [map catalogue](maps/catalogue.md) contains the detailed source evidence.
+Map artwork and underlying game assets are not relicensed by the project AGPL.
+
 ## Material requiring a publication decision
 
 These records identify unresolved issues, not permission to redistribute.
 
-- **Map preview artwork:** the [manifest](../../client-mod/source/map_previews.json)
-  records eight original loading images and two game captures. Hashes, mapper
-  credit and public downloads establish provenance, not permission to
-  redistribute images separately. Obtain relevant terms/permission or supply
-  these images as external inputs. The [map catalogue](maps/catalogue.md)
-  records source attribution.
-- **Older artwork and game-derived content:** retain original author and
-  permission records for branding/rank inputs and copied game/map files.
-  Editing, converting or using ImageGen on an existing image does not
-  establish rights to the original.
+- **Active branding and game-derived content:** the current jumping-soldier
+  logo is a cleaned version of an earlier image whose original author and
+  permission record are not identified here. Preserve provenance for copied
+  game content too; later edits do not supply a missing original license.
 - **Engine contents:** CoD4x retains upstream notices and additional
   statements in its README. Its bundled game-derived binaries require
   separate review. libcod's missing explicit grant remains unresolved.
