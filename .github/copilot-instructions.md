@@ -3,6 +3,10 @@
 Core contains client-mod, server-gsc, server-ext, server-db, discord-integration
 and dev-tools. cod4x-server and libcod are separate pinned engine submodules.
 
+Before adding, moving or expanding files or entries, read the active
+[file placement and privacy rule](instructions/repository-content.instructions.md).
+It covers folder choice, public/private content and Git tracking.
+
 Read [development setup](../docs/setup/development.md) and the
 [test guide](../docs/development/testing.md) for the affected work.
 Keep related core changes reviewable together. Engine edits require a separate
