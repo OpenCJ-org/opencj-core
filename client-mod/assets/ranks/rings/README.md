@@ -34,7 +34,6 @@ Rank 10 uses overlapping color sectors under one circular SVG mask. All ten
 textures render at 4x size and downsample with Lanczos, then receive a complete
 RGBA mip chain. This avoids the separate hard-edged CSS mask used by the draft.
 
-The original rank PNGs and rank sheet in the parent directory are preserved.
 No brainstorm previews belong to this final-asset folder.
 
 Challenge tabs draw these at 28 x 28 units, centered in their former 40-unit slots.

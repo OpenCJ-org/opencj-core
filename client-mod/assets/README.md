@@ -20,5 +20,5 @@ to the earlier icon inputs. Existing `source/cod4/source_data/*.gdt` files remai
 intact. Generated code-based badges are edited through their recipe and source
 SVGs, not a missing layered Photoshop file. PNG/IWI alone are not the master.
 
-The original rank PNGs and rank sheet remain in `ranks/`; they are not overwritten.
+The active rank and competitive masters are in `ranks/rings/` and `ranks/competitive/`.
 Oldschool is a final exported asset for later use and is not enabled in game.

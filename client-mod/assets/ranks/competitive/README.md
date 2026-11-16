@@ -5,7 +5,7 @@ podium. Gold is raised in the center. The outer canvas is transparent; there
 is no enclosing button border, background plate, gradient, or hover shading.
 
 `competitive.svg` is the editable master. `competitive.png` is the final RGBA
-export. The original `../competitive-source.png` is preserved for reference.
+export.
 Only this selected design belongs in the final asset library.
 
 Rebuild from the client-mod directory:
