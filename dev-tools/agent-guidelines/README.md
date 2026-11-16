@@ -1,9 +1,10 @@
-# Agent guideline drafts
+# OpenCJ coding guidelines
 
-The draft in `drafts/coding-guidelines.md` remains **INACTIVE**.
-Do not apply it or install it in an instruction-discovery location.
+The [coding guidelines](coding-guidelines.md) are **ACTIVE**.
+They cover all first-party OpenCJ code, including tests and tools, across
+languages and repositories.
 
-This folder is separate from active repository instructions, setup guides,
-technical references and investigation records. Activation across all OpenCJ
-repositories remains a separate decision. No rule is activated by moving or
-editing documentation.
+Keep this as the canonical policy. Root agent instructions and engine repository
+entry points link here; do not maintain separate copies of the thirteen rules.
+Unapproved future proposals belong in the drafts directory and are not active
+instructions.

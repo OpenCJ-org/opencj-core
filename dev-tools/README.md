@@ -62,5 +62,5 @@ control, or coding-guideline activation happens during setup.
 
 Keep credentials, captures, dumps, deployment evidence and machine-specific
 notes under ignored `local/`. Read private operator instructions when present.
-The [coding guidelines](agent-guidelines/drafts/coding-guidelines.md) remain an
-**inactive draft**. Personal setup and recovery records remain private.
+The [coding guidelines](agent-guidelines/coding-guidelines.md) are **active**.
+Personal setup and recovery records remain private.

@@ -120,5 +120,4 @@ license and exceptions.
 Keep new asset records with the asset: creator, source URL, version/hash where
 available, applicable license/permission, changes made and notices needed in
 exports. Private download receipts and correspondence stay outside the public
-checkout. Unresolved items still prevent publication clearance. The coding
-guidelines remain inactive.
+checkout. Unresolved items still prevent publication clearance. Follow the active coding guidelines alongside these licensing requirements.

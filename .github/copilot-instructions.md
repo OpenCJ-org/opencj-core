@@ -28,9 +28,11 @@ deployment or game-control work. Their location is returned by
 `git rev-parse --git-path info/opencj-local.md`.
 Do not infer installation paths or deployment permission from public examples.
 
-The coding-guideline draft remains INACTIVE. Do not enforce it, install global
-loaders, or begin the proposed 2026 cleanup without separate explicit approval.
-This repository instruction file does not activate that draft.
+Follow the active [coding guidelines](../dev-tools/agent-guidelines/coding-guidelines.md)
+for first-party code in every component and both engines. They apply across
+languages, including scripts, tests, SQL and hand-authored menu definitions.
+Preserve published history during the approved 2026 cleanup; use focused new
+commits and keep behavior fixes distinct from mechanical layout changes.
 
 Never publish credentials, player data, local operator instructions, test
 outputs, private recovery refs or stashes. Publication requires the completed

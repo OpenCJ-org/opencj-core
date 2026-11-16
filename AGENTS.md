@@ -8,5 +8,5 @@ Before environment, deployment or game-control work, also read private operator
 instructions when present at the path returned by
 `git rev-parse --git-path info/opencj-local.md`.
 
-The coding-guideline draft is INACTIVE. Its rules and the proposed 2026 cleanup
-are not enabled by this file or by the documentation reorganization.
+Follow the active [coding guidelines](dev-tools/agent-guidelines/coding-guidelines.md)
+for all first-party code, including tests and tools.

@@ -15,8 +15,8 @@ states another working directory. Machine locations come from local arguments
 or configuration.
 
 Agent instructions live in [.github](../.github/copilot-instructions.md), with a
-small root [AGENTS.md](../AGENTS.md) entry point. The coding-guideline draft is
-separate and remains inactive. Investigation diaries, private policy data,
+small root [AGENTS.md](../AGENTS.md) entry point. The active
+[coding guidelines](../dev-tools/agent-guidelines/coding-guidelines.md) are maintained separately. Investigation diaries, private policy data,
 recordings, deployment receipts and personal setup notes do not belong in these
 public folders.
 
@@ -52,3 +52,6 @@ more detailed than the current guide.
 - Maps: [catalogue and attribution](reference/maps/catalogue.md).
 - Development: [repository layout](development/repository-layout.md), [testing](development/testing.md), [performance workloads](development/performance.md), [sticky walls](development/sticky-walls.md), [preview assets](development/map-previews.md).
 - Operations: [database](operations/database.md), [name-rule maintenance](operations/name-moderation.md), [client assets](operations/client-assets.md), [native/scripts](operations/native-scripts.md).
+
+See [reviewable code cleanup](development/code-cleanup.md) for preserving feature
+history and original blame during the approved readability work.

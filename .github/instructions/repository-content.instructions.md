@@ -28,9 +28,9 @@ just as carefully as new files.
   assets in the relevant component. Follow an existing narrower folder when
   one fits. Do not collect unrelated files in the root or create a catch-all
   documentation folder.
-- Keep unapproved coding guidelines in
-  `dev-tools/agent-guidelines/drafts/`. They remain INACTIVE; this rule does
-  not approve them, install a global loader, or start the 2026 code cleanup.
+- Keep the active shared coding policy in `dev-tools/agent-guidelines/`.
+  Put unapproved future proposals in its `drafts/` directory; proposals do not
+  override the active policy until approved.
 
 The documentation folders above are at the core repository root. Do not
 recreate their old locations under `dev-tools/docs/`. Update the relevant
@@ -76,7 +76,7 @@ does not replace license conditions. If terms or provenance are unclear, record
 the uncertainty and resolve it before declaring the material cleared for
 publication; do not invent a license or silently relicense it.
 
-This active licensing instruction does not activate the coding-guideline draft.
+Licensing requirements apply alongside the active coding guidelines.
 
 ## Make tracking match the decision
 

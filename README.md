@@ -56,5 +56,5 @@ Dev-tools is licensed under [AGPL-3.0](dev-tools/LICENSE).
 See [licenses and asset sources](docs/reference/licensing.md) for retained
 notices, external inputs and unresolved redistribution questions.
 
-The [coding guidelines](dev-tools/agent-guidelines/drafts/coding-guidelines.md)
-are an **inactive draft**. Their presence here does not activate them.
+The [coding guidelines](dev-tools/agent-guidelines/coding-guidelines.md)
+are **active** for all first-party OpenCJ code, including tests and tools.

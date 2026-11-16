@@ -5,8 +5,8 @@ applyTo: "**"
 # Preserve the open-source audit requirements
 
 This is an active maintenance rule for OpenCJ work, including engine changes
-made alongside core changes. It does not activate the 13 coding guidelines or
-authorize the proposed 2026 code cleanup.
+made alongside core changes. Follow it together with the active
+[coding guidelines](../../dev-tools/agent-guidelines/coding-guidelines.md).
 
 Keep the requirements below true when changing the affected files. Run checks
 appropriate to the change and report any unverified part. Do not repeat the

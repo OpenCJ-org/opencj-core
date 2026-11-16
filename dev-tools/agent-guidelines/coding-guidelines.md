@@ -1,17 +1,12 @@
-# Draft: OpenCJ code readability guidelines
+# OpenCJ coding guidelines
 
-**Status: DRAFT v0.13 — INACTIVE — awaiting explicit user approval.**
+**Status: ACTIVE — approved and activated on 2026-11-17.**
 
-Prepared on 2026-11-14. This document proposes rules; it does not establish
-current instructions. Do not apply or enforce it, use it to authorize cleanup,
-or wire it into agent instructions, skills, formatters, or CI until the user
-explicitly confirms that it is ready. Saving, committing, reviewing, or revising
-this draft is not approval. Existing instructions remain in effect.
+These thirteen agreed rules apply to first-party OpenCJ code. They complement
+the repository's operational, privacy, licensing and test-maintenance rules.
+Keep this file as the single canonical policy; other agent entry points link here.
 
-The supporting historical review is retained privately. The draft rules and
-illustrative examples below remain inactive.
-
-## Intended scope after approval
+## Scope
 
 One policy for all first-party OpenCJ code: `client-mod`, `cod4x-server`,
 `dev-tools`, `discord-integration`, `libcod`, `server-db`, `server-ext`,
@@ -28,15 +23,14 @@ Respect binary layouts, engine interfaces, macro semantics, and externally
 defined names. Any exception should identify the actual constraint; "the
 surrounding code is already compressed" is not a sufficient reason.
 
-## Proposed rules, in priority order
+## Rules, in priority order
 
 ### R1. Give each executable step its own line
 
-Discussion decision, 2026-11-14: the user chose B everywhere. Every branch
+Every branch
 and loop body must be expanded, including a single return, break, continue,
 or call. There is no short-body or guard-clause exception in any first-party
-language or repository. This records agreement on the wording only; rule 1
-and the complete guidelines remain inactive pending explicit activation.
+language or repository.
 
 - Put each statement on its own line. Do not join assignments, calls, returns,
   cleanup, or state transitions with semicolons on one line.
@@ -57,7 +51,7 @@ A `for` header is one construct, not three statements to split. A short literal
 tuple, vector, or homogeneous data-table row may stay together when it is clearer.
 Required macro continuations preserve the same vertical structure.
 
-**Proposed layout review prompts, not automatic failures:** aim for about
+**Layout review prompts, not automatic failures:** aim for about
 100 columns and reconsider lines over 120 columns. Indivisible literals,
 protocol data, and syntax constraints may justify exceptions. Never shrink
 names or remove spaces merely to meet a line-length target.
@@ -78,7 +72,7 @@ Use verb phrases for functions that perform an action, and predicates for
 Boolean questions. Avoid names such as `process`, `handle`, or `data`
 when a more specific name would describe the responsibility.
 
-Discussion clarification, 2026-11-14: conventional mathematical names,
+Conventional mathematical names,
 coordinates, and simple local loop indices are acceptable when their role is
 already clear in context. Being mathematical, familiar to the author, or used
 in a short function is not sufficient by itself. Prefer a descriptive name
@@ -90,7 +84,7 @@ For example, `x` and `y` in a coordinate calculation or `i` in a simple local
 loop may remain short. Assess the meaning conveyed at the use site, not merely
 whether a symbol is conventional somewhere in mathematics. Do not rename an
 external interface just to satisfy this rule; give it a meaningful local name
-where useful. This clarification does not activate any guideline.
+where useful.
 
 ### R3. Keep expression logic understandable
 
@@ -100,10 +94,10 @@ layout rule while still combining several decisions or transformations that
 should be exposed separately. Do not justify a rule 3 rewrite solely by showing
 that compressed statements could be placed on separate lines.
 
-Discussion decision, 2026-11-14: both a short, simple conditional expression
+Both a short, simple conditional expression
 and an expanded if/else are acceptable for a choice between two values. Neither
 form is mandatory, and an existing readable form need not be converted to the
-other. This records a drafting decision only; all guidelines remain inactive.
+other.
 
 - Separate calculations, validation, and mutations. Do not hide unrelated side
   effects in conditions, arguments, conditional expressions, or comma expressions.
@@ -114,7 +108,7 @@ other. This records a drafting decision only; all guidelines remain inactive.
 - Prefer an ordinary loop to a comprehension or chained expression that combines
   nested iteration, filtering, branching, and conversion.
 
-**Proposed review prompt, not an automatic failure:** explain or simplify
+**Review prompt, not an automatic failure:** explain or simplify
 conditions with more than three Boolean terms. The purpose is to expose the
 meaning of a decision, not merely to reduce its line length.
 
@@ -127,7 +121,7 @@ management when those are independently understandable operations.
 Prefer guard clauses for invalid inputs or terminal cases when they make the
 normal path clearer. Preserve cleanup and existing error semantics.
 
-**Proposed review prompts:** beyond roughly 50 nonblank, noncomment lines in a
+**Review prompts:** beyond roughly 50 nonblank, noncomment lines in a
 function, or three nested control-flow levels, check for separable responsibilities.
 Count nested local function definitions when assessing how much a reader must
 navigate. These numbers trigger review, not compulsory fragmentation.
@@ -138,14 +132,13 @@ straightforward sequence among trivial forwarding helpers, introduce a generic
 framework for one case, or split code merely to satisfy a size metric. Prefer
 existing project facilities when they fit.
 
-Discussion decision, 2026-11-14: the user approved extracting a meaningful
-operation even when it is short and has only one caller. For example, a
+Extracting a meaningful operation is appropriate even when it is short and
+has only one caller. For example, a
 `register_material` helper can own manifest reading, duplicate prevention,
 and writing while `build` coordinates asset creation. Reuse is not a
 prerequisite. Avoid helpers that merely rename an obvious assignment or
 forward a call without adding useful domain meaning. The existing `succeeds`
-helper is useful because it names the publication-result convention. This
-records agreement on the draft only; all guidelines remain inactive.
+helper is useful because it names the publication-result convention.
 
 ### R5. Explain non-obvious reasons and constraints near the code
 
@@ -183,11 +176,6 @@ workaround; investigate when the reason is unknown.
 There is no comment quota and no requirement to narrate obvious code. Improve
 names and structure before using comments to compensate for them.
 
-Discussion decision, 2026-11-14: the user agreed to reason/constraint comments
-and urged brief purpose summaries for nontrivial functions, rather than merely
-allowing them. The user also explicitly requested simple language in comments.
-All guidelines remain inactive.
-
 ### R6. Make interfaces, state transitions, and failure meanings explicit
 
 - Name parameters in declarations, particularly when adjacent parameters have
@@ -206,13 +194,12 @@ Use the simplest representation compatible with the existing language, ABI,
 and project. This is not a mandate to migrate C++ libraries or replace working
 resource-management conventions. If a low-level pattern is required, explain it.
 
-Discussion decision, 2026-11-14: for shared interfaces with multiple easily
-confused choices, prefer distinct named option types where the language supports
-them. For example, `ScopeMatch::Prefix` and `CompletionHandling::Discard`
+For shared interfaces with multiple easily confused choices, prefer distinct
+named option types where the language supports them. For example, `ScopeMatch::Prefix` and `CompletionHandling::Discard`
 make the two cancellation choices clear at a call site. Named Boolean variables
 remain acceptable for simpler local code. Use appropriate language features,
 such as keyword arguments, when they provide equivalent clarity. Do not add a
-class or framework around every function. All guidelines remain inactive.
+class or framework around every function.
 
 ### R7. Give numbers and positional data meaning
 
@@ -232,12 +219,6 @@ Do not replace every 0, 1, coordinate component, or ordinary arithmetic constant
 with a name. A constant is useful when its name communicates domain meaning;
 `VALUE_16777215` does not improve understanding.
 
-Discussion decision, 2026-11-14: the user approved this rule with the revised
-wording above. Preserving existing data meaning applies to readability-only
-cleanup; deliberate functional or data-format changes remain possible when
-part of the requested work, with the necessary updates and compatibility
-handling. All guidelines remain inactive.
-
 ### R8. Preserve a coherent local style without copying its weaknesses
 
 Follow established naming, indentation, brace placement, and file organization
@@ -255,17 +236,12 @@ the established surrounding conventions. If existing code is already mixed,
 use its predominant established style for the changed block and do not add
 another variation. The shared readability rules still take precedence.
 
-After activation, apply these rules to new or deliberately edited logical
-blocks. Editing an initialization block, function, or other small part of a
+Apply these rules to new or deliberately edited logical blocks. Editing an initialization block, function, or other small part of a
 file does not automatically authorize reformatting the entire file or
 repository. Keep unrelated formatting and naming cleanup out of the change.
 Broader cleanup should be planned and agreed separately, including cleanup of
 existing inconsistencies outside the affected block. Keep generated and
 upstream sections recognizable.
-
-Discussion decision, 2026-11-14: the user approved different conventions between
-languages, required consistency within the edited function, and requested the
-block/file/repository scope limit to be explicit. All guidelines remain inactive.
 
 ### R9. Make tests readable descriptions of behavior
 
@@ -291,15 +267,10 @@ fixture values, timing assumptions, and cleanup understandable. Use tests
 appropriate to the change; this rule does not require every test to launch
 the whole game or justify an elaborate new test framework.
 
-Discussion decision, 2026-11-14: the user approved behavior-focused tests by
-default, readable scenarios and failure reports, and focused asset checks
-where appropriate with their limits stated. All guidelines remain inactive.
-
 ### R10. Make the purpose and effects of every change reviewable
 
-Discussion decision, 2026-11-14: the user approved these review criteria and
-required concise commit messages. This rule concerns the scope and explanation
-of a change, not statement formatting or runtime safety. Check the actual diff
+This rule concerns the scope and explanation of a change, not statement
+formatting or runtime safety. Check the actual diff
 against these concrete criteria before handing it over:
 
 1. Every changed logical block must have a current purpose: implement the
@@ -335,15 +306,12 @@ enough; add only brief essential context when needed. Do not turn commit
 messages into paragraphs of review notes. Detailed explanations of behavior
 changes and validation belong in the PR/review description, task handoff, or
 relevant documentation. The criteria above do not require all that detail in
-the commit message itself. Approval of this rule does not activate it.
+the commit message itself.
 
 ### R11. Validate before use and leave predictable results on failure
 
-Discussion decision, 2026-11-14: the user approved this rule, while noting
-that numeric limits must also follow rule 7. It covers avoiding invalid memory
-access, uninitialized or unintended results, and partially applied state
-changes. It is separate from presenting a change clearly for review and
-remains inactive with the rest of the guidelines.
+This rule covers invalid memory access, uninitialized or unintended results,
+and partially applied state changes. Numeric limits must also follow rule 7.
 
 For introduced or modified operations, check these concrete requirements:
 
@@ -375,13 +343,11 @@ handling simply to hide an invalid state.
 
 ### R12. Handle delayed, repeated, and concurrent work deliberately
 
-Discussion decision, 2026-11-14: the user agreed with handling delayed and
-repeated work deliberately and requested active cancellation of work that is
-no longer relevant, rather than spending resources only to discard its result.
-This covers valid data or a valid object being used for an obsolete operation,
-and requests whose effects could happen twice. Rule 11's access checks alone
-do not establish that work still belongs to the current player session, map,
-menu, recording, or editor operation. This rule remains inactive.
+Cancel work that is no longer relevant, rather than spending resources only
+to discard its result. Valid data or a valid object can still belong to an
+obsolete operation, and repeated requests can apply an effect twice. Rule 11's
+access checks alone do not establish that work still belongs to the current
+player session, map, menu, recording, or editor operation.
 
 For work that waits, runs asynchronously, or can be repeated:
 
@@ -426,7 +392,6 @@ refresh request number, and durable demo-publication receipts.
 
 ### R13. Bound resource growth and waiting
 
-Discussion decision, 2026-11-14: the user approved this rule; it remains inactive.
 Code may be safe for each individual request yet still exhaust memory or stall
 the server when requests accumulate or an external dependency stops responding.
 
@@ -455,11 +420,6 @@ premature optimization. Apply it where growth or waiting can affect the server,
 other players, or persistence. The bounded native save history and SQL worker
 pool are existing examples to preserve and learn from.
 
-Future cleanup of existing AI-added code remains a separate, user-directed
-activity. Agreement on individual rules does not activate the guidelines or
-authorize cleanup. All thirteen rules remain inactive until the user explicitly
-confirms that the complete guidelines are ready to use.
-
 ## What "self-explanatory" would mean in review
 
 For each changed logical unit, a reviewer familiar with the project should be
@@ -477,10 +437,10 @@ If a question is unanswered, improve the relevant name, structure, contract, or
 comment. Do not add prose merely to tick a box. This rubric is more meaningful
 than requiring a comment on every function or a fixed percentage of comments.
 
-## Illustrative changes, not patches
+## Examples
 
-These fragments illustrate proposed style only. They are not permission to
-change current code.
+These fragments illustrate the intended readability. Preserve the surrounding
+behavior and verify the relevant contracts when applying a change.
 
 GSC, from the route-loader pattern:
 
@@ -490,7 +450,7 @@ maps=[];seen=[];
 map=toLower(rows[i][0]);name=rows[i][1];key=map+":"+toLower(name);
 if(name=="" || isDefined(seen[key]))continue;
 
-// Proposed shape
+// After
 routesByMap = [];
 seenRoutes = [];
 
@@ -510,7 +470,7 @@ C++, from the worker-start pattern:
 // Before
 j->state=1;j->started=nowMs();stats.queued--;stats.running++;
 
-// Proposed shape; JOB_RUNNING would be a named equivalent of the existing value.
+// After; JOB_RUNNING would be a named equivalent of the existing value.
 job->state = JOB_RUNNING;
 job->started = nowMs();
 stats.queued--;
@@ -523,24 +483,31 @@ Python, from the publication-test pattern:
 # Before
 marker("pub_rename");pending=pool.submit(call,renamed);time.sleep(.05)
 
-# Proposed shape; timing behavior is preserved for this illustration.
+# After; timing behavior is preserved for this illustration.
 # Wait until the rename holds the lock before submitting publication.
 marker("pub_rename")
 pending_publication = pool.submit(call, renamed)
 time.sleep(0.05)
 ```
 
-## Decisions reserved for approval
+## Applying and maintaining the policy
 
-The proposed firm defaults are separate statements, expanded bodies, braces
-where supported, meaningful names, and explicit non-obvious contracts.
-The 100/120-column, 50-line, three-level, and three-term thresholds are review
-prompts offered for discussion, not claims that those numbers prove quality.
+Use minimal instruction pointers for each OpenCJ repository and future
+repositories. Preserve existing operational instructions and keep the policy
+text here rather than duplicating it.
 
-After explicit approval, keep the canonical policy in `dev-tools` and arrange
-minimal instruction pointers that cover every sibling repository and future
-repositories. Preserve existing operational instructions. Do not duplicate the
-policy text across repositories. Agree on any formatter/linter adoption
-separately after checking support for the actual languages and macro syntax.
+The review thresholds above prompt judgment; they are not automatic quality
+scores or a reason to fragment straightforward code. Agree on permanent
+formatter/linter adoption separately after checking support for the actual
+languages, embedded code and macro syntax.
 
-Until that approval, do not create those pointers or activate tooling.
+For the approved 2026 cleanup, use focused new commits rather than rewriting
+published feature history. The 2026 line history identifies the main scope;
+nearby human-written code may be cleaned when that makes the same function or
+feature coherent. Preserve unrelated upstream and generated code.
+
+Separate mechanical layout changes, meaningful naming/structure changes and
+behavior fixes where practical. Record only verified mechanical commits in
+`.git-blame-ignore-revs`; do not hide functional fixes or substantive refactors
+from blame. Keep commit subjects concise and detailed verification in review
+records.

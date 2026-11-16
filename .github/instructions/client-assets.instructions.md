@@ -16,4 +16,4 @@ Preserve the player's session and settings; never terminate their game to
 capture or deploy assets. If game-only observation cannot be established,
 hand capture to the player.
 
-The draft coding guidelines remain inactive.
+The shared coding guidelines are active for first-party source and tooling.

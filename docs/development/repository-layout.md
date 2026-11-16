@@ -15,7 +15,7 @@ server-ext build relationship.
 - `docs/proposals/`: designs that are not implemented.
 - `docs/research/`: exploratory findings, explicitly separate from decisions.
 - `.github/`: Copilot instructions and GitHub workflow configuration.
-- `dev-tools/agent-guidelines/drafts/`: inactive guideline drafts.
+- `dev-tools/agent-guidelines/`: the active shared coding policy; unapproved proposals stay in `drafts/`.
 
 Use one maintained page for each procedure or behavior. Component READMEs should
 point to it; avoid separate manuals that must be edited in parallel. See the
