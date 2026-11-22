@@ -163,14 +163,29 @@ try:
     # Delay delivery of one real SQL result; do not stub the database operation.
     p = mod / "opencj/mysql.gsc"
     source = p.read_text()
-    first = source.index("_request(query, policy, key, scope, deadline, save)\n")
-    last = source.index("\n_reportFailure", first)
-    function = source[first:last]
-    needle = '    level waittill("mysqlQueryDone"+id, rows, outcome);\n'
-    assert function.count(needle) == 1
-    delay = '    if (isDefined(level.history192Delay) && level.history192Delay && isSubStr(query, "SELECT savePosition("))\n    {\n        self notify("history192_result_ready");\n        wait 0.2;\n    }\n'
-    function = function.replace(needle, needle + delay)
-    p.write_text(source[:first] + function + source[last:])
+    # Delay only the result-delivery boundary; tolerate ordinary GSC layout changes.
+    request_match = re.search(r"(?ms)^_request\s*\([^)]*\)\s*\{.*?^\}", source)
+    assert request_match, "SQL request function was not found"
+    request_function = request_match.group(0)
+    result_wait = re.compile(
+        r'(?m)^[ \t]*level\s+waittill\(\s*"mysqlQueryDone"\s*\+\s*id\s*,'
+        r'\s*rows\s*,\s*outcome\s*\)\s*;[ \t]*\n'
+    )
+    delay = (
+        '    if (isDefined(level.history192Delay) && level.history192Delay && '
+        'isSubStr(query, "SELECT savePosition("))\n'
+        '    {\n'
+        '        self notify("history192_result_ready");\n'
+        '        wait 0.2;\n'
+        '    }\n'
+    )
+    request_function, replacements = result_wait.subn(
+        lambda match: match.group(0) + delay, request_function
+    )
+    assert replacements == 1, "Expected one SQL completion wait"
+    p.write_text(
+        source[:request_match.start()] + request_function + source[request_match.end():]
+    )
     cfg = (ROOT / "dev-tools/local/runtime/mods/opencj/opencj-dev.cfg").read_text()
     lines = [line for line in cfg.splitlines() if re.match(r"\s*set(?:a)?\s+db_", line)]
     for line in lines:
