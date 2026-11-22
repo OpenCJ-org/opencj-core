@@ -16,6 +16,7 @@ from mysql_session import MySQL
 
 
 def main():
+    """Verify fresh setup, data preservation and backup recovery in isolated MySQL."""
     os.umask(0o077)
     name = "opencj-core-bootstrap-" + uuid.uuid4().hex[:8]
     evidence = ROOT / "dev-tools/local" / name
@@ -121,6 +122,23 @@ def main():
         snapshots = list(backup_output.iterdir())
         assert len(snapshots) == 1
         assert (snapshots[0] / "restore-verification.txt").is_file()
+        # Rechecking uses the stored database names, without reading the source again.
+        rechecked = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "dev-tools/scripts/backup.py"),
+                "--verify-existing",
+                str(snapshots[0]),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        (evidence / "backup-recheck.log").write_text(rechecked.stdout + rechecked.stderr)
+        if rechecked.returncode:
+            raise RuntimeError(
+                "Existing backup restore check failed; inspect "
+                + str(evidence / "backup-recheck.log")
+            )
         result = {
             "passed": True,
             "migrations": expected,
@@ -128,6 +146,7 @@ def main():
             "existing_data_preserved": True,
             "runtime_ddl_denied": True,
             "synthetic_backup_restored": True,
+            "existing_backup_rechecked": True,
         }
         (evidence / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result), flush=True)
