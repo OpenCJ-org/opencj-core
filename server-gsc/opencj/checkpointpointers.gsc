@@ -128,10 +128,17 @@ showCheckpointPointers()
             tint = checkpoints[i].routeInfo.color;
         }
 
-        size = 5;
+        markerSize = 5;
         if (routeColored)
-            size = 10;
-        self.checkpointPointers_huds[i] setShader(shader_hud, size, size);
+        {
+            markerSize = 10;
+            if (self.checkpointIconMode == 1)
+            {
+                // World sprites appear larger than screen markers at the same size.
+                markerSize = 7;
+            }
+        }
+        self.checkpointPointers_huds[i] setShader(shader_hud, markerSize, markerSize);
         self.checkpointPointers_huds[i].color = tint;
         if (routeColored)
             self.checkpointPointers_huds[i].alpha = 1;
