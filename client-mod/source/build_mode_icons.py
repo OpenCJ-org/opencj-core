@@ -2,7 +2,9 @@
 
 Textures remain power-of-two squares; drawing is pre-scaled so rendering at
 24x20 (FPS) or 16x20 (modifiers) restores normal-width type and glyphs.
-Ele, split-route and bot geometry derives from Lucide 0.468.0 (ISC license).
+Ele, split-route and bot geometry derives from Lucide 0.468.0 (ISC license);
+the Oldschool rabbit and Tutorial graduation cap are Lucide 0.468.0 SVGs.
+Tutorial runs show their badge in the FPS slot, since the server picks their FPS.
 """
 
 from pathlib import Path
@@ -18,7 +20,37 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 S = 32
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-COLORS = {'classic': '#80b8ff', 'standard': '#d9e2e7', 'expanded': '#efbb65', 'assisted': '#c7a3ff'}
+COLORS = {
+    'classic': '#80b8ff',
+    'standard': '#d9e2e7',
+    'expanded': '#efbb65',
+    'assisted': '#c7a3ff',
+    'tutorial': '#7fd18b',
+}
+# Badges whose glyph is a stock Lucide SVG, rasterized at source resolution.
+SVG_GLYPHS = {'oldschool': 'rabbit.svg', 'fps_tutorial': 'graduation-cap.svg'}
+# Compiled 2D icon material that new badge materials are cloned from.
+MATERIAL_TEMPLATE = 'opencj_icon_fps_any'
+
+
+def draw_svg_glyph(im, name, color, size, x, y):
+    """Draw a badge's Lucide glyph, size units square, with its top left at x, y.
+
+    Rasterizes the curves at source resolution before game-sized mipmaps are made.
+    """
+    import cairosvg
+
+    source = (ROOT / 'source/mode-icons' / SVG_GLYPHS[name]).read_text()
+    source = source.replace('currentColor', color).replace(
+        'stroke-width="2"', 'stroke-width="2.2"'
+    )
+    raw = cairosvg.svg2png(
+        bytestring=source.encode(),
+        output_width=round(size * S),
+        output_height=round(size * S),
+    )
+    glyph = Image.open(io.BytesIO(raw)).convert('RGBA')
+    im.alpha_composite(glyph, (round(x * S), round(y * S)))
 
 
 def badge(name, label, kind):
@@ -36,7 +68,12 @@ def badge(name, label, kind):
             font = ImageFont.truetype(FONT, font.size - 1)
         d.text((x * S, y * S), value, font=font, fill=fill, anchor='mm')
 
-    if fps:
+    if fps and name in SVG_GLYPHS:
+        # A mode that replaces the FPS category shows its glyph instead of "FPS".
+        glyph_size = 10.5
+        draw_svg_glyph(im, name, color, glyph_size, (w - glyph_size) / 2, 1.9)
+        text(label, w / 2, 15.6, 4.6, '#edf2f5')
+    elif fps:
         text('FPS', w / 2, 6.3, 5.3, color)
         text(label, w / 2, 15.6, 4.6, '#edf2f5')
     else:
@@ -86,22 +123,9 @@ def badge(name, label, kind):
                 [(9, 13), (9, 15)],
             ]:
                 line(p)
-        elif name == 'oldschool':
-            # Keep the approved Lucide rabbit silhouette; rasterize its curves
-            # at source resolution before creating game-sized mipmaps.
-            import cairosvg
-
-            source = (ROOT / 'source/mode-icons/rabbit.svg').read_text()
-            source = source.replace('currentColor', color).replace(
-                'stroke-width="2"', 'stroke-width="2.2"'
-            )
-            raw = cairosvg.svg2png(
-                bytestring=source.encode(),
-                output_width=round(11.5 * S),
-                output_height=round(11.5 * S),
-            )
-            glyph = Image.open(io.BytesIO(raw)).convert('RGBA')
-            im.alpha_composite(glyph, (round(ox * S), round(oy * S)))
+        elif name in SVG_GLYPHS:
+            # Keep the approved Lucide silhouette at the modifier glyph size.
+            draw_svg_glyph(im, name, color, 11.5, ox, oy)
         elif name == 'halfbeat':
             # Equal-height, side-by-side keys, with a clear gap at small sizes.
             for letter, x in [('A', 1.2), ('D', 8.4)]:
@@ -130,21 +154,65 @@ def iwi(im):
     )
 
 
+def register_material(name):
+    """Create the badge's compiled material, mod.csv entry and GDT source if missing.
+
+    The material is cloned from MATERIAL_TEMPLATE: the same 2D, 512x512 icon
+    material with only its name and texture name changed. String pointers after
+    the names move by the change in name length (as in build_notification_glow).
+    """
+    material = 'opencj_icon_' + name
+    material_path = ROOT / 'cod4/materials' / material
+    if not material_path.exists():
+        old = MATERIAL_TEMPLATE.encode('ascii')
+        data = bytearray((ROOT / 'cod4/materials' / MATERIAL_TEMPLATE).read_bytes())
+        for offset, expected in [(0, old), (4, old), (64, b'colorMap'), (72, old)]:
+            pointer = struct.unpack_from('<I', data, offset)[0]
+            if data[pointer:].split(b'\0', 1)[0] != expected:
+                raise SystemExit('Unexpected template material layout at offset ' + str(offset))
+        if data[76:79] != b'2d\0':
+            raise SystemExit('Template material is not a 2D material')
+        delta = len(material) - len(old)
+        for offset in (4, 72):
+            struct.pack_into('<I', data, offset, struct.unpack_from('<I', data, offset)[0] + delta)
+        struct.pack_into('<I', data, 64, struct.unpack_from('<I', data, 64)[0] + 2 * delta)
+        material_path.write_bytes(bytes(data).replace(old, material.encode('ascii')))
+
+    csv = ROOT / 'cod4/mod.csv'
+    entry = 'material,' + material
+    lines = csv.read_text().splitlines()
+    if entry not in lines:
+        template_index = lines.index('material,' + MATERIAL_TEMPLATE)
+        lines.insert(template_index + 1, entry)
+        csv.write_text('\n'.join(lines) + '\n')
+
+    gdt = ROOT / 'source/cod4/source_data/opencj_icons.gdt'
+    text = gdt.read_text()
+    header = '\t"' + material + '" ( "material.gdf" )\n'
+    if header not in text:
+        template_header = '\t"' + MATERIAL_TEMPLATE + '" ( "material.gdf" )\n'
+        start = text.index(template_header)
+        end = text.index('\n\t}\n', start) + len('\n\t}\n')
+        block = text[start:end].replace(MATERIAL_TEMPLATE, material)
+        gdt.write_text(text[:end] + block + text[end:])
+
+
 def main():
     output = ROOT / 'assets/mode-icons'
     output.mkdir(parents=True, exist_ok=True)
     manifest = {
         'logical_dimensions': {'fps': [24, 20], 'modifier': [16, 20]},
-        'glyphs': 'Lucide 0.468.0; Halfbeat original A/D keycaps',
+        'glyphs': 'Lucide 0.468.0 (Tutorial: graduation-cap); Halfbeat original A/D keycaps',
         'icons': {},
     }
-    sheet = Image.new('RGBA', (960, 240), '#171f26')
+    sheet = Image.new('RGBA', (1100, 240), '#171f26')
     d = ImageDraw.Draw(sheet)
     for i, (name, label, kind) in enumerate(
         [
             ('fps_classic', 'Classic', 'classic'),
             ('fps_standard', 'Standard', 'standard'),
             ('fps_any', 'Hax', 'expanded'),
+            ('fps_tutorial', 'Tutorial', 'tutorial'),
             ('ele', 'ELE', 'expanded'),
             ('anypct', 'ANY%', 'expanded'),
             ('halfbeat', 'HB', 'expanded'),
@@ -158,6 +226,7 @@ def main():
         raw = iwi(texture)
         target = ROOT / 'cod4/images' / ('opencj_icon_' + name + '.iwi')
         target.write_bytes(raw)
+        register_material(name)
         manifest['icons'][name] = {
             'label': label,
             'role': kind,
@@ -171,7 +240,7 @@ def main():
         sheet.alpha_composite(small, (i * 136 + 10, 120))
     sheet.save(output / 'contact-sheet.png')
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    print('Built seven mode badges; FPS 24x20, modifiers 16x20.')
+    print('Built eight mode badges; FPS 24x20, modifiers 16x20.')
 
 
 def export_oldschool():

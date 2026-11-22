@@ -55,6 +55,8 @@ main(backwardsCount)
 
     // Set hard TAS
     self openCJ\tas::setHardTAS(openCJ\savePosition::getUsedHardTAS(save));
+    // Set tutorial mode: a save belongs to one run, so it carries that run's mode
+    self openCJ\tutorial::setTutorialRun(openCJ\savePosition::isTutorialRun(save));
     // Set any%
     self openCJ\anyPct::setAnyPct(openCJ\savePosition::getUsedAnyPct(save));
 

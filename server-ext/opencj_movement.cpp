@@ -1,6 +1,7 @@
 #include "opencj_movement.hpp"
 #ifdef COD4
 #include "opencj_strafe_logic.hpp"
+#include "opencj_autofps.hpp"
 static CJ_StrafeState movement[MAX_CLIENTS];
 static bool correctionEnabled[MAX_CLIENTS];
 static unsigned corrections[MAX_CLIENTS];
@@ -16,11 +17,14 @@ extern "C" void opencj_initMovement(int client)
 {
     if(client<0||client>=MAX_CLIENTS)return;
     opencj_resetMovement(client);correctionEnabled[client]=false;
+    opencj_autoFpsInitClient(client);
     corrections[client]=0;removedGain[client]=0;
 }
 extern "C" void opencj_observeMovement(playerState_t *ps,const usercmd_t *cmd)
 {
     if(!ps||!cmd||ps->clientNum<0||ps->clientNum>=MAX_CLIENTS)return;
+    // Runs after this command moved the player, so the state is current.
+    opencj_autoFpsObserve(ps,cmd);
     CJ_UpdateStrafe(movement[ps->clientNum],cmd->forwardmove,cmd->rightmove,
                     ps->pm_type==0&&ps->groundEntityNum==1023,cmd->serverTime);
 }

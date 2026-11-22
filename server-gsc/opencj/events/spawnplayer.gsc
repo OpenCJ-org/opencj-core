@@ -64,6 +64,7 @@ main(atLastSavedPosition)
     self openCJ\huds\hudStatistics::onSpawnPlayer();
     self openCJ\playTime::onSpawnPlayer();
     self openCJ\fps::onSpawnPlayer();
+    self openCJ\tutorial::onSpawnPlayer();
     self openCJ\elevate::_updateAllowEle();
 
     self setSharedSpawnVars(false, true);

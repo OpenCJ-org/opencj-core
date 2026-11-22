@@ -10,6 +10,7 @@
         onOpen
         {
             OPENCJ_REGISTER_FPS(execNow)
+            OPENCJ_REGISTER_MAXPACKETS(execNow)
             close opencj_fps_userinfo;
         }
     }

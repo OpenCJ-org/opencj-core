@@ -25,6 +25,9 @@ onRunStarted()
 {
     if (!isDefined(level.demoPublicationReady) || !level.demoPublicationReady || getCodVersion() != 4)
         return;
+    // Tutorial runs are never published, so they are not recorded at all
+    if (self openCJ\tutorial::isTutorialRun())
+        return;
     id = self openCJ\playerRuns::getRunID();
     if (!isDefined(id) || isDefined(self.demoRecordings["" + id]))
         return;
@@ -126,6 +129,12 @@ onRunFinished()
 {
     rec = self current();
     if (!isDefined(rec) || rec.failed || rec.finishing) return;
+    // A recording can only exist here if the run's mode changed after it began
+    if (self openCJ\tutorial::isTutorialRun())
+    {
+        self discard(rec.id);
+        return;
+    }
     if (rec.failed) return;
     rec.finishing = true;
     rec.saves = []; // No further rewind/save lookup is possible for a finished run.

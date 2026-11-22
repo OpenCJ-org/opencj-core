@@ -7,6 +7,9 @@ The label is kept in runLabels and can be changed without changing the ID,
 statistics, saves or recording. Two different runs may have the same label.
 Only the unused second label column in playerRuns was removed.
 
+playerRuns.tutorial marks [tutorial-mode](../gameplay/tutorial-mode.md) runs.
+Ranking queries require it to be 0; it is set before a tutorial finish is recorded.
+
 ## Relationships
 
 - Challenges bind `mapID` and `routeID`, with permanent `challengeKey` ownership.

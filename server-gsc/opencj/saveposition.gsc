@@ -10,6 +10,7 @@ onInit()
     level.saveFlagName_anyPct = "anyPct";
     level.saveFlagName_allowHalfBeat = "halfBeat";
     level.saveFlagName_hardTAS = "hardTAS";
+    level.saveFlagName_tutorial = "tutorial";
 
     level.saveFlags = [];
 
@@ -23,6 +24,7 @@ onInit()
     level.saveFlags[level.saveFlagName_anyPct] = 64;
     level.saveFlags[level.saveFlagName_allowHalfBeat] = 128;
     level.saveFlags[level.saveFlagName_hardTAS] = 256;
+    level.saveFlags[level.saveFlagName_tutorial] = 512;
 }
 
 getFlagUsedEle(save)
@@ -43,6 +45,11 @@ getUsedAnyPct(save)
 getUsedHardTAS(save)
 {
     return (save.flags & level.saveFlags[level.saveFlagName_hardTAS]) != 0;
+}
+
+isTutorialRun(save)
+{
+    return (save.flags & level.saveFlags[level.saveFlagName_tutorial]) != 0;
 }
 
 isCheating(save)
@@ -100,6 +107,10 @@ createFlags()
     {
         flags |= level.saveFlags[level.saveFlagName_hardTAS];
     }
+    if(self openCJ\tutorial::isTutorialRun())
+    {
+        flags |= level.saveFlags[level.saveFlagName_tutorial];
+    }
 
     return flags;
 }
@@ -126,6 +137,13 @@ canSaveError()
     if(!self isOnGround())
     {
         return 2;
+    }
+
+    // Tutorial runs follow their route: no saving where a skip was triggered
+    isTutorialRun = self openCJ\tutorial::isTutorialRun();
+    if(isTutorialRun && (self openCJ\tutorial::isSkipLoadPending() || self openCJ\checkpoints::touchesRouteSkippingCheckpoint()))
+    {
+        return 5;
     }
 
     groundEntity = self getGroundEntity();
@@ -155,6 +173,11 @@ printCanSaveError(error)
         case 3:
         {
             self iprintln("^1Cannot save on this object");
+            break;
+        }
+        case 5:
+        {
+            self iprintln("^1Cannot save here: tutorial runs follow the route");
             break;
         }
     }

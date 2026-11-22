@@ -12,5 +12,6 @@
 
 #include "opencj_fps.hpp"
 #include "opencj_movement.hpp"
+#include "opencj_autofps.hpp"
 
 #endif // __INCLUDES_HPP_

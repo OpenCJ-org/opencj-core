@@ -1,0 +1,29 @@
+#include "ui/menudef.h"
+#include "ui_mp/scriptmenus/opencj_common.inc"
+
+// First-connect question for new players. Answers go to server-gsc/opencj/tutorial.gsc:
+// "familiar" keeps normal mode, "new" opens opencj_tutorial_offer, "later" asks again
+// on the next connection.
+{
+    menuDef
+    {
+        name opencj_tutorial_intro
+        rect DEFAULT_RECT(0 0 FULLSCREEN_X FULLSCREEN_Y)
+        style WINDOW_STYLE_EMPTY focuscolor WHITE_COLOR popup
+        onOpen { setFocus intro_new; }
+        onEsc { scriptMenuResponse "later"; close self; }
+        // Dims the whole screen, also outside the 4:3 area on widescreen displays.
+        itemDef
+        {
+            name dimmer rect 0 0 640 480 HORIZONTAL_ALIGN_FULLSCREEN VERTICAL_ALIGN_FULLSCREEN
+            style WINDOW_STYLE_FILLED backcolor 0 0 0 .55 visible 1 decoration
+        }
+        FIXED_RECT(.025 .045 .052 1, 168, 170, 304, 140)
+        FIXED_RECT(HIGHLIGHT_COLOR, 168, 170, 304, 2)
+        FIXED_RECT_TXT(1, "Welcome to OpenCJ!", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, .32, ITEM_ALIGN_MIDDLE_CENTER, 0, 0, NO_COLOR, WHITE_COLOR, 178, 184, 284, 28)
+        FIXED_RECT_TXT(1, "Are you familiar with the gameplay mechanics", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, .22, ITEM_ALIGN_MIDDLE_CENTER, 0, 0, NO_COLOR, LIGHTGREY_COLOR, 178, 216, 284, 18)
+        FIXED_RECT_TXT(1, "of CoD4 CodJumper?", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, .22, ITEM_ALIGN_MIDDLE_CENTER, 0, 0, NO_COLOR, LIGHTGREY_COLOR, 178, 234, 284, 18)
+        BUTTON_RECT_TXT_ACTION_BG(intro_familiar, "Yes", play "mouse_click"; scriptMenuResponse "familiar"; close self, .10 .19 .22 1, WHITE_COLOR, UI_FONT_NORMAL, .24, 222, 270, 90, 24)
+        BUTTON_RECT_TXT_ACTION_BG(intro_new, "No", play "mouse_click"; scriptMenuResponse "new"; close self, .10 .19 .22 1, WHITE_COLOR, UI_FONT_NORMAL, .24, 328, 270, 90, 24)
+    }
+}

@@ -92,6 +92,8 @@ createNewAccount()
             if(loginSuccess)
             {
                 self openCJ\loginHelper::storeUID(uid);
+                // Before settings report the login, so the first spawn sees the introduction
+                self openCJ\tutorial::onNewAccount();
                 self openCJ\settings::onNewAccount();
                 self iprintlnbold("Welcome to OpenCJ!");
             }

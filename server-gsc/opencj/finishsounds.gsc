@@ -26,6 +26,7 @@ recordQuery(runID)
         "FROM playerRuns r  " +
         "JOIN checkpoints c ON c.cpID=r.finishcpID  " +
         "WHERE r.runID=" + runID + "  " +
+        "AND r.tutorial=0  " +
         "AND r.finishTimeStamp IS NOT NULL), eligible AS ( " +
         "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps  " +
         "FROM finished f  " +
@@ -40,7 +41,8 @@ recordQuery(runID)
         "AND c.finishRouteID=f.routeID  " +
         "JOIN checkpointStatistics s ON s.runID=r.runID  " +
         "AND s.cpID=r.finishcpID  " +
-        "WHERE r.finishTimeStamp IS NOT NULL) " +
+        "WHERE r.finishTimeStamp IS NOT NULL  " +
+        "AND r.tutorial=0) " +
         ", " +
         "candidate AS (SELECT * FROM eligible WHERE runID=" + runID + ") " +
         ", " +

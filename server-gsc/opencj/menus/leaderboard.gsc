@@ -111,6 +111,7 @@ fetchUpdatedData()
                     " AND pr.anyPct <= " + self.currentBoard["filter"]["any"] +
                     " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
                     " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] +
+                    " AND pr.tutorial = 0" +
                     " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
             ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" +
             " LIMIT " + self.currentBoard["maxEntriesPerPage"] +

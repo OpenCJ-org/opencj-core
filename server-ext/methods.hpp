@@ -49,6 +49,11 @@
 {"resetStrafeTracking", Gsc_Movement_Reset, 0},
 {"getHalfbeatStats", Gsc_Movement_GetHalfbeatStats, 0},
 {"getPingVariation", Gsc_Player_GetPingVariation, 0},
+{"setAutoFPSEnabled", Gsc_AutoFps_SetEnabled, 0},
+{"getAutoFPS", Gsc_AutoFps_GetCurrent, 0},
+{"notifyAutoFPSRPGFired", Gsc_AutoFps_NotifyRPGFired, 0},
+{"setAutoFPSTarget", Gsc_AutoFps_SetTarget, 0},
+{"clearAutoFPSTarget", Gsc_AutoFps_ClearTarget, 0},
 #endif
 {"clearfpsfilter", Gsc_Player_ClearFPSFilter, 0},
 {"addplayertohidelist", Gsc_Vis_AddPlayerToHideList, 0},

@@ -15,6 +15,7 @@ finishQuery(runID)
         "AND s.cpID=r.finishcpID  " +
         "JOIN playerDisplayNames p ON p.playerID=r.playerID  " +
         "WHERE r.runID=" + runID + "  " +
+        "AND r.tutorial=0  " +
         "AND r.finishTimeStamp IS NOT NULL), eligible AS ( " +
         "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps  " +
         "FROM finished f  " +
@@ -30,6 +31,7 @@ finishQuery(runID)
         "JOIN checkpointStatistics s ON s.runID=r.runID  " +
         "AND s.cpID=r.finishcpID  " +
         "WHERE r.finishTimeStamp IS NOT NULL  " +
+        "AND r.tutorial=0  " +
         "AND r.runID<>f.runID) " +
         ", " +
         "prior AS ( " +
@@ -110,7 +112,7 @@ checkpointQuery(runID,cpID,fps,ele,any,hb,tas,metric)
     sort="cs.timePlayed,cs.explosiveJumps";
     if(metric=="rpgs")sort="cs.explosiveJumps,cs.timePlayed";
     return "SELECT cs.timePlayed,cs.explosiveJumps FROM checkpointStatistics cs STRAIGHT_JOIN playerRuns r ON r.runID=cs.runID "+
-        "WHERE cs.cpID="+cpID+" AND r.runID<>"+runID+" AND r.finishTimeStamp IS NOT NULL "+
+        "WHERE cs.cpID="+cpID+" AND r.runID<>"+runID+" AND r.finishTimeStamp IS NOT NULL AND r.tutorial=0 "+
         "AND r.FPSMode="+dbStr(fps)+" AND r.ele="+int(ele)+" AND r.anyPct="+int(any)+" AND r.hb="+int(hb)+" AND r.hardTAS="+int(tas)+
         " ORDER BY "+sort+",cs.runID LIMIT 1";
 }

@@ -576,6 +576,7 @@ fpsNameToIcon(name)
         case "Classic": return "opencj_icon_fps_classic";
         case "Standard": return "opencj_icon_fps_standard";
         case "Any": return "opencj_icon_fps_any";
+        case "Tutorial": return "opencj_icon_fps_tutorial";
         default: return "";
     }
 }

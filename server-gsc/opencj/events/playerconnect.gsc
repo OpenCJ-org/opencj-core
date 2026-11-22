@@ -36,6 +36,7 @@ main() // Threaded
     self openCJ\playTime::onPlayerConnect();
     self openCJ\events\eventHandler::onConnect();
     self openCJ\fps::onPlayerConnect();
+    self openCJ\tutorial::onPlayerConnect();
 
     level thread openCJ\discord::onPlayerConnect();
 

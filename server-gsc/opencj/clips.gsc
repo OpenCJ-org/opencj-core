@@ -74,6 +74,11 @@ record()
     if(isDefined(self.clipRecording) || isDefined(self.clipEdit))
     {self sendLocalChatMessage("Finish or cancel your current clip first.",true);return;}
     if(!self openCJ\demos::canWatch())return;
+    if(self openCJ\tutorial::isTutorialRun())
+    {
+        self sendLocalChatMessage("Clips are not available in tutorial mode.",true);
+        return;
+    }
     id=demoCreateTransient();
     if(!isDefined(id)){self sendLocalChatMessage("No recording capacity available.",true);return;}
     rec=spawnStruct();rec.id=id;rec.loaded=false;rec.saved=false;rec.lastTick=-1;
@@ -88,6 +93,14 @@ capture()
     if(!isDefined(self.clipRecording) || self openCJ\demos::isPlayingDemo() || self openCJ\checkpointCreation::isEditing() || self.sessionState!="playing")return;
     if(isDefined(self.isAFK) && self.isAFK)return;
     rec=self.clipRecording;
+    // Tutorial play must not end up in a clip, e.g. after loading a tutorial run
+    if(self openCJ\tutorial::isTutorialRun())
+    {
+        destroyDemo(rec.id);
+        self.clipRecording=undefined;
+        self sendLocalChatMessage("Clip recording stopped: clips are not available in tutorial mode.",true);
+        return;
+    }
     if(rec.lastTick==getTime())return;
     fps=self openCJ\fps::getCurrentFPS();
     if(!isDefined(addFrameToDemo(rec.id,self.origin,self getPlayerAngles(),1,self openCJ\demoRecording::frameFlags(),int(rec.saved),int(rec.loaded),int(isDefined(self.eventQueue["rpg"])),int(fps),0,self getEntityNumber(),int(isDefined(rec.elevated) && rec.elevated))))

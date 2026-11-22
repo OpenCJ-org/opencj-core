@@ -88,6 +88,7 @@ fetchUpdatedData()
                 " AND a.playerID = " + playerID + 
                 getFilterStr(self.currentBoard["filter"]["ele"], self.currentBoard["filter"]["any"], self.currentBoard["filter"]["hb"], self.currentBoard["filter"]["tas"]) +
                 " AND a.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
+                getTutorialFilterStr(self.currentBoard["filter"]["fps"]) +
             " ORDER BY " + sortStr +
             " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
             " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
@@ -128,9 +129,14 @@ fetchUpdatedData()
         {
             self.currentBoard["cols"][i]["nr"] = int(rows[i][1]); // runID
             name = rows[i][2];
+            isTutorialRun = (int(rows[i][8]) & level.saveFlags[level.saveFlagName_tutorial]) != 0;
             if (!isDefined(name) || (name == ""))
             {
                 name = "(Unnamed run)";
+            }
+            if (isTutorialRun)
+            {
+                name = "^5[Tutorial]^7 " + name;
             }
             self.currentBoard["cols"][i]["name"] = "^7" + name + "^7"; // runLabel
             self.currentBoard["cols"][i]["time"] = int(rows[i][3]);
@@ -138,6 +144,11 @@ fetchUpdatedData()
             self.currentBoard["cols"][i]["loads"] = int(rows[i][5]);
             self.currentBoard["cols"][i]["date"] = rows[i][6]; // startTimeStamp
             self.currentBoard["cols"][i]["fps"] = openCJ\menus\board_base::dbFPSToFullName(rows[i][7]);
+            // The server picked a tutorial run's FPS, so its badge replaces the FPS category
+            if (isTutorialRun)
+            {
+                self.currentBoard["cols"][i]["fps"] = "Tutorial";
+            }
 
             eleVal = int(rows[i][8]) & level.saveFlags[level.saveFlagName_usedEle];
             anyVal = int(rows[i][8]) & level.saveFlags[level.saveFlagName_anyPct];
@@ -191,6 +202,16 @@ getRunStr()
     }
 
     return str;
+}
+
+// Tutorial runs have a server-chosen FPS, so only the Any FPS filter lists them.
+getTutorialFilterStr(fpsFilter)
+{
+    if (fpsFilter == "125" || fpsFilter == "mix")
+    {
+        return " AND (a.flags & " + level.saveFlags[level.saveFlagName_tutorial] + ") = 0";
+    }
+    return "";
 }
 
 getFilterStr(ele, any, halfbeat, tas)

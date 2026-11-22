@@ -16,6 +16,7 @@ main()
     self openCJ\elevate::onRunCreated();
     self openCJ\anyPct::onRunCreated();
     self openCJ\tas::onRunCreated();
+    self openCJ\tutorial::onRunCreated();
     self openCJ\playTime::onRunCreated();
     self openCJ\huds\hudRunInfo::onRunCreated();
     self openCJ\huds\hudStatistics::onRunCreated();

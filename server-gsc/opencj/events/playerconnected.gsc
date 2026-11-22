@@ -30,6 +30,7 @@ main()
     self openCJ\huds\hudStatistics::onPlayerConnected();
     self openCJ\huds\hudSpectatorList::onPlayerConnected();
     self openCJ\halfBeat::onPlayerConnected();
+    self openCJ\tutorial::onPlayerConnected();
     self openCJ\cheating::onPlayerConnected();
     wait 0.05;
     self openCJ\menus\mapList::onPlayerConnected();

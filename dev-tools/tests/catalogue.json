@@ -218,6 +218,22 @@
       ]
     },
     {
+      "id": "tutorial-mode",
+      "category": "integration",
+      "description": "Tutorial mode: auto-FPS rule on synthetic player states, tutorial save flag and auto-FPS script API.",
+      "requires": "Initialized Compose, an engine built with server-ext/opencj_autofps.cpp, licensed game/compiled mod and mp_killhouse.",
+      "effects": "Isolated servers, a compiled test plugin and a test client; private logs, no gameplay database. Does not prove a real client applies com_maxfps.",
+      "files": [
+        "dev-tools/tests/run-tutorial-autofps.py",
+        "dev-tools/tests/tutorial-autofps-engine.cpp",
+        "dev-tools/tests/tutorial-mode.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-tutorial-autofps.py /workspace/cod4x-server/bin/cod4x18_dedrun",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/tutorial-mode.gsc --completion-marker \"TUTORIAL MODE COMPLETE\""
+      ]
+    },
+    {
       "id": "map-finishes",
       "category": "integration",
       "description": "Blue2 and Descent finish handlers.",

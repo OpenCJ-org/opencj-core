@@ -966,6 +966,12 @@ whileAlive()
                 // This check requires some computation, so don't call it if player already had triggered any%
                 if (!self openCJ\anyPct::hasAnyPct() && self _checkAnyPctTriggered(cp, playerChildCheckpoints))
                 {
+                    // Tutorial runs must follow their route; the checkpoint does not count
+                    if (self openCJ\tutorial::isTutorialRun())
+                    {
+                        self openCJ\tutorial::onCheckpointSkipped();
+                        break;
+                    }
                     // Temporary code for easily identifying bad checkpoints until maps are recheckpointed
                     printf("DEBUG ANYPCT: Player " + self.name + " triggered any pct on cpID: " + cp.id + "\n");
 
@@ -1019,6 +1025,45 @@ whileAlive()
     // Set variables so the change in origin and onground can be detected in the next iteration
     self.previousOrigin = self.origin;
     self.previousOnground = self isOnground();
+}
+
+// True when the player touches a checkpoint that would skip part of their route
+// (any%). Tutorial runs may not save there, so loading back leaves that spot.
+touchesRouteSkippingCheckpoint()
+{
+    playerChildCheckpoints = self getCurrentChildCheckpoints();
+    if (!isDefined(playerChildCheckpoints))
+    {
+        return false;
+    }
+    groundEntity = self getGroundEntity();
+    // Like checkCheckpoints: standing on the current checkpoint never triggers a
+    // coincident checkpoint of another route.
+    if (self touchesCheckpointGroup(self.checkpoints_checkpoint, self isOnGround(), groundEntity))
+    {
+        return false;
+    }
+    for (i = 0; i < level.checkpoints_checkpoints.size; i++)
+    {
+        cp = level.checkpoints_checkpoints[i];
+        if (!isDefined(cp.radius) && !isDefined(cp.area))
+        {
+            continue;
+        }
+        if (self hasPassedCheckpoint(cp) || (self.checkpoints_checkpoint == cp))
+        {
+            continue;
+        }
+        if (!self touchesArea(cp, self isOnGround(), groundEntity))
+        {
+            continue;
+        }
+        if (self _checkAnyPctTriggered(cp, playerChildCheckpoints))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Match the actual landing area, including alternatives loaded as separate areas.

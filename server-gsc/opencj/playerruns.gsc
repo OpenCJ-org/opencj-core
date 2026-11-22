@@ -41,6 +41,12 @@ onRunFinished(cp, filterStr)
     }
 
     runID = self getRunID();
+    // A tutorial finish must be marked first so it can never enter rankings
+    if (self openCJ\tutorial::isTutorialRun() && !self openCJ\tutorial::markRunAsTutorial(runID))
+    {
+        self iPrintLnBold("Could not save this tutorial finish. Try finishing again.");
+        return false;
+    }
     if (!isDefined(filterStr))
         filterStr = self finishSettings();
     rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT runFinished(" + runID + ", " + cpID + ", " + filterStr + ", " + self getRunInstanceNumber() + ")", "run:"+runID);

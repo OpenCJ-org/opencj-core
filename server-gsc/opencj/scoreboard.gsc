@@ -186,6 +186,8 @@ row(player)
     r["fps"]=1;
     if(fps=="mix")r["fps"]=2;
     if(fps=="hax")r["fps"]=3;
+    // 4: tutorial badge in the FPS slot; the server picks a tutorial run's FPS
+    if(player openCJ\tutorial::isTutorialRun())r["fps"]=4;
     r["ele"]=int(player openCJ\elevate::hasUsedEle());
     r["hb"]=int(player openCJ\halfBeat::isHalfBeatAllowed());
     r["tas"]=int(player openCJ\tas::hasHardTAS());

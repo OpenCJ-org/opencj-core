@@ -219,6 +219,12 @@ _shouldFPSModeChange(currentFPSMode, newFPSMode)
 
 userSettingsPreventFPSMode(currentFPSMode, newFPSMode)
 {
+    // Tutorial mode changes the player's FPS on purpose, and tutorial runs never rank
+    if (self openCJ\tutorial::isTutorialRun())
+    {
+        return false;
+    }
+
     if (!self openCJ\playerRuns::modeDetectionActive())
     {
         return false;

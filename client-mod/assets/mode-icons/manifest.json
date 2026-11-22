@@ -9,7 +9,7 @@
       20
     ]
   },
-  "glyphs": "Lucide 0.468.0; Halfbeat original A/D keycaps",
+  "glyphs": "Lucide 0.468.0 (Tutorial: graduation-cap); Halfbeat original A/D keycaps",
   "icons": {
     "fps_classic": {
       "label": "Classic",
@@ -27,6 +27,12 @@
       "label": "Hax",
       "role": "expanded",
       "sha256": "a8a381bfb85d5414342e27df32a298afcde4a6af5670558c687add0b2958356e",
+      "bytes": 1398128
+    },
+    "fps_tutorial": {
+      "label": "Tutorial",
+      "role": "tutorial",
+      "sha256": "8305c41eb2e816fe4b716609a6daace2d5acd579f01296960411ca1510bf6ed4",
       "bytes": 1398128
     },
     "ele": {

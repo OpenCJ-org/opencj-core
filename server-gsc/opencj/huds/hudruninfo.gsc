@@ -5,6 +5,7 @@ onInit()
     level.runInfoShader["fps_any"] = "opencj_icon_fps_any";
     level.runInfoShader["fps_classic"] = "opencj_icon_fps_classic";
     level.runInfoShader["fps_standard"] = "opencj_icon_fps_standard";
+    level.runInfoShader["fps_tutorial"] = "opencj_icon_fps_tutorial";
     level.runInfoShader["ele"] = "opencj_icon_ele";
     level.runInfoShader["anyPct"] = "opencj_icon_anypct";
     level.runInfoShader["halfBeat"] = "opencj_icon_halfbeat";
@@ -19,6 +20,7 @@ onInit()
     precacheShader(level.runInfoShader["fps_any"]);
     precacheShader(level.runInfoShader["fps_classic"]);
     precacheShader(level.runInfoShader["fps_standard"]);
+    precacheShader(level.runInfoShader["fps_tutorial"]);
     precacheShader(level.runInfoShader["ele"]);
     precacheShader(level.runInfoShader["anyPct"]);
     precacheShader(level.runInfoShader["halfBeat"]);
@@ -169,7 +171,13 @@ _showRunIcons(player)
     // FPS
     // TODO: CoD2 specific FPS don't have a shader (yet)..
     FPSMode = player openCJ\fps::getCurrentFPSMode();
-    if (FPSMode == "hax")
+    // The server picks a tutorial run's FPS, so its badge replaces the FPS category
+    if (player openCJ\tutorial::isTutorialRun())
+    {
+        self.hudRunInfo["fps"] setShader(level.runInfoShader["fps_tutorial"], level.fpsIconWidth, level.iconHeight);
+        self.hudRunInfo["fps"].alpha = 1;
+    }
+    else if (FPSMode == "hax")
     {
         self.hudRunInfo["fps"] setShader(level.runInfoShader["fps_any"], level.fpsIconWidth, level.iconHeight);
         self.hudRunInfo["fps"].alpha = 1;

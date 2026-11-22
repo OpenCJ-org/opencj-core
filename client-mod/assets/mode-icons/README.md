@@ -1,7 +1,9 @@
 # Stacked mode badges
 
 title-case FPS names, Ele lift arrow, Any% route
-fork, side-by-side A/D keys for Halfbeat, and the TAS bot.
+fork, side-by-side A/D keys for Halfbeat, the TAS bot, and the Tutorial
+graduation cap. Tutorial runs show their badge in the FPS slot (24:20),
+because the server picks their FPS.
 
 Run from the client-mod directory with the artwork dependencies installed:
 
@@ -9,9 +11,11 @@ Run from the client-mod directory with the artwork dependencies installed:
 
 FPS badges render at 24:20; modifiers at 16:20. The square 512-pixel IWI
 textures deliberately pre-compensate for those display ratios. Do not draw
-all seven materials in square slots or stretch the lettering independently.
+all eight materials in square slots or stretch the lettering independently.
 Colors: Classic blue (restricted), Standard neutral (baseline), Hax/Ele/Any%/HB
-amber (expanded rules), TAS violet (assisted). Color supplements the labels.
+amber (expanded rules), TAS violet (assisted), Tutorial green (server-chosen
+FPS). Color supplements the labels. The builder clones a missing badge's
+compiled material from opencj_icon_fps_any and adds its mod.csv and GDT entries.
 
 Consumers audited:
 - Run HUD: 24x20 FPS; 16x20 modifiers; existing five-unit gaps. Full row 108 units. Horizontal placement uses

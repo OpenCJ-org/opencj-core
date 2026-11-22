@@ -222,6 +222,7 @@ _getRecords(checkpoints, persist, timems)
                 " AND pr.anyPct <= " + self openCJ\anyPct::hasAnyPct() +
                 " AND pr.hb <= " + self openCJ\halfBeat::isHalfBeatAllowed() +
                 " AND pr.hardTAS <= " + self openCJ\tas::hasHardTAS() +
+                " AND pr.tutorial = 0" +
                 " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self openCJ\fps::getCurrentFPSMode()) +
         ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" +
         " LIMIT " + level.nrRecords +
