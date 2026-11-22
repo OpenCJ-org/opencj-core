@@ -25,3 +25,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # Native save-history layout; optimized 32-bit object verified identical.
 6b446e67beb91a80f51cd545759c8dda27af1c12
+
+# Movement and demo helper layout; optimized 32-bit objects unchanged.
+86f91abaa358e8344ff0cb1ddd580ae736203c1f
