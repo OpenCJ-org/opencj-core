@@ -59,7 +59,7 @@ class BootstrapTargetTests(unittest.TestCase):
         with patch.object(bootstrap.sys, "argv", ["bootstrap-db.py", "--check"]), patch.object(
             bootstrap, "compose_database_container", return_value="isolated-db"
         ) as select, patch.object(bootstrap, "MySQL") as mysql, patch.object(
-            bootstrap.migrate, "lock"
+            bootstrap.migrate, "lock_database"
         ), patch.object(
             bootstrap, "check", return_value=25
         ):
@@ -73,7 +73,7 @@ class BootstrapTargetTests(unittest.TestCase):
         ), patch.object(bootstrap, "compose_database_container") as select, patch.object(
             bootstrap, "MySQL"
         ) as mysql, patch.object(
-            bootstrap.migrate, "lock"
+            bootstrap.migrate, "lock_database"
         ), patch.object(
             bootstrap, "check", return_value=25
         ):

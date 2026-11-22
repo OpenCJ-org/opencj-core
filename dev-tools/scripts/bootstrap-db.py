@@ -16,9 +16,10 @@ DATABASE = "openCJ_cod4"
 
 
 def check(db):
-    migrations = migrate.files()
-    rows = migrate.ledger(db)
-    migrate.validate(rows, migrations)
+    """Verify that every source migration has a matching completed ledger entry."""
+    migrations = migrate.load_migrations()
+    rows = migrate.read_ledger(db)
+    migrate.validate_history(rows, migrations)
     if set(rows) != set(migrations):
         raise RuntimeError(
             "Database migrations are incomplete; bootstrap an empty database or follow the upgrade procedure."
@@ -45,7 +46,7 @@ def bootstrap(db):
     # migration 008. Existing databases never enter this bootstrap path.
     db.query("ALTER TABLE checkpoints DROP COLUMN allowSave;")
     db.query(migrate.LEDGER)
-    migrate.apply(db, migrate.files(), allow_empty=True)
+    migrate.apply_migrations(db, migrate.load_migrations(), allow_empty=True)
     runtime_access.apply_policy(db, DATABASE)
     return check(db)
 
@@ -96,7 +97,7 @@ def main():
         )
     container = args.container or compose_database_container()
     with MySQL(container, DATABASE) as db:
-        migrate.lock(db, DATABASE)
+        migrate.lock_database(db, DATABASE)
         count = check(db) if args.check else bootstrap(db)
     print(f"Database verified: {count} recorded migrations.")
 
