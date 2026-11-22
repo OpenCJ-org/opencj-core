@@ -1,11 +1,12 @@
 #include openCJ\util;
 
+// Prepare the map's SQL interface before starting completion delivery.
 onInit()
 {
+    _initConstants();
     level.database = [];
     level.database["host"] = getCvar("db_host");
     level.database["user"] = getCvar("db_user");
-    ;
     level.database["pass"] = getCvar("db_pass");
     level.database["port"] = int(getCvar("db_port"));
     level.database["name"] = getCvar("db_base") + getCodVersion();
@@ -18,10 +19,10 @@ onInit()
         {
             return;
         }
-        ret = mysql_real_connect(level.mySQL, level.database["host"], level.database["user"],
-                                 level.database["pass"], level.database["name"],
-                                 level.database["port"]);
-        if(!isDefined(ret) || !ret)
+        connectionResult = mysql_real_connect(level.mySQL, level.database["host"],
+                                              level.database["user"], level.database["pass"],
+                                              level.database["name"], level.database["port"]);
+        if(!isDefined(connectionResult) || !connectionResult)
         {
             printf("ERROR: MYSQL errno=" + mysql_errno(level.mySQL) +
                    " error= " + mysql_error(level.mySQL) + "\n");
@@ -34,31 +35,59 @@ onInit()
     thread _asyncMySQL();
 }
 
+// Policy and outcome values mirror mysql_async_pool.hpp. Queue deadlines
+// expire work before it starts; native execution has separate SQL/socket limits.
+_initConstants()
+{
+    level.sqlConstants = spawnStruct();
+    level.sqlConstants.policyProgress = 0;
+    level.sqlConstants.policyRead = 1;
+    level.sqlConstants.policyBackground = 2;
+    level.sqlConstants.policyMenu = 3;
+    level.sqlConstants.policyWrite = 4;
+    level.sqlConstants.outcomeOK = 0;
+    level.sqlConstants.outcomeCancelled = 5;
+    level.sqlConstants.outcomeInvalid = 7;
+    level.sqlConstants.scopeExact = 0;
+    level.sqlConstants.scopePrefix = 1;
+    level.sqlConstants.retainCompletion = 0;
+    level.sqlConstants.workerCount = 4;
+    level.sqlConstants.completionPollSeconds = 0.05;
+    level.sqlConstants.defaultQueueWaitMs = 10000;
+    level.sqlConstants.backgroundQueueWaitMs = 30000;
+    level.sqlConstants.menuQueueWaitMs = 2000;
+    level.sqlConstants.busyNoticeIntervalMs = 5000;
+}
+
+// Consume every native completion, even if its waiting player disconnected.
+// This level-owned loop releases results that no script caller still needs.
 _asyncMySQL()
 {
     mysql_async_initializer(level.database["host"], level.database["user"], level.database["pass"],
-                            level.database["name"], level.database["port"], 4);
+                            level.database["name"], level.database["port"],
+                            level.sqlConstants.workerCount);
     while(true)
     {
-        list = mysql_async_getdone_list();
-        for(i = 0; i < list.size; i++)
+        completedIDs = mysql_async_getdone_list();
+        for(i = 0; i < completedIDs.size; i++)
         {
-            outcome = mysql_async_getstatus(list[i]);
-            rows = mysql_async_getrows_and_free(list[i]);
-            level notify("mysqlQueryDone" + list[i], rows, outcome);
+            completion = mysql_async_getstatus(completedIDs[i]);
+            rows = mysql_async_getrows_and_free(completedIDs[i]);
+            level notify("mysqlQueryDone" + completedIDs[i], rows, completion);
         }
-        wait 0.05;
+        wait level.sqlConstants.completionPollSeconds;
     }
 }
 
+// Return rows from the shared synchronous connection, or undefined on failure.
 mysqlSyncQuery(query)
 {
     if(!isDefined(level.mySQL))
     {
         return undefined;
     }
-    ret = mysql_query(level.mySQL, query);
-    if(isDefined(ret) && !ret)
+    queryError = mysql_query(level.mySQL, query);
+    if(isDefined(queryError) && !queryError)
     {
         result = mysql_store_result(level.mySQL);
         rows = _getRowsAndFree(result);
@@ -67,6 +96,7 @@ mysqlSyncQuery(query)
     return undefined;
 }
 
+// Copy a native rowset into script values and release its native storage.
 _getRowsAndFree(result)
 {
     rows = [];
@@ -78,8 +108,8 @@ _getRowsAndFree(result)
     {
         return rows; // Successful statement with no rowset.
     }
-    rowcount = mysql_num_rows(result);
-    for (i = 0; i < rowcount; i++)
+    rowCount = mysql_num_rows(result);
+    for (i = 0; i < rowCount; i++)
     {
         row = mysql_fetch_row(result);
         rows[rows.size] = row;
@@ -143,7 +173,8 @@ mysqlAsyncLongQueryExecuteNosave(queryID)
 // from the SQL verb. Explicit helpers below select policy/order/cancellation.
 mysqlAsyncQuery(query)
 {
-    result = _request(query, 4, defaultWriteKey(), "", 10000, true);
+    result = _request(query, level.sqlConstants.policyWrite, defaultWriteKey(), "",
+                      level.sqlConstants.defaultQueueWaitMs, true);
     if (!isDefined(result))
     {
         return undefined;
@@ -153,12 +184,13 @@ mysqlAsyncQuery(query)
 
 mysqlAsyncQueryNosave(query)
 {
-    result = _request(query, 4, defaultWriteKey(), "", 10000, false);
+    result = _request(query, level.sqlConstants.policyWrite, defaultWriteKey(), "",
+                      level.sqlConstants.defaultQueueWaitMs, false);
     if (!isDefined(result))
     {
         return undefined;
     }
-    if (result.status != 0)
+    if (result.status != level.sqlConstants.outcomeOK)
     {
         _reportFailure(result.status);
     }
@@ -171,7 +203,8 @@ mysqlAsyncQueryNosave(query)
 
 mysqlAsyncRead(query)
 {
-    result = _request(query, 1, "", "", 10000, true);
+    result = _request(query, level.sqlConstants.policyRead, "", "",
+                      level.sqlConstants.defaultQueueWaitMs, true);
     if (!isDefined(result))
     {
         return undefined;
@@ -181,7 +214,8 @@ mysqlAsyncRead(query)
 
 mysqlAsyncWrite(query, key)
 {
-    result = _request(query, 0, key, "", 10000, true);
+    result = _request(query, level.sqlConstants.policyProgress, key, "",
+                      level.sqlConstants.defaultQueueWaitMs, true);
     if (!isDefined(result))
     {
         return undefined;
@@ -191,12 +225,13 @@ mysqlAsyncWrite(query, key)
 
 mysqlAsyncWriteNosave(query, key)
 {
-    result = _request(query, 0, key, "", 10000, false);
+    result = _request(query, level.sqlConstants.policyProgress, key, "",
+                      level.sqlConstants.defaultQueueWaitMs, false);
     if (!isDefined(result))
     {
         return undefined;
     }
-    if (result.status != 0)
+    if (result.status != level.sqlConstants.outcomeOK)
     {
         _reportFailure(result.status);
     }
@@ -209,7 +244,8 @@ mysqlAsyncWriteNosave(query, key)
 
 mysqlAsyncBackground(query, key)
 {
-    result = _request(query, 2, key, "", 30000, true);
+    result = _request(query, level.sqlConstants.policyBackground, key, "",
+                      level.sqlConstants.backgroundQueueWaitMs, true);
     if (!isDefined(result))
     {
         return undefined;
@@ -217,18 +253,22 @@ mysqlAsyncBackground(query, key)
     return result.rows;
 }
 
+// Discard obsolete menu results before notifying the player about a failure.
 mysqlAsyncMenuQuery(query, menu)
 {
     token = self.sqlMenuTokens[menu];
     scope = "p:" + self getEntityNumber() + ":" + menu;
-    result = _request(query, 3, "", scope, 2000, true);
+    result = _request(query, level.sqlConstants.policyMenu, "", scope,
+                      level.sqlConstants.menuQueueWaitMs, true);
     if (!isDefined(result) || !self menuReadCurrent(token))
     {
         return undefined;
     }
-    if (result.status != 0 && result.status != 5)
+    if (result.status != level.sqlConstants.outcomeOK &&
+        result.status != level.sqlConstants.outcomeCancelled)
     {
-        if (!isDefined(self.sqlBusyNotice) || getTime() - self.sqlBusyNotice > 5000)
+        if (!isDefined(self.sqlBusyNotice) ||
+            getTime() - self.sqlBusyNotice > level.sqlConstants.busyNoticeIntervalMs)
         {
             self.sqlBusyNotice = getTime();
             self openCJ\util::sendLocalChatMessage(
@@ -244,7 +284,7 @@ mysqlAsyncMenuQuery(query, menu)
 
 // Structured API for callers needing the precise outcome. Successful empty
 // statements remain []; failures have undefined rows and an explicit status.
-_request(query, policy, key, scope, deadline, save)
+_request(query, policy, key, scope, queueWaitMs, retainRows)
 {
     if (isPlayer(self))
     {
@@ -259,23 +299,23 @@ _request(query, policy, key, scope, deadline, save)
     result.error = 0;
     result.waitMs = 0;
     result.executionMs = 0;
-    id = mysql_async_submit(query, policy, key, scope, deadline, int(save));
-    if (!isDefined(id))
+    jobID = mysql_async_submit(query, policy, key, scope, queueWaitMs, int(retainRows));
+    if (!isDefined(jobID))
     {
-        result.status = 7;
+        result.status = level.sqlConstants.outcomeInvalid;
         return result;
     }
-    if (id <= 0)
+    if (jobID <= 0)
     {
-        result.status = 0 - id;
+        result.status = 0 - jobID;
         return result;
     }
-    level waittill("mysqlQueryDone" + id, rows, outcome);
+    level waittill("mysqlQueryDone" + jobID, rows, nativeCompletion);
     result.rows = rows;
-    result.status = outcome[0];
-    result.error = outcome[1];
-    result.waitMs = outcome[2];
-    result.executionMs = outcome[3];
+    result.status = nativeCompletion[0];
+    result.error = nativeCompletion[1];
+    result.waitMs = nativeCompletion[2];
+    result.executionMs = nativeCompletion[3];
     return result;
 }
 
@@ -291,6 +331,7 @@ _reportFailure(status)
     }
 }
 
+// Replace older reads for this menu and return the identity of the new request.
 beginMenuRead(menu)
 {
     if (!isDefined(self.sqlActiveMenu) || self.sqlActiveMenu != menu)
@@ -322,33 +363,36 @@ beginMenuRead(menu)
     token.version = version;
     token.epoch = self.sqlMenuEpoch;
     self.sqlMenuTokens[menu] = token;
-    mysql_async_cancel("p:" + self getEntityNumber() + ":" + menu, 0, 0);
+    mysql_async_cancel("p:" + self getEntityNumber() + ":" + menu, level.sqlConstants.scopeExact,
+                       level.sqlConstants.retainCompletion);
     // Superseded frames wake with cancellation and return normally. A helper's
     // endon does not reliably terminate all of its calling frames in this VM.
-    wait 0.05;
+    wait level.sqlConstants.completionPollSeconds;
     return token;
 }
 
+// A menu result belongs only to the current menu version and player epoch.
 menuReadCurrent(token)
 {
     return isDefined(token) && isDefined(self.sqlMenuEpoch) && token.epoch == self.sqlMenuEpoch &&
            self.sqlMenuVersions[token.menu] == token.version;
 }
 
+// Invalidate matching request tokens and cancel their queued native menu reads.
 cancelMenuReads(menu)
 {
     scope = "";
-    if(isDefined(menu))
+    if (isDefined(menu))
     {
-        if(menu == "opencj_leaderboard" || menu == "opencj_runsboard")
+        if (menu == "opencj_leaderboard" || menu == "opencj_runsboard")
         {
             scope = "board";
         }
-        else if(menu == "opencj_challenges")
+        else if (menu == "opencj_challenges")
         {
             scope = "challenges";
         }
-        else if(menu == "opencj_clips")
+        else if (menu == "opencj_clips")
         {
             scope = "clips";
         }
@@ -357,37 +401,52 @@ cancelMenuReads(menu)
             return;
         }
     }
-    if(scope != "")
+    if (scope != "")
     {
-        if(isDefined(self.sqlMenuVersions) && isDefined(self.sqlMenuVersions[scope]))
+        if (isDefined(self.sqlMenuVersions) && isDefined(self.sqlMenuVersions[scope]))
         {
             self.sqlMenuVersions[scope]++;
         }
-        mysql_async_cancel("p:" + self getEntityNumber() + ":" + scope, 0, 0);
-        if(isDefined(self.sqlActiveMenu) && self.sqlActiveMenu == scope)
+        mysql_async_cancel("p:" + self getEntityNumber() + ":" + scope,
+                           level.sqlConstants.scopeExact, level.sqlConstants.retainCompletion);
+        if (isDefined(self.sqlActiveMenu) && self.sqlActiveMenu == scope)
         {
             self.sqlActiveMenu = "";
         }
         return;
     }
-    if(!isDefined(self.sqlMenuEpoch))
+    if (!isDefined(self.sqlMenuEpoch))
     {
         self.sqlMenuEpoch = 0;
     }
     self.sqlMenuEpoch++;
     self.sqlActiveMenu = "";
-    mysql_async_cancel("p:" + self getEntityNumber() + ":", 1, 0);
+    mysql_async_cancel("p:" + self getEntityNumber() + ":", level.sqlConstants.scopePrefix,
+                       level.sqlConstants.retainCompletion);
 }
 
+// Decode the native statistics field order before composing player-facing text.
 showStats(args)
 {
-    s = mysql_async_stats();
-    self openCJ\util::sendLocalChatMessage("SQL: " + s[0] + " workers | queued " + s[1] +
-                                           " | running " + s[2] + " | waiting results " + s[3] +
-                                           " | query bytes " + s[5]);
-    self openCJ\util::sendLocalChatMessage("Oldest wait " + s[15] + "ms | max wait " + s[16] +
-                                           "ms | max execution " + s[17] + "ms | rejected " +
-                                           s[12] + " | failed " + s[10] + " | uncertain " + s[14]);
+    stats = mysql_async_stats();
+    workerCount = stats[0];
+    queuedCount = stats[1];
+    runningCount = stats[2];
+    completedCount = stats[3];
+    queryBytes = stats[5];
+    failedCount = stats[10];
+    rejectedCount = stats[12];
+    uncertainCount = stats[14];
+    oldestWaitMs = stats[15];
+    maxWaitMs = stats[16];
+    maxExecutionMs = stats[17];
+    self openCJ\util::sendLocalChatMessage(
+        "SQL: " + workerCount + " workers | queued " + queuedCount + " | running " + runningCount +
+        " | waiting results " + completedCount + " | query bytes " + queryBytes);
+    self openCJ\util::sendLocalChatMessage("Oldest wait " + oldestWaitMs + "ms | max wait " +
+                                           maxWaitMs + "ms | max execution " + maxExecutionMs +
+                                           "ms | rejected " + rejectedCount + " | failed " +
+                                           failedCount + " | uncertain " + uncertainCount);
 }
 
 escapeString(string)
