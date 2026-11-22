@@ -320,7 +320,7 @@
       "id": "native-memory",
       "category": "integration",
       "description": "Player allocation and save-history memory behavior.",
-      "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets.",
+      "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets. The history runner accepts --engine PATH for a candidate inside the checkout.",
       "effects": "Isolated synthetic players and test plugins; no gameplay database.",
       "files": [
         "dev-tools/tests/run-player-memory-audit.py",
@@ -524,7 +524,7 @@
     {
       "id": "focused-gsc",
       "category": "integration",
-      "description": "Focused checkpoint, client startup, HUD, native-helper and map-hint regressions.",
+      "description": "Focused checkpoint, client startup, HUD, native-helper, save-history and map-hint regressions.",
       "requires": "Initialized Compose, current engine, licensed game/compiled mod; each command selects its fixture and completion marker. Checkpoint contact requires mp_futile_fixed; other listed fixtures use mp_killhouse.",
       "effects": "Isolated servers and synthetic clients; private logs/drafts, no gameplay database.",
       "files": [
@@ -538,7 +538,8 @@
         "dev-tools/tests/native-helpers.gsc",
         "dev-tools/tests/notifications-opacity.gsc",
         "dev-tools/tests/progress-bar.gsc",
-        "dev-tools/tests/scoreboard-points.gsc"
+        "dev-tools/tests/scoreboard-points.gsc",
+        "dev-tools/tests/save-history-native.gsc"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_futile_fixed --fixture dev-tools/tests/checkpoint-contact.gsc --completion-marker \"CHECKPOINT CONTACT COMPLETE\"",
@@ -551,7 +552,8 @@
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/native-helpers.gsc --completion-marker \"NATIVE HELPERS COMPLETE\"",
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/notifications-opacity.gsc --completion-marker \"NOTIFICATION OPACITY COMPLETE\"",
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/progress-bar.gsc --completion-marker \"PROGRESS BAR COMPLETE\"",
-        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/scoreboard-points.gsc --completion-marker \"SCOREBOARD POINTS COMPLETE\""
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/scoreboard-points.gsc --completion-marker \"SCOREBOARD POINTS COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/save-history-native.gsc --completion-marker \"SAVE HISTORY NATIVE COMPLETE\""
       ]
     },
     {

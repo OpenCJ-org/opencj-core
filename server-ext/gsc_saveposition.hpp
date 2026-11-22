@@ -22,16 +22,18 @@ enum SaveSelectionStatus
     SAVE_INDEX_UNAVAILABLE = 2
 };
 
-// Script methods receive the calling player index.
+// Script methods reject non-player indices with undefined before accessing history.
+// Invalid save arguments also return undefined and leave existing history intact.
 void gsc_saveposition_initclient(int playerIndex);
 void gsc_saveposition_save(int playerIndex);
-// Add older history: inserted, full, out of order, or undefined on allocation failure.
+// Add older history: inserted, full, out of order, or undefined on invalid input/allocation failure.
 void gsc_saveposition_addolder(int playerIndex);
 // Return count, oldest save number, generation, limit and newest save number, in that order.
 void gsc_saveposition_historyinfo(int playerIndex);
 // Script arguments: excluded flags, then an optional source player index.
 void gsc_saveposition_selectwithoutflag(int playerIndex);
-// Script argument: distance from newest save. Return one SaveSelectionStatus.
+// Script argument: distance from newest save. Return SaveSelectionStatus or undefined
+// for invalid arguments. All failed selections clear the prior selected position.
 void gsc_saveposition_selectsave(int playerIndex);
 void gsc_saveposition_getangles(int playerIndex);
 void gsc_saveposition_getorigin(int playerIndex);

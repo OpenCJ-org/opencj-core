@@ -74,8 +74,8 @@ binary, licensed game/maps and compiled mod assets. They launch their own server
 and do not require a live server restart. Test scripts and native interfaces must
 match; see [native/script deployment](../operations/native-scripts.md).
 
-The `sql-adapter` runner accepts `--engine PATH` to test a separate candidate
-without replacing the deployed executable. The candidate must be inside the
+The `sql-adapter` and `run-history-175.py` runners accept `--engine PATH` to test
+a separate candidate without replacing the deployed executable. The candidate must be inside the
 core checkout so the Compose container can read it. A missing or external path
 is rejected before any fixture resources are created.
 
@@ -83,7 +83,9 @@ The `camera-engine` runner builds its probe from tracked source by default.
 The `native-unit` command requires g++ with C++17 and 32-bit development libraries,
 but no game assets. Focused GSC commands name their fixture and completion marker;
 checkpoint contact uses `mp_futile_fixed`, not the stock map used by the other
-focused fixtures. HUD observation wrappers are installed only in the fixture copy.
+focused fixtures. The save-history native fixture checks invalid inputs, non-player
+calls and stale selections without a database. HUD observation wrappers are
+installed only in the fixture copy.
 
 Build the GeoIP updater image before its database integration test:
 

@@ -1,7 +1,13 @@
 """#175: disposable 32-player save-history and temporary script-memory checks."""
 
-from compose_environment import database_container, database_network
+from compose_environment import (
+    database_container,
+    database_network,
+    workspace_file,
+    workspace_path,
+)
 from pathlib import Path
+import argparse
 import subprocess
 import json
 import re
@@ -12,6 +18,16 @@ import shutil
 import hashlib
 
 ROOT = Path(__file__).resolve().parents[2]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    "--engine",
+    type=workspace_file,
+    default=str(ROOT / "cod4x-server/bin/cod4x18_dedrun"),
+    help="Built engine inside the core checkout; defaults to the deployed engine",
+)
+options = parser.parse_args()
+binary = options.engine
+engine_container_path = workspace_path(binary)
 token = uuid.uuid4().hex[:8]
 tag = "history-175-" + token
 database = "opencj_verify_175_" + token + "_cod4"
@@ -27,7 +43,6 @@ private.write_text("MYSQL_ROOT_PASSWORD=" + password + "\n")
 private.chmod(0o600)
 report = {"players": 32, "limitPerPlayer": 100, "databaseWrites": "disposable fixture only"}
 created = started = False
-binary = ROOT / "cod4x-server/bin/cod4x18_dedrun"
 report["binarySha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
 sources = [
     "server-ext/gsc_saveposition.cpp",
@@ -254,7 +269,7 @@ try:
         "--workdir",
         "/workspace/" + str(home.relative_to(ROOT)),
         "server",
-        "/workspace/cod4x-server/bin/cod4x18_dedrun",
+        engine_container_path,
     ]
     for key, value in [
         ("fs_basepath", "/game"),

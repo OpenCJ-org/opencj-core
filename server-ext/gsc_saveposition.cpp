@@ -38,6 +38,27 @@ static opencj_save *oldestSaveByPlayer[MAX_CLIENTS];
 static int saveCountByPlayer[MAX_CLIENTS];
 static unsigned historyGenerationByPlayer[MAX_CLIENTS];
 
+// CoD4 getters raise script errors; CoD2 getters report failure instead.
+// Check the CoD4 type first so malformed inputs share a nonmutating failure path.
+static bool readIntegerArgument(int argumentIndex, int *value)
+{
+#ifdef COD2
+    return stackGetParamInt(argumentIndex, value) != 0;
+#else
+    if(argumentIndex >= Scr_GetNumParam() || stackGetParamType(argumentIndex) != STACK_INT)
+    {
+        return false;
+    }
+    stackGetParamInt(argumentIndex, value);
+    return true;
+#endif
+}
+
+static bool isPlayerIndexValid(int playerIndex)
+{
+    return playerIndex >= 0 && playerIndex < MAX_CLIENTS;
+}
+
 // Clear borrowed selections before freeing a node from its owner's history.
 static void releaseSave(opencj_save *save)
 {
@@ -55,6 +76,11 @@ static void releaseSave(opencj_save *save)
 // Release this player's history and invalidate any outstanding page requests.
 void gsc_saveposition_initclient(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     opencj_save *save = newestSaveByPlayer[playerIndex];
     while(save)
     {
@@ -69,43 +95,70 @@ void gsc_saveposition_initclient(int playerIndex)
     ++historyGenerationByPlayer[playerIndex];
 }
 
-// Allocate a node from the script arguments; the caller owns the returned node.
+// Parse and validate before allocating: a rejected call cannot leak a node or
+// publish a partially populated position into the player's history.
 static opencj_save *readSave()
 {
-    opencj_save *save = (opencj_save *)calloc(1, sizeof(opencj_save));
+    const int saveArgumentCount = 9;
+    const int noCheckpoint = -1;
+    if(Scr_GetNumParam() < saveArgumentCount ||
+       stackGetParamType(0) != STACK_VECTOR || stackGetParamType(1) != STACK_VECTOR)
+    {
+        return NULL;
+    }
+
+    opencj_save parsedSave = {};
+    stackGetParamVector(0, parsedSave.origin);
+    stackGetParamVector(1, parsedSave.angles);
+    if(stackGetParamType(2) != STACK_UNDEFINED)
+    {
+        int entityIndex = -1;
+        if(!readIntegerArgument(2, &entityIndex) || entityIndex < 0 || entityIndex >= MAX_GENTITIES)
+        {
+            return NULL;
+        }
+        parsedSave.groundEntity = &g_entities[entityIndex];
+    }
+
+    parsedSave.checkpointID = noCheckpoint;
+    if(stackGetParamType(5) != STACK_UNDEFINED &&
+       !readIntegerArgument(5, &parsedSave.checkpointID))
+    {
+        return NULL;
+    }
+
+    int fpsModeValue = 0;
+    if(!readIntegerArgument(3, &parsedSave.explosiveJumps) ||
+       !readIntegerArgument(4, &parsedSave.doubleExplosives) ||
+       !readIntegerArgument(6, &fpsModeValue) ||
+       !readIntegerArgument(7, &parsedSave.flags) ||
+       !readIntegerArgument(8, &parsedSave.saveNumber))
+    {
+        return NULL;
+    }
+    if(fpsModeValue < FPS_MODE_43 || fpsModeValue > FPS_MODE_HAX)
+    {
+        return NULL;
+    }
+    parsedSave.fpsMode = (opencj_fps_mode)fpsModeValue;
+
+    opencj_save *save = (opencj_save *)malloc(sizeof(opencj_save));
     if(!save)
     {
         return NULL;
     }
-    stackGetParamVector(0, save->origin);
-    stackGetParamVector(1, save->angles);
-    if(stackGetParamType(2) == STACK_INT)
-    {
-        int entityIndex = -1;
-        stackGetParamInt(2, &entityIndex);
-        if(entityIndex >= 0 && entityIndex < MAX_GENTITIES)
-        {
-            save->groundEntity = &g_entities[entityIndex];
-        }
-    }
-    stackGetParamInt(3, &save->explosiveJumps);
-    stackGetParamInt(4, &save->doubleExplosives);
-    save->checkpointID = -1;
-    if(stackGetParamType(5) == STACK_INT)
-    {
-        stackGetParamInt(5, &save->checkpointID);
-    }
-    int fpsModeValue = 0;
-    stackGetParamInt(6, &fpsModeValue);
-    save->fpsMode = (opencj_fps_mode)fpsModeValue;
-    stackGetParamInt(7, &save->flags);
-    stackGetParamInt(8, &save->saveNumber);
+    *save = parsedSave;
     return save;
 }
 
 // Prepend a live save and remove the oldest node when the history reaches its cap.
 void gsc_saveposition_save(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     opencj_save *save = readSave();
     if(!save)
     {
@@ -137,13 +190,22 @@ void gsc_saveposition_save(int playerIndex)
 // Append restored history only in descending save-number order.
 void gsc_saveposition_addolder(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(saveCountByPlayer[playerIndex] >= SAVE_HISTORY_LIMIT)
     {
         stackPushInt(SAVE_HISTORY_FULL);
         return;
     }
     int saveNumber = 0;
-    stackGetParamInt(8, &saveNumber);
+    if(!readIntegerArgument(8, &saveNumber))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(oldestSaveByPlayer[playerIndex] && saveNumber >= oldestSaveByPlayer[playerIndex]->saveNumber)
     {
         stackPushInt(SAVE_NOT_OLDER);
@@ -170,6 +232,11 @@ void gsc_saveposition_addolder(int playerIndex)
 
 void gsc_saveposition_historyinfo(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     // count, oldest save number, generation, limit, newest save number.
     stackMakeArray();
     stackPushInt(saveCountByPlayer[playerIndex]);
@@ -199,64 +266,69 @@ void gsc_saveposition_historyinfo(int playerIndex)
 }
 
 // Select the newest save without the excluded flags, optionally from another player.
+// A failed selection clears the old result so getters cannot return an unrelated save.
 void gsc_saveposition_selectwithoutflag(int playerIndex)
 {
+    if (!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
+    selectedSaveByPlayer[playerIndex] = NULL;
+
     int excludedFlags = 0;
-    stackGetParamInt(0, &excludedFlags);
-    if (excludedFlags == 0)
+    if (!readIntegerArgument(0, &excludedFlags) || excludedFlags == 0)
     {
         stackPushUndefined();
         return;
     }
 
-    // Player might be requesting it for a different player's saves (teleporting for example)
-    int sourcePlayerIndex = playerIndex; // By default, the requesting player
-    if (Scr_GetNumParam() > 1)
+    int sourcePlayerIndex = playerIndex;
+    if (Scr_GetNumParam() > 1 && !readIntegerArgument(1, &sourcePlayerIndex))
     {
-        stackGetParamInt(1, &sourcePlayerIndex);
+        stackPushUndefined();
+        return;
     }
-
-    if (sourcePlayerIndex < 0 || sourcePlayerIndex >= MAX_CLIENTS)
+    if (!isPlayerIndexValid(sourcePlayerIndex))
     {
         stackPushUndefined();
         return;
     }
 
-    // Select the last save that matches this criteria
-    selectedSaveByPlayer[playerIndex] = newestSaveByPlayer[sourcePlayerIndex];
+    opencj_save *candidate = newestSaveByPlayer[sourcePlayerIndex];
     int backwardsCount = 0;
-    while (selectedSaveByPlayer[playerIndex] != NULL)
+    while (candidate != NULL)
     {
-        // Skip saves that carry any excluded flag.
-        int saveFlags = selectedSaveByPlayer[playerIndex]->flags;
-        if ((saveFlags & excludedFlags) == 0)
+        if ((candidate->flags & excludedFlags) == 0)
         {
-            stackPushInt(backwardsCount); // Successfully found
+            selectedSaveByPlayer[playerIndex] = candidate;
+            stackPushInt(backwardsCount);
             return;
         }
-
-        // Check if there are any saves left
-        if (selectedSaveByPlayer[playerIndex]->olderSave == NULL)
-        {
-            stackPushUndefined();
-            return;
-        }
-
-        // Go back further
-        selectedSaveByPlayer[playerIndex] = selectedSaveByPlayer[playerIndex]->olderSave;
+        candidate = candidate->olderSave;
         backwardsCount++;
     }
     stackPushUndefined();
 }
 
-// Select a retained save by its distance from the newest position.
+// Select by distance from the newest save; publish a pointer only on success.
 void gsc_saveposition_selectsave(int playerIndex)
 {
-	int backwardsCount;
-	stackGetParamInt(0, &backwardsCount);
+	if(!isPlayerIndexValid(playerIndex))
+	{
+		stackPushUndefined();
+		return;
+	}
+	selectedSaveByPlayer[playerIndex] = NULL;
+
+	int backwardsCount = 0;
+	if(!readIntegerArgument(0, &backwardsCount))
+	{
+		stackPushUndefined();
+		return;
+	}
 	if(backwardsCount < 0 || backwardsCount >= SAVE_HISTORY_LIMIT)
 	{
-		selectedSaveByPlayer[playerIndex] = NULL;
 		stackPushInt(SAVE_INDEX_UNAVAILABLE);
 		return;
 	}
@@ -265,27 +337,29 @@ void gsc_saveposition_selectsave(int playerIndex)
 		stackPushInt(SAVE_HISTORY_EMPTY);
 		return;
 	}
-	selectedSaveByPlayer[playerIndex] = newestSaveByPlayer[playerIndex];
 
+	opencj_save *candidate = newestSaveByPlayer[playerIndex];
 	while(backwardsCount)
 	{
-		if(selectedSaveByPlayer[playerIndex]->olderSave != NULL)
-		{
-			selectedSaveByPlayer[playerIndex] = selectedSaveByPlayer[playerIndex]->olderSave;
-		}
-		else
+		if(candidate->olderSave == NULL)
 		{
 			stackPushInt(SAVE_INDEX_UNAVAILABLE);
 			return;
 		}
+		candidate = candidate->olderSave;
 		backwardsCount--;
 	}
-
+	selectedSaveByPlayer[playerIndex] = candidate;
 	stackPushInt(SAVE_SELECTED);
 }
 
 void gsc_saveposition_getangles(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -296,6 +370,11 @@ void gsc_saveposition_getangles(int playerIndex)
 
 void gsc_saveposition_getfpsmode(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -306,6 +385,11 @@ void gsc_saveposition_getfpsmode(int playerIndex)
 
 void gsc_saveposition_getorigin(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -316,6 +400,11 @@ void gsc_saveposition_getorigin(int playerIndex)
 
 void gsc_saveposition_getsavenum(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -326,6 +415,11 @@ void gsc_saveposition_getsavenum(int playerIndex)
 
 void gsc_saveposition_getflags(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -336,6 +430,11 @@ void gsc_saveposition_getflags(int playerIndex)
 
 void gsc_saveposition_getcheatstatus(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -346,6 +445,11 @@ void gsc_saveposition_getcheatstatus(int playerIndex)
 
 void gsc_saveposition_getgroundentity(int playerIndex)
 {
+	if(!isPlayerIndexValid(playerIndex))
+	{
+		stackPushUndefined();
+		return;
+	}
 	if(!selectedSaveByPlayer[playerIndex])
 	{
 		stackPushUndefined();
@@ -363,6 +467,11 @@ void gsc_saveposition_getgroundentity(int playerIndex)
 
 void gsc_saveposition_getexplosivejumps(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -373,6 +482,11 @@ void gsc_saveposition_getexplosivejumps(int playerIndex)
 
 void gsc_saveposition_getdoubleexplosives(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
@@ -383,6 +497,11 @@ void gsc_saveposition_getdoubleexplosives(int playerIndex)
 
 void gsc_saveposition_getcheckpointid(int playerIndex)
 {
+    if(!isPlayerIndexValid(playerIndex))
+    {
+        stackPushUndefined();
+        return;
+    }
     if(!selectedSaveByPlayer[playerIndex])
     {
         stackPushUndefined();
