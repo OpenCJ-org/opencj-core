@@ -1,6 +1,7 @@
 """Portable country database updater. Download locally; never send player IPs upstream."""
 
 from __future__ import annotations
+from contextlib import closing
 import argparse
 import csv
 import datetime as dt
@@ -20,104 +21,155 @@ from pathlib import Path
 
 LOG = logging.getLogger("opencj.geoip")
 
+DEFAULT_MINIMUM_IPV4_RANGES = 50_000
+MAX_IPV4_RANGES = 2_000_000
+MAX_CSV_ROWS = 5_000_000
+IO_CHUNK_BYTES = 1024 * 1024
+MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+DOWNLOAD_TIMEOUT_SECONDS = 30
+CONNECT_TIMEOUT_SECONDS = 15
+DATABASE_TIMEOUT_SECONDS = 120
+INSERT_BATCH_SIZE = 1000
+MIN_RETAINED_DATA_FRACTION = 0.75
+RECENT_MONTH_ATTEMPTS = 3
+SUCCESS_INTERVAL_SECONDS = 86_400
+FAILURE_RETRY_SECONDS = 21_600
 
-def prepare(source: Path, scratch: Path, geolite=False, minimum=50000):
-    """Validate completely before opening a database write transaction."""
-    cache = sqlite3.connect(scratch)
-    cache.execute("CREATE TABLE ranges(start INTEGER PRIMARY KEY,end INTEGER,country TEXT)")
-    count = 0
+
+def _hash_files(paths):
+    """Hash provider inputs in their defined order, without loading them into memory."""
     source_hash = hashlib.sha256()
-
-    def digest(path):
+    for path in paths:
         with path.open("rb") as stream:
-            for block in iter(lambda: stream.read(1024 * 1024), b""):
+            for block in iter(lambda: stream.read(IO_CHUNK_BYTES), b""):
                 source_hash.update(block)
+    return source_hash.hexdigest()
 
-    def add(start, end, country):
-        nonlocal count
-        a = ipaddress.ip_address(start)
-        b = ipaddress.ip_address(end)
-        if a.version != b.version or int(a) > int(b):
-            raise ValueError("invalid IP range")
-        country = country.strip().upper()
-        if not re.fullmatch("[A-Z]{2}", country):
-            raise ValueError("invalid country code")
-        if a.version != 4:
-            return
-        cache.execute("INSERT INTO ranges VALUES(?,?,?)", (int(a), int(b), country))
-        count += 1
-        if count > 2000000:
-            raise ValueError("IPv4 row budget exceeded")
 
+def _geolite_ranges(source_directory):
+    """Read located IPv4 blocks; registered countries do not describe visitor location."""
+    locations_path = source_directory / "GeoLite2-Country-Locations-en.csv"
+    blocks_path = source_directory / "GeoLite2-Country-Blocks-IPv4.csv"
+    with locations_path.open(encoding="utf-8-sig", newline="") as stream:
+        country_by_geoname = {
+            row["geoname_id"]: row["country_iso_code"] for row in csv.DictReader(stream)
+        }
+    with blocks_path.open(encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream):
+            network = ipaddress.ip_network(row["network"])
+            if network.version != 4:
+                raise ValueError("IPv6 in IPv4 GeoLite input")
+            country_code = country_by_geoname.get(row["geoname_id"]) or "XX"
+            yield str(network.network_address), str(network.broadcast_address), country_code
+
+
+def _dbip_ranges(source_path):
+    """Stream the three provider columns while enforcing the input row budget."""
+    with gzip.open(source_path, "rt", encoding="utf-8-sig", newline="") as stream:
+        for row_number, row in enumerate(csv.reader(stream), 1):
+            if row_number > MAX_CSV_ROWS:
+                raise ValueError("CSV row budget exceeded")
+            if len(row) != 3:
+                raise ValueError("expected DB-IP start,end,country columns")
+            yield row
+
+
+def _store_ipv4_range(validated_ranges, start, end, country):
+    """Validate every row, including IPv6 rows that are excluded from this IPv4 cache."""
+    start_address = ipaddress.ip_address(start)
+    end_address = ipaddress.ip_address(end)
+    if start_address.version != end_address.version or int(start_address) > int(end_address):
+        raise ValueError("invalid IP range")
+    country_code = country.strip().upper()
+    if not re.fullmatch("[A-Z]{2}", country_code):
+        raise ValueError("invalid country code")
+    if start_address.version != 4:
+        return False
+    validated_ranges.execute(
+        "INSERT INTO ranges VALUES(?,?,?)",
+        (int(start_address), int(end_address), country_code),
+    )
+    return True
+
+
+def _summarize_ranges(validated_ranges):
+    """Reject overlaps before calculating the complete dataset's coverage."""
+    previous_end = -1
+    address_count = 0
+    country_codes = set()
+    for start, end, country_code in validated_ranges.execute(
+        "SELECT start, end, country FROM ranges ORDER BY start"
+    ):
+        if start <= previous_end:
+            raise ValueError("overlapping IPv4 ranges")
+        previous_end = end
+        address_count += end - start + 1
+        country_codes.add(country_code)
+    return address_count, sorted(country_codes)
+
+
+def prepare(source: Path, scratch: Path, geolite=False, minimum=DEFAULT_MINIMUM_IPV4_RANGES):
+    """Validate into SQLite before any publication; the caller closes the returned cache."""
+    validated_ranges = sqlite3.connect(scratch)
     try:
+        validated_ranges.execute(
+            "CREATE TABLE ranges(start INTEGER PRIMARY KEY,end INTEGER,country TEXT)"
+        )
         if geolite:
-            locations = source / "GeoLite2-Country-Locations-en.csv"
-            blocks = source / "GeoLite2-Country-Blocks-IPv4.csv"
-            digest(locations)
-            digest(blocks)
-            with locations.open(encoding="utf-8-sig", newline="") as stream:
-                by_id = {
-                    row["geoname_id"]: row["country_iso_code"] for row in csv.DictReader(stream)
-                }
-            with blocks.open(encoding="utf-8-sig", newline="") as stream:
-                for row in csv.DictReader(stream):
-                    network = ipaddress.ip_network(row["network"])
-                    if network.version != 4:
-                        raise ValueError("IPv6 in IPv4 GeoLite input")
-                    # Registered/represented country is not the visitor's location.
-                    code = by_id.get(row["geoname_id"]) or "XX"
-                    add(str(network.network_address), str(network.broadcast_address), code)
+            source_files = [
+                source / "GeoLite2-Country-Locations-en.csv",
+                source / "GeoLite2-Country-Blocks-IPv4.csv",
+            ]
+            provider_rows = _geolite_ranges(source)
         else:
-            digest(source)
-            with gzip.open(source, "rt", encoding="utf-8-sig", newline="") as stream:
-                for row_number, row in enumerate(csv.reader(stream), 1):
-                    if row_number > 5000000:
-                        raise ValueError("CSV row budget exceeded")
-                    if len(row) != 3:
-                        raise ValueError("expected DB-IP start,end,country columns")
-                    add(*row)
-        if count < minimum:
+            source_files = [source]
+            provider_rows = _dbip_ranges(source)
+        source_sha256 = _hash_files(source_files)
+        range_count = 0
+        with closing(provider_rows) as rows:
+            for start, end, country_code in rows:
+                if _store_ipv4_range(validated_ranges, start, end, country_code):
+                    range_count += 1
+                    if range_count > MAX_IPV4_RANGES:
+                        raise ValueError("IPv4 row budget exceeded")
+        if range_count < minimum:
             raise ValueError("dataset has too few IPv4 ranges")
-        previous = -1
-        coverage = 0
-        countries = set()
-        for start, end, country in cache.execute("SELECT * FROM ranges ORDER BY start"):
-            if start <= previous:
-                raise ValueError("overlapping IPv4 ranges")
-            previous = end
-            coverage += end - start + 1
-            countries.add(country)
-        cache.commit()
-        return cache, {
-            "ranges": count,
-            "addresses": coverage,
-            "countries": sorted(countries),
-            "sha256": source_hash.hexdigest(),
+        address_count, country_codes = _summarize_ranges(validated_ranges)
+        validated_ranges.commit()
+        return validated_ranges, {
+            "ranges": range_count,
+            "addresses": address_count,
+            "countries": country_codes,
+            "sha256": source_sha256,
         }
     except BaseException:
-        cache.close()
+        validated_ranges.close()
         raise
 
 
 def download(target: Path, month: str):
+    """Stream one monthly archive with bounded size and network waits."""
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError("invalid dataset month")
     dt.date.fromisoformat(month + "-01")
     url = f"https://download.db-ip.com/free/dbip-country-lite-{month}.csv.gz"
     request = urllib.request.Request(url, headers={"User-Agent": "OpenCJ-country-updater/1.0"})
-    with urllib.request.urlopen(request, timeout=30) as response, target.open("wb") as out:
+    with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response, target.open(
+        "wb"
+    ) as output_file:
         if not response.url.startswith("https://"):
             raise ValueError("insecure download redirect")
-        total = 0
-        while block := response.read(1024 * 1024):
-            total += len(block)
-            if total > 64 * 1024 * 1024:
+        downloaded_bytes = 0
+        while block := response.read(IO_CHUNK_BYTES):
+            downloaded_bytes += len(block)
+            if downloaded_bytes > MAX_DOWNLOAD_BYTES:
                 raise ValueError("compressed download budget exceeded")
-            out.write(block)
+            output_file.write(block)
     return url
 
 
 def connect():
+    """Open the updater account with the installation's private credential file."""
     import pymysql
 
     password = Path(os.environ["GEOIP_DB_PASSWORD_FILE"]).read_text().strip()
@@ -129,137 +181,187 @@ def connect():
         database=os.environ.get("GEOIP_DB_NAME", "openCJ_cod4"),
         charset="ascii",
         autocommit=False,
-        connect_timeout=15,
-        read_timeout=120,
-        write_timeout=120,
+        connect_timeout=CONNECT_TIMEOUT_SECONDS,
+        read_timeout=DATABASE_TIMEOUT_SECONDS,
+        write_timeout=DATABASE_TIMEOUT_SECONDS,
     )
 
 
-def publish(db, cache, meta, provider, version, allow_older=False):
-    """One transaction publishes complete ranges and pointer; retain previous release."""
-    with db.cursor() as cur:
-        cur.execute("SELECT GET_LOCK(CONCAT('opencj:geoip:',DATABASE()),0)")
-        if cur.fetchone()[0] != 1:
+def _import_release(cursor, validated_ranges, metadata, provider, version):
+    """Reuse a retained release or insert its ranges into the caller's transaction."""
+    cursor.execute(
+        "SELECT releaseID, rangeCount, addressCount"
+        " FROM geoIPReleases"
+        " WHERE provider=%s AND datasetVersion=%s AND sha256=%s",
+        (provider, version, metadata["sha256"]),
+    )
+    retained_release = cursor.fetchone()
+    if retained_release:
+        release_id, range_count, address_count = retained_release
+        if (range_count, address_count) != (metadata["ranges"], metadata["addresses"]):
+            raise ValueError("retained dataset metadata mismatch")
+        return release_id
+
+    cursor.execute(
+        "INSERT INTO geoIPReleases(provider,datasetVersion,sha256,rangeCount,addressCount)"
+        " VALUES(%s,%s,%s,%s,%s)",
+        (provider, version, metadata["sha256"], metadata["ranges"], metadata["addresses"]),
+    )
+    release_id = cursor.lastrowid
+    batch = []
+    for start, end, country_code in validated_ranges.execute(
+        "SELECT start, end, country FROM ranges ORDER BY start"
+    ):
+        batch.append((release_id, start, end, country_code))
+        if len(batch) == INSERT_BATCH_SIZE:
+            cursor.executemany("INSERT INTO geoIPRanges VALUES(%s,%s,%s,%s)", batch)
+            batch = []
+    if batch:
+        cursor.executemany("INSERT INTO geoIPRanges VALUES(%s,%s,%s,%s)", batch)
+    return release_id
+
+
+def publish(database_connection, validated_ranges, metadata, provider, version, allow_older=False):
+    """Publish ranges and their active pointer atomically, retaining the previous release."""
+    with database_connection.cursor() as cursor:
+        cursor.execute("SELECT GET_LOCK(CONCAT('opencj:geoip:',DATABASE()),0)")
+        if cursor.fetchone()[0] != 1:
             raise RuntimeError("another GeoIP updater holds the lock")
         try:
-            cur.execute(
-                "SELECT r.releaseID,r.provider,r.datasetVersion,r.sha256,r.rangeCount,r.addressCount FROM geoIPState s LEFT JOIN geoIPReleases r ON r.releaseID=s.activeReleaseID WHERE s.singleton=1"
+            # Read the active release only after taking the publication lock.
+            cursor.execute(
+                "SELECT r.releaseID, r.provider, r.datasetVersion, r.sha256,"
+                " r.rangeCount, r.addressCount"
+                " FROM geoIPState s"
+                " LEFT JOIN geoIPReleases r ON r.releaseID=s.activeReleaseID"
+                " WHERE s.singleton=1"
             )
-            old = cur.fetchone()
-            if old is None:
+            active_release = cursor.fetchone()
+            if active_release is None:
                 raise RuntimeError("GeoIP schema migration is missing")
-            old_id = old[0]
-            if old_id and (old[1], old[2], old[3]) == (provider, version, meta["sha256"]):
-                db.rollback()
-                return {"changed": False, "release": old_id}
-            if old_id:
-                if not allow_older and old[1] == provider and version < old[2]:
+            (
+                active_release_id,
+                active_provider,
+                active_version,
+                active_sha256,
+                active_range_count,
+                active_address_count,
+            ) = active_release
+            active_identity = (active_provider, active_version, active_sha256)
+            if active_release_id and active_identity == (provider, version, metadata["sha256"]):
+                database_connection.rollback()
+                return {"changed": False, "release": active_release_id}
+            if active_release_id:
+                if not allow_older and active_provider == provider and version < active_version:
                     raise ValueError("refusing an older dataset")
-                if meta["ranges"] < old[4] * 0.75 or meta["addresses"] < old[5] * 0.75:
-                    raise ValueError("unexpected dataset shrink; active data retained")
-            cur.execute(
-                "SELECT releaseID,rangeCount,addressCount FROM geoIPReleases WHERE provider=%s AND datasetVersion=%s AND sha256=%s",
-                (provider, version, meta["sha256"]),
-            )
-            existing = cur.fetchone()
-            if existing:
-                release = existing[0]
-                if existing[1:] != (meta["ranges"], meta["addresses"]):
-                    raise ValueError("retained dataset metadata mismatch")
-            else:
-                cur.execute(
-                    "INSERT INTO geoIPReleases(provider,datasetVersion,sha256,rangeCount,addressCount) VALUES(%s,%s,%s,%s,%s)",
-                    (provider, version, meta["sha256"], meta["ranges"], meta["addresses"]),
+                ranges_shrank = metadata["ranges"] < active_range_count * MIN_RETAINED_DATA_FRACTION
+                coverage_shrank = (
+                    metadata["addresses"] < active_address_count * MIN_RETAINED_DATA_FRACTION
                 )
-                release = cur.lastrowid
-                batch = []
-                for start, end, country in cache.execute("SELECT * FROM ranges ORDER BY start"):
-                    batch.append((release, start, end, country))
-                    if len(batch) == 1000:
-                        cur.executemany("INSERT INTO geoIPRanges VALUES(%s,%s,%s,%s)", batch)
-                        batch = []
-                if batch:
-                    cur.executemany("INSERT INTO geoIPRanges VALUES(%s,%s,%s,%s)", batch)
-            cur.execute("SELECT COUNT(*) FROM geoIPRanges WHERE releaseID=%s", (release,))
-            if cur.fetchone()[0] != meta["ranges"]:
+                if ranges_shrank or coverage_shrank:
+                    raise ValueError("unexpected dataset shrink; active data retained")
+
+            release_id = _import_release(cursor, validated_ranges, metadata, provider, version)
+            cursor.execute("SELECT COUNT(*) FROM geoIPRanges WHERE releaseID=%s", (release_id,))
+            imported_range_count = cursor.fetchone()[0]
+            if imported_range_count != metadata["ranges"]:
                 raise ValueError("imported range count mismatch")
-            cur.execute("UPDATE geoIPState SET activeReleaseID=%s WHERE singleton=1", (release,))
-            cur.execute(
-                "DELETE FROM geoIPReleases WHERE releaseID NOT IN (%s,%s)",
-                (release, old_id or release),
+            cursor.execute(
+                "UPDATE geoIPState SET activeReleaseID=%s WHERE singleton=1", (release_id,)
             )
-            db.commit()
-            return {"changed": True, "release": release}
+            cursor.execute(
+                "DELETE FROM geoIPReleases WHERE releaseID NOT IN (%s,%s)",
+                (release_id, active_release_id or release_id),
+            )
+            database_connection.commit()
+            return {"changed": True, "release": release_id}
         except BaseException:
-            db.rollback()
+            database_connection.rollback()
             raise
         finally:
-            cur.execute("SELECT RELEASE_LOCK(CONCAT('opencj:geoip:',DATABASE()))")
-            cur.fetchone()
+            cursor.execute("SELECT RELEASE_LOCK(CONCAT('opencj:geoip:',DATABASE()))")
+            cursor.fetchone()
 
 
 def recent_months():
     date = dt.datetime.now(dt.timezone.utc).date().replace(day=1)
-    for _ in range(3):
+    for _ in range(RECENT_MONTH_ATTEMPTS):
         yield date.strftime("%Y-%m")
         date = (date - dt.timedelta(days=1)).replace(day=1)
 
 
+def _select_source(args, work):
+    """Choose local input or the newest available monthly download."""
+    if args.geolite_directory:
+        if not args.month:
+            raise ValueError("--month required for GeoLite import")
+        source = args.geolite_directory
+        version = args.month
+        provider = "maxmind-geolite"
+    elif args.input:
+        if not args.month:
+            raise ValueError("--month required for a local DB-IP file")
+        source = args.input
+        version = args.month
+        provider = "dbip-lite"
+    else:
+        source = work / "country.csv.gz"
+        provider = "dbip-lite"
+        for version in ([args.month] if args.month else recent_months()):
+            try:
+                download(source, version)
+                break
+            except urllib.error.HTTPError as error:
+                if error.code != 404:
+                    raise
+        else:
+            raise RuntimeError("no recent DB-IP country download is available")
+    if not re.fullmatch(r"\d{4}-\d{2}", version):
+        raise ValueError("invalid dataset month")
+    return source, provider, version
+
+
 def run(args):
+    """Own temporary input and connections through validation, publication and reporting."""
     with tempfile.TemporaryDirectory(prefix="opencj-geoip-") as temporary:
         work = Path(temporary)
-        if args.geolite_directory:
-            if not args.month:
-                raise ValueError("--month required for GeoLite import")
-            source = args.geolite_directory
-            version = args.month
-            provider = "maxmind-geolite"
-        elif args.input:
-            if not args.month:
-                raise ValueError("--month required for a local DB-IP file")
-            source = args.input
-            version = args.month
-            provider = "dbip-lite"
-        else:
-            source = work / "country.csv.gz"
-            provider = "dbip-lite"
-            for version in ([args.month] if args.month else recent_months()):
-                try:
-                    download(source, version)
-                    break
-                except urllib.error.HTTPError as error:
-                    if error.code != 404:
-                        raise
-            else:
-                raise RuntimeError("no recent DB-IP country download is available")
-        if not re.fullmatch(r"\d{4}-\d{2}", version):
-            raise ValueError("invalid dataset month")
-        cache, meta = prepare(
-            source, work / "validated.sqlite", bool(args.geolite_directory), args.minimum_ranges
+        source, provider, version = _select_source(args, work)
+        validated_ranges, metadata = prepare(
+            source,
+            work / "validated.sqlite",
+            geolite=bool(args.geolite_directory),
+            minimum=args.minimum_ranges,
         )
         try:
             if args.validate_only:
                 result = {"validated": True}
             else:
-                db = connect()
+                database_connection = connect()
                 try:
-                    result = publish(db, cache, meta, provider, version, args.allow_older)
+                    result = publish(
+                        database_connection,
+                        validated_ranges,
+                        metadata,
+                        provider,
+                        version,
+                        args.allow_older,
+                    )
                 finally:
-                    db.close()
+                    database_connection.close()
             LOG.info(
                 json.dumps(
                     {
                         "provider": provider,
                         "version": version,
-                        "ranges": meta["ranges"],
-                        "addresses": meta["addresses"],
+                        "ranges": metadata["ranges"],
+                        "addresses": metadata["addresses"],
                         **result,
                     },
                     sort_keys=True,
                 )
             )
         finally:
-            cache.close()
+            validated_ranges.close()
 
 
 def main():
@@ -268,7 +370,7 @@ def main():
     inputs.add_argument("--input", type=Path, help="Existing DB-IP CSV.gz")
     inputs.add_argument("--geolite-directory", type=Path)
     parser.add_argument("--month")
-    parser.add_argument("--minimum-ranges", type=int, default=50000)
+    parser.add_argument("--minimum-ranges", type=int, default=DEFAULT_MINIMUM_IPV4_RANGES)
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--allow-older", action="store_true")
     parser.add_argument("--daemon", action="store_true")
@@ -281,7 +383,7 @@ def main():
     while True:
         try:
             run(args)
-            delay = 86400
+            delay_seconds = SUCCESS_INTERVAL_SECONDS
         except Exception as error:
             detail = type(error).__name__
             if isinstance(error, (ValueError, RuntimeError)):
@@ -293,10 +395,10 @@ def main():
             LOG.error("Update failed (%s); no partial dataset is published", detail)
             if not args.daemon:
                 raise SystemExit(1)
-            delay = 21600
+            delay_seconds = FAILURE_RETRY_SECONDS
         if not args.daemon:
             return
-        time.sleep(delay)
+        time.sleep(delay_seconds)
 
 
 if __name__ == "__main__":
