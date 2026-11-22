@@ -74,6 +74,11 @@ binary, licensed game/maps and compiled mod assets. They launch their own server
 and do not require a live server restart. Test scripts and native interfaces must
 match; see [native/script deployment](../operations/native-scripts.md).
 
+The `sql-adapter` runner accepts `--engine PATH` to test a separate candidate
+without replacing the deployed executable. The candidate must be inside the
+core checkout so the Compose container can read it. A missing or external path
+is rejected before any fixture resources are created.
+
 The `camera-engine` runner builds its probe from tracked source by default.
 The `native-unit` command requires g++ with C++17 and 32-bit development libraries,
 but no game assets. Focused GSC commands name their fixture and completion marker;

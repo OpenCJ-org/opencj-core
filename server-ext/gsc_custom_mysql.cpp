@@ -124,13 +124,25 @@ void gsc_mysql_async_getresult_and_free()
         stackPushUndefined();
     } else stackPushInt((int)result);
 }
+// Translate script flags into explicit native cancellation choices.
 void gsc_mysql_async_cancel()
 {
-    char *scope=NULL;int prefix=0,forget=0;
-    if(!stackGetParams("sii",&scope,&prefix,&forget)){stackPushUndefined();return;}
-    sqlPoolCancel(scope,prefix!=0,forget!=0);
+    char *scope = NULL;
+    int prefix = 0;
+    int forget = 0;
+    if(!stackGetParams("sii", &scope, &prefix, &forget))
+    {
+        stackPushUndefined();
+        return;
+    }
+
+    const SqlScopeMatch scopeMatch = prefix ? SqlScopeMatch::Prefix : SqlScopeMatch::Exact;
+    const SqlCompletionHandling completionHandling =
+        forget ? SqlCompletionHandling::Discard : SqlCompletionHandling::Retain;
+    sqlPoolCancel(scope, scopeMatch, completionHandling);
     stackPushInt(1);
 }
+
 void gsc_mysql_async_newmap()
 {
     OpenCJ_Demo_SQLNewMap();sqlPoolNewMap();stackPushInt(1);

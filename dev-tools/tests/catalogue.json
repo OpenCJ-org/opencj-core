@@ -471,7 +471,7 @@
       "id": "sql-adapter",
       "category": "integration",
       "description": "Current save ownership, fault handling, native pool and VM behavior.",
-      "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod.",
+      "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod. Optional --engine PATH selects a candidate inside the core checkout.",
       "effects": "Creates/removes a temporary schema, grants and engine; private output.",
       "files": [
         "dev-tools/tests/run-history-save-192.py",

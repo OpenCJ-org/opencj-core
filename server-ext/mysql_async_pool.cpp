@@ -8,30 +8,37 @@
 
 // Caps cover queued, running AND uncollected completions. Query storage is exact
 // length, not a 10 KiB allocation for every tiny request.
-static const int MAX_JOBS = 512;
-static const int NORMAL_JOBS = 384;
-static const int MENU_JOBS = 64;
-static const int MAX_BYTES = 2 * 1024 * 1024;
-static const int NORMAL_BYTES = 1536 * 1024;
-static const int MAX_QUERY = 10 * 1024;
-static const int MAX_KEY = 95;
-static const int MAX_WORKERS = 4;
+static const int MAX_OUTSTANDING_JOBS = 512;
+static const int NON_PROGRESS_JOB_LIMIT = 384;
+static const int MENU_JOB_LIMIT = 64;
+static const int MAX_QUERY_STORAGE_BYTES = 2 * 1024 * 1024;
+static const int NON_PROGRESS_QUERY_BYTES = 1536 * 1024;
+static const int MAX_QUERY_BYTES = 10 * 1024;
+static const int MAX_SCOPE_KEY_BYTES = 95;
+static const int WORKER_COUNT = 4;
+static const int MAX_QUEUE_WAIT_MS = 60000;
+
+enum JobState {
+    JOB_QUEUED = 0,
+    JOB_RUNNING = 1,
+    JOB_COMPLETE = 2
+};
 
 struct Job {
     Job *next;
     int id;
     int policy;
-    int state; // queued=0, running=1, complete=2
-    bool save;
+    JobState state;
+    bool retainResult;
     bool cancelled;
-    bool forget;
-    char key[MAX_KEY + 1];
-    char scope[MAX_KEY + 1];
+    bool discardCompletion;
+    char orderingKey[MAX_SCOPE_KEY_BYTES + 1];
+    char scope[MAX_SCOPE_KEY_BYTES + 1];
     char *query;
-    int bytes;
-    long long enqueued;
-    long long started;
-    long long deadline;
+    int queryStorageBytes;
+    long long enqueuedMs;
+    long long startedMs;
+    long long deadlineMs;
     MYSQL_RES *result;
     SqlCompletion completion;
 };
@@ -48,7 +55,7 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
 static Job *head = NULL;
 static Job *tail = NULL;
-static Worker workers[MAX_WORKERS];
+static Worker workers[WORKER_COUNT];
 static bool initialized = false;
 static bool stopping = false;
 static bool starting = false;
@@ -59,30 +66,33 @@ static char *database = NULL;
 static int port = 0;
 static int workerCount = 0;
 static int nextId = 0;
-static int schedule = 0;
-static int menus = 0;
+static int scheduleIndex = 0;
+static int menuJobCount = 0;
 static SqlPoolStats stats = {};
 
 static long long nowMs() {
-    timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+    timespec timestamp;
+    clock_gettime(CLOCK_MONOTONIC, &timestamp);
+    return (long long)timestamp.tv_sec * 1000 + timestamp.tv_nsec / 1000000;
 }
 
-static bool lost(unsigned n) {
-    return n == CR_SERVER_GONE_ERROR || n == CR_SERVER_LOST || n == CR_SERVER_LOST_EXTENDED;
+static bool connectionLost(unsigned mysqlError) {
+    return mysqlError == CR_SERVER_GONE_ERROR || mysqlError == CR_SERVER_LOST ||
+           mysqlError == CR_SERVER_LOST_EXTENDED;
 }
 
+// Each worker owns its connection; bounded I/O prevents a lost database from
+// leaving that worker stuck forever. Do not replay statements after reconnect.
 static MYSQL *connectWorker() {
     MYSQL *db = mysql_init(NULL);
     if(!db) {
         return NULL;
     }
-    unsigned connect = 3;
-    unsigned io = 2;
-    mysql_options(db, MYSQL_OPT_CONNECT_TIMEOUT, &connect);
-    mysql_options(db, MYSQL_OPT_READ_TIMEOUT, &io);
-    mysql_options(db, MYSQL_OPT_WRITE_TIMEOUT, &io);
+    unsigned connectTimeoutSeconds = 3;
+    unsigned ioTimeoutSeconds = 2;
+    mysql_options(db, MYSQL_OPT_CONNECT_TIMEOUT, &connectTimeoutSeconds);
+    mysql_options(db, MYSQL_OPT_READ_TIMEOUT, &ioTimeoutSeconds);
+    mysql_options(db, MYSQL_OPT_WRITE_TIMEOUT, &ioTimeoutSeconds);
     // Automatic reconnect is OFF: an uncertain statement is never replayed.
     if(!mysql_real_connect(db, host, user, password, database, port, NULL, 0)) {
         mysql_close(db);
@@ -97,8 +107,8 @@ static MYSQL *connectWorker() {
 
 static void unlinkJob(Job *job) { // mutex held
     Job *previous = NULL;
-    for(Job *p = head; p && p != job; p = p->next) {
-        previous = p;
+    for(Job *pendingJob = head; pendingJob && pendingJob != job; pendingJob = pendingJob->next) {
+        previous = pendingJob;
     }
     if(previous) {
         previous->next = job->next;
@@ -110,10 +120,10 @@ static void unlinkJob(Job *job) { // mutex held
     }
     stats.outstanding--;
     if(job->policy == SQL_MENU) {
-        menus--;
+        menuJobCount--;
     }
     if(job->query) {
-        stats.queryBytes -= job->bytes;
+        stats.queryBytes -= job->queryStorageBytes;
         free(job->query);
     }
     if(job->result) {
@@ -122,32 +132,35 @@ static void unlinkJob(Job *job) { // mutex held
     free(job);
 }
 
-static void finishJob(Job *j, int outcome, int error) { // mutex held
-    if(j->state == 0) {
+// Publish completion under the pool lock. A running job stays allocated until
+// its worker returns here, even when its consumer has cancelled or gone away.
+static void finishJob(Job *job, int outcome, int error) { // mutex held
+    if(job->state == JOB_QUEUED) {
         stats.queued--;
-    } else if(j->state == 1) {
+    } else if(job->state == JOB_RUNNING) {
         stats.running--;
     }
-    j->state = 2;
-    j->completion.outcome = j->cancelled ? SQL_CANCELLED : outcome;
-    j->completion.error = error;
-    long long end = nowMs();
-    j->completion.waitMs = (int)((j->started ? j->started : end) - j->enqueued);
-    j->completion.executionMs = j->started ? (int)(end - j->started) : 0;
-    if(j->completion.waitMs > stats.maxWaitMs) {
-        stats.maxWaitMs = j->completion.waitMs;
+    job->state = JOB_COMPLETE;
+    job->completion.outcome = job->cancelled ? SQL_CANCELLED : outcome;
+    job->completion.error = error;
+    long long finishedMs = nowMs();
+    job->completion.waitMs =
+        (int)((job->startedMs ? job->startedMs : finishedMs) - job->enqueuedMs);
+    job->completion.executionMs = job->startedMs ? (int)(finishedMs - job->startedMs) : 0;
+    if(job->completion.waitMs > stats.maxWaitMs) {
+        stats.maxWaitMs = job->completion.waitMs;
     }
-    if(j->completion.executionMs > stats.maxExecutionMs) {
-        stats.maxExecutionMs = j->completion.executionMs;
+    if(job->completion.executionMs > stats.maxExecutionMs) {
+        stats.maxExecutionMs = job->completion.executionMs;
     }
-    if(j->query) {
-        stats.queryBytes -= j->bytes;
-        free(j->query);
-        j->query = NULL;
+    if(job->query) {
+        stats.queryBytes -= job->queryStorageBytes;
+        free(job->query);
+        job->query = NULL;
     }
-    if(j->completion.outcome == SQL_OK) {
+    if(job->completion.outcome == SQL_OK) {
         stats.succeeded++;
-    } else if(j->completion.outcome == SQL_CANCELLED) {
+    } else if(job->completion.outcome == SQL_CANCELLED) {
         stats.cancelled++;
     } else {
         stats.failed++;
@@ -158,65 +171,75 @@ static void finishJob(Job *j, int outcome, int error) { // mutex held
             stats.expired++;
         }
     }
-    if(j->cancelled && j->result) {
-        mysql_free_result(j->result);
-        j->result = NULL;
+    if(job->cancelled && job->result) {
+        mysql_free_result(job->result);
+        job->result = NULL;
     }
-    if(j->forget) {
-        unlinkJob(j);
+    if(job->discardCompletion) {
+        unlinkJob(job);
     } else {
         stats.completed++;
     }
     pthread_cond_broadcast(&changed);
 }
 
-static bool eligible(Job *j) {
-    if(j->state != 0) {
+// The pool lock protects the queue and the ordering decision.
+static bool canDispatch(Job *job) {
+    if(job->state != JOB_QUEUED) {
         return false;
     }
-    if(!j->key[0]) {
+    if(!job->orderingKey[0]) {
         return true;
     }
     // Earlier accepted work with this key must finish before dispatch, even if
     // it has a lower priority. Completed jobs need not wait for GSC collection.
-    for(Job *p = head; p != j; p = p->next) {
-        if(p->state != 2 && !strcmp(p->key, j->key)) {
+    for(Job *pendingJob = head; pendingJob != job; pendingJob = pendingJob->next) {
+        if(pendingJob->state != JOB_COMPLETE &&
+           !strcmp(pendingJob->orderingKey, job->orderingKey)) {
             return false;
         }
     }
     return true;
 }
 
-static Job *choose(int index) {
-    long long now = nowMs();
-    for(Job *p = head, *next; p; p = next) {
-        next = p->next;
-        if(p->state == 0 && now >= p->deadline) {
-            finishJob(p, SQL_EXPIRED, 0);
+// Expire queued jobs and select work without overtaking an earlier job's key.
+// Caller holds the pool lock; completed results still occupy admission slots.
+static Job *chooseNextJob(int workerIndex) {
+    long long currentTimeMs = nowMs();
+    for(Job *pendingJob = head, *next; pendingJob; pendingJob = next) {
+        next = pendingJob->next;
+        if(pendingJob->state == JOB_QUEUED && currentTimeMs >= pendingJob->deadlineMs) {
+            finishJob(pendingJob, SQL_EXPIRED, 0);
         }
     }
     // Worker zero is reserved for progress. Other workers use weighted fair
     // service: progress dominates without starving reads or background uploads.
-    static const int weights[] = {0, 0, 0, 0, 1, 0, 0, 2, 0, 3};
-    int preferred = index == 0 ? 0 : weights[(schedule++) % 10];
+    static const int schedulePolicies[] = {SQL_PROGRESS, SQL_PROGRESS, SQL_PROGRESS, SQL_PROGRESS,
+                                           SQL_READ,     SQL_PROGRESS, SQL_PROGRESS, SQL_BACKGROUND,
+                                           SQL_PROGRESS, SQL_MENU};
+    static const int scheduleLength = sizeof(schedulePolicies) / sizeof(schedulePolicies[0]);
+    int preferredPolicy =
+        workerIndex == 0 ? SQL_PROGRESS : schedulePolicies[(scheduleIndex++) % scheduleLength];
     for(int pass = 0; pass < 2; pass++) {
-        for(Job *p = head; p; p = p->next) {
-            int lane = p->policy == SQL_WRITE ? 1 : p->policy;
-            if(index == 0 && lane != 0) {
+        for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+            int schedulingPolicy = pendingJob->policy == SQL_WRITE ? SQL_READ : pendingJob->policy;
+            if(workerIndex == 0 && schedulingPolicy != SQL_PROGRESS) {
                 continue;
             }
-            if(pass == 0 && lane != preferred) {
+            if(pass == 0 && schedulingPolicy != preferredPolicy) {
                 continue;
             }
-            if(eligible(p)) {
-                return p;
+            if(canDispatch(pendingJob)) {
+                return pendingJob;
             }
         }
     }
     return NULL;
 }
 
-static MYSQL_RES *collect(MYSQL *db, bool save, int *error) {
+// Drain every response so the next job starts with a clean connection.
+// Return only the first result when requested; the caller owns that result.
+static MYSQL_RES *collectResults(MYSQL *db, bool retainResult, int *error) {
     MYSQL_RES *first = mysql_store_result(db);
     *error = mysql_errno(db);
     while(!*error && mysql_more_results(db)) {
@@ -234,96 +257,111 @@ static MYSQL_RES *collect(MYSQL *db, bool save, int *error) {
             mysql_free_result(extra);
         }
     }
-    if((*error || !save) && first) {
+    if((*error || !retainResult) && first) {
         mysql_free_result(first);
         first = NULL;
     }
     return first;
 }
 
-static void *workerMain(void *arg) {
-    int index = (int)(long)arg;
-    Worker *w = &workers[index];
+struct SqlExecution {
+    int outcome;
+    int error;
+    MYSQL_RES *result;
+};
+
+// Run one statement, drain its responses and clear any unclosed transaction.
+// Only the owning worker accesses this connection; no pool lock is held here.
+static SqlExecution executeJob(Worker *worker, Job *job) {
+    SqlExecution execution = {SQL_OK, 0, NULL};
+    if(!worker->db || mysql_ping(worker->db)) {
+        if(worker->db) {
+            mysql_close(worker->db);
+        }
+        worker->db = connectWorker();
+    }
+    if(!worker->db) {
+        execution.outcome = SQL_UNAVAILABLE;
+    } else {
+        bool readOnly = job->policy == SQL_READ || job->policy == SQL_MENU;
+        // Server-side SELECT deadline complements bounded socket I/O.
+        const char *executionLimitSql =
+            readOnly ? "SET SESSION max_execution_time=2000" : "SET SESSION max_execution_time=0";
+        if(mysql_query(worker->db, executionLimitSql)) {
+            execution.error = mysql_errno(worker->db);
+            execution.outcome = SQL_UNAVAILABLE;
+        } else if(mysql_query(worker->db, job->query)) {
+            execution.error = mysql_errno(worker->db);
+            execution.outcome =
+                connectionLost(execution.error) && !readOnly ? SQL_UNKNOWN : SQL_ERROR;
+        } else {
+            execution.result = collectResults(worker->db, job->retainResult, &execution.error);
+            if(execution.error) {
+                execution.outcome =
+                    connectionLost(execution.error) && !readOnly ? SQL_UNKNOWN : SQL_ERROR;
+            }
+        }
+        // A job cannot leak a transaction into the next independent job.
+        // A transactional stored procedure must commit/rollback before returning.
+        if(worker->db->server_status & SERVER_STATUS_IN_TRANS) {
+            mysql_query(worker->db, "ROLLBACK");
+            if(execution.result) {
+                mysql_free_result(execution.result);
+                execution.result = NULL;
+            }
+            if(execution.outcome == SQL_OK) {
+                execution.outcome = SQL_INVALID;
+            }
+        }
+        if(execution.error && connectionLost(execution.error)) {
+            mysql_close(worker->db);
+            worker->db = NULL;
+        }
+    }
+    return execution;
+}
+
+// Own one MySQL connection and execute selected jobs outside the queue lock.
+// The job remains in the queue while running so its ordering key stays reserved.
+static void *workerMain(void *workerIndexArgument) {
+    int workerIndex = (int)(long)workerIndexArgument;
+    Worker *worker = &workers[workerIndex];
     bool threadReady = mysql_thread_init() == 0;
     if(threadReady) {
-        w->db = connectWorker();
+        worker->db = connectWorker();
     }
     pthread_mutex_lock(&mutex);
-    w->healthy = w->db != NULL;
-    w->ready = true;
+    worker->healthy = worker->db != NULL;
+    worker->ready = true;
     pthread_cond_broadcast(&changed);
     while(starting && !stopping) {
         pthread_cond_wait(&changed, &mutex);
     }
     while(!stopping) {
-        Job *j = choose(index);
-        if(!j) {
+        Job *job = chooseNextJob(workerIndex);
+        if(!job) {
             // Wake for admission/completion/cancellation, or to expire jobs whose
             // ordering dependency is still running on another connection.
-            timespec deadline;
-            clock_gettime(CLOCK_REALTIME, &deadline);
-            deadline.tv_sec++;
-            pthread_cond_timedwait(&changed, &mutex, &deadline);
+            timespec wakeDeadline;
+            clock_gettime(CLOCK_REALTIME, &wakeDeadline);
+            wakeDeadline.tv_sec++;
+            pthread_cond_timedwait(&changed, &mutex, &wakeDeadline);
             continue;
         }
-        j->state = 1;
-        j->started = nowMs();
+        job->state = JOB_RUNNING;
+        job->startedMs = nowMs();
         stats.queued--;
         stats.running++;
         pthread_mutex_unlock(&mutex);
-        int error = 0;
-        int outcome = SQL_OK;
-        MYSQL_RES *result = NULL;
-        if(!w->db || mysql_ping(w->db)) {
-            if(w->db) {
-                mysql_close(w->db);
-            }
-            w->db = connectWorker();
-        }
-        if(!w->db) {
-            outcome = SQL_UNAVAILABLE;
-        } else {
-            bool read = j->policy == SQL_READ || j->policy == SQL_MENU;
-            // Server-side SELECT deadline complements bounded socket I/O.
-            const char *limit =
-                read ? "SET SESSION max_execution_time=2000" : "SET SESSION max_execution_time=0";
-            if(mysql_query(w->db, limit)) {
-                error = mysql_errno(w->db);
-                outcome = SQL_UNAVAILABLE;
-            } else if(mysql_query(w->db, j->query)) {
-                error = mysql_errno(w->db);
-                outcome = lost(error) && !read ? SQL_UNKNOWN : SQL_ERROR;
-            } else {
-                result = collect(w->db, j->save, &error);
-                if(error) {
-                    outcome = lost(error) && !read ? SQL_UNKNOWN : SQL_ERROR;
-                }
-            }
-            // A job cannot leak a transaction into the next independent job.
-            // A transactional stored procedure must commit/rollback before returning.
-            if(w->db->server_status & SERVER_STATUS_IN_TRANS) {
-                mysql_query(w->db, "ROLLBACK");
-                if(result) {
-                    mysql_free_result(result);
-                    result = NULL;
-                }
-                if(outcome == SQL_OK) {
-                    outcome = SQL_INVALID;
-                }
-            }
-            if(error && lost(error)) {
-                mysql_close(w->db);
-                w->db = NULL;
-            }
-        }
+        SqlExecution execution = executeJob(worker, job);
         pthread_mutex_lock(&mutex);
-        j->result = result;
-        finishJob(j, outcome, error);
+        job->result = execution.result;
+        finishJob(job, execution.outcome, execution.error);
     }
     pthread_mutex_unlock(&mutex);
-    if(w->db) {
-        mysql_close(w->db);
-        w->db = NULL;
+    if(worker->db) {
+        mysql_close(worker->db);
+        worker->db = NULL;
     }
     if(threadReady) {
         mysql_thread_end();
@@ -331,89 +369,107 @@ static void *workerMain(void *arg) {
     return NULL;
 }
 
-bool sqlPoolInit(const char *h, const char *u, const char *pw, const char *d, int p, int count) {
+// Start the fixed-size pool together; a failed worker tears down the whole start.
+bool sqlPoolInit(const char *serverHost, const char *serverUser, const char *serverPassword,
+                 const char *databaseName, int serverPort, int requestedWorkers) {
     pthread_mutex_lock(&mutex);
     if(initialized) {
         pthread_mutex_unlock(&mutex);
         return true;
     }
-    if(count != MAX_WORKERS || starting) {
+    if(requestedWorkers != WORKER_COUNT || starting) {
         pthread_mutex_unlock(&mutex);
         return false;
     }
     mysql_library_init(0, NULL, NULL);
-    host = strdup(h);
-    user = strdup(u);
-    password = strdup(pw);
-    database = strdup(d);
-    port = p;
+    host = strdup(serverHost);
+    user = strdup(serverUser);
+    password = strdup(serverPassword);
+    database = strdup(databaseName);
+    port = serverPort;
     starting = true;
     stopping = false;
-    workerCount = count;
-    bool ok = host && user && password && database;
+    workerCount = requestedWorkers;
+    bool connected = host && user && password && database;
     memset(workers, 0, sizeof(workers));
-    for(int i = 0; ok && i < count; i++) {
-        ok = pthread_create(&workers[i].thread, NULL, workerMain, (void *)(long)i) == 0;
-        workers[i].created = ok;
+    for(int i = 0; connected && i < requestedWorkers; i++) {
+        connected = pthread_create(&workers[i].thread, NULL, workerMain, (void *)(long)i) == 0;
+        workers[i].created = connected;
     }
-    bool ready = false;
-    while(ok && !ready) {
-        ready = true;
-        for(int i = 0; i < count; i++) {
+    bool allWorkersReady = false;
+    while(connected && !allWorkersReady) {
+        allWorkersReady = true;
+        for(int i = 0; i < requestedWorkers; i++) {
             if(!workers[i].ready) {
-                ready = false;
+                allWorkersReady = false;
             }
         }
-        if(!ready) {
+        if(!allWorkersReady) {
             pthread_cond_wait(&changed, &mutex);
         }
     }
-    for(int i = 0; i < count; i++) {
+    for(int i = 0; i < requestedWorkers; i++) {
         if(!workers[i].healthy) {
-            ok = false;
+            connected = false;
         }
     }
-    initialized = ok;
+    initialized = connected;
     starting = false;
-    stopping = !ok;
-    stats.workers = ok ? count : 0;
+    stopping = !connected;
+    stats.workers = connected ? requestedWorkers : 0;
     pthread_cond_broadcast(&changed);
     pthread_mutex_unlock(&mutex);
-    if(!ok) {
+    if(!connected) {
         sqlPoolShutdown();
     }
-    return ok;
+    return connected;
 }
 
-int sqlPoolSubmit(const char *query, bool save, int policy, const char *key, const char *scope,
-                  int waitMs) {
-    if(!query || !key || !scope || strlen(query) > MAX_QUERY || strlen(key) > MAX_KEY ||
-       strlen(scope) > MAX_KEY || policy < 0 || policy > 4 || waitMs < 1 || waitMs > 60000) {
+// Reserve both a job slot and query storage before accepting ownership.
+int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *orderingKey,
+                  const char *scope, int waitMs) {
+    if(!query || !orderingKey || !scope) {
+        return -SQL_INVALID;
+    }
+    if(strlen(query) > MAX_QUERY_BYTES || strlen(orderingKey) > MAX_SCOPE_KEY_BYTES ||
+       strlen(scope) > MAX_SCOPE_KEY_BYTES) {
+        return -SQL_INVALID;
+    }
+    if(policy < SQL_PROGRESS || policy > SQL_WRITE) {
+        return -SQL_INVALID;
+    }
+    if(waitMs < 1 || waitMs > MAX_QUEUE_WAIT_MS) {
         return -SQL_INVALID;
     }
     pthread_mutex_lock(&mutex);
-    int bytes = strlen(query) + 1;
+    int queryStorageBytes = strlen(query) + 1;
     int error = 0;
     if(!initialized) {
         error = SQL_UNAVAILABLE;
-    } else if(stats.outstanding >= MAX_JOBS || stats.queryBytes + bytes > MAX_BYTES ||
-              (policy != SQL_PROGRESS &&
-               (stats.outstanding >= NORMAL_JOBS || stats.queryBytes + bytes > NORMAL_BYTES)) ||
-              (policy == SQL_MENU && menus >= MENU_JOBS)) {
-        error = SQL_BUSY;
+    } else {
+        const bool poolFull = stats.outstanding >= MAX_OUTSTANDING_JOBS ||
+                              stats.queryBytes + queryStorageBytes > MAX_QUERY_STORAGE_BYTES;
+        const bool progressReserveReached =
+            policy != SQL_PROGRESS &&
+            (stats.outstanding >= NON_PROGRESS_JOB_LIMIT ||
+             stats.queryBytes + queryStorageBytes > NON_PROGRESS_QUERY_BYTES);
+        const bool menuLimitReached = policy == SQL_MENU && menuJobCount >= MENU_JOB_LIMIT;
+        if(poolFull || progressReserveReached || menuLimitReached) {
+            error = SQL_BUSY;
+        }
     }
     if(error) {
         stats.rejected++;
         pthread_mutex_unlock(&mutex);
         return -error;
     }
-    Job *j = (Job *)calloc(1, sizeof(Job));
-    if(j) {
-        j->query = (char *)malloc(bytes);
+    Job *job = (Job *)calloc(1, sizeof(Job));
+    if(job) {
+        job->query = (char *)malloc(queryStorageBytes);
     }
-    if(!j || !j->query) {
-        if(j) {
-            free(j);
+    if(!job || !job->query) {
+        if(job) {
+            free(job);
         }
         stats.rejected++;
         pthread_mutex_unlock(&mutex);
@@ -422,8 +478,8 @@ int sqlPoolSubmit(const char *query, bool save, int policy, const char *key, con
     do {
         nextId = nextId == INT_MAX ? 1 : nextId + 1;
         bool used = false;
-        for(Job *p = head; p; p = p->next) {
-            if(p->id == nextId) {
+        for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+            if(pendingJob->id == nextId) {
                 used = true;
                 break;
             }
@@ -432,27 +488,27 @@ int sqlPoolSubmit(const char *query, bool save, int policy, const char *key, con
             break;
         }
     } while(true);
-    j->id = nextId;
-    j->policy = policy;
-    j->save = save;
-    j->bytes = bytes;
-    strcpy(j->query, query);
-    strcpy(j->key, key);
-    strcpy(j->scope, scope);
-    j->enqueued = nowMs();
-    j->deadline = j->enqueued + waitMs;
+    job->id = nextId;
+    job->policy = policy;
+    job->retainResult = retainResult;
+    job->queryStorageBytes = queryStorageBytes;
+    strcpy(job->query, query);
+    strcpy(job->orderingKey, orderingKey);
+    strcpy(job->scope, scope);
+    job->enqueuedMs = nowMs();
+    job->deadlineMs = job->enqueuedMs + waitMs;
     if(tail) {
-        tail->next = j;
+        tail->next = job;
     } else {
-        head = j;
+        head = job;
     }
-    tail = j;
+    tail = job;
     stats.accepted++;
     stats.outstanding++;
     stats.queued++;
-    stats.queryBytes += bytes;
+    stats.queryBytes += queryStorageBytes;
     if(policy == SQL_MENU) {
-        menus++;
+        menuJobCount++;
     }
     if(stats.outstanding > stats.peakJobs) {
         stats.peakJobs = stats.outstanding;
@@ -460,30 +516,31 @@ int sqlPoolSubmit(const char *query, bool save, int policy, const char *key, con
     if(stats.queryBytes > stats.peakBytes) {
         stats.peakBytes = stats.queryBytes;
     }
-    int id = j->id;
+    int id = job->id;
     pthread_cond_broadcast(&changed);
     pthread_mutex_unlock(&mutex);
     return id;
 }
 
-int sqlPoolDone(int *ids, int max) {
+int sqlPoolDone(int *completedIds, int capacity) {
     pthread_mutex_lock(&mutex);
-    int n = 0;
-    for(Job *p = head; p && n < max; p = p->next) {
-        if(p->state == 2) {
-            ids[n++] = p->id;
+    int completedCount = 0;
+    for(Job *pendingJob = head; pendingJob && completedCount < capacity;
+        pendingJob = pendingJob->next) {
+        if(pendingJob->state == JOB_COMPLETE) {
+            completedIds[completedCount++] = pendingJob->id;
         }
     }
     pthread_mutex_unlock(&mutex);
-    return n;
+    return completedCount;
 }
 
-bool sqlPoolStatus(int id, SqlCompletion *c) {
+bool sqlPoolStatus(int id, SqlCompletion *completion) {
     pthread_mutex_lock(&mutex);
     bool found = false;
-    for(Job *p = head; p; p = p->next) {
-        if(p->id == id && p->state == 2) {
-            *c = p->completion;
+    for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+        if(pendingJob->id == id && pendingJob->state == JOB_COMPLETE) {
+            *completion = pendingJob->completion;
             found = true;
             break;
         }
@@ -492,13 +549,13 @@ bool sqlPoolStatus(int id, SqlCompletion *c) {
     return found;
 }
 
-bool sqlPoolPeek(int id, MYSQL_RES **result, SqlCompletion *c) {
+bool sqlPoolPeek(int id, MYSQL_RES **result, SqlCompletion *completion) {
     pthread_mutex_lock(&mutex);
     bool found = false;
-    for(Job *p = head; p; p = p->next) {
-        if(p->id == id && p->state == 2) {
-            *c = p->completion;
-            *result = p->result;
+    for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+        if(pendingJob->id == id && pendingJob->state == JOB_COMPLETE) {
+            *completion = pendingJob->completion;
+            *result = pendingJob->result;
             found = true;
             break;
         }
@@ -507,16 +564,16 @@ bool sqlPoolPeek(int id, MYSQL_RES **result, SqlCompletion *c) {
     return found;
 }
 
-bool sqlPoolTake(int id, MYSQL_RES **result, SqlCompletion *c) {
+bool sqlPoolTake(int id, MYSQL_RES **result, SqlCompletion *completion) {
     pthread_mutex_lock(&mutex);
     bool found = false;
-    for(Job *p = head; p; p = p->next) {
-        if(p->id == id && p->state == 2) {
-            *c = p->completion;
-            *result = p->result;
-            p->result = NULL;
+    for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+        if(pendingJob->id == id && pendingJob->state == JOB_COMPLETE) {
+            *completion = pendingJob->completion;
+            *result = pendingJob->result;
+            pendingJob->result = NULL;
             stats.completed--;
-            unlinkJob(p);
+            unlinkJob(pendingJob);
             found = true;
             break;
         }
@@ -526,44 +583,50 @@ bool sqlPoolTake(int id, MYSQL_RES **result, SqlCompletion *c) {
     return found;
 }
 
-void sqlPoolCancel(const char *scope, bool prefix, bool forget) {
+// Cancel only menu reads: accepted writes must still settle. Never close a
+// connection from this thread while its worker is using the MySQL client.
+void sqlPoolCancel(const char *scope, SqlScopeMatch scopeMatch,
+                   SqlCompletionHandling completionHandling) {
+    const bool prefix = scopeMatch == SqlScopeMatch::Prefix;
+    const bool discardCompletion = completionHandling == SqlCompletionHandling::Discard;
     pthread_mutex_lock(&mutex);
-    for(Job *p = head, *next; p; p = next) {
-        next = p->next;
-        if(p->policy != SQL_MENU || !p->scope[0]) {
+    for(Job *pendingJob = head, *next; pendingJob; pendingJob = next) {
+        next = pendingJob->next;
+        if(pendingJob->policy != SQL_MENU || !pendingJob->scope[0]) {
             continue;
         }
-        bool match = prefix ? !strncmp(p->scope, scope, strlen(scope)) : !strcmp(p->scope, scope);
+        bool match = prefix ? !strncmp(pendingJob->scope, scope, strlen(scope))
+                            : !strcmp(pendingJob->scope, scope);
         if(!match) {
             continue;
         }
-        p->cancelled = true;
-        p->forget = forget;
-        if(p->state == 0) {
-            finishJob(p, SQL_CANCELLED, 0);
-        } else if(p->state == 2) {
-            if(p->result) {
-                mysql_free_result(p->result);
-                p->result = NULL;
+        pendingJob->cancelled = true;
+        pendingJob->discardCompletion = discardCompletion;
+        if(pendingJob->state == JOB_QUEUED) {
+            finishJob(pendingJob, SQL_CANCELLED, 0);
+        } else if(pendingJob->state == JOB_COMPLETE) {
+            if(pendingJob->result) {
+                mysql_free_result(pendingJob->result);
+                pendingJob->result = NULL;
             }
-            if(p->completion.outcome != SQL_CANCELLED) {
-                if(p->completion.outcome == SQL_OK) {
+            if(pendingJob->completion.outcome != SQL_CANCELLED) {
+                if(pendingJob->completion.outcome == SQL_OK) {
                     stats.succeeded--;
                 } else {
                     stats.failed--;
-                    if(p->completion.outcome == SQL_UNKNOWN) {
+                    if(pendingJob->completion.outcome == SQL_UNKNOWN) {
                         stats.unknown--;
                     }
-                    if(p->completion.outcome == SQL_EXPIRED) {
+                    if(pendingJob->completion.outcome == SQL_EXPIRED) {
                         stats.expired--;
                     }
                 }
                 stats.cancelled++;
             }
-            p->completion.outcome = SQL_CANCELLED;
-            if(forget) {
+            pendingJob->completion.outcome = SQL_CANCELLED;
+            if(discardCompletion) {
                 stats.completed--;
-                unlinkJob(p);
+                unlinkJob(pendingJob);
             }
         }
     }
@@ -572,23 +635,25 @@ void sqlPoolCancel(const char *scope, bool prefix, bool forget) {
 }
 
 void sqlPoolNewMap() {
-    sqlPoolCancel("", true, true);
+    sqlPoolCancel("", SqlScopeMatch::Prefix, SqlCompletionHandling::Discard);
 }
 
 SqlPoolStats sqlPoolStats() {
     pthread_mutex_lock(&mutex);
-    SqlPoolStats s = stats;
-    s.oldestWaitMs = 0;
-    long long now = nowMs();
-    for(Job *p = head; p; p = p->next) {
-        if(p->state == 0 && now - p->enqueued > s.oldestWaitMs) {
-            s.oldestWaitMs = (int)(now - p->enqueued);
+    SqlPoolStats snapshot = stats;
+    snapshot.oldestWaitMs = 0;
+    long long currentTimeMs = nowMs();
+    for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+        if(pendingJob->state == JOB_QUEUED &&
+           currentTimeMs - pendingJob->enqueuedMs > snapshot.oldestWaitMs) {
+            snapshot.oldestWaitMs = (int)(currentTimeMs - pendingJob->enqueuedMs);
         }
     }
     pthread_mutex_unlock(&mutex);
-    return s;
+    return snapshot;
 }
 
+// Stop workers before freeing jobs or credentials that they may still read.
 void sqlPoolShutdown() {
     pthread_mutex_lock(&mutex);
     stopping = true;
@@ -609,10 +674,14 @@ void sqlPoolShutdown() {
     free(user);
     free(password);
     free(database);
-    host = user = password = database = NULL;
+    host = NULL;
+    user = NULL;
+    password = NULL;
+    database = NULL;
     memset(workers, 0, sizeof(workers));
     memset(&stats, 0, sizeof(stats));
-    workerCount = menus = 0;
+    workerCount = 0;
+    menuJobCount = 0;
     stopping = false;
     pthread_mutex_unlock(&mutex);
 }

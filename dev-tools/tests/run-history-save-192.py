@@ -14,7 +14,21 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    "--engine",
+    type=Path,
+    default=ROOT / "cod4x-server/bin/cod4x18_dedrun",
+    help="Built engine inside the core checkout; defaults to cod4x-server/bin/cod4x18_dedrun",
+)
 options = parser.parse_args()
+engine_path = options.engine.resolve()
+if not engine_path.is_file():
+    parser.error("The selected engine does not exist: " + str(engine_path))
+try:
+    engine_relative_path = engine_path.relative_to(ROOT)
+except ValueError:
+    parser.error("The selected engine must be inside the core checkout for the Compose mount")
+engine_container_path = "/workspace/" + engine_relative_path.as_posix()
 token = uuid.uuid4().hex[:8]
 tag = "history-save-192-" + token
 database = "opencj_verify_192_" + token + "_cod4"
@@ -256,7 +270,7 @@ try:
         "--workdir",
         "/workspace/" + str(home.relative_to(ROOT)),
         "server",
-        "/workspace/cod4x-server/bin/cod4x18_dedrun",
+        engine_container_path,
     ]
     for key, val in [
         ("fs_basepath", "/game"),
