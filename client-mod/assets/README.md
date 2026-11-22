@@ -5,6 +5,7 @@ to edit or regenerate it here and under `source/`; do not add brainstorm preview
 
 | Asset | Editable source / build recipe | Review artwork |
 | --- | --- | --- |
+| Checkpoint waypoint | `checkpoints/waypoint.svg`, `checkpoints/palette.json`, `source/build_checkpoint_materials.py` | `checkpoints/` |
 | Competitive Top 10 | `ranks/competitive/competitive.svg`, `source/build_competitive_icon.py` | `ranks/competitive/` |
 | Challenge ranks 1-10 | `ranks/rings/rank-*.svg`, `ranks/rings/palette.json`, `source/build_rank_icons.py` | `ranks/rings/` |
 | Seven active mode badges | `source/build_mode_icons.py`, `source/mode-icons/*.svg` | `mode-icons/` |

@@ -1,0 +1,8 @@
+{
+  "project": "Lucide",
+  "version": "0.468.0",
+  "source_url": "https://github.com/lucide-icons/lucide/blob/0.468.0/icons/map-pin.svg",
+  "original_sha256": "16f1042a62f1bda20ebab8bfc1cb79c0be285c980dea6c2c733a17902631405b",
+  "license": "ISC; see LICENSE-lucide.txt and cod4/licenses/lucide.txt",
+  "modifications": "Added black contrast edge, 2.2-unit colored stroke, and canvas padding."
+}

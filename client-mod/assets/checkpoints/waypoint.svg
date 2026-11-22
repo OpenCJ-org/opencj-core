@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="512" height="512" viewBox="0 0 28 28" color="#ffffff">
+  <title>OpenCJ checkpoint waypoint</title>
+  <desc>Lucide 0.468.0 map-pin, with a heavier colored stroke, a black contrast edge,
+  and padding to keep the rounded pin tip inside the texture. ISC license.</desc>
+  <defs>
+    <g id="waypoint-shape" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+      <circle cx="12" cy="10" r="3" />
+    </g>
+  </defs>
+  <g transform="translate(2 2)">
+    <use id="contrast-edge" xlink:href="#waypoint-shape" stroke="#000000" stroke-width="4.6" />
+    <use id="route-color" xlink:href="#waypoint-shape" stroke="currentColor" stroke-width="2.2" />
+  </g>
+</svg>

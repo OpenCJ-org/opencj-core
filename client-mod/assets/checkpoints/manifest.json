@@ -1,0 +1,163 @@
+{
+  "texture_size_px": 512,
+  "supersample_factor": 4,
+  "format": "CoD4 RGBA, complete mip chain, clamp U/V",
+  "files": {
+    "source/texture_source/opencj_checkpoint_blue.tga": {
+      "sha256": "21986c43c82be0356e16220c2cb2fd8beb82b26ab9b834435333b91c1563729e",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_blue.iwi": {
+      "sha256": "ad248086a726e77633e1c29f2160b6e7eea114e73e094dbf8c95d36bae8bdea5",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_cyan.tga": {
+      "sha256": "605064f2376dc4f8f62067ebe0915ddb36d9157478c22cd2e14087119a12b31f",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_cyan.iwi": {
+      "sha256": "fa1715134b9ce0afbea8ab2eff713d7a86a966516d63979c083bea9bcd891abd",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_green.tga": {
+      "sha256": "7192b32a03b7fbd63d5dcc2a2cebe505bb697692f6ba6e81c739264cef0db7e0",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_green.iwi": {
+      "sha256": "567132693da6796cfad8c397a8271b6bea10e939dfcce5f2e2ff915598c61f7c",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_orange.tga": {
+      "sha256": "7c5d082207d837881049b657ea55bed6b0218d0af50c7fed9555e83d059e1484",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_orange.iwi": {
+      "sha256": "b8095df9d43ba6010b61b83e93513409551932dd6ab99c7a1873e0a82ab6969e",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_purple.tga": {
+      "sha256": "8d2ed342383629aac9340bb3428b9ae8c9b4a51034c02e5548e415648737b4e0",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_purple.iwi": {
+      "sha256": "cc4fc129ca0e7d0634c270bbdedcc45768702fcb628d0a581c2e8a269dd71743",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_red.tga": {
+      "sha256": "d99bcfce6f2b072ddf29f153cfcc42684cee7cdf4abdf1c6a7667d4c758e7136",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_red.iwi": {
+      "sha256": "ae421983ecf50c99b5c72098b5206e7cb32bc010fd0fa53f6b99fe1edf01e9ce",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_yellow.tga": {
+      "sha256": "c7364fe84fa430eebdd22b9ddd87e1b4ed76847d61caa0855e95fb45824f28f9",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_yellow.iwi": {
+      "sha256": "d75a06ff256c656f73ee8a66560d7fd9839fe4fa4fc58ef874eb91561951d467",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_tint.tga": {
+      "sha256": "025fd771373057d76758ba9709985df8b494fbbfd72278159f95a68a557a0645",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_tint.iwi": {
+      "sha256": "1e2332922a39469334f0f0ff4b6efa59c82699b06316c8a51d795e71beb93d23",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_aqua.tga": {
+      "sha256": "9566c9a3d70a2e7dcf4be3b9e98f018714e16952df94b733eed35b765c751faf",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_aqua.iwi": {
+      "sha256": "cb54a1a2b62b42527f2e6e498fa0d4761abd6818cb154e7617d712ec5ba3cc3f",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_lime.tga": {
+      "sha256": "48d8c33aa3167028c69a6a6d03bce63a80538dd9a841d7b18846269c2d7670da",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_lime.iwi": {
+      "sha256": "d21336597b243366c7a39db3520daaf8dc99185fbaa6942048f3ae464d36514e",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_gold.tga": {
+      "sha256": "a08e066a1b7611fb58f450f731359d2f62f5f2bc53a804818356adee085804be",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_gold.iwi": {
+      "sha256": "08a9001d6d3a9acb044c83ad24a718255dab929b951610efcbfcbca39dd2cb48",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_orng.tga": {
+      "sha256": "235871aa945b6ebb5640fc39621d9904c8bea7c29b0ee72fc9b9bb76cbe769d8",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_orng.iwi": {
+      "sha256": "16a0862a4bd23204e3705c5adc17d42be3d8a3ae4e1b0c73dcbe2d3311d7f05e",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_soft.tga": {
+      "sha256": "089bd3bfd2f05da864f045fa8ed45a4b669aa6ef880bb74823c1786e80ee25f7",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_soft.iwi": {
+      "sha256": "1e172ee733f739ad4b01b1036ae84bae58216874a5d4a09e844a0d24660e3be6",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_dark.tga": {
+      "sha256": "72ecb26deec6b08eea6c07ebeee920ccb90de080382257f8e1598fe2afc4af1f",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_dark.iwi": {
+      "sha256": "e4008f7517c751549f66fb9ca71e4baa6c6885abc9070fc6b891ff104b171321",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_lila.tga": {
+      "sha256": "4ffeda90f65871906a4154ea10b01d8fe2c087a24e4606e7a9eeb874ad76ced5",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_lila.iwi": {
+      "sha256": "d9b6286f83b4263e0655b50b2f522c3a00bfd5673bd2d6a1825ff51d52fa7f20",
+      "bytes": 1398128
+    },
+    "source/texture_source/opencj_checkpoint_pink.tga": {
+      "sha256": "3b60606f59e2516d59096bf602845e7f6aef4d5d7e421f4d3b112a2f1b079d6f",
+      "bytes": 1048620
+    },
+    "cod4/images/opencj_checkpoint_pink.iwi": {
+      "sha256": "71045fcb4b328e7c41e72eb7fc7283306e9cc8aedcdb859715b2b8542f0119f3",
+      "bytes": 1398128
+    },
+    "assets/checkpoints/waypoint.png": {
+      "sha256": "30e2f9cc2ba52611798ee24cd241ea6c7eef8f5c6e4f6b96ef19f041edf13546",
+      "bytes": 45445
+    },
+    "assets/checkpoints/waypoint.svg": {
+      "sha256": "2228a5c3e5532fe32a8933c21b941ff91554b793c62efd7ed1e161333d3673da",
+      "bytes": 878
+    },
+    "assets/checkpoints/palette.json": {
+      "sha256": "09fb37b04b1682a7c43288f4a157474a3f6a848895b78ef7b28fd6a44ca9a7db",
+      "bytes": 345
+    },
+    "assets/checkpoints/source/map-pin.svg": {
+      "sha256": "16f1042a62f1bda20ebab8bfc1cb79c0be285c980dea6c2c733a17902631405b",
+      "bytes": 359
+    },
+    "assets/checkpoints/source.json": {
+      "sha256": "c1d6f3c22147c585bfe5b4597eccab3b13873d9b753cae656d8b9a99fe7c581f",
+      "bytes": 395
+    },
+    "assets/checkpoints/LICENSE-lucide.txt": {
+      "sha256": "1e7290b35280a048667bbf0ebabac1c7fd52a75300e8b2946ac165715997f2bc",
+      "bytes": 880
+    },
+    "source/build_checkpoint_materials.py": {
+      "sha256": "89e203d2d33c939e14a003a13b350adfa48b0f78111db5c56129b3b9a38fd658",
+      "bytes": 5387
+    }
+  }
+}
