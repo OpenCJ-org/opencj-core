@@ -62,3 +62,31 @@ question-mark artwork. They remain separate from the logo.
 `python3 source/build_missing_image.py` regenerates the default IWI and TGA,
 preserving dimensions, flags and mip levels. UI placeholders use lossless
 pixels; in-map replacements retain their original DXT1 layout.
+
+## Futile loading screen
+
+The connection screen uses `$levelbriefing` from the map's `_load.ff`, separately
+from the named preview material bundled in `mod.ff`. Futile's loading-zone inputs
+are in `loading/maps/mp_futile_fixed.csv` and
+`loading/zone_source/mp_futile_fixed_load.csv`. They reference the existing
+`loadscreen_mp_futile_fixed` image, so both screens use the same artwork.
+
+To build the loading zone in an isolated CoD4 Mod Tools staging directory,
+retain the stock `zone_source/english/assetlist/` files used by its `ignore`
+entries:
+
+1. Copy `loading/maps/mp_futile_fixed.csv` into `raw/maps/` and the zone CSV
+   into `zone_source/`.
+2. Copy `cod4/images/loadscreen_mp_futile_fixed.iwi` from the client-mod root
+   into `raw/images/`, preserving its filename.
+3. From the staged `bin/` directory, run
+   `linker_pc.exe -language english -compress -cleanup mp_futile_fixed_load`.
+4. Verify the output contains `$levelbriefing` referencing
+   `loadscreen_mp_futile_fixed`, then deploy only `mp_futile_fixed_load.ff`
+   to the map's existing server and client directories. Keep its main map
+   fastfile and any map IWD unchanged.
+
+The image remains in the OpenCJ IWD; this loading zone is for OpenCJ clients
+with those assets installed. Keep the existing map-preview attribution notices.
+Follow the [client deployment procedure](../../../docs/operations/client-assets.md)
+for matching files, backups and server restart requirements.
