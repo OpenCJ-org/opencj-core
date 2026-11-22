@@ -129,7 +129,9 @@ try:
     )
     sql(
         "INSERT INTO mapids(mapID,mapname) VALUES(1,'mp_killhouse');"
-        "INSERT INTO checkpoints(cpID,mapID,ender) VALUES(1,1,'history175');"
+        "INSERT INTO checkpoints(cpID,mapID) VALUES(1,1);"
+        "INSERT INTO routes(routeID,mapID,cpID,routeName) VALUES(1,1,1,'history175');"
+        "UPDATE checkpoints SET finishRouteID=1 WHERE cpID=1;"
         + "INSERT INTO playerInformation(playerID,playerName) VALUES"
         + ",".join(f"({i},'History fixture {i}')" for i in range(1, 33))
         + ";"
@@ -170,35 +172,52 @@ try:
     (mod / "maps/mp/mp_killhouse.gsc").write_text("main(){}\n")
     p = mod / "opencj/historysave.gsc"
     s = p.read_text()
-    first = s.index("_restoreRunState(runID,instanceNumber,rowsRun)\n{")
-    last = s.index("\n_beginHistory(", first)
+    restore_function = re.compile(
+        r"(?ms)^(_restoreRunState\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*\w+\s*\))"
+        r"\s*\{.*?^\}"
+    )
+    restore_match = restore_function.search(s)
+    assert restore_match, "Run-state restoration function was not found"
     # Preserve real SQL/native loading; unrelated HUD/session effects are excluded.
-    s = (
-        s[:first]
-        + "_restoreRunState(runID,instanceNumber,rowsRun)\n{\n    self openCJ\\playerRuns::setRunIDAndInstanceNumber(runID,instanceNumber);\n}\n"
-        + s[last:]
+    restore_stub = (
+        restore_match[1]
+        + "\n{\n    self openCJ\\playerRuns::setRunIDAndInstanceNumber("
+        + restore_match[2]
+        + ", "
+        + restore_match[3]
+        + ");\n}"
     )
-    needle = "    level.historySavesActive++;"
-    assert s.count(needle) == 1
-    s = s.replace(
-        needle,
-        needle
-        + "\n    if(level.historySavesActive>level.history175Peak)level.history175Peak=level.historySavesActive;",
+    s = s[: restore_match.start()] + restore_stub + s[restore_match.end() :]
+    active_page_increment = re.compile(
+        r"(?m)^[ \t]*level\.historySavesActive\s*\+\+\s*;[ \t]*$"
     )
-    needle = "        rows=openCJ\\mySQL::mysqlAsyncRead(query);"
-    assert s.count(needle) == 1
-    s = s.replace(
-        needle,
-        r"""        level.history175Queries++;
-        if(isDefined(level.history175FailOwner) && state.owner==level.history175FailOwner)rows=undefined;
-        else rows=openCJ\mySQL::mysqlAsyncRead(query);
-        memoryAudit("page",level);
-        if(isDefined(level.history175DelayOwner) && state.owner==level.history175DelayOwner)
+    s, replacements = active_page_increment.subn(
+        lambda match: match.group(0)
+        + "\n    if(level.historySavesActive > level.history175Peak)"
+        + "\n    {\n        level.history175Peak = level.historySavesActive;\n    }",
+        s,
+    )
+    assert replacements == 1, "Expected one page-admission observation point"
+    page_query = re.compile(
+        r"(?m)^[ \t]*rows\s*=\s*openCJ\\mySQL::mysqlAsyncRead\(\s*query\s*\);[ \t]*$"
+    )
+    query_observation = r"""        level.history175Queries++;
+        if(isDefined(level.history175FailOwner) && state.owner == level.history175FailOwner)
+        {
+            rows = undefined;
+        }
+        else
+        {
+            rows = openCJ\mySQL::mysqlAsyncRead(query);
+        }
+        memoryAudit("page", level);
+        if(isDefined(level.history175DelayOwner) && state.owner == level.history175DelayOwner)
         {
             player notify("history175_result_ready");
-            wait .2;
-        }""",
-    )
+            wait 0.2;
+        }"""
+    s, replacements = page_query.subn(lambda match: query_observation, s)
+    assert replacements == 1, "Expected one history-page query observation point"
     p.write_text(s)
     cfg.write_text(
         f'set db_host "{dbname}"\nset db_user "history"\nset db_pass "{password}"\nset db_base "{database[:-1]}"\nset db_port "3306"\nset history175_database "{database}"\n'

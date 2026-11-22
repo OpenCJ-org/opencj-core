@@ -168,8 +168,8 @@ try:
     assert request_match, "SQL request function was not found"
     request_function = request_match.group(0)
     result_wait = re.compile(
-        r'(?m)^[ \t]*level\s+waittill\(\s*"mysqlQueryDone"\s*\+\s*id\s*,'
-        r'\s*rows\s*,\s*outcome\s*\)\s*;[ \t]*\n'
+        r'(?m)^[ \t]*level\s+waittill\(\s*"mysqlQueryDone"\s*\+\s*[A-Za-z_]\w*\s*,'
+        r'\s*[A-Za-z_]\w*\s*,\s*[A-Za-z_]\w*\s*\)\s*;[ \t]*\n'
     )
     delay = (
         '    if (isDefined(level.history192Delay) && level.history192Delay && '
