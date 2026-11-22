@@ -218,8 +218,12 @@ static Job *chooseNextJob(int workerIndex) {
                                            SQL_READ,     SQL_PROGRESS, SQL_PROGRESS, SQL_BACKGROUND,
                                            SQL_PROGRESS, SQL_MENU};
     static const int scheduleLength = sizeof(schedulePolicies) / sizeof(schedulePolicies[0]);
-    int preferredPolicy =
-        workerIndex == 0 ? SQL_PROGRESS : schedulePolicies[(scheduleIndex++) % scheduleLength];
+    int preferredPolicy = SQL_PROGRESS;
+    if(workerIndex != 0) {
+        preferredPolicy = schedulePolicies[scheduleIndex];
+        // Keep the counter inside this cycle even after months of server uptime.
+        scheduleIndex = (scheduleIndex + 1) % scheduleLength;
+    }
     for(int pass = 0; pass < 2; pass++) {
         for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
             int schedulingPolicy = pendingJob->policy == SQL_WRITE ? SQL_READ : pendingJob->policy;
