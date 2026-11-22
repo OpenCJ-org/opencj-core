@@ -1,0 +1,9 @@
+VERSION             "1"
+CONFIG              "C:\trees\cod3\cod3\bin\StringEd.cfg"
+FILENOTES           "OpenCJ overrides of stock menu strings. Only strings listed here change."
+
+// Stock string reads "Lanuch without Mods" (main menu > Mods).
+REFERENCE           LAUNCH_WITHOUT_MODS
+LANG_ENGLISH        "Launch without Mods"
+
+ENDMARKER
