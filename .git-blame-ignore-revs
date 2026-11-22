@@ -13,3 +13,9 @@ f3f851c621df99b1a05bb1222de96bb5c214f8f4
 
 # Expand Discord listener test layout
 7cab2e7d43df9367e960241d6ccf766e9de388fc
+
+# Expand SQL worker pool layout
+c4e3f701fb83d04aa69446a3574957962d345592
+
+# Expand SQL pool regression layout
+b9748c55dc157b382b1c87c02b5a7c059951dbb7
