@@ -45,6 +45,7 @@ main()
     verifyChallengeUnavailableMenu(player);
     verifyConcurrentChallengeAwards(player);
     verifyChallengeAccountChange(player);
+    verifyChallengeMenuOutput(player);
     verifyChallengeTransactionFailure("START TRANSACTION");
     verifyChallengeTransactionFailure("COMMIT");
     verifyChallengeTransactionSuccess();
@@ -860,4 +861,88 @@ refreshChallengeProgress()
 {
     self openCJ\challenges::refresh();
     level.n72ChallengeRefreshDone = true;
+}
+
+
+// Exercise completed, available, unavailable and paginated entries against the real SQL projection.
+verifyChallengeMenuOutput(player)
+{
+    player.login_playerID = 1;
+    player.challengeTab = 1;
+    player.challengePage = 0;
+    player openCJ\challenges::show(true);
+    menu = player.challengeMenuValues;
+    check(menu["ocj_ch_rows"] == 1 && menu["ocj_ch_height"] == 184,
+          "single challenge uses one row and the progress header");
+    check(menu["ocj_ch_done0"] == 1 && menu["ocj_ch_status0"] == 2,
+          "completed challenge keeps its completed marker");
+    check(menu["ocj_ch_name0"] == "mp_killhouse" && menu["ocj_ch_detail0"] == "easy",
+          "challenge displays its map and published route name");
+    player recordChallengeMenu("completed");
+
+    for(i = 0; i < 17; i++)
+    {
+        suffix = "" + i;
+        if(i < 10)
+        {
+            suffix = "0" + suffix;
+        }
+        openCJ\mySQL::mysqlAsyncWrite(
+            "INSERT INTO challenges(challengeKey,tier,points,mapID,routeLabel)" +
+            " VALUES('menu-fixture-" + suffix + "',2,20,1,'Preview')", "challenge-menu-fixture");
+    }
+    openCJ\mySQL::mysqlAsyncWrite(
+        "UPDATE challenges SET routeID=1,maxTimeMs=60000,maxRPG=3,fpsModes='125,mix',allowedModes=3" +
+        " WHERE challengeKey='menu-fixture-00'", "challenge-menu-fixture");
+    player.challengeTab = 2;
+    player.challengePage = 0;
+    player openCJ\challenges::show(false);
+    menu = player.challengeMenuValues;
+    check(menu["ocj_ch_rows"] == 15 && menu["ocj_ch_pages"] == 2,
+          "challenge list leaves room for the header under the engine item limit");
+    check(menu["ocj_ch_status0"] == 1 && menu["ocj_ch_state0"] == "Incomplete",
+          "published incomplete challenge remains available");
+    check(isSubStr(menu["ocj_ch_target0"], "3 RPG") && menu["ocj_ch_points0"] == "20 pts",
+          "challenge row includes its time/RPG goal and reward");
+    check(menu["ocj_ch_modes0"] == 4 && menu["ocj_ch_fpscount0"] == 2,
+          "challenge row publishes FPS and allowed-mode icons separately");
+    check(menu["ocj_ch_status1"] == 3 && menu["ocj_ch_state1"] == "Not available yet",
+          "unlinked challenge remains visibly unavailable");
+    player recordChallengeMenu("first-page");
+
+    player.challengePage = 99;
+    player openCJ\challenges::show(false);
+    menu = player.challengeMenuValues;
+    check(menu["ocj_ch_rows"] == 2 && menu["ocj_ch_page"] == 1,
+          "page beyond the list is clamped to the final two rows");
+    player recordChallengeMenu("last-page");
+
+    player.challengeTab = 3;
+    player.challengePage = 0;
+    player openCJ\challenges::show(false);
+    menu = player.challengeMenuValues;
+    check(menu["ocj_ch_rows"] == 0 && menu["ocj_ch_pages"] == 1,
+          "empty challenge tier retains one empty page");
+    player recordChallengeMenu("empty");
+
+    player.challengeTab = 0;
+    player.challengePage = 0;
+    player openCJ\challenges::show(false);
+    menu = player.challengeMenuValues;
+    check(menu["ocj_ch_rows"] == 10 && menu["ocj_ch_points0"] == "10 pts",
+          "competitive table shows ten players ordered by active challenge points");
+    check(getSubStr(menu["ocj_ch_name1"], 0, 3) == "2. " &&
+          getSubStr(menu["ocj_ch_name2"], 0, 3) == "2. ",
+          "players with equal points share their competitive position");
+    player recordChallengeMenu("competitive");
+}
+
+recordChallengeMenu(scenario)
+{
+    keys = getArrayKeys(self.challengeMenuValues);
+    for(i = 0; i < keys.size; i++)
+    {
+        printf("CHALLENGE_UI|" + scenario + "|" + keys[i] + "|" +
+               self.challengeMenuValues[keys[i]] + "\n");
+    }
 }
