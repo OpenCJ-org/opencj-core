@@ -1737,10 +1737,10 @@ finalize()
         routeName = self.cpc.publishedLabel;
     }
     self openCJ\checkpointPublish::activate();
-    // Creating the fresh run waits for SQL. Keep CPC's scoring suppression until
-    // onRunCreated has reset checkpoint state and actually spawned the player.
-    self openCJ\playerRuns::stopRun(true);
+    // Run creation rejects active editors. Close this completed edit before requesting it;
+    // normal scoring still waits for the new run ID and the gameplay spawn callback.
     self _close();
+    self openCJ\playerRuns::stopRun(true);
     self openCJ\huds\hudProgressBar::onSpawnPlayer();
     self openCJ\checkpointPointers::showCheckpointPointers();
     self sendLocalChatMessage("Checkpoints for " + routeName + " finalized and ready to play.");

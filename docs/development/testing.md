@@ -227,6 +227,10 @@ route and player rows are synthetic. The test checks repeated publication,
 alternative connections, checkpoint ID and historical-statistics preservation,
 rejected requirement/color edits, bounded recovery-name lookup, retirement, and
 rollback after a partial write.
+Finalization checks keep publication, editor closure and run-creation SQL real,
+while observing graph refresh and gameplay presentation callbacks. They verify
+that rejected publication retains the editor and successful publication creates
+a fresh run; they do not exercise the player's actual spawn or HUD rendering.
 The engine account is restricted to that fixture schema. The runner deletes its
 schema, account and temporary credential file on exit; logs and draft snapshots
 remain under ignored `dev-tools/local/`. Both publication fixtures simulate a lost

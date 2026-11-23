@@ -19,6 +19,7 @@ main()
     checkSharedBranches(editor);
     checkLoadedMetadata();
     checkLostCommitReply(editor);
+    checkFinalizationRun(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
            " checks=" + level.publicationChecks + "\n");
 }
@@ -356,4 +357,57 @@ publicationQuery(query)
         return undefined;
     }
     return result;
+}
+
+// Finalization must leave editor mode before the normal run-creation gate can accept it.
+checkFinalizationRun(editor)
+{
+    editor.cpc = routeDraft("finalize_route");
+    editor.cpc.huds = [];
+    editor.cpc.positions = [];
+    level.finalizeActivations = 0;
+    level.finalizeRunCreated = 0;
+    editor.cpc.routeHex = "invalid";
+    editor openCJ\checkpointCreation::finalize();
+    check(isDefined(editor.cpc) && !isDefined(editor.cpc.finalizing),
+          "rejected finalization retains the editable draft");
+    check(!editor openCJ\playerRuns::hasRunID() && level.finalizeActivations == 0,
+          "rejected publication does not start gameplay or refresh the graph");
+    editor.cpc.routeHex = "#123456";
+    editor openCJ\checkpointCreation::finalize();
+    check(!isDefined(editor.cpc), "successful finalization closes the editor");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='finalize_route'", 4,
+                "finalization publishes the route before returning to gameplay");
+    check(level.finalizeActivations == 1, "finalization requests one graph refresh");
+    check(editor openCJ\playerRuns::hasRunID(), "finalization creates a fresh gameplay run");
+    check(level.finalizeRunCreated == 1, "fresh run reaches the gameplay spawn callback");
+    newRunId = editor openCJ\playerRuns::getRunID();
+    if (isDefined(newRunId))
+    {
+        checkScalar("SELECT COUNT(*) FROM playerRuns WHERE runID=" + newRunId +
+                    " AND playerID=1 AND archived=0", 1,
+                    "finalization stores one active synthetic run");
+    }
+    else
+    {
+        check(false, "finalization stores one active synthetic run");
+    }
+}
+
+recordActivation()
+{
+    level.finalizeActivations++;
+}
+
+recordHudRefresh()
+{
+}
+
+recordPointerRefresh()
+{
+}
+
+recordRunCreated()
+{
+    level.finalizeRunCreated++;
 }

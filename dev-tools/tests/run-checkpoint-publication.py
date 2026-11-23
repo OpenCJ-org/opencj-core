@@ -23,14 +23,63 @@ def install_commit_observer(home, script_name):
     path.write_text(source)
 
 
+def install_finalization_observers(home):
+    """Observe gameplay presentation while keeping publication, close and run creation real."""
+    replacements = {
+        "checkpointcreation.gsc": (
+            (
+                r"openCJ\\checkpointPublish::activate\s*\(",
+                r"openCJ\platformTest::recordActivation(",
+            ),
+            (
+                r"openCJ\\huds\\hudProgressBar::onSpawnPlayer\s*\(",
+                r"openCJ\platformTest::recordHudRefresh(",
+            ),
+            (
+                r"openCJ\\huds\\hudProgressBar::onRunStopped\s*\(",
+                r"openCJ\platformTest::recordHudRefresh(",
+            ),
+            (
+                r"openCJ\\checkpointPointers::showCheckpointPointers\s*\(",
+                r"openCJ\platformTest::recordPointerRefresh(",
+            ),
+        ),
+        "playerruns.gsc": (
+            (
+                r"openCJ\\events\\onRunCreated::main\s*\(",
+                r"openCJ\platformTest::recordRunCreated(",
+            ),
+        ),
+    }
+    for script_name, boundaries in replacements.items():
+        path = home / "mods/opencj/opencj" / script_name
+        source = path.read_text()
+        for pattern, replacement in boundaries:
+            source, count = re.subn(pattern, lambda match: replacement, source)
+            if count == 0:
+                raise RuntimeError(
+                    "Finalization presentation boundary was not found: " + pattern
+                )
+        path.write_text(source)
+
+
 def install_network_navigation_observers(home):
     """Keep real files/SQL while replacing HUD and player-navigation side effects."""
     path = home / "mods/opencj/opencj/checkpointnetwork.gsc"
     source = path.read_text()
     replacements = (
-        (r"openCJ\\checkpointCreation::_close\s*\(", r"openCJ\platformTest::closeEditor("),
-        (r"openCJ\\checkpointCreation::_start\s*\(", r"openCJ\platformTest::openEditor("),
-        (r"openCJ\\checkpointPublish::activate\s*\(", r"openCJ\platformTest::recordActivation("),
+        (
+            r"openCJ\\checkpointCreation::_close\s*\(",
+            r"openCJ\platformTest::closeEditor(",
+        ),
+        (
+            r"openCJ\\checkpointCreation::_start\s*\(",
+            r"openCJ\platformTest::openEditor(",
+        ),
+        (
+            r"openCJ\\checkpointPublish::activate\s*\(",
+            r"openCJ\platformTest::recordActivation(",
+        ),
     )
     for pattern, replacement in replacements:
         source, count = re.subn(pattern, lambda match: replacement, source)
@@ -72,9 +121,12 @@ def main():
             """,
             fixture.database,
         )
-        source_hashes, _ = gsc_fixture.prepare_fixture(options, fixture.home, retained_callbacks=())
+        source_hashes, _ = gsc_fixture.prepare_fixture(
+            options, fixture.home, retained_callbacks=()
+        )
         if options.fixture.name == "checkpoint-publication.gsc":
             install_commit_observer(fixture.home, "checkpointpublish.gsc")
+            install_finalization_observers(fixture.home)
         elif options.fixture.name == "checkpoint-network.gsc":
             install_commit_observer(fixture.home, "checkpointnetwork.gsc")
             install_network_navigation_observers(fixture.home)
