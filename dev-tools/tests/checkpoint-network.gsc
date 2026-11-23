@@ -16,6 +16,7 @@ main()
         checkNetworkPublication(editor, network);
         checkSnapshotFallback(editor, network);
         checkLostNetworkCommitReply(editor);
+        checkSharedOpeningColor(editor);
         checkDamagedSectionPreservation(editor);
         checkMissingOpening(editor, network);
     }
@@ -206,4 +207,17 @@ publicationQuery(query)
         return undefined;
     }
     return result;
+}
+
+checkSharedOpeningColor(editor)
+{
+    opening = editor openCJ\checkpointNetwork::readSection("net_opening");
+    opening.routeHex = "#abcdef";
+    check(editor openCJ\checkpointNetwork::writeSection("net_opening", opening),
+          "save a new shared opening color");
+    check(editor openCJ\checkpointPublish::publish(), "shared color-only edit publishes");
+    checkScalar("SELECT colorRGB FROM routes WHERE routeName='net_opening'", 11259375,
+                "shared opening runtime color follows the draft");
+    checkScalar("SELECT colorRGB FROM checkpointSectionColors WHERE sectionName='net_opening'",
+                11259375, "shared section metadata uses the same color");
 }

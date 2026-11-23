@@ -141,6 +141,11 @@ ensurePrefix()
         self.cpc.status = "Shared geometry or requirements changed; existing checkpoints preserved";
         return undefined;
     }
+    // Shared geometry can stay identical while its explicit opening color changes.
+    if (!self openCJ\checkpointPublish::_writeRouteColor(existingAreas[0].id))
+    {
+        return undefined;
+    }
     finalGroupIds = [];
     for (i = 0; i < entries.size; i++)
     {
