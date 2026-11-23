@@ -3,6 +3,8 @@ main()
 {
     level.commandChecks = 0;
     level.commandFailures = 0;
+    // Menu notifications cancel reads; initialize their constants without opening SQL.
+    openCJ\mySQL::_initConstants();
     openCJ\commands_base::onInit();
     openCJ\commands::onInit();
     openCJ\scoreboard::onInit();

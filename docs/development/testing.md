@@ -186,7 +186,7 @@ This uses synthetic input; no MaxMind account or download is needed.
 Capacity testing needs two available CPU cores and substantial runtime.
 `run-query-capacity.py --cpu-set` can select a different available pair.
 
-Checkpoint editor and migration launchers use the shared isolated GSC runner.
+Checkpoint editor, migration and command-menu launchers use the shared isolated GSC runner.
 They accept `--binary` and `--scripts` to select the artifacts under review,
 validate prerequisites before launch, and retain their actual hashes in private
 evidence. Gameplay database callbacks remain disabled in these fixtures.
