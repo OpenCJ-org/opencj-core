@@ -4,6 +4,7 @@ main()
     level.failures = 0;
     level.checks = 0;
     level.commands = [];
+    level.pointerCenterLookups = 0;
     openCJ\settings::onInit();
     openCJ\menus\hudSettings::onInit();
     openCJ\checkpointPointers::onInit();
@@ -38,6 +39,14 @@ main()
     player openCJ\checkpointPointers::onPlayerConnect();
     player.sessionState = "spectator";
     player.changeCount = 0;
+    checkMenuResponses(player);
+    checkCheckpointIndicators(player);
+    checkPointerCapacity(player);
+    finish();
+}
+// Exercise the actual response listener, validation and settings callbacks.
+checkMenuResponses(player)
+{
     player openCJ\menus\hudSettings::handleResponse("fpshud:1");
     check(player.settingValues["fpshud"] == false, "ignore changes before settings load");
     player.settingsLoaded = true;
@@ -53,30 +62,30 @@ main()
           "apply one click through saved setting callback");
     player openCJ\menus\hudSettings::handleResponse("fpshud:1");
     check(player.changeCount == 1, "unchanged values do not rerun callback");
-    bad = [];
-    bad[0] = "fpshud:3";
-    bad[1] = "fpshud:-1";
-    bad[2] = "fpshud:1.0";
-    bad[3] = "fpshud:01";
-    bad[4] = "fpshud:0:1";
-    bad[5] = "fullbright:1";
-    bad[6] = "fpshud";
-    for (i = 0; i < bad.size; i++)
+    invalidResponses = [];
+    invalidResponses[0] = "fpshud:3";
+    invalidResponses[1] = "fpshud:-1";
+    invalidResponses[2] = "fpshud:1.0";
+    invalidResponses[3] = "fpshud:01";
+    invalidResponses[4] = "fpshud:0:1";
+    invalidResponses[5] = "fullbright:1";
+    invalidResponses[6] = "fpshud";
+    for (i = 0; i < invalidResponses.size; i++)
     {
-        player openCJ\menus\hudSettings::handleResponse(bad[i]);
+        player openCJ\menus\hudSettings::handleResponse(invalidResponses[i]);
     }
     check(player.changeCount == 1 && player.settingValues["fpshud"],
           "invalid and non-whitelisted responses rejected");
     keys = getArrayKeys(level.hudMenuSettings);
     for (i = 0; i < keys.size; i++)
     {
-        key = keys[i];
-        values = level.hudMenuSettings[key];
-        for (j = 0; j < values.size; j++)
+        settingName = keys[i];
+        settingChoices = level.hudMenuSettings[settingName];
+        for (j = 0; j < settingChoices.size; j++)
         {
-            player openCJ\menus\hudSettings::handleResponse(key + ":" + j);
-            check(("" + player.settingValues[key]) == values[j],
-                  "choice " + key + ":" + j + " applied");
+            player openCJ\menus\hudSettings::handleResponse(settingName + ":" + j);
+            check(("" + player.settingValues[settingName]) == settingChoices[j],
+                  "choice " + settingName + ":" + j + " applied");
         }
     }
     player openCJ\menus\hudSettings::handleResponse("fpshelper:1");
@@ -87,20 +96,25 @@ main()
     check(player.settingValues["notify_results"] == 3, "results cannot hide completion text");
     player openCJ\menus\hudSettings::handleResponse("begin");
     check(player.settingValues["notify_results"] == 3, "opening preserves current choices");
+}
+
+// Exercise real native HUDs through static, moving, hidden and legacy marker modes.
+checkCheckpointIndicators(player)
+{
     // Real waypoint creation and cleanup, including moving checkpoints.
     player.sessionState = "playing";
     player.playerRuns_runID = 1;
     player.runInstanceNumber = 1;
     player.playerRuns_runFinished = false;
     player.anyPct = false;
-    cp = spawnStruct();
-    cp.origin = player.origin + (100, 0, 40);
-    cp.endShaderColor = "blue";
-    cp.routeInfo = spawnStruct();
-    cp.routeInfo.color = (0, 0.8, 1);
+    checkpoint = spawnStruct();
+    checkpoint.origin = player.origin + (100, 0, 40);
+    checkpoint.endShaderColor = "blue";
+    checkpoint.routeInfo = spawnStruct();
+    checkpoint.routeInfo.color = (0, 0.8, 1);
     player.checkpoints_checkpoint = spawnStruct();
     player.checkpoints_checkpoint.childs = [];
-    player.checkpoints_checkpoint.childs[0] = cp;
+    player.checkpoints_checkpoint.childs[0] = checkpoint;
     player openCJ\menus\hudSettings::handleResponse("checkpointicons:2");
     player openCJ\checkpointPointers::showCheckpointPointers();
     check(isDefined(player.checkpointPointers_huds[0]) &&
@@ -118,9 +132,9 @@ main()
           "locations uses world sprite with no edge clamping");
     check(player.checkpointPointers_huds[0].testShader == "opencj_checkpoint_tint",
           "locations uses the renderable effect material");
-    mover = spawn("script_model", cp.origin);
+    mover = spawn("script_model", checkpoint.origin);
     mover.targetname = "hud_settings_test_mover";
-    cp.platformRef = "nhud_settings_test_mover";
+    checkpoint.platformRef = "nhud_settings_test_mover";
     player openCJ\checkpointPointers::showCheckpointPointers();
     wait 0.15;
     check(!isDefined(player.checkpointPointers_objectives[0]),
@@ -129,11 +143,19 @@ main()
           "moving locations stays in world-sprite mode");
     check(player.checkpointPointers_huds[0].testShader == "opencj_checkpoint_tint",
           "moving locations retains the effect material");
+    previousMarkerX = player.checkpointPointers_huds[0].x;
+    mover.origin = mover.origin + (100, 0, 0);
+    wait 0.15;
+    check(abs(player.checkpointPointers_huds[0].x - previousMarkerX - 100) < 0.01,
+          "moving marker follows the platform's actual translation");
+    lookupsBeforeOff = level.pointerCenterLookups;
     player openCJ\menus\hudSettings::handleResponse("checkpointicons:0");
     wait 0.15;
     check(!isDefined(player.checkpointPointers_huds[0]) &&
               !isDefined(player.checkpointPointers_objectives[0]),
           "off cancels moving updates and removes both icons");
+    check(level.pointerCenterLookups == lookupsBeforeOff,
+          "switching indicators off stops platform lookups before their next tick");
     player openCJ\menus\hudSettings::handleResponse("checkpointicons:2");
     wait 0.15;
     check(isDefined(player.checkpointPointers_huds[0]) &&
@@ -141,7 +163,7 @@ main()
           "all markers restores moving icons");
     check(player.checkpointPointers_huds[0].testShader == "opencj_checkpoint_tint_obj",
           "switching back restores the 2D material");
-    cp.routeInfo = undefined;
+    checkpoint.routeInfo = undefined;
     player openCJ\menus\hudSettings::handleResponse("checkpointicons:1");
     check(player.checkpointPointers_huds[0].testShader == "opencj_checkpoint_blue" &&
               !player.checkpointPointers_huds[0].testOffscreen,
@@ -154,9 +176,8 @@ main()
     player openCJ\checkpointPointers::showCheckpointPointers();
     check(!isDefined(player.checkpointPointers_huds[0]), "spectator does not create icons");
     mover delete();
-    checkPointerCapacity(player);
-    finish();
 }
+
 changed(value)
 {
     self.changeCount++;
@@ -225,6 +246,13 @@ checkPointerCapacity(player)
           "refresh releases markers no longer needed");
     player openCJ\checkpointPointers::onRunStopped();
     check(player.checkpointPointers_huds.size == 0 &&
-          getArrayKeys(player.checkpointPointers_objectives).size == 0,
+              getArrayKeys(player.checkpointPointers_objectives).size == 0,
           "stopping after capacity use releases all markers and objectives");
+}
+
+// Count lookup work while forwarding to the real moving-platform resolver.
+recordMovingCenter(checkpoint)
+{
+    level.pointerCenterLookups++;
+    return openCJ\checkpointMoving::center(checkpoint);
 }

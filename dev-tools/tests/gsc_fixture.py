@@ -213,6 +213,10 @@ def install_observation_hooks(mod, fixture_name):
             (
                 (r"\bsetWaypoint\s*\(", r"openCJ\platformTest::waypoint("),
                 (r"\bsetShader\s*\(", r"openCJ\platformTest::recordShader("),
+                (
+                    r"openCJ\\checkpointMoving::center\s*\(",
+                    r"openCJ\platformTest::recordMovingCenter(",
+                ),
             ),
         ),
     }

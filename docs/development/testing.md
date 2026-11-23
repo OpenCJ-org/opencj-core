@@ -219,6 +219,15 @@ Report exactly which groups ran, which inputs/builds they used, and what remains
 unverified. Passing a listed command once does not establish that other groups
 pass or that future changes preserve the result.
 
+### HUD settings and checkpoint indicators
+
+The catalogue's HUD-settings fixture runs real menu-response handling and native
+HUD creation on a synthetic client. It covers marker modes, moving-platform
+translation, cancellation of further platform lookups, the 16-marker capacity
+and cleanup after the visible set shrinks. Observation hooks forward material,
+waypoint and platform-center calls to the real engine methods. This checks
+server behavior and selected materials; it does not inspect client rendering.
+
 ### Checkpoint publication
 
 Run `python3 -B dev-tools/tests/run-checkpoint-publication.py` to exercise real GSC
