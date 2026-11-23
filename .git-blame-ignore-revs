@@ -62,3 +62,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # Event/settings layout; non-brace tokens preserved and existing fixtures passed.
 3614573ebe2fa72953275541c5a4fd659cb8c817
+
+# Input/camera/boost layout; complete body expansion and engine fixtures verified.
+a91841703f5c045924098205a0438820e5d513ba
