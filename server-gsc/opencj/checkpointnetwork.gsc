@@ -20,6 +20,7 @@ readSection(sectionName)
     return snapshotA;
 }
 
+// Own the file handle here so every parse failure closes it in one place.
 readNetworkFile(filePath)
 {
     file = FS_FOpen(filePath, "read");
@@ -27,17 +28,23 @@ readNetworkFile(filePath)
     {
         return undefined;
     }
+    network = readNetworkContents(file);
+    FS_FClose(file);
+    return network;
+}
+
+// The caller owns the open file; only a complete header, paths and END record are accepted.
+readNetworkContents(file)
+{
     line = FS_ReadLine(file);
     if (!isDefined(line))
     {
-        FS_FClose(file);
         return undefined;
     }
     header = strTok(line, " ");
     if (header.size != 4 || header[0] != "CPN1" || !isValidInt(header[1]) ||
        !isValidInt(header[3]) || !openCJ\checkpointCreation::_validName(header[2]))
     {
-        FS_FClose(file);
         return undefined;
     }
     network = spawnStruct();
@@ -49,7 +56,6 @@ readNetworkFile(filePath)
     routeCount = int(header[3]);
     if (routeCount < minimumRouteCount || routeCount > maximumRouteCount)
     {
-        FS_FClose(file);
         return undefined;
     }
     for (i = 0; i < routeCount; i++)
@@ -57,14 +63,12 @@ readNetworkFile(filePath)
         line = FS_ReadLine(file);
         if (!isDefined(line))
         {
-            FS_FClose(file);
             return undefined;
         }
         fields = strTok(line, " ");
         if (fields.size != 3 || !openCJ\checkpointCreation::_validName(fields[0]) ||
            !isDefined(openCJ\checkpointCreation::routeRGB(fields[1])))
         {
-            FS_FClose(file);
             return undefined;
         }
         routePath = spawnStruct();
@@ -76,21 +80,18 @@ readNetworkFile(filePath)
            routePath.sections.size > maximumSectionCount || routePath.sections[0] != network.root ||
            isDefined(network.paths[fields[0]]))
         {
-            FS_FClose(file);
             return undefined;
         }
         for (j = 0; j < routePath.sections.size; j++)
         {
             if (!openCJ\checkpointCreation::_validName(routePath.sections[j]))
             {
-                FS_FClose(file);
                 return undefined;
             }
         }
         network.paths[fields[0]] = routePath;
     }
     line = FS_ReadLine(file);
-    FS_FClose(file);
     if (!isDefined(line) || line != "END " + network.revision)
     {
         return undefined;
@@ -114,6 +115,7 @@ load()
     return snapshotA;
 }
 
+// Alternate complete network snapshots; advance the revision only after every write succeeds.
 save(network)
 {
     minimumRouteCount = 2;
@@ -225,6 +227,7 @@ resolve(routeOrSectionName)
     return sections[sections.size - 1];
 }
 
+// Attach route membership, color and the prior section's travel destination to the editor.
 opened()
 {
     network = self load();
@@ -331,6 +334,7 @@ namesValid(commandArguments)
     return true;
 }
 
+// Save new approaches after a shared landing, then reopen the requested route.
 split(commandArguments)
 {
     if (!namesValid(commandArguments))
@@ -448,6 +452,7 @@ labelCommand(commandArguments)
     return routeArguments;
 }
 
+// Save one shared continuation after complete incoming approaches.
 merge(commandArguments)
 {
     if (!namesValid(commandArguments))
@@ -482,15 +487,7 @@ merge(commandArguments)
         routeOwners = members(network, lastSectionName);
         for (j = 0; j < routeOwners.size; j++)
         {
-            includedOwner = false;
-            for (k = 1; k < commandArguments.size; k++)
-            {
-                if (commandArguments[k] == routeOwners[j])
-                {
-                    includedOwner = true;
-                }
-            }
-            if (!includedOwner)
+            if (!hasName(commandArguments, routeOwners[j]))
             {
                 return self fail("Include every route already sharing an incoming section.");
             }
@@ -774,38 +771,9 @@ writeSectionColors(network)
     return "";
 }
 
-// Compare actual coplanar areas, not merely nearby centers. Also check edge
-// midpoints so touching a common boundary alone does not report an overlap.
-overlap(firstPoints, secondPoints)
-{
-    // The editor's label center is raised above the polygon; compare points on its plane.
-    labelHeightOffset = 12;
-    firstCenter = openCJ\checkpointCreation::_center(firstPoints) - (0, 0, labelHeightOffset);
-    secondCenter = openCJ\checkpointCreation::_center(secondPoints) - (0, 0, labelHeightOffset);
-    if(openCJ\checkpointArea::contains(firstPoints, secondCenter, true) ||
-       openCJ\checkpointArea::contains(secondPoints, firstCenter, true))
-    {
-        return true;
-    }
-    for(i = 0; i < firstPoints.size; i++)
-    {
-        midpoint = vectorScale(firstPoints[i] + firstCenter, 0.5);
-        if(openCJ\checkpointArea::contains(secondPoints, midpoint, true))
-        {
-            return true;
-        }
-    }
-    for(i = 0; i < secondPoints.size; i++)
-    {
-        midpoint = vectorScale(secondPoints[i] + secondCenter, 0.5);
-        if(openCJ\checkpointArea::contains(firstPoints, midpoint, true))
-        {
-            return true;
-        }
-    }
-    return false;
-}
 
+
+// Find the first overlapping confirmed area in another authored section.
 checkOverlap(quiet)
 {
     self.cpc.overlap = undefined;
@@ -820,23 +788,15 @@ checkOverlap(quiet)
     {
         return;
     }
-    uniqueSections = [];
-    routeNames = getArrayKeys(network.paths);
-    for(i = 0; i < routeNames.size; i++)
+    authoredSections = sectionNames(network);
+    for(i = 0; i < authoredSections.size; i++)
     {
-        for(j = 0; j < network.paths[routeNames[i]].sections.size; j++)
-        {
-            uniqueSections[network.paths[routeNames[i]].sections[j]] = true;
-        }
-    }
-    sectionNames = getArrayKeys(uniqueSections);
-    for(i = 0; i < sectionNames.size; i++)
-    {
-        if(sectionNames[i] == self.cpc.route)
+        sectionName = authoredSections[i];
+        if(sectionName == self.cpc.route)
         {
             continue;
         }
-        sectionDraft = self readSection(sectionNames[i]);
+        sectionDraft = self readSection(sectionName);
         if(!isDefined(sectionDraft))
         {
             continue;
@@ -844,33 +804,42 @@ checkOverlap(quiet)
         for(j = 0; j < sectionDraft.rows.size; j++)
         {
             candidateCheckpoint = openCJ\checkpointCreation::_decode(sectionDraft.rows[j]);
-            areas = [];
-            areas[0] = candidateCheckpoint.points;
-            for(k = 0; k < candidateCheckpoint.alternatives.size; k++)
+            if(!overlapsCheckpoint(self.cpc.draft, candidateCheckpoint))
             {
-                areas[areas.size] = candidateCheckpoint.alternatives[k];
+                continue;
             }
-            for(k = 0; k < areas.size; k++)
+            self.cpc.overlap = candidateCheckpoint;
+            self.cpc.overlapSection = sectionName;
+            self.cpc.overlapIndex = j;
+            self.cpc.status = "Overlaps " + label(members(network, sectionName)) +
+                              " section " + sectionName + " #" + (j + 1);
+            if(!isDefined(quiet) || !quiet)
             {
-                if(areaOverlap(self.cpc.draft, candidateCheckpoint, areas[k]))
-                {
-                    self.cpc.overlap = candidateCheckpoint;
-                    self.cpc.overlapSection = sectionNames[i];
-                    self.cpc.overlapIndex = j;
-                    self.cpc.status = "Overlaps " + label(members(network, sectionNames[i])) +
-                                      " section " + sectionNames[i] + " #" + (j + 1);
-                    if(!isDefined(quiet) || !quiet)
-                    {
-                        self sendLocalChatMessage(
-                            self.cpc.status +
-                                ". Use !cp merge <routes> at the first common landing; use !cp split <routes> where they separate again. Do not confirm duplicate platforms.",
-                            true);
-                    }
-                    return;
-                }
+                self sendLocalChatMessage(
+                    self.cpc.status +
+                    ". Use !cp merge <routes> at the first common landing; use !cp split <routes> where they separate again. Do not confirm duplicate platforms.",
+                    true);
             }
+            return;
         }
     }
+}
+
+// Test primary and alternative geometry in the same order used by the editor.
+overlapsCheckpoint(candidate, confirmed)
+{
+    if(areaOverlap(candidate, confirmed, confirmed.points))
+    {
+        return true;
+    }
+    for(i = 0; i < confirmed.alternatives.size; i++)
+    {
+        if(areaOverlap(candidate, confirmed, confirmed.alternatives[i]))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // At a section boundary, show the separate incoming approaches in their colors.
@@ -885,37 +854,40 @@ drawConnections(checkpoint)
     drawnSections = [];
     for(i = 0; i < routeNames.size; i++)
     {
-        sections = network.paths[routeNames[i]].sections;
-        for(j = 1; j < sections.size; j++)
+        previousName = previousSectionName(network.paths[routeNames[i]].sections, self.cpc.route);
+        if(!isDefined(previousName) || isDefined(drawnSections[previousName]))
         {
-            if(sections[j] == self.cpc.route)
-            {
-                previousSectionName = sections[j - 1];
-                if(isDefined(drawnSections[previousSectionName]))
-                {
-                    break;
-                }
-                drawnSections[previousSectionName] = true;
-                sectionDraft = self readSection(previousSectionName);
-                if(!isDefined(sectionDraft) || sectionDraft.rows.size == 0)
-                {
-                    break;
-                }
-                previousCheckpoint = openCJ\checkpointCreation::_decode(
-                    sectionDraft.rows[sectionDraft.rows.size - 1]);
-                connectionColor = openCJ\checkpointCreation::_vec(
-                                      openCJ\checkpointCreation::routeRGB(sectionDraft.routeHex)) +
-                                  " 1";
-                self openCJ\checkpointCreation::_outlineGroup(previousCheckpoint, connectionColor);
-                self openCJ\checkpointCreation::_line(
-                    openCJ\checkpointCreation::_center(
-                        openCJ\checkpointMoving::points(previousCheckpoint)),
-                    openCJ\checkpointCreation::_center(openCJ\checkpointMoving::points(checkpoint)),
-                    connectionColor);
-                break;
-            }
+            continue;
+        }
+        drawnSections[previousName] = true;
+        sectionDraft = self readSection(previousName);
+        if(!isDefined(sectionDraft) || sectionDraft.rows.size == 0)
+        {
+            continue;
+        }
+        previousCheckpoint = openCJ\checkpointCreation::_decode(
+            sectionDraft.rows[sectionDraft.rows.size - 1]);
+        connectionColor = openCJ\checkpointCreation::_vec(
+                              openCJ\checkpointCreation::routeRGB(sectionDraft.routeHex)) + " 1";
+        self openCJ\checkpointCreation::_outlineGroup(previousCheckpoint, connectionColor);
+        self openCJ\checkpointCreation::_line(
+            openCJ\checkpointCreation::_center(openCJ\checkpointMoving::points(previousCheckpoint)),
+            openCJ\checkpointCreation::_center(openCJ\checkpointMoving::points(checkpoint)),
+            connectionColor);
+    }
+}
+
+previousSectionName(routeSections, currentSection)
+{
+    // The opening at index zero has no incoming section.
+    for(i = 1; i < routeSections.size; i++)
+    {
+        if(routeSections[i] == currentSection)
+        {
+            return routeSections[i - 1];
         }
     }
+    return undefined;
 }
 
 hasName(commandArguments, routeName)
@@ -968,6 +940,7 @@ writeSection(sectionName, sectionDraft)
     return saved;
 }
 
+// Save a new section containing the selected row range without modifying its source.
 sliceSection(network, sourceSection, startRowIndex, endRowIndex, routeColor)
 {
     sectionName = self uniqueSection(network);
@@ -992,6 +965,7 @@ sliceSection(network, sourceSection, startRowIndex, endRowIndex, routeColor)
     return sectionName;
 }
 
+// Replace references in every route while keeping all unaffected section order.
 replaceSection(network, previousName, firstName, secondName)
 {
     routeNames = getArrayKeys(network.paths);
@@ -1019,6 +993,7 @@ replaceSection(network, previousName, firstName, secondName)
     }
 }
 
+// Rejoin an existing continuation while retaining its later branches and finish.
 mergeExisting(commandArguments, network)
 {
     sourceSectionName = self.cpc.route;
@@ -1195,61 +1170,67 @@ selectAndTeleport(checkpointIndex)
     self openCJ\checkpointCreation::_save();
 }
 
+// Compare requirements and ordered geometry without depending on decimal serialization.
 sameCheckpoint(firstCheckpoint, secondCheckpoint)
 {
     if(!openCJ\checkpointHeight::same(firstCheckpoint, secondCheckpoint))
     {
         return false;
     }
-    if(openCJ\checkpointMoving::isMoving(firstCheckpoint) !=
-       openCJ\checkpointMoving::isMoving(secondCheckpoint))
+    firstMoving = openCJ\checkpointMoving::isMoving(firstCheckpoint);
+    secondMoving = openCJ\checkpointMoving::isMoving(secondCheckpoint);
+    if(firstMoving != secondMoving)
     {
         return false;
-    }
-    if(openCJ\checkpointMoving::isMoving(firstCheckpoint))
-    {
-        return firstCheckpoint.platformRef == secondCheckpoint.platformRef &&
-               firstCheckpoint.allowEle == secondCheckpoint.allowEle &&
-               firstCheckpoint.allowSave == secondCheckpoint.allowSave &&
-               firstCheckpoint.onGround == secondCheckpoint.onGround &&
-               firstCheckpoint.finish == secondCheckpoint.finish &&
-               firstCheckpoint.double == secondCheckpoint.double;
     }
     if(firstCheckpoint.allowEle != secondCheckpoint.allowEle ||
        firstCheckpoint.allowSave != secondCheckpoint.allowSave ||
-       firstCheckpoint.onGround != secondCheckpoint.onGround ||
-       firstCheckpoint.finish != secondCheckpoint.finish ||
-       firstCheckpoint.double != secondCheckpoint.double ||
-       firstCheckpoint.points.size != secondCheckpoint.points.size ||
-       firstCheckpoint.alternatives.size != secondCheckpoint.alternatives.size)
+       firstCheckpoint.onGround != secondCheckpoint.onGround)
     {
         return false;
     }
-    for(i = 0; i < firstCheckpoint.points.size; i++)
+    if(firstCheckpoint.finish != secondCheckpoint.finish ||
+       firstCheckpoint.double != secondCheckpoint.double)
     {
-        if(distanceSquared(firstCheckpoint.points[i], secondCheckpoint.points[i]) > 0.0001)
-        {
-            return false;
-        }
+        return false;
+    }
+    if(firstMoving)
+    {
+        return firstCheckpoint.platformRef == secondCheckpoint.platformRef;
+    }
+    if(firstCheckpoint.alternatives.size != secondCheckpoint.alternatives.size ||
+       !sameOrderedPoints(firstCheckpoint.points, secondCheckpoint.points))
+    {
+        return false;
     }
     for(i = 0; i < firstCheckpoint.alternatives.size; i++)
     {
-        if(firstCheckpoint.alternatives[i].size != secondCheckpoint.alternatives[i].size)
+        if(!sameOrderedPoints(firstCheckpoint.alternatives[i], secondCheckpoint.alternatives[i]))
         {
             return false;
-        }
-        for(j = 0; j < firstCheckpoint.alternatives[i].size; j++)
-        {
-            if(distanceSquared(firstCheckpoint.alternatives[i][j],
-                               secondCheckpoint.alternatives[i][j]) > 0.0001)
-            {
-                return false;
-            }
         }
     }
     return true;
 }
 
+sameOrderedPoints(firstPoints, secondPoints)
+{
+    maximumPointDifferenceSquared = 0.0001;
+    if(firstPoints.size != secondPoints.size)
+    {
+        return false;
+    }
+    for(i = 0; i < firstPoints.size; i++)
+    {
+        if(distanceSquared(firstPoints[i], secondPoints[i]) > maximumPointDifferenceSquared)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Keep the first route's continuation and give the other routes new approaches.
 splitExisting(commandArguments, network)
 {
     routeOwners = members(network, self.cpc.route);
@@ -1364,6 +1345,7 @@ pendingEdit(sectionDraft)
                                                    sectionDraft.rows[sectionDraft.selected]));
 }
 
+// Prepare renamed draft copies before changing the manifest and published names.
 rename(previousName, newName)
 {
     if(!openCJ\checkpointCreation::_validName(previousName) ||
@@ -1424,6 +1406,29 @@ rename(previousName, newName)
         network.paths[newName] = network.paths[previousName];
         network.paths[previousName] = undefined;
     }
+    if(!self publishRename(mapID, previousName, newName, network, previousNetwork))
+    {
+        return false;
+    }
+    self archiveRenamedDraft(previousSection, previousName);
+    activeSectionName = self.cpc.route;
+    if(activeSectionName == previousName)
+    {
+        activeSectionName = newName;
+    }
+    self openCJ\checkpointCreation::_close();
+    self openCJ\checkpointPublish::activate();
+    self openCJ\checkpointCreation::_start(activeSectionName);
+    refreshRenamedRoute(previousName, newName);
+    self sendLocalChatMessage(
+        "Renamed " + previousName + " to " + newName +
+        ". Colors, checkpoint IDs and records retained; separately named branches are unchanged.");
+    return true;
+}
+
+// Keep the manifest and SQL rename together, and settle uncertain replies before restoring names.
+publishRename(mapID, previousName, newName, network, previousNetwork)
+{
     if(!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION")))
     {
         return self fail("Cannot begin rename; original retained.");
@@ -1493,6 +1498,12 @@ rename(previousName, newName)
                 "Cannot confirm rename; recovery drafts retained. Check published names before retrying.");
         }
     }
+    return true;
+}
+
+// Delete active old filenames only after their recovery snapshot was saved.
+archiveRenamedDraft(previousSection, previousName)
+{
     // Keep an explicit recovery snapshot outside the active draft names.
     if(isDefined(previousSection))
     {
@@ -1514,19 +1525,7 @@ rename(previousName, newName)
             }
         }
     }
-    activeSectionName = self.cpc.route;
-    if(activeSectionName == previousName)
-    {
-        activeSectionName = newName;
-    }
-    self openCJ\checkpointCreation::_close();
-    self openCJ\checkpointPublish::activate();
-    self openCJ\checkpointCreation::_start(activeSectionName);
-    refreshRenamedRoute(previousName, newName);
-    self sendLocalChatMessage(
-        "Renamed " + previousName + " to " + newName +
-        ". Colors, checkpoint IDs and records retained; separately named branches are unchanged.");
-    return true;
+
 }
 
 // A named route has a stable ID even after its public name changes. Section-only
@@ -1576,21 +1575,12 @@ selectDetectedShared()
     for(i = 0; i < self.cpc.rows.size; i++)
     {
         confirmedCheckpoint = openCJ\checkpointCreation::_decode(self.cpc.rows[i]);
-        areas = [];
-        areas[0] = confirmedCheckpoint.points;
-        for(j = 0; j < confirmedCheckpoint.alternatives.size; j++)
+        if(overlapsCheckpoint(self.cpc.draft, confirmedCheckpoint))
         {
-            areas[areas.size] = confirmedCheckpoint.alternatives[j];
-        }
-        for(j = 0; j < areas.size; j++)
-        {
-            if(areaOverlap(self.cpc.draft, confirmedCheckpoint, areas[j]))
-            {
-                self.cpc.selected = i;
-                self.cpc.draft = confirmedCheckpoint;
-                self.cpc.status = "Shared landing " + (i + 1) + " selected";
-                return true;
-            }
+            self.cpc.selected = i;
+            self.cpc.draft = confirmedCheckpoint;
+            self.cpc.status = "Shared landing " + (i + 1) + " selected";
+            return true;
         }
     }
     if(self followingShared())
