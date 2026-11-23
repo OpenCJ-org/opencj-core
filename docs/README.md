@@ -50,6 +50,7 @@ more detailed than the current guide.
 - Database: [data model](reference/database/data-model.md), [route identity](reference/database/route-identity.md), [save integrity](reference/database/save-integrity.md), [SQL adapter](reference/database/sql-adapter.md), [demo publication](reference/database/demo-publication.md), [query performance](reference/database/query-performance.md).
 - Native: [helpers](reference/native/helpers.md), [memory ownership](reference/native/memory.md), [download cvars](reference/native/download-cvars.md), [specular scale](reference/native/specular-scale.md).
 - Maps: [catalogue and attribution](reference/maps/catalogue.md).
+- Website: [overview and configuration](../web/README.md), [release notes](releases/README.md).
 - Development: [repository layout](development/repository-layout.md), [testing](development/testing.md), [performance workloads](development/performance.md), [sticky walls](development/sticky-walls.md), [preview assets](development/map-previews.md).
 - Operations: [database](operations/database.md), [name-rule maintenance](operations/name-moderation.md), [client assets](operations/client-assets.md), [native/scripts](operations/native-scripts.md).
 

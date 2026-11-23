@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros.html" import plays_text %}
+{% block title %}Rankings · OpenCJ{% endblock %}
+{% block content %}
+<header>
+  <h1>Rankings</h1>
+  <p class="lead">Players are ranked by challenge points, the same total as the in-game Top 10. There are {{ active_challenge_count }} active challenges worth {{ active_challenge_points }} points in total. Players with equal points share a position.</p>
+</header>
+
+<section class="card" aria-labelledby="skilled">
+  <div class="label" id="skilled">Most skilled players</div>
+  {% if challenge_ranking %}
+  <div class="table-box">
+  <table>
+    <thead><tr><th>#</th><th>Player</th><th class="num">Challenges</th><th class="num">Points</th></tr></thead>
+    <tbody>
+    {% for player in challenge_ranking %}
+      <tr>
+        <td class="pos">{{ player.position }}</td>
+        <td><a href="{{ root }}players/{{ player.player_id }}/">{{ player.name }}</a></td>
+        <td class="num">{{ player.completed_challenges }}</td>
+        <td class="num">{{ player.points }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">Nobody has earned challenge points yet.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="maps" aria-labelledby="maps-heading">
+  <div class="label" id="maps-heading">Most played maps</div>
+  {% if not plays_available %}<p class="muted">Play counting starts with the next server update; until then maps are ordered by players.</p>{% endif %}
+  <div class="table-box">
+  <table>
+    <thead><tr><th>#</th><th>Map</th><th class="wide-only">Mapper</th><th class="num">Plays</th><th class="num">Players</th><th class="num wide-only">Finishes</th></tr></thead>
+    <tbody>
+    {% for summary in maps_by_popularity %}
+      <tr>
+        <td class="pos">{{ summary.popularity_position }}</td>
+        <td><a href="{{ root }}maps/{{ summary.name }}/">{{ summary.name }}</a></td>
+        <td class="wide-only">{{ summary.mappers }}</td>
+        <td class="num">{{ plays_text(summary) }}</td>
+        <td class="num">{{ summary.players }}</td>
+        <td class="num wide-only">{{ summary.finishes }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">A play is one map session that at least one player joined.</p>
+</section>
+{% endblock %}

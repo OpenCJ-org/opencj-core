@@ -1,0 +1,5 @@
+# cryptography lets PyMySQL use MySQL 8's default caching_sha2_password login.
+cryptography==43.0.3
+Jinja2==3.1.4
+MarkupSafe==2.1.5
+PyMySQL==1.1.1

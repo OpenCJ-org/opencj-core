@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "macros.html" import plays_text %}
+{% block title %}Maps · OpenCJ{% endblock %}
+{% block content %}
+<header>
+  <h1>Maps</h1>
+  <p class="lead">Every map in the current OpenCJ pool. Open a map for its routes and leaderboards.</p>
+</header>
+<div class="grid-maps">
+{% for summary in maps %}
+  <section class="card map-card" aria-labelledby="map-{{ summary.map_id }}">
+    <div class="label">By {{ summary.mappers }}</div>
+    <h3 id="map-{{ summary.map_id }}"><a href="{{ root }}maps/{{ summary.name }}/">{{ summary.name }}</a></h3>
+    <dl class="facts">
+      <dt>Plays</dt><dd>{{ plays_text(summary) }}</dd>
+      <dt>Players</dt><dd>{{ summary.players }}</dd>
+      <dt>Routes</dt><dd>{{ summary.routes | length }}</dd>
+      {% if summary.release_date %}<dt>Released</dt><dd>{{ summary.release_date.strftime("%b %Y") }}</dd>{% endif %}
+    </dl>
+  </section>
+{% else %}
+  <p class="empty">No maps in the pool yet.</p>
+{% endfor %}
+</div>
+{% endblock %}

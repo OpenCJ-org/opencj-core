@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.name }} · OpenCJ{% endblock %}
+{% block content %}
+<header class="card">
+  <div class="label">Player</div>
+  <h1>{{ profile.name }}</h1>
+  <dl class="facts">
+    {% if profile.ranking %}
+    <dt>Rank</dt><dd>#{{ profile.ranking.position }} by challenge points</dd>
+    <dt>Points</dt><dd>{{ profile.ranking.points }}</dd>
+    <dt>Challenges</dt><dd>{{ profile.ranking.completed_challenges }} of {{ active_challenge_count }}</dd>
+    {% else %}
+    <dt>Points</dt><dd>0</dd>
+    {% endif %}
+    <dt>Ranked routes</dt><dd>{{ profile.personal_bests | length }}</dd>
+  </dl>
+</header>
+
+<section class="card" aria-labelledby="bests">
+  <div class="label" id="bests">Personal bests</div>
+  {% if profile.personal_bests %}
+  <div class="table-box">
+  <table>
+    <thead><tr><th>Map</th><th>Route</th><th class="num">Position</th><th class="num">Time</th><th>FPS</th></tr></thead>
+    <tbody>
+    {% for best in profile.personal_bests %}
+      <tr>
+        <td><a href="{{ root }}maps/{{ best.map_name }}/">{{ best.map_name }}</a></td>
+        <td>{{ best.route_name }}</td>
+        <td class="num">#{{ best.position }}</td>
+        <td class="num time">{{ best.time_ms | duration }}</td>
+        <td>{{ best.fps_mode }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No ranked finishes on pool maps yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

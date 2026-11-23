@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}OpenCJ{% endblock %}</title>
+<meta name="description" content="OpenCJ is a CoDJumper mod for Call of Duty 4: release notes, server status, rankings, maps and downloads.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="{{ root }}static/style.css">
+</head>
+<body>
+{% set nav_items = [
+  ("home", "", "Home"),
+  ("releases", "releases/", "Releases"),
+  ("maps", "maps/", "Maps"),
+  ("rankings", "rankings/", "Rankings"),
+  ("downloads", "downloads/", "Downloads"),
+  ("guide", "guide/", "Guide"),
+] %}
+<nav class="site-nav" aria-label="Main">
+  <div class="wrap">
+    <a class="logo" href="{{ root }}">OPEN<span>CJ</span></a>
+    {% for page_id, href, label in nav_items %}
+    <a class="nav-link{% if page == page_id %} on{% endif %}" href="{{ root }}{{ href }}"{% if page == page_id %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </div>
+</nav>
+<main class="wrap">
+{% block content %}{% endblock %}
+</main>
+<footer>
+  <div class="wrap">
+    <span>OpenCJ · CoDJumper for Call of Duty 4</span>
+    <span>Updated {{ generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</span>
+  </div>
+</footer>
+</body>
+</html>
