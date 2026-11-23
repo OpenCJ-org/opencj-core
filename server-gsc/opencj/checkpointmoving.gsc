@@ -58,6 +58,8 @@ resolve(key)
     if (!isDefined(level.checkpointMovingCache))
     {
         level.checkpointMovingCache = [];
+        level.checkpointMovingCacheKeys = [];
+        level.checkpointMovingCacheNext = 0;
     }
     cached = level.checkpointMovingCache[key];
     if (isDefined(cached))
@@ -73,7 +75,7 @@ resolve(key)
     }
     cached = spawnStruct();
     cached.checked = getTime();
-    level.checkpointMovingCache[key] = cached;
+    rememberReference(key, cached);
     if (key[0] == "n")
     {
         ents = getEntArray(getSubStr(key, 1), "targetname");
@@ -107,6 +109,26 @@ resolve(key)
         }
     }
     return cached.ent;
+}
+
+// The engine has 1024 entity slots. Extra stale draft keys must not grow this
+// per-map cache without limit. Eviction only forgets a lookup: it never changes
+// a saved checkpoint, and the next use resolves the reference again.
+rememberReference(key, cached)
+{
+    maximumCachedReferences = 1024;
+    if (!isDefined(level.checkpointMovingCache[key]))
+    {
+        slot = level.checkpointMovingCacheNext;
+        if (isDefined(level.checkpointMovingCacheKeys[slot]))
+        {
+            oldestKey = level.checkpointMovingCacheKeys[slot];
+            level.checkpointMovingCache[oldestKey] = undefined;
+        }
+        level.checkpointMovingCacheKeys[slot] = key;
+        level.checkpointMovingCacheNext = (slot + 1) % maximumCachedReferences;
+    }
+    level.checkpointMovingCache[key] = cached;
 }
 
 isMoving(cp)

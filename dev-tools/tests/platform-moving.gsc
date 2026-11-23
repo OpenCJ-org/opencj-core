@@ -78,6 +78,7 @@ main()
     check(openCJ\checkpointMoving::valid(missing) != "", "missing entity fails validation");
     check(!(player openCJ\checkpointMoving::touches(missing, true, platform)),
           "missing entity never awards checkpoint");
+    checkReferenceCacheCapacity(key, platform);
     printf("BRUSH SELFTEST COMPLETE failures=" + level.brushFailures + "\n");
 }
 check(value, name)
@@ -91,4 +92,22 @@ check(value, name)
     {
         printf("BRUSH SELFTEST PASS " + name + "\n");
     }
+}
+
+// Stale saved references must not retain a cache entry forever for every miss.
+checkReferenceCacheCapacity(validReference, platform)
+{
+    referenceCapacity = 1024;
+    for(i = 0; i <= referenceCapacity; i++)
+    {
+        openCJ\checkpointMoving::resolve("b" + (10000 + i));
+        if(i % 32 == 0)
+        {
+            wait 0.05;
+        }
+    }
+    check(level.checkpointMovingCache.size <= referenceCapacity,
+          "reference cache stays bounded after many missing platforms");
+    check(openCJ\checkpointMoving::resolve(validReference) == platform,
+          "valid platform resolves after reference cache reaches capacity");
 }
