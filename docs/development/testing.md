@@ -354,3 +354,12 @@ It checks pending edits, Apply/Cancel, unloaded settings, rejected values,
 visibility choices and graphics callback values. A forwarding hook records
 client cvar writes; all fixture settings are session-only. This checks server
 handling and requested values, not the client's rendered graphics.
+
+### Specular replication across maps
+
+The specular runner accepts a matching engine through --binary and starts its
+own minimal game scripts. It verifies a map override, a map restart without an
+override, a second map's fractional value, and a return to the default.
+It requires all four stages, uses bounded waits and Docker commands, and records
+the selected binary and fixture hashes. Cleanup is attempted even if reading the final logs fails. The test checks server values and replicated
+configstrings; client rendering still requires an in-game check.
