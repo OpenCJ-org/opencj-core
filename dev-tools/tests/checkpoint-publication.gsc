@@ -448,6 +448,7 @@ checkGraphReload()
 {
     openCJ\checkpoints::onInit();
     check(level.checkpoints_checkpoints.size > 0, "real graph loader connects published checkpoints");
+    checkLoadedGraphRoutes();
     previousStart = level.checkpoints_startCheckpoint;
     previousCheckpoint = level.checkpoints_checkpoints[0];
     previousRoute = level.checkpointRoutes["fixture_route"];
@@ -492,4 +493,36 @@ checkGraphReload()
           "failed initial load has no partial graph or successful-layout epoch");
     check(openCJ\checkpoints::onInit() && level.checkpoints_checkpoints.size > 0,
           "initial load can recover after the database becomes available");
+}
+
+// These route lengths come from the synthetic layouts above, independently of loader traversal.
+checkLoadedGraphRoutes()
+{
+    start = openCJ\checkpoints::getCheckpointByID(level.publicationOriginalIds[0]);
+    finish = openCJ\checkpoints::getCheckpointByID(level.publicationOriginalIds[3]);
+    check(start.childs.size == 1 && start.childs[0].childs.size == 1 &&
+          start.childs[0].childs[0] == finish, "migrated route links opening, inserted step and finish");
+    check(start.checkpointsFromStart == 1 && start.childs[0].checkpointsFromStart == 2 &&
+          finish.checkpointsFromStart == 3, "loaded route counts steps from its opening");
+    check(start.checkpointsTillEnd == 2 && start.childs[0].checkpointsTillEnd == 1 &&
+          finish.checkpointsTillEnd == 0, "loaded route counts steps to its finish");
+    check(openCJ\checkpoints::getRouteNameForCheckpoint(start) == "fixture_route",
+          "single-route opening resolves its finish name");
+
+    sharedIds = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT cpID FROM checkpointAreas WHERE draftName='shared_opening' ORDER BY ordinal");
+    if (!check(isDefined(sharedIds) && sharedIds.size == 3,
+               "shared fixture contains an opening and two alternative areas"))
+    {
+        return;
+    }
+    sharedStart = openCJ\checkpoints::getCheckpointByID(int(sharedIds[0][0]));
+    sharedNext = openCJ\checkpoints::filterOutBrothers(sharedStart.childs);
+    check(sharedStart.childs.size == 2 && sharedNext.size == 1,
+          "both alternative areas resolve to one next checkpoint group");
+    check(sharedNext[0].childs.size == 2 && sharedNext[0].contactAreas.size == 2,
+          "shared group retains its two branch finishes and two contact areas");
+    check(sharedStart.endCheckpoints.size == 2 &&
+          !isDefined(openCJ\checkpoints::getRouteNameForCheckpoint(sharedStart)),
+          "shared opening keeps both reachable routes without choosing one");
 }

@@ -158,6 +158,7 @@ checkActualGroundContacts(areas, centers, checkpoint)
                   "real excess velocity needs settled contact " + i);
             bot.checkpointContact = undefined;
         }
+        checkLandingSelection(bot, areas[areas.size - 1]);
     }
 }
 
@@ -243,4 +244,68 @@ checkPassedCheckpointTraversal()
 
     level.checkpoints_checkpoints = previousGraph;
     level.checkpoints_startCheckpoint = previousStart;
+}
+
+// Run the actual frame selector with a real grounded player; observe only the scoring handoff.
+checkLandingSelection(player, area)
+{
+    previousGraph = level.checkpoints_checkpoints;
+    expected = spawnStruct();
+    expected.id = 101;
+    expected.area = area;
+    expected.onGround = true;
+    expected.childs = [];
+    otherRoute = spawnStruct();
+    otherRoute.id = 102;
+    otherRoute.area = area;
+    otherRoute.onGround = true;
+    otherRoute.childs = [];
+    current = spawnStruct();
+    current.childs = [];
+    current.childs[0] = expected;
+    level.checkpoints_checkpoints = [];
+    level.checkpoints_checkpoints[0] = otherRoute;
+    level.checkpoints_checkpoints[1] = expected;
+    player.playerRuns_runID = 1;
+    player.runInstanceNumber = 1;
+    player.playerRuns_runPaused = false;
+    player.cheating = false;
+    player.anyPct = true;
+    player.checkpoints_passed = [];
+    player.checkpoints_checkpoint = current;
+    player.checkpointContact = undefined;
+    player setVelocity((0, 0, 0));
+    level.selectedContact = undefined;
+
+    player openCJ\checkpoints::whileAlive();
+    check(level.selectedContact == expected,
+          "expected successor wins over an earlier coincident graph entry");
+
+    level.selectedContact = undefined;
+    player setVelocity((500, 0, 0));
+    player openCJ\checkpoints::whileAlive();
+    check(!isDefined(level.selectedContact) &&
+          player.checkpointContact.checkpoint == expected,
+          "fast expected landing remains reserved while contact settles");
+
+    current.area = area;
+    current.onGround = true;
+    current.childs = [];
+    player setVelocity((0, 0, 0));
+    player openCJ\checkpoints::whileAlive();
+    check(!isDefined(level.selectedContact),
+          "standing on the current area does not select a coincident route");
+    check(!isDefined(player.checkpointContact), "no eligible landing clears pending contact");
+
+    current.area = undefined;
+    current.childs[0] = expected;
+    player.playerRuns_runPaused = true;
+    player openCJ\checkpoints::whileAlive();
+    check(!isDefined(level.selectedContact), "paused runs never enter the scoring handoff");
+    level.checkpoints_checkpoints = previousGraph;
+}
+
+recordCheckpointContact(checkpoint)
+{
+    level.selectedContact = checkpoint;
 }

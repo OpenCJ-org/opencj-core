@@ -590,7 +590,7 @@
     {
       "id": "focused-gsc",
       "category": "integration",
-      "description": "Checkpoint contact and bounded ancestor traversal, panel states, bounded indicators/travel, moving-marker cancellation and draft validation; client startup, HUD, native-helper, save-history and map-hint regressions.",
+      "description": "Checkpoint contact/landing selection and bounded ancestor traversal, panel states, bounded indicators/travel, moving-marker cancellation and draft validation; client startup, HUD, native-helper, save-history and map-hint regressions.",
       "requires": "Initialized Compose, current engine, licensed game/compiled mod; each command selects its fixture and completion marker. Checkpoint contact requires mp_futile_fixed; other listed fixtures use mp_killhouse.",
       "effects": "Isolated servers and synthetic clients; private logs/drafts, no gameplay database.",
       "files": [

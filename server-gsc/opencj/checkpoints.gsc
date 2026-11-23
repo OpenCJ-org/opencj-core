@@ -1,42 +1,37 @@
 #include openCJ\util;
 
-_checkpointPassed(cp, tOffset) // tOffset = -50 to 0, offset when cp was actually passed
+// Record a timed checkpoint; the offset interpolates contact within the previous server frame.
+_checkpointPassed(checkpoint, timeOffsetMs)
 {
-    timePlayed = self openCJ\playTime::getTimePlayed();
-    cpID = getCheckpointID(cp);
-    if (!isDefined(cpID))
+    elapsedMs = self openCJ\playTime::getTimePlayed();
+    checkpointId = getCheckpointID(checkpoint);
+    if (!isDefined(checkpointId))
     {
         return;
     }
 
-    // The run may be paused, but at least we want the player to have a run to do anything with the
-    // checkpoints Otherwise they are not even shown visually.
-    if (self openCJ\playerRuns::hasRunID())
+    // Paused runs keep their visible checkpoint state without recording a new split.
+    if (!self openCJ\playerRuns::hasRunID())
     {
-        if (!self openCJ\playerRuns::isRunPaused())
-        {
-            // Update the player's route if it wasn't filled in yet
-            if (!isDefined(self.route))
-            {
-                self.route = getRouteNameForCheckpoint(cp);
-            }
-
-            // Inform other scripts that a checkpoint was passed
-            cpPassedTime = timePlayed + tOffset;
-            self openCJ\showRecords::onCheckpointPassed(cp, cpPassedTime);
-
-            runID = self openCJ\playerRuns::getRunID();
-            self thread storeCheckpointPassed(runID, cpID, cpPassedTime);
-            self thread openCJ\recordNotices::checkpoint(runID, cpID, cpPassedTime);
-        }
-        else
-        {
-            self iprintln("^5You passed a checkpoint, but your run is paused.");
-        }
+        return;
     }
+    if (self openCJ\playerRuns::isRunPaused())
+    {
+        self iprintln("^5You passed a checkpoint, but your run is paused.");
+        return;
+    }
+    if (!isDefined(self.route))
+    {
+        self.route = getRouteNameForCheckpoint(checkpoint);
+    }
+    passedAtMs = elapsedMs + timeOffsetMs;
+    self openCJ\showRecords::onCheckpointPassed(checkpoint, passedAtMs);
+    runID = self openCJ\playerRuns::getRunID();
+    self thread storeCheckpointPassed(runID, checkpointId, passedAtMs);
+    self thread openCJ\recordNotices::checkpoint(runID, checkpointId, passedAtMs);
 }
 
-storeCheckpointPassed(runID, cpID, timePlayed)
+storeCheckpointPassed(runID, checkpointId, elapsedMs)
 {
     if (self openCJ\playerRuns::isRunFinished() || !self openCJ\playerRuns::hasRunID() ||
        self openCJ\cheating::isCheating())
@@ -50,25 +45,26 @@ storeCheckpointPassed(runID, cpID, timePlayed)
     explosiveLaunches = self openCJ\statistics::getExplosiveLaunches(); // RPG launch / nade throw
     doubleExplosives = self openCJ\statistics::getDoubleExplosives();   // Double RPGs
 
-    // This is a store procedure in SQL database
-    explosiveStr = explosiveJumps + ", " + explosiveLaunches + ", " + doubleExplosives;
-    filters = "";
+    // Snapshot run statistics before the asynchronous write can yield.
+    explosiveArguments = explosiveJumps + ", " + explosiveLaunches + ", " + doubleExplosives;
+    modeArguments = "";
     if (getCodVersion() == 4)
     {
-        filters = ", '" + self openCJ\fps::getCurrentFPSMode() + "', " +
-                  int(self openCJ\elevate::hasUsedEle()) + ", " +
-                  int(self openCJ\anyPct::hasAnyPct()) + ", " + int(self openCJ\tas::hasHardTAS());
+        modeArguments = ", '" + self openCJ\fps::getCurrentFPSMode() + "', " +
+                        int(self openCJ\elevate::hasUsedEle()) + ", " +
+                        int(self openCJ\anyPct::hasAnyPct()) + ", " + int(self openCJ\tas::hasHardTAS());
     }
-    runInstance = self openCJ\playerRuns::getRunInstanceNumber();
-    query = "SELECT checkpointPassed(" + runID + ", " + cpID + ", " + timePlayed + ", " +
-            saveCount + ", " + loadCount + ", " + explosiveStr + filters + ", " + runInstance + ")";
+    instanceNumber = self openCJ\playerRuns::getRunInstanceNumber();
+    query = "SELECT checkpointPassed(" + runID + ", " + checkpointId + ", " + elapsedMs + ", " +
+            saveCount + ", " + loadCount + ", " + explosiveArguments + modeArguments + ", " +
+            instanceNumber + ")";
     printf("Executing checkpointPassed query:\n" + query + "\n"); // Debug
 
-    rows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:" + runID);
-    if (!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
+    resultRows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:" + runID);
+    if (!isDefined(resultRows) || !isDefined(resultRows[0]) || !isDefined(resultRows[0][0]))
     {
-        message =
-            self openCJ\runStorage::resultMessage(runID, runInstance, rows, "checkpoint progress");
+        message = self openCJ\runStorage::resultMessage(
+            runID, instanceNumber, resultRows, "checkpoint progress");
         if (message != "")
         {
             self iPrintLnBold(message);
@@ -84,137 +80,39 @@ onRunStarted()
     self.route = undefined;
 }
 
+// Load a complete graph before advancing the layout epoch used by player caches.
 onInit()
 {
     previousGraph = captureCheckpointGraph();
     level.checkpoints_startCheckpoint = spawnStruct();
     level.checkpoints_startCheckpoint.isEleAllowed = false;
     level.checkpoints_startCheckpoint.childs = [];
-
     level.checkpoints_checkpoints = [];
 
     if(openCJ\mapid::hasMapID())
     {
-        if(getCodVersion() == 4)
-        {
-            rows = openCJ\mySQL::mysqlSyncQuery(
-                "SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, GROUP_CONCAT(b.childCpID), r.routeName, a.elevate, NULL, c.bigBrotherID, a.allowSave, a.finishRouteID FROM checkpoints a LEFT JOIN routes r ON r.routeID=a.finishRouteID LEFT JOIN checkpointConnections b ON a.cpID = b.cpID LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID WHERE a.retired=0 AND a.mapID = " +
-                openCJ\mapid::getMapID() + " GROUP BY a.cpID");
-        }
-        else
-        {
-            rows = openCJ\mySQL::mysqlSyncQuery(
-                "SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, GROUP_CONCAT(b.childCpID), a.ender, a.elevate, a.endShaderColor, c.bigBrotherID, a.allowSave, NULL FROM checkpoints a LEFT JOIN checkpointConnections b ON a.cpID = b.cpID LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID WHERE a.retired=0 AND a.mapID = " +
-                openCJ\mapid::getMapID() + " GROUP BY a.cpID");
-        }
-
-        if(!isDefined(rows))
+        checkpointRows = readCheckpointRows();
+        if(!isDefined(checkpointRows))
         {
             restoreCheckpointGraph(previousGraph);
             return false;
         }
-
-        // First we obtain all checkpoints for the current map from the database
         checkpoints = [];
-        for(i = 0; i < rows.size; i++)
+        for(i = 0; i < checkpointRows.size; i++)
         {
-            checkpoint = spawnStruct();
-            checkpoint.id = int(rows[i][0]);
-            checkpoint.origin = (int(rows[i][1]), int(rows[i][2]), int(rows[i][3]));
-            checkpoint.radius = intOrUndefined(rows[i][4]);
-            checkpoint.allowSave = int(rows[i][11]) != 0;
-            checkpoint.onGround = (int(rows[i][5]) != 0);
-            if(!isDefined(rows[i][6]))
-            {
-                checkpoint.childIDs = [];
-            }
-            else
-            {
-                checkpoint.childIDs = strTok(rows[i][6], ",");
-            }
-            checkpoint.ender = rows[i][7];
-            checkpoint.finishRouteID = intOrUndefined(rows[i][12]);
-            checkpoint.isEleAllowed = int(rows[i][8]);
-            checkpoint.endShaderColor = rows[i][9];
-            checkpoint.bigBrother = intOrUndefined(rows[i][10]);
-            checkpoint.hasParent = false;
-            checkpoints[checkpoints.size] = checkpoint;
+            checkpoints[i] = decodeCheckpointRow(checkpointRows[i]);
         }
-
-        // Now fill in all the children for each checkpoint
-        for(i = 0; i < checkpoints.size; i++)
-        {
-            checkpoints[i].childs = [];
-            for(j = 0; j < checkpoints[i].childIDs.size; j++)
-            {
-                found = false;
-                for(k = 0; k < checkpoints.size; k++)
-                {
-                    if(k == i)
-                    {
-                        continue; // Skip self
-                    }
-
-                    // Find a checkpoint that is a child of the checkpoint for which we're adding
-                    // the children
-                    if(checkpoints[k].id == int(checkpoints[i].childIDs[j]))
-                    {
-                        checkpoints[i].childs[checkpoints[i].childs.size] = checkpoints[k];
-                        checkpoints[i].ender = undefined; // This is not the last checkpoint in a
-                                                          // route, so it mustn't have an ender
-                        checkpoints[k].hasParent = true;
-                        found = true;
-                        break;
-                    }
-                }
-
-                // Checkpoint has childIDs, but we could not find any children checkpoints..
-                if(!found)
-                {
-                    printf("WARNING: Could not find child " + checkpoints[i].childIDS[j] +
-                           " for checkpoint " + checkpoints[i].id + "\n");
-                }
-            }
-            checkpoints[i].childIDs = undefined; // This was a CSV list, no longer need it now that
-                                                 // the children are filled in
-            checkpoints[i].hasChildren = (checkpoints[i].childs.size > 0);
-            checkpoints[i].endCheckpoints = [];
-        }
-
-        // Fill in the big brother checkpoints
-        for(i = 0; i < checkpoints.size; i++)
-        {
-            // Ah, this checkpoint has a big brother, let's find it
-            if(isDefined(checkpoints[i].bigBrother))
-            {
-                for(j = 0; j < checkpoints.size; j++)
-                {
-                    if(i == j)
-                    {
-                        continue; // Skip self
-                    }
-
-                    if(checkpoints[i].bigBrother == checkpoints[j].id)
-                    {
-                        // OK, this checkpoint's id is the big brother we were searching
-                        checkpoints[i].bigBrother = checkpoints[j];
-                        break;
-                    }
-                }
-            }
-        }
-
-        // All checkpoints without parents are deemed to be 'start' checkpoints, so fill them in
+        linkCheckpointChildren(checkpoints);
+        resolveCheckpointBrothers(checkpoints);
+        startCheckpoint = level.checkpoints_startCheckpoint;
         for(i = 0; i < checkpoints.size; i++)
         {
             if(!checkpoints[i].hasParent)
             {
-                level.checkpoints_startCheckpoint
-                    .childs[level.checkpoints_startCheckpoint.childs.size] = checkpoints[i];
+                startCheckpoint.childs[startCheckpoint.childs.size] = checkpoints[i];
             }
         }
         level.checkpoints_startCheckpoint.checkpointsFromStart = 0;
-
         level.checkpoints_checkpoints = checkpoints;
         if(!openCJ\checkpointPublish::loadAreas())
         {
@@ -222,104 +120,8 @@ onInit()
             return false;
         }
         linkContactAreas(checkpoints);
-
-        // Now it's time to figure out the route that each checkpoint is part of.
-        // Pathfinding algorithm. If a checkpoint ends up at 1 ender, then the route is clear.
-        // Otherwise we know the checkpoints' multiple routes.
-        enders = getAllEndCheckpoints();
-        level.checkpoints_startCheckpoint.endCheckpoints = enders;
-        level.checkpoints_startCheckpoint.enderName = _determineEnderName(enders);
-        if(enders.size <= 0)
-        {
-            level.checkpoints_startCheckpoint.checkpointsTillEnd = 0;
-        }
-        for(i = 0; i < enders.size; i++)
-        {
-            openList = [];
-            openList[openList.size] = enders[i];
-            enders[i].endCheckpoints[enders[i].endCheckpoints.size] = enders[i];
-            enders[i].checkpointsTillEnd = 0;
-            closedList = enders;
-            iterationNum = 0;
-            while(openList.size)
-            {
-                newOpenList = [];
-                for(j = 0; j < openList.size; j++)
-                {
-                    if(!isDefined(openList[j].checkpointsTillEnd))
-                    {
-                        openList[j].checkpointsTillEnd = iterationNum;
-                    }
-                    parents = getCheckpointParents(openList[j]);
-                    if(!parents.size)
-                    {
-                        if(!isDefined(level.checkpoints_startCheckpoint.checkpointsTillEnd))
-                        {
-                            level.checkpoints_startCheckpoint.checkpointsTillEnd = iterationNum + 1;
-                        }
-                    }
-                    for(k = 0; k < parents.size; k++)
-                    {
-                        if(isInArray(parents[k], closedList))
-                        {
-                            continue;
-                        }
-                        if(isInArray(parents[k], openList))
-                        {
-                            continue;
-                        }
-                        if(isInArray(parents[k], newOpenList))
-                        {
-                            continue;
-                        }
-                        newOpenList[newOpenList.size] = parents[k];
-                        parents[k].endCheckpoints[parents[k].endCheckpoints.size] = enders[i];
-                    }
-                    closedList[closedList.size] = openList[j];
-                }
-                openList = newOpenList;
-                iterationNum++;
-            }
-        }
-        openList = level.checkpoints_startCheckpoint.childs;
-        closedList = [];
-        iterationNum = 1;
-        while(openList.size)
-        {
-            newOpenList = [];
-            for(j = 0; j < openList.size; j++)
-            {
-                if(!isDefined(openList[j].checkpointsFromStart))
-                {
-                    openList[j].checkpointsFromStart = iterationNum;
-                }
-                for(k = 0; k < openList[j].childs.size; k++)
-                {
-                    if(isInArray(openList[j].childs[k], closedList))
-                    {
-                        continue;
-                    }
-                    if(isInArray(openList[j].childs[k], openList))
-                    {
-                        continue;
-                    }
-                    if(isInArray(openList[j].childs[k], newOpenList))
-                    {
-                        continue;
-                    }
-                    newOpenList[newOpenList.size] = openList[j].childs[k];
-                }
-                closedList[closedList.size] = openList[j];
-            }
-            openList = newOpenList;
-            iterationNum++;
-        }
-
-        // Finally, for each checkpoint we can fill in the route name. Which means we can also note
-        // down all the routes in the map and their end checkpoints for leaderboard use. There may
-        // be end checkpoints with unnamed routes. We want to fix those first. The following
-        // function both fills in route names (unnamed1, unnamed2, ...) for unnamed routes, as well
-        // as store all routes it encounters into level.routeEnders
+        annotateRouteEndpoints();
+        annotateDistanceFromStart();
         _parseRoutesAndFixUnnamedRoutes();
     }
     if(!isDefined(level.checkpointLayoutEpoch))
@@ -328,6 +130,200 @@ onInit()
     }
     level.checkpointLayoutEpoch++;
     return true;
+}
+
+// CoD2 retains its older finish columns; both queries return the same row shape.
+readCheckpointRows()
+{
+    if(getCodVersion() == 4)
+    {
+        query = "SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, " +
+                "GROUP_CONCAT(b.childCpID), r.routeName, a.elevate, NULL, " +
+                "c.bigBrotherID, a.allowSave, a.finishRouteID " +
+                "FROM checkpoints a " +
+                "LEFT JOIN routes r ON r.routeID=a.finishRouteID " +
+                "LEFT JOIN checkpointConnections b ON a.cpID = b.cpID " +
+                "LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID ";
+    }
+    else
+    {
+        query = "SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, " +
+                "GROUP_CONCAT(b.childCpID), a.ender, a.elevate, a.endShaderColor, " +
+                "c.bigBrotherID, a.allowSave, NULL " +
+                "FROM checkpoints a " +
+                "LEFT JOIN checkpointConnections b ON a.cpID = b.cpID " +
+                "LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID ";
+    }
+    return openCJ\mySQL::mysqlSyncQuery(
+        query + "WHERE a.retired=0 AND a.mapID = " + openCJ\mapid::getMapID() + " GROUP BY a.cpID");
+}
+
+// Decode the positional SQL result once; graph traversal uses named checkpoint fields.
+decodeCheckpointRow(row)
+{
+    checkpoint = spawnStruct();
+    checkpoint.id = int(row[0]);
+    checkpoint.origin = (int(row[1]), int(row[2]), int(row[3]));
+    checkpoint.radius = intOrUndefined(row[4]);
+    checkpoint.onGround = int(row[5]) != 0;
+    childIdsCsv = row[6];
+    checkpoint.ender = row[7];
+    checkpoint.isEleAllowed = int(row[8]);
+    checkpoint.endShaderColor = row[9];
+    checkpoint.bigBrother = intOrUndefined(row[10]);
+    checkpoint.allowSave = int(row[11]) != 0;
+    checkpoint.finishRouteID = intOrUndefined(row[12]);
+    checkpoint.hasParent = false;
+    checkpoint.childIDs = [];
+    if(isDefined(childIdsCsv))
+    {
+        checkpoint.childIDs = strTok(childIdsCsv, ",");
+    }
+    return checkpoint;
+}
+
+// Replace stored child IDs with graph references and identify roots and finish candidates.
+linkCheckpointChildren(checkpoints)
+{
+    for(i = 0; i < checkpoints.size; i++)
+    {
+        checkpoint = checkpoints[i];
+        checkpoint.childs = [];
+        for(j = 0; j < checkpoint.childIDs.size; j++)
+        {
+            childId = int(checkpoint.childIDs[j]);
+            found = false;
+            for(k = 0; k < checkpoints.size; k++)
+            {
+                if(k == i || checkpoints[k].id != childId)
+                {
+                    continue;
+                }
+                child = checkpoints[k];
+                checkpoint.childs[checkpoint.childs.size] = child;
+                // Only leaf checkpoints may finish a route.
+                checkpoint.ender = undefined;
+                child.hasParent = true;
+                found = true;
+                break;
+            }
+            if(!found)
+            {
+                printf("WARNING: Could not find child " + checkpoint.childIDs[j] +
+                       " for checkpoint " + checkpoint.id + "\n");
+            }
+        }
+        checkpoint.childIDs = undefined;
+        checkpoint.hasChildren = checkpoint.childs.size > 0;
+        checkpoint.endCheckpoints = [];
+    }
+}
+
+resolveCheckpointBrothers(checkpoints)
+{
+    for(i = 0; i < checkpoints.size; i++)
+    {
+        checkpoint = checkpoints[i];
+        if(!isDefined(checkpoint.bigBrother))
+        {
+            continue;
+        }
+        for(j = 0; j < checkpoints.size; j++)
+        {
+            if(i != j && checkpoint.bigBrother == checkpoints[j].id)
+            {
+                checkpoint.bigBrother = checkpoints[j];
+                break;
+            }
+        }
+    }
+}
+
+// Walk back from each finish to record reachable routes and distances to a finish.
+annotateRouteEndpoints()
+{
+    finishCheckpoints = getAllEndCheckpoints();
+    level.checkpoints_startCheckpoint.endCheckpoints = finishCheckpoints;
+    level.checkpoints_startCheckpoint.enderName = _determineEnderName(finishCheckpoints);
+    if(finishCheckpoints.size == 0)
+    {
+        level.checkpoints_startCheckpoint.checkpointsTillEnd = 0;
+    }
+    for(i = 0; i < finishCheckpoints.size; i++)
+    {
+        finish = finishCheckpoints[i];
+        frontier = [];
+        frontier[0] = finish;
+        finish.endCheckpoints[finish.endCheckpoints.size] = finish;
+        finish.checkpointsTillEnd = 0;
+        visited = finishCheckpoints;
+        distanceFromFinish = 0;
+        while(frontier.size)
+        {
+            nextFrontier = [];
+            for(j = 0; j < frontier.size; j++)
+            {
+                checkpoint = frontier[j];
+                if(!isDefined(checkpoint.checkpointsTillEnd))
+                {
+                    checkpoint.checkpointsTillEnd = distanceFromFinish;
+                }
+                parents = getCheckpointParents(checkpoint);
+                if(!parents.size &&
+                   !isDefined(level.checkpoints_startCheckpoint.checkpointsTillEnd))
+                {
+                    level.checkpoints_startCheckpoint.checkpointsTillEnd = distanceFromFinish + 1;
+                }
+                for(k = 0; k < parents.size; k++)
+                {
+                    parent = parents[k];
+                    if(isInArray(parent, visited) || isInArray(parent, frontier) ||
+                       isInArray(parent, nextFrontier))
+                    {
+                        continue;
+                    }
+                    nextFrontier[nextFrontier.size] = parent;
+                    parent.endCheckpoints[parent.endCheckpoints.size] = finish;
+                }
+                visited[visited.size] = checkpoint;
+            }
+            frontier = nextFrontier;
+            distanceFromFinish++;
+        }
+    }
+}
+
+// Breadth-first traversal assigns the shortest number of steps from any opening.
+annotateDistanceFromStart()
+{
+    frontier = level.checkpoints_startCheckpoint.childs;
+    visited = [];
+    distanceFromStart = 1;
+    while(frontier.size)
+    {
+        nextFrontier = [];
+        for(i = 0; i < frontier.size; i++)
+        {
+            checkpoint = frontier[i];
+            if(!isDefined(checkpoint.checkpointsFromStart))
+            {
+                checkpoint.checkpointsFromStart = distanceFromStart;
+            }
+            for(j = 0; j < checkpoint.childs.size; j++)
+            {
+                child = checkpoint.childs[j];
+                if(isInArray(child, visited) || isInArray(child, frontier) ||
+                   isInArray(child, nextFrontier))
+                {
+                    continue;
+                }
+                nextFrontier[nextFrontier.size] = child;
+            }
+            visited[visited.size] = checkpoint;
+        }
+        frontier = nextFrontier;
+        distanceFromStart++;
+    }
 }
 
 // Keep graph objects alive until all synchronous data reads have succeeded.
@@ -519,21 +515,23 @@ getPassedCheckpointCount(checkpoint)
 
 getRemainingCheckpointCount(checkpoint)
 {
-    remaining = checkpoint.checkpointsTillEnd;
+    remainingCount = checkpoint.checkpointsTillEnd;
     // Before choosing a route, show the longest possible total in the HUD.
     if (!isDefined(getRouteNameForCheckpoint(checkpoint)))
     {
-        ends = getEndCheckpoints(checkpoint);
-        for (i = 0; i < ends.size; i++)
+        finishCheckpoints = getEndCheckpoints(checkpoint);
+        for (i = 0; i < finishCheckpoints.size; i++)
         {
-            candidate = ends[i].checkpointsFromStart - checkpoint.checkpointsFromStart;
-            if (isDefined(candidate) && (!isDefined(remaining) || candidate > remaining))
+            routeRemainingCount = finishCheckpoints[i].checkpointsFromStart -
+                                  checkpoint.checkpointsFromStart;
+            if (isDefined(routeRemainingCount) &&
+                (!isDefined(remainingCount) || routeRemainingCount > remainingCount))
             {
-                remaining = candidate;
+                remainingCount = routeRemainingCount;
             }
         }
     }
-    return remaining;
+    return remainingCount;
 }
 
 getEndCheckpoints(checkpoint)
@@ -803,37 +801,38 @@ nextAllowsDoubleRPG()
     {
         if (self.cpc.testing && self.cpc.testNext < self.cpc.rows.size)
         {
-            cp = self openCJ\checkpointCreation::getConfirmed(self.cpc.testNext);
-            return cp.double;
+            nextCheckpoint = self openCJ\checkpointCreation::getConfirmed(self.cpc.testNext);
+            return nextCheckpoint.double;
         }
         return false;
     }
-    next = self getCurrentChildCheckpoints();
-    if (!isDefined(next) || next.size == 0)
+    nextCheckpoints = self getCurrentChildCheckpoints();
+    if (!isDefined(nextCheckpoints) || nextCheckpoints.size == 0)
     {
         return false;
     }
     // Equivalent landing areas share one requirement. Distinct route splits
     // remain ambiguous, even if one of their branches grants double RPG.
-    next = filterOutBrothers(next);
-    if (next.size != 1)
+    nextCheckpoints = filterOutBrothers(nextCheckpoints);
+    if (nextCheckpoints.size != 1)
     {
         return false;
     }
-    return isDefined(next[0].allowDoubleRPG) && next[0].allowDoubleRPG;
+    return isDefined(nextCheckpoints[0].allowDoubleRPG) && nextCheckpoints[0].allowDoubleRPG;
 }
 
 // Same ambiguity rule as Double RPG: alternative areas share one requirement;
 // a split into different checkpoints does not grant a branch's exemption globally.
 nextAllowsEle()
 {
-    next = self getCurrentChildCheckpoints();
-    if (!isDefined(next) || next.size == 0)
+    nextCheckpoints = self getCurrentChildCheckpoints();
+    if (!isDefined(nextCheckpoints) || nextCheckpoints.size == 0)
     {
         return false;
     }
-    next = filterOutBrothers(next);
-    return next.size == 1 && isDefined(next[0].isEleAllowed) && next[0].isEleAllowed;
+    nextCheckpoints = filterOutBrothers(nextCheckpoints);
+    return nextCheckpoints.size == 1 && isDefined(nextCheckpoints[0].isEleAllowed) &&
+           nextCheckpoints[0].isEleAllowed;
 }
 
 hasPassedCheckpoint(checkpoint)
@@ -844,12 +843,12 @@ hasPassedCheckpoint(checkpoint)
     }
     for (i = 0; i < self.checkpoints_passed.size; i++)
     {
-        passed = self.checkpoints_passed[i];
-        if (isDefined(passed.bigBrother))
+        passedCheckpoint = self.checkpoints_passed[i];
+        if (isDefined(passedCheckpoint.bigBrother))
         {
-            passed = passed.bigBrother;
+            passedCheckpoint = passedCheckpoint.bigBrother;
         }
-        if (passed.id == checkpoint.id)
+        if (passedCheckpoint.id == checkpoint.id)
         {
             return true;
         }
@@ -947,30 +946,27 @@ getSubSVFPsPassedTiming(prevOrg, newOrg, prevOnGround, cp)
     return tOffset;
 }
 
-_checkAnyPctTriggered(triggeredCP, childCheckpoints)
+_checkAnyPctTriggered(checkpoint, nextCheckpoints)
 {
-    route = getRouteNameForCheckpoint(triggeredCP);
-    if (isDefined(self.route) && isDefined(route) && route != self.route)
+    routeName = getRouteNameForCheckpoint(checkpoint);
+    if (isDefined(self.route) && isDefined(routeName) && routeName != self.route)
     {
         return true;
     }
-    // The criterium for triggering any% is that the player passes:
-    // - a *non-finish* checkpoint that *is* part of their route but isn't their next checkpoint
-    for (i = 0; i < childCheckpoints.size; i++)
+    // Expected successors do not skip any required steps.
+    for (i = 0; i < nextCheckpoints.size; i++)
     {
         // One of the next allowed checkpoints?
-        if (triggeredCP == childCheckpoints[i])
+        if (checkpoint == nextCheckpoints[i])
         {
             return false;
         }
     }
 
-    // At this point it is clear that the triggered checkpoint isn't one of the next checkpoints for
-    // the player If it's still part of their route, it means they skipped a checkpoint
-    route = getRouteNameForCheckpoint(triggeredCP);
+    // Another checkpoint on the same route skips a required step.
     if (isDefined(self.route))
     {
-        if (isDefined(route) && (route == self.route))
+        if (isDefined(routeName) && (routeName == self.route))
         {
             return true;
         }
@@ -979,7 +975,7 @@ _checkAnyPctTriggered(triggeredCP, childCheckpoints)
     {
         // A shared opening has no single route name. A non-child checkpoint
         // with parents still skips required steps, including the first branch.
-        if (triggeredCP.hasParent)
+        if (checkpoint.hasParent)
         {
             return true;
         }
@@ -988,173 +984,151 @@ _checkAnyPctTriggered(triggeredCP, childCheckpoints)
     return false;
 }
 
+// Prefer the expected landing, reserve it while contact settles, then score it once.
 whileAlive()
 {
     if (!self openCJ\playerRuns::modeDetectionActive() ||
-       (isDefined(self.playerRuns_runFinishing) && self.playerRuns_runFinishing))
+        (isDefined(self.playerRuns_runFinishing) && self.playerRuns_runFinishing))
+    {
+        return;
+    }
+    nextCheckpoints = self getCurrentChildCheckpoints();
+    if (!isDefined(nextCheckpoints))
     {
         return;
     }
 
     foundContact = false;
-    playerChildCheckpoints = self getCurrentChildCheckpoints();
-    if (!isDefined(playerChildCheckpoints))
-    {
-        // No child checkpoints. Finished run?
-        return;
-    }
-
-    // Expected successors win over coincident checkpoints on another route.
-    // Once standing on the current area, do not also trigger that other route
-    // on the following frame. Still test expected successors first.
-    current = self.checkpoints_checkpoint;
+    grounded = self isOnGround();
     groundEntity = self getGroundEntity();
-    onCurrent = self touchesCheckpointGroup(current, self isOnGround(), groundEntity);
-    for (i = 0; i < playerChildCheckpoints.size + level.checkpoints_checkpoints.size; i++)
+    onCurrentCheckpoint = self touchesCheckpointGroup(
+        self.checkpoints_checkpoint, grounded, groundEntity);
+    for (i = 0; i < nextCheckpoints.size + level.checkpoints_checkpoints.size; i++)
     {
-        if (i < playerChildCheckpoints.size)
+        if (i < nextCheckpoints.size)
         {
-            cp = playerChildCheckpoints[i];
+            checkpoint = nextCheckpoints[i];
         }
         else
         {
-            if (onCurrent)
+            // Expected successors win over coincident areas on another route.
+            // Standing on the current area must not trigger that other route next frame.
+            if (onCurrentCheckpoint)
             {
                 break;
             }
-            cp = level.checkpoints_checkpoints[i - playerChildCheckpoints.size];
+            checkpoint = level.checkpoints_checkpoints[i - nextCheckpoints.size];
         }
-
-        // Checkpoint has no radius, so it will not be triggered by any change of origin
-        if (!isDefined(cp.radius) && !isDefined(cp.area))
+        if (!isDefined(checkpoint.radius) && !isDefined(checkpoint.area))
+        {
+            continue;
+        }
+        if (self hasPassedCheckpoint(checkpoint) || self.checkpoints_checkpoint == checkpoint)
+        {
+            continue;
+        }
+        if (!self touchesArea(checkpoint, grounded, groundEntity) ||
+            (checkpoint.onGround && !grounded))
         {
             continue;
         }
 
-        // Only check checkpoints that the player hasn't passed yet.
-        // It's not sufficient to check only the player's last passed checkpoint's child
-        // checkpoints, because any% needs to be detected
-        if (self hasPassedCheckpoint(cp) || (self.checkpoints_checkpoint == cp))
+        foundContact = true;
+        // Keep this landing reserved while it settles instead of trying another route's area.
+        if (!self contactReady(checkpoint, grounded, getTime(), self getVelocity()))
         {
-            continue; // Don't check for checkpoints that have already been passed
+            break;
         }
-
-        // Check if player is within the radius of the checkpoint
-        inArea = self touchesArea(cp, self isOnGround(), groundEntity);
-        if (inArea)
+        self.checkpointContact = undefined;
+        if (!self acceptCheckpointRoute(checkpoint, nextCheckpoints))
         {
-            // Checkpoint can be on ground or in air. onGround checkpoints can only be triggered by
-            // being on ground
-            if (!cp.onGround || self isOnGround())
-            {
-                foundContact = true;
-                // Reserve this expected landing while it settles; do not fall
-                // through to a coincident checkpoint belonging to another route.
-                if (!self contactReady(cp, self isOnGround(), getTime(), self getVelocity()))
-                {
-                    break;
-                }
-                self.checkpointContact = undefined;
-
-                // Player may have changed their route.
-                route = getRouteNameForCheckpoint(cp);
-
-                // OK, player has officially triggered the checkpoint. If this is not one of their
-                // next checkpoints, any% may be triggered This check requires some computation, so
-                // don't call it if player already had triggered any%
-                if (!self openCJ\anyPct::hasAnyPct() &&
-                   self _checkAnyPctTriggered(cp, playerChildCheckpoints))
-                {
-                    // Tutorial runs must follow their route; the checkpoint does not count
-                    if (self openCJ\tutorial::isTutorialRun())
-                    {
-                        self openCJ\tutorial::onCheckpointSkipped();
-                        break;
-                    }
-                    // Temporary code for easily identifying bad checkpoints until maps are
-                    // recheckpointed
-                    printf("DEBUG ANYPCT: Player " + self.name +
-                           " triggered any pct on cpID: " + cp.id + "\n");
-
-                    // Inform the player that they triggered any%, as it may be accidental
-                    if (isDefined(self.route) && isDefined(route) && route != self.route)
-                    {
-                        self iprintlnbold("Route changed from " + self.route + " to " + route +
-                                          ": any'/. mode enabled");
-                    }
-                    else
-                    {
-                        self iprintlnbold("Checkpoint skipped, any'/. mode enabled");
-                    }
-                    self openCJ\anyPct::setAnyPct(true);
-                }
-
-                if (cp.childs.size == 0 || self openCJ\anyPct::hasAnyPct())
-                {
-                    self.route = route;
-                }
-
-                // Set the player's current checkpoint to be the one that was just triggered.
-                // Don't set it to the bigBrother, because the correct location information is
-                // needed
-                self.checkpoints_checkpoint = cp;
-                // Mark this checkpoint as having been passed by the player
-                self.checkpoints_passed[self.checkpoints_passed.size] = cp;
-
-                // Some calculations to make the checkpoint passed time more accurate than sv_fps
-                tOffset = 0; // Landing areas use observed ground contact; radius interpolation does
-                             // not apply.
-                if (!isDefined(cp.area))
-                {
-                    tOffset = getSubSVFPSPassedTiming(self.previousOrigin, self.origin,
-                                                      self.previousOnground, cp);
-                }
-
-                // From this point on use the bigBrother, because only those may be stored in the
-                // database
-                if (isDefined(cp.bigBrother))
-                {
-                    cp = cp.bigBrother;
-                }
-                if (cp.childs.size == 0)
-                {
-                    // If that checkpoint has no child checkpoints, it is an end checkpoint
-                    self openCJ\events\runFinished::main(cp, tOffset, route);
-                }
-                else
-                {
-                    // Checkpoint has child checkpoints, so run isn't finished yet
-                    self _checkpointPassed(cp, tOffset);
-                    self openCJ\events\checkpointsChanged::main(true);
-                }
-
-                break;
-            }
+            break;
         }
+        self recordCheckpointContact(checkpoint);
+        break;
     }
 
-    // Leaving the area breaks the continuous landing even without leaving ground.
+    // Leaving the area breaks continuous contact even without leaving the ground.
     if (!foundContact)
     {
         self.checkpointContact = undefined;
     }
-
-    // Set variables so the change in origin and onground can be detected in the next iteration
     self.previousOrigin = self.origin;
-    self.previousOnground = self isOnground();
+    self.previousOnground = self isOnGround();
+}
+
+// Tutorials reject skipped steps; ordinary runs may continue with any% marked.
+acceptCheckpointRoute(checkpoint, nextCheckpoints)
+{
+    if (self openCJ\anyPct::hasAnyPct() ||
+        !self _checkAnyPctTriggered(checkpoint, nextCheckpoints))
+    {
+        return true;
+    }
+    if (self openCJ\tutorial::isTutorialRun())
+    {
+        self openCJ\tutorial::onCheckpointSkipped();
+        return false;
+    }
+    routeName = getRouteNameForCheckpoint(checkpoint);
+    printf("DEBUG ANYPCT: Player " + self.name + " triggered any pct on cpID: " + checkpoint.id + "\n");
+    if (isDefined(self.route) && isDefined(routeName) && routeName != self.route)
+    {
+        self iprintlnbold("Route changed from " + self.route + " to " + routeName +
+                         ": any'/. mode enabled");
+    }
+    else
+    {
+        self iprintlnbold("Checkpoint skipped, any'/. mode enabled");
+    }
+    self openCJ\anyPct::setAnyPct(true);
+    return true;
+}
+
+// Keep the touched area's position for gameplay, but persist its canonical group's identity.
+recordCheckpointContact(checkpoint)
+{
+    routeName = getRouteNameForCheckpoint(checkpoint);
+    if (checkpoint.childs.size == 0 || self openCJ\anyPct::hasAnyPct())
+    {
+        self.route = routeName;
+    }
+    self.checkpoints_checkpoint = checkpoint;
+    self.checkpoints_passed[self.checkpoints_passed.size] = checkpoint;
+
+    // Landing areas use observed contact time; radius interpolation does not apply.
+    timeOffsetMs = 0;
+    if (!isDefined(checkpoint.area))
+    {
+        timeOffsetMs = getSubSVFPSPassedTiming(
+            self.previousOrigin, self.origin, self.previousOnground, checkpoint);
+    }
+    if (isDefined(checkpoint.bigBrother))
+    {
+        checkpoint = checkpoint.bigBrother;
+    }
+    if (checkpoint.childs.size == 0)
+    {
+        self openCJ\events\runFinished::main(checkpoint, timeOffsetMs, routeName);
+    }
+    else
+    {
+        self _checkpointPassed(checkpoint, timeOffsetMs);
+        self openCJ\events\checkpointsChanged::main(true);
+    }
 }
 
 // True when the player touches a checkpoint that would skip part of their route
 // (any%). Tutorial runs may not save there, so loading back leaves that spot.
 touchesRouteSkippingCheckpoint()
 {
-    playerChildCheckpoints = self getCurrentChildCheckpoints();
-    if (!isDefined(playerChildCheckpoints))
+    nextCheckpoints = self getCurrentChildCheckpoints();
+    if (!isDefined(nextCheckpoints))
     {
         return false;
     }
     groundEntity = self getGroundEntity();
-    // Like checkCheckpoints: standing on the current checkpoint never triggers a
+    // Like whileAlive: standing on the current checkpoint never triggers a
     // coincident checkpoint of another route.
     if (self touchesCheckpointGroup(self.checkpoints_checkpoint, self isOnGround(), groundEntity))
     {
@@ -1162,20 +1136,20 @@ touchesRouteSkippingCheckpoint()
     }
     for (i = 0; i < level.checkpoints_checkpoints.size; i++)
     {
-        cp = level.checkpoints_checkpoints[i];
-        if (!isDefined(cp.radius) && !isDefined(cp.area))
+        checkpoint = level.checkpoints_checkpoints[i];
+        if (!isDefined(checkpoint.radius) && !isDefined(checkpoint.area))
         {
             continue;
         }
-        if (self hasPassedCheckpoint(cp) || (self.checkpoints_checkpoint == cp))
+        if (self hasPassedCheckpoint(checkpoint) || (self.checkpoints_checkpoint == checkpoint))
         {
             continue;
         }
-        if (!self touchesArea(cp, self isOnGround(), groundEntity))
+        if (!self touchesArea(checkpoint, self isOnGround(), groundEntity))
         {
             continue;
         }
-        if (self _checkAnyPctTriggered(cp, playerChildCheckpoints))
+        if (self _checkAnyPctTriggered(checkpoint, nextCheckpoints))
         {
             return true;
         }
@@ -1192,31 +1166,32 @@ canSaveHere()
     }
     for (i = 0; i < level.checkpoints_checkpoints.size; i++)
     {
-        cp = level.checkpoints_checkpoints[i];
-        if (!isDefined(cp.allowSave) || cp.allowSave)
+        checkpoint = level.checkpoints_checkpoints[i];
+        if (!isDefined(checkpoint.allowSave) || checkpoint.allowSave)
         {
             continue;
         }
-        if (openCJ\checkpointMoving::isMoving(cp))
+        if (openCJ\checkpointMoving::isMoving(checkpoint))
         {
-            ent = openCJ\checkpointMoving::resolve(cp.platformRef);
-            if (isDefined(ent) &&
-               ((isDefined(self getGroundEntity()) && self getGroundEntity() == ent) ||
-                self isTouching(ent)))
+            platform = openCJ\checkpointMoving::resolve(checkpoint.platformRef);
+            if (isDefined(platform) &&
+               ((isDefined(self getGroundEntity()) && self getGroundEntity() == platform) ||
+                self isTouching(platform)))
             {
                 return false;
             }
         }
-        else if (isDefined(cp.area))
+        else if (isDefined(checkpoint.area))
         {
-            if (openCJ\checkpointArea::touchesPlayer(cp.area, self.origin, self isOnGround(), false,
-                                                    openCJ\checkpointHeight::above(cp)))
+            if (openCJ\checkpointArea::touchesPlayer(
+                    checkpoint.area, self.origin, self isOnGround(), false,
+                    openCJ\checkpointHeight::above(checkpoint)))
             {
                 return false;
             }
         }
-        else if (isDefined(cp.radius) &&
-                distanceSquared(self.origin, cp.origin) <= cp.radius * cp.radius)
+        else if (isDefined(checkpoint.radius) &&
+                distanceSquared(self.origin, checkpoint.origin) <= checkpoint.radius * checkpoint.radius)
         {
             return false;
         }
@@ -1227,9 +1202,9 @@ canSaveHere()
 // Ordinary-speed landings count immediately; excess carried speed still needs
 // 150 ms of continuous contact. Geometry, CPC and no-save checks stay separate.
 // 350 u/s is a conservative strafe-jump allowance, not a reachability proof.
-contactReady(cp, grounded, now, velocity)
+contactReady(checkpoint, grounded, nowMs, velocity)
 {
-    if (!cp.onGround)
+    if (!checkpoint.onGround)
     {
         self.checkpointContact = undefined;
         return true;
@@ -1239,23 +1214,31 @@ contactReady(cp, grounded, now, velocity)
         self.checkpointContact = undefined;
         return false;
     }
-    // Ignore vertical speed: only horizontal momentum carries into the next jump.
-    // Unknown velocity keeps the settled-contact rule (including older callers).
-    if (isDefined(velocity) && velocity[0] * velocity[0] + velocity[1] * velocity[1] <= 350 * 350)
+    ordinaryLandingSpeed = 350;
+    contactGapLimitMs = 100;
+    requiredContactMs = 150;
+    // Only horizontal momentum carries into the next jump. Unknown velocity keeps
+    // the settled-contact rule, including callers that do not supply a sample.
+    if (isDefined(velocity))
     {
-        self.checkpointContact = undefined;
-        return true;
+        horizontalSpeedSquared = velocity[0] * velocity[0] + velocity[1] * velocity[1];
+        if (horizontalSpeedSquared <= ordinaryLandingSpeed * ordinaryLandingSpeed)
+        {
+            self.checkpointContact = undefined;
+            return true;
+        }
     }
     contact = self.checkpointContact;
-    if (!isDefined(contact) || contact.cp != cp || now - contact.seen > 100)
+    if (!isDefined(contact) || contact.checkpoint != checkpoint ||
+        nowMs - contact.lastSeenMs > contactGapLimitMs)
     {
         contact = spawnStruct();
-        contact.cp = cp;
-        contact.started = now;
+        contact.checkpoint = checkpoint;
+        contact.startedMs = nowMs;
     }
-    contact.seen = now;
+    contact.lastSeenMs = nowMs;
     self.checkpointContact = contact;
-    return now - contact.started >= 150;
+    return nowMs - contact.startedMs >= requiredContactMs;
 }
 
 // Cache alternative groups once when loading the graph, not every player tick.
@@ -1267,57 +1250,58 @@ linkContactAreas(checkpoints)
     }
     for (i = 0; i < checkpoints.size; i++)
     {
-        cp = checkpoints[i];
-        leader = cp;
-        if (isDefined(cp.bigBrother))
+        checkpoint = checkpoints[i];
+        groupLeader = checkpoint;
+        if (isDefined(checkpoint.bigBrother))
         {
-            leader = cp.bigBrother;
+            groupLeader = checkpoint.bigBrother;
         }
-        leader.contactAreas[leader.contactAreas.size] = cp;
+        groupLeader.contactAreas[groupLeader.contactAreas.size] = checkpoint;
     }
 }
 
-touchesArea(cp, grounded, groundEntity)
+touchesArea(checkpoint, grounded, groundEntity)
 {
-    if (!isDefined(cp))
+    if (!isDefined(checkpoint))
     {
         return false;
     }
-    if (openCJ\checkpointMoving::isMoving(cp))
+    if (openCJ\checkpointMoving::isMoving(checkpoint))
     {
-        return self openCJ\checkpointMoving::touches(cp, grounded, groundEntity);
+        return self openCJ\checkpointMoving::touches(checkpoint, grounded, groundEntity);
     }
-    if (isDefined(cp.area))
+    if (isDefined(checkpoint.area))
     {
-        return openCJ\checkpointArea::touchesPlayer(cp.area, self.origin, grounded, cp.onGround,
-                                                    openCJ\checkpointHeight::above(cp));
+        return openCJ\checkpointArea::touchesPlayer(
+            checkpoint.area, self.origin, grounded, checkpoint.onGround,
+            openCJ\checkpointHeight::above(checkpoint));
     }
-    if (!isDefined(cp.radius) || (cp.onGround && !grounded))
+    if (!isDefined(checkpoint.radius) || (checkpoint.onGround && !grounded))
     {
         return false;
     }
-    return self getEyePos()[2] >= cp.origin[2] &&
-           distanceSquared(self.origin, cp.origin) < cp.radius * cp.radius;
+    return self getEyePos()[2] >= checkpoint.origin[2] &&
+           distanceSquared(self.origin, checkpoint.origin) < checkpoint.radius * checkpoint.radius;
 }
 
-touchesCheckpointGroup(cp, grounded, groundEntity)
+touchesCheckpointGroup(checkpoint, grounded, groundEntity)
 {
-    if (!isDefined(cp))
+    if (!isDefined(checkpoint))
     {
         return false;
     }
-    leader = cp;
-    if (isDefined(cp.bigBrother))
+    groupLeader = checkpoint;
+    if (isDefined(checkpoint.bigBrother))
     {
-        leader = cp.bigBrother;
+        groupLeader = checkpoint.bigBrother;
     }
-    if (!isDefined(leader.contactAreas))
+    if (!isDefined(groupLeader.contactAreas))
     {
-        return self touchesArea(cp, grounded, groundEntity);
+        return self touchesArea(checkpoint, grounded, groundEntity);
     }
-    for (i = 0; i < leader.contactAreas.size; i++)
+    for (i = 0; i < groupLeader.contactAreas.size; i++)
     {
-        if (self touchesArea(leader.contactAreas[i], grounded, groundEntity))
+        if (self touchesArea(groupLeader.contactAreas[i], grounded, groundEntity))
         {
             return true;
         }

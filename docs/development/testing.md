@@ -133,7 +133,10 @@ Focused GSC commands name their fixture and completion marker;
 checkpoint contact uses `mp_futile_fixed`, not the stock map used by the other
 focused fixtures. Its synthetic graph cases also exercise the real saved-position
 ancestor traversal across rejoined branches, alternative areas and a malformed
-cycle, without database writes. The save-history native fixture checks invalid inputs, non-player
+cycle, without database writes. Real-player landing cases check expected-successor
+priority, fast-contact reservation, coincident-current-area suppression and paused
+runs. Only the scoring handoff is observed; these cases do not persist progress.
+The save-history native fixture checks invalid inputs, non-player
 calls and stale selections without a database. HUD observation wrappers are
 installed only in the fixture copy.
 
@@ -241,6 +244,8 @@ rollback after a partial write.
 Graph loading uses the real database, with fixture-only hooks rejecting each of
 its checkpoint and metadata queries in turn. Checks cover retaining the previous
 graph and layout epoch, an empty first-load result, and recovery after reads resume.
+Known synthetic routes verify their connections, alternative groups, reachable
+finishes and step counts independently of the loader traversal.
 Finalization checks keep publication, editor closure and run-creation SQL real.
 They verify that rejected publication retains the editor, a failed refresh after
 commit retains the published rows and allows retry, and successful finalization

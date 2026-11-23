@@ -208,6 +208,15 @@ def install_observation_hooks(mod, fixture_name):
                 ),
             ),
         ),
+        "checkpoint-contact.gsc": (
+            "opencj/checkpoints.gsc",
+            (
+                (
+                    r"\bself\s+recordCheckpointContact\s*\(",
+                    r"self openCJ\platformTest::recordCheckpointContact(",
+                ),
+            ),
+        ),
         "hud-settings.gsc": (
             "opencj/checkpointpointers.gsc",
             (
