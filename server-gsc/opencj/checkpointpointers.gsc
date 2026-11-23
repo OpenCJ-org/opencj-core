@@ -7,11 +7,15 @@ onInit()
         precacheShader("opencj_checkpoint_tint");
         precacheShader("opencj_checkpoint_tint_obj");
         level.checkpointPalette = [];
-        addPalette("aqua", (0,0.8,1));addPalette("lime", (0,1,0));
-        addPalette("gold", (1,1,0));addPalette("orng", (1,0.5333,0));
-        addPalette("soft", (1,0.4667,0.4667));addPalette("dark", (0.6667,0,0));
-        addPalette("lila", (0.6667,0.3333,1));addPalette("pink", (1,0.4667,0.8));
-        addPalette("tint", (1,1,1));
+        addPalette("aqua", (0, 0.8, 1));
+        addPalette("lime", (0, 1, 0));
+        addPalette("gold", (1, 1, 0));
+        addPalette("orng", (1, 0.5333, 0));
+        addPalette("soft", (1, 0.4667, 0.4667));
+        addPalette("dark", (0.6667, 0, 0));
+        addPalette("lila", (0.6667, 0.3333, 1));
+        addPalette("pink", (1, 0.4667, 0.8));
+        addPalette("tint", (1, 1, 1));
     }
     level.checkpointShaders = [];
     level.checkpointShaders["blue"] = "opencj_checkpoint_blue";
@@ -22,7 +26,6 @@ onInit()
     level.checkpointShaders["red"] = "opencj_checkpoint_red";
     level.checkpointShaders["yellow"] = "opencj_checkpoint_yellow";
     level.checkpointShaders["default"] = level.checkpointShaders["blue"];
-
 
     level.checkpointShadersObjective = [];
     keys = GetArrayKeys(level.checkpointShaders);
@@ -36,7 +39,7 @@ onInit()
     }
 
     colors = getArrayKeys(level.checkpointShaders);
-    for(i = 0; i < colors.size; i++)
+    for (i = 0; i < colors.size; i++)
     {
         precacheShader(level.checkpointShaders[colors[i]]);
         precacheShader(level.checkpointShadersObjective[colors[i]]);
@@ -50,19 +53,22 @@ onPlayerConnect()
         // Scale only the offscreen icon away; the engine draws its direction
         // pointer separately. Scale length must be positive (use subpixel fade).
         self setClientCvars("waypointOffscreenScaleLength", "0.001",
-            "waypointOffscreenScaleSmallest", "0",
-            "waypointOffscreenPointerWidth", "25", "waypointOffscreenPointerHeight", "12");
+                            "waypointOffscreenScaleSmallest", "0", "waypointOffscreenPointerWidth",
+                            "25", "waypointOffscreenPointerHeight", "12");
     }
     self.checkpointIconMode = 2;
     self.checkpointPointers_huds = [];
     self.checkpointPointers_objectives = [];
-    for(i = 0; i < 16; i++)
+    for (i = 0; i < 16; i++)
+    {
         self objective_player_delete(i);
+    }
 }
 
 onRunCreated()
 {
-    self _hideCheckpointPointers(); // Showing them is triggered based on onCheckpointsChanged() instead
+    self
+    _hideCheckpointPointers(); // Showing them is triggered based on onCheckpointsChanged() instead
 }
 
 onRunStopped()
@@ -75,7 +81,8 @@ onSpawnSpectator()
     self _hideCheckpointPointers();
 }
 
-onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, psOffsetTime, deathAnimDuration)
+onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, psOffsetTime,
+               deathAnimDuration)
 {
     self _hideCheckpointPointers();
 }
@@ -98,24 +105,27 @@ showCheckpointPointers()
         self _hideCheckpointPointers();
         return;
     }
-    if (self.sessionState != "playing" || self openCJ\checkpointCreation::isEditing() || self openCJ\demos::isPlayingDemo() || !self openCJ\playerRuns::hasRunID() || self openCJ\playerRuns::isRunFinished())
+    if (self.sessionState != "playing" || self openCJ\checkpointCreation::isEditing() ||
+       self openCJ\demos::isPlayingDemo() || !self openCJ\playerRuns::hasRunID() ||
+       self openCJ\playerRuns::isRunFinished())
     {
         self _hideCheckpointPointers();
         return;
     }
     checkpoints = self nextVisibleCheckpoints();
 
-    for(i = 0; i < checkpoints.size; i++)
+    for (i = 0; i < checkpoints.size; i++)
     {
-        if(i >= self.checkpointPointers_huds.size)
+        if (i >= self.checkpointPointers_huds.size)
         {
-            self.checkpointPointers_huds[self.checkpointPointers_huds.size] = self _createNewCheckpointPointerHud();
+            self.checkpointPointers_huds[self.checkpointPointers_huds.size] =
+                self _createNewCheckpointPointerHud();
         }
 
         shaderColor = openCJ\checkpoints::getCheckpointShaderColor(checkpoints[i]);
         shader_hud = _getShaderHud(shaderColor);
         shader_objective = _getShaderObjective(shaderColor);
-        tint = (1,1,1);
+        tint = (1, 1, 1);
         routeColored = getCodVersion() == 4 && isDefined(checkpoints[i].routeInfo);
         if (routeColored)
         {
@@ -123,7 +133,9 @@ showCheckpointPointers()
             // works in the screen/edge-marker renderer selected below.
             shader_hud = "opencj_checkpoint_tint";
             if (self.checkpointIconMode == 2)
+            {
                 shader_hud = "opencj_checkpoint_tint_obj";
+            }
             shader_objective = paletteShader(checkpoints[i].routeInfo.color);
             tint = checkpoints[i].routeInfo.color;
         }
@@ -141,34 +153,45 @@ showCheckpointPointers()
         self.checkpointPointers_huds[i] setShader(shader_hud, markerSize, markerSize);
         self.checkpointPointers_huds[i].color = tint;
         if (routeColored)
+        {
             self.checkpointPointers_huds[i].alpha = 1;
+        }
         else
+        {
             self.checkpointPointers_huds[i].alpha = 0.5;
+        }
 
         // A second material selects DrawOffscreenViewableWaypoint, which clamps
         // icons to the screen. Omitting it selects the actual world-space sprite
         // (CG_AddDrawSurfsFor3dHudElems), clipped by the client's view frustum.
         if (getCodVersion() == 4 && self.checkpointIconMode == 2)
+        {
             self.checkpointPointers_huds[i] setWaypoint(true, shader_hud);
+        }
         else
+        {
             self.checkpointPointers_huds[i] setWaypoint(true);
+        }
 
         if (openCJ\checkpointMoving::isMoving(checkpoints[i]))
         {
             position = openCJ\checkpointMoving::center(checkpoints[i]);
-            if (isDefined(position)) checkpoints[i].origin = position;
+            if (isDefined(position))
+            {
+                checkpoints[i].origin = position;
+            }
         }
         self.checkpointPointers_huds[i].x = checkpoints[i].origin[0];
         self.checkpointPointers_huds[i].y = checkpoints[i].origin[1];
         self.checkpointPointers_huds[i].z = checkpoints[i].origin[2] + 10;
-        //self.checkpointPointers_huds[i] thread _doJump(self);
+        // self.checkpointPointers_huds[i] thread _doJump(self);
 
         // Stock compass objectives have no RGB field. Default route colors have
         // matching materials; custom RGB uses the nearest palette arrow here.
-        if(i < 16 && self.checkpointIconMode == 2)
+        if (i < 16 && self.checkpointIconMode == 2)
         {
             self.checkpointPointers_objectives[i] = true;
-            if(getCodVersion() == 2)
+            if (getCodVersion() == 2)
             {
                 self objective_player_add(i, "current", checkpoints[i].origin, shader_objective);
             }
@@ -181,12 +204,12 @@ showCheckpointPointers()
 
     self thread _followMovingPointers(checkpoints);
 
-    for(i = self.checkpointPointers_huds.size - 1; i >= checkpoints.size; i--)
+    for (i = self.checkpointPointers_huds.size - 1; i >= checkpoints.size; i--)
     {
         self.checkpointPointers_huds[i] notify("stopJump");
         self.checkpointPointers_huds[i] destroy();
         self.checkpointPointers_huds[i] = undefined;
-        if(isDefined(self.checkpointPointers_objectives[i]))
+        if (isDefined(self.checkpointPointers_objectives[i]))
         {
             self objective_player_delete(i);
             self.checkpointPointers_objectives[i] = undefined;
@@ -197,16 +220,22 @@ showCheckpointPointers()
 nextVisibleCheckpoints()
 {
     if (self openCJ\anyPct::hasAnyPct())
+    {
         return openCJ\checkpoints::getAllEndCheckpoints();
+    }
     next = self openCJ\checkpoints::getCurrentChildCheckpoints();
     visible = [];
     if (!isDefined(next))
+    {
         return visible;
+    }
     for (i = 0; i < next.size; i++)
     {
         route = openCJ\checkpoints::getRouteNameForCheckpoint(next[i]);
         if (!isDefined(self.route) || !isDefined(route) || self.route == route)
+        {
             visible[visible.size] = next[i];
+        }
     }
     return visible;
 }
@@ -261,7 +290,6 @@ _doJump(player)
     }
 }
 
-
 _hideCheckpointPointers()
 {
     self notify("checkpoint_pointer_refresh");
@@ -289,20 +317,27 @@ _createNewCheckpointPointerHud()
     return hud;
 }
 
-
 addPalette(name, color)
 {
-    entry = spawnStruct();entry.shader="opencj_checkpoint_"+name+"_obj";entry.color=color;
-    precacheShader(entry.shader);level.checkpointPalette[level.checkpointPalette.size]=entry;
+    entry = spawnStruct();
+    entry.shader = "opencj_checkpoint_" + name + "_obj";
+    entry.color = color;
+    precacheShader(entry.shader);
+    level.checkpointPalette[level.checkpointPalette.size] = entry;
 }
 
 paletteShader(color)
 {
-    best=0;distance=100;
-    for(i=0;i<level.checkpointPalette.size;i++)
+    best = 0;
+    distance = 100;
+    for(i = 0; i < level.checkpointPalette.size; i++)
     {
-        delta=distanceSquared(color,level.checkpointPalette[i].color);
-        if(delta<distance){distance=delta;best=i;}
+        delta = distanceSquared(color, level.checkpointPalette[i].color);
+        if(delta < distance)
+        {
+            distance = delta;
+            best = i;
+        }
     }
     return level.checkpointPalette[best].shader;
 }
@@ -311,31 +346,57 @@ paletteShader(color)
 // no geometry scans and no reliable client commands are sent from this loop.
 _followMovingPointers(checkpoints)
 {
-    self endon("disconnect"); self endon("checkpoint_pointer_refresh");
+    self endon("disconnect");
+    self endon("checkpoint_pointer_refresh");
     moving = [];
-    for (i=0;i<checkpoints.size;i++)
-        if (openCJ\checkpointMoving::isMoving(checkpoints[i])) moving[moving.size]=i;
-    if (!moving.size) return;
+    for (i = 0; i < checkpoints.size; i++)
+    {
+        if (openCJ\checkpointMoving::isMoving(checkpoints[i]))
+        {
+            moving[moving.size] = i;
+        }
+    }
+    if (!moving.size)
+    {
+        return;
+    }
     while (true)
     {
         wait 0.1;
-        for (j=0;j<moving.size;j++)
+        for (j = 0; j < moving.size; j++)
         {
-            i=moving[j];cp=checkpoints[i];p=openCJ\checkpointMoving::center(cp);
-            if (!isDefined(self.checkpointPointers_huds[i])) return;
+            i = moving[j];
+            cp = checkpoints[i];
+            p = openCJ\checkpointMoving::center(cp);
+            if (!isDefined(self.checkpointPointers_huds[i]))
+            {
+                return;
+            }
             if (!isDefined(p))
             {
-                self.checkpointPointers_huds[i].alpha=0;
-                if (i<16 && isDefined(self.checkpointPointers_objectives[i]))
-                { self objective_player_delete(i); self.checkpointPointers_objectives[i]=undefined; }
+                self.checkpointPointers_huds[i].alpha = 0;
+                if (i < 16 && isDefined(self.checkpointPointers_objectives[i]))
+                {
+                    self objective_player_delete(i);
+                    self.checkpointPointers_objectives[i] = undefined;
+                }
                 continue;
             }
-            cp.origin=p;
-            self.checkpointPointers_huds[i].alpha=1;
-            self.checkpointPointers_huds[i].x=p[0];self.checkpointPointers_huds[i].y=p[1];self.checkpointPointers_huds[i].z=p[2]+10;
-            shader=_getShaderObjective(openCJ\checkpoints::getCheckpointShaderColor(cp));
-            if(isDefined(cp.routeInfo)) shader=paletteShader(cp.routeInfo.color);
-            if(i<16 && self.checkpointIconMode == 2) { self objective_player_add(i,"active",p,shader); self.checkpointPointers_objectives[i]=true; }
+            cp.origin = p;
+            self.checkpointPointers_huds[i].alpha = 1;
+            self.checkpointPointers_huds[i].x = p[0];
+            self.checkpointPointers_huds[i].y = p[1];
+            self.checkpointPointers_huds[i].z = p[2] + 10;
+            shader = _getShaderObjective(openCJ\checkpoints::getCheckpointShaderColor(cp));
+            if (isDefined(cp.routeInfo))
+            {
+                shader = paletteShader(cp.routeInfo.color);
+            }
+            if (i < 16 && self.checkpointIconMode == 2)
+            {
+                self objective_player_add(i, "active", p, shader);
+                self.checkpointPointers_objectives[i] = true;
+            }
         }
     }
 }
@@ -345,7 +406,10 @@ _followMovingPointers(checkpoints)
 onIconSetting(value)
 {
     self.checkpointIconMode = value;
-    if (!isDefined(self.checkpointPointers_huds)) return;
+    if (!isDefined(self.checkpointPointers_huds))
+    {
+        return;
+    }
     self _hideCheckpointPointers();
     self showCheckpointPointers();
 }
