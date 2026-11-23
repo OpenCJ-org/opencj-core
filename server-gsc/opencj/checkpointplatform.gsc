@@ -26,8 +26,12 @@ getRectangularPlatformOrgs()
 // CoD2 retains its trace-based fallback.
 detectLandingAt(origin)
 {
-    top = bulletTrace(origin + (0, 0, 2), origin - (0, 0, 24), false, undefined);
-    if (top["fraction"] < 1 && top["normal"][2] >= 0.7 && abs(top["position"][2] - origin[2]) <= 0.5)
+    minimumWalkableNormalZ = 0.7;
+    landingHeightTolerance = 0.5;
+    top = traceGroundBelow(origin);
+    hitWalkableSurface = top["fraction"] < 1 && top["normal"][2] >= minimumWalkableNormalZ;
+    atLandingHeight = abs(top["position"][2] - origin[2]) <= landingHeightTolerance;
+    if (hitWalkableSurface && atLandingHeight)
     {
         points = platformBrushFace(top["position"], top["normal"], false, true);
         if (isDefined(points) && openCJ\checkpointArea::validate(points) == "" &&
@@ -55,17 +59,23 @@ detectLandingAt(origin)
     {
         return undefined;
     }
-    if (top["fraction"] < 1 && abs(top["position"][2] - origin[2]) <= 0.5)
+    if (top["fraction"] < 1 && abs(top["position"][2] - origin[2]) <= landingHeightTolerance)
     {
         return detectAt(origin);
     }
     return undefined;
 }
 
+// Recover a four-sided landing from short probes when native geometry is unavailable.
 detectAt(origin)
 {
-    top = bulletTrace(origin + (0, 0, 2), origin - (0, 0, 24), false, undefined);
-    if (top["fraction"] == 1 || top["normal"][2] < 0.7)
+    minimumWalkableNormalZ = 0.7;
+    minimumEdgeAlignment = 0.95;
+    maximumEdgeDistance = 4096;
+    maximumTrimRetries = 4;
+    probeInset = 0.5;
+    top = traceGroundBelow(origin);
+    if (top["fraction"] == 1 || top["normal"][2] < minimumWalkableNormalZ)
     {
         return undefined;
     }
@@ -86,7 +96,7 @@ detectAt(origin)
     // right angle: a perpendicular scan can cross that same edge twice.
     // Allow up to about 18 degrees of skew; all corner/edge support checks remain.
     adjacent = _side(start, side, normal);
-    if (!isDefined(adjacent) || vectorDot(adjacent["normal"], side) < 0.95)
+    if (!isDefined(adjacent) || vectorDot(adjacent["normal"], side) < minimumEdgeAlignment)
     {
         return undefined;
     }
@@ -101,20 +111,20 @@ detectAt(origin)
     for (i = 0; i < 4; i++)
     {
         hit = _side(start, directions[i], normal);
-        if (!isDefined(hit) || vectorDot(hit["normal"], directions[i]) < 0.95)
+        if (!isDefined(hit) || vectorDot(hit["normal"], directions[i]) < minimumEdgeAlignment)
         {
             return undefined;
         }
         faces[i] = hit["normal"];
         distances[i] = vectorDot(hit["position"] - top["position"], faces[i]);
-        if (distances[i] <= 0 || distances[i] >= 4096)
+        if (distances[i] <= 0 || distances[i] >= maximumEdgeDistance)
         {
             return undefined;
         }
     }
     // A wall can overlap only part of an edge. Tighten to that wall's face,
     // then verify again; never accept a corner merely because it is obstructed.
-    for (attempt = 0; attempt <= 4; attempt++)
+    for (attempt = 0; attempt <= maximumTrimRetries; attempt++)
     {
         points = _corners(top["position"], axis, side, faces, distances);
         if (!isDefined(points))
@@ -128,47 +138,27 @@ detectAt(origin)
             along = vectorNormalize(points[(i + 1) % 4] - points[i]);
             across = vectorNormalize(points[(i + 3) % 4] - points[i]);
             probes = [];
-            probes[0] = points[i] + vectorScale(along + across, 0.5);
+            probes[0] = points[i] + vectorScale(along + across, probeInset);
             midpoint = vectorScale(points[i] + points[(i + 1) % 4], 0.5);
-            probes[1] = midpoint + vectorScale(vectorNormalize(center - midpoint), 0.5);
+            probes[1] = midpoint + vectorScale(vectorNormalize(center - midpoint), probeInset);
             for (j = 0; j < probes.size; j++)
             {
                 if (_sameTop(probes[j], normal))
                 {
                     continue;
                 }
-                above = top["position"] + normal;
-                wall = bulletTrace(above, probes[j] + normal, false, undefined);
-                // A missing corner is an exposed edge, not necessarily a wall.
-                // Clip to that edge so the cutout never becomes checkpoint area.
-                if (wall["fraction"] == 1)
-                {
-                    wall = bulletTrace(probes[j] - normal, start, false, undefined);
-                    wall["normal"] = vectorScale(wall["normal"], -1);
-                }
-                if (wall["fraction"] == 1 || abs(vectorDot(wall["normal"], normal)) > 0.99)
+                wall = obstructionAtProbe(probes[j], normal, top["position"], start);
+                if (!isDefined(wall))
                 {
                     return undefined;
                 }
-                for (k = 0; k < 4; k++)
+                boundaryTrim =
+                    trimToWall(wall, top["position"], normal, directions, faces, distances);
+                if (isDefined(boundaryTrim))
                 {
-                    faceNormal = _tangent(wall["normal"], normal);
-                    denominator = vectorDot(wall["normal"], directions[k]);
-                    if (abs(denominator) < 0.001)
-                    {
-                        continue;
-                    }
-                    limit =
-                        vectorDot(wall["position"] - top["position"], wall["normal"]) / denominator;
-                    if (vectorDot(faceNormal, faces[k]) < -0.95 && limit > 0 &&
-                       limit < distances[k] - 0.01)
-                    {
-                        boundary = _boundary(wall, top["position"], directions[k], normal);
-                        faces[k] = vectorScale(boundary["normal"], -1);
-                        distances[k] = vectorDot(boundary["position"] - top["position"], faces[k]);
-                        trimmed = true;
-                        break;
-                    }
+                    faces[boundaryTrim.edgeIndex] = boundaryTrim.normal;
+                    distances[boundaryTrim.edgeIndex] = boundaryTrim.distance;
+                    trimmed = true;
                 }
                 // An oblique raised brush may cover a probe without being a
                 // boundary of the landing. Keep the original checkpoint plane;
@@ -192,8 +182,18 @@ detectAt(origin)
     return undefined;
 }
 
+// Find a supported edge or wall, then refine its position within a bounded scan.
 _side(start, direction, normal)
 {
+    maximumSearchDistance = 4096;
+    scanStep = 4;
+    refinementPasses = 8;
+    parallelNormalThreshold = 0.99;
+    minimumRayPlaneAlignment = 0.001;
+    wallProbeInset = 0.5;
+    outsideMargin = 0.25;
+    shallowProbeDepth = 0.125;
+    zeroNormalToleranceSquared = 0.001;
     if (!isDefined(normal))
     {
         normal = (0, 0, 1);
@@ -204,69 +204,71 @@ _side(start, direction, normal)
     // Above the landing, a wall is a boundary too. Below it, the platform and
     // adjoining wall can be one continuous solid, so a reverse trace cannot exit.
     wallStart = top + normal;
-    wall = bulletTrace(wallStart, wallStart + vectorScale(direction, 4096), false, undefined);
-    wallDistance = 4097;
-    if (wall["fraction"] < 1 && abs(vectorDot(wall["normal"], normal)) < 0.99)
+    wall = bulletTrace(wallStart, wallStart + vectorScale(direction, maximumSearchDistance), false,
+                       undefined);
+    wallDistance = maximumSearchDistance + 1;
+    if (wall["fraction"] < 1 && abs(vectorDot(wall["normal"], normal)) < parallelNormalThreshold)
     {
         // For an inclined wall, its intersection with the landing differs from
         // the hit one unit above it. Check support just inside the actual seam.
         denominator = vectorDot(wall["normal"], direction);
-        if (abs(denominator) > 0.001)
+        if (abs(denominator) > minimumRayPlaneAlignment)
         {
             wallDistance = vectorDot(wall["position"] - top, wall["normal"]) / denominator;
         }
     }
-    near = 0;
-    far = 4;
-    while (far <= 4096)
+    lastSupportedDistance = 0;
+    probeDistance = scanStep;
+    while (probeDistance <= maximumSearchDistance)
     {
-        if (far >= wallDistance)
+        if (probeDistance >= wallDistance)
         {
             // The four-unit scan may step across a narrow gap before a wall.
             // Only use that wall if the landing actually reaches its near face.
-            wallNear = wallDistance - 0.5;
-            if (wallNear > near && !_sameTop(top + vectorScale(direction, wallNear), normal))
+            wallNear = wallDistance - wallProbeInset;
+            if (wallNear > lastSupportedDistance && !_sameTop(top + vectorScale(direction, wallNear), normal))
             {
-                far = wallNear;
+                probeDistance = wallNear;
                 break;
             }
             // Use an outward normal consistently for walls and exposed edges.
             wall["normal"] = vectorScale(wall["normal"], -1);
             return _boundary(wall, top, direction, normal);
         }
-        if (!_sameTop(top + vectorScale(direction, far), normal))
+        if (!_sameTop(top + vectorScale(direction, probeDistance), normal))
         {
             break;
         }
-        near = far;
-        far += 4;
+        lastSupportedDistance = probeDistance;
+        probeDistance += scanStep;
     }
-    if (far > 4096)
+    if (probeDistance > maximumSearchDistance)
     {
         return undefined;
     }
-    for (i = 0; i < 8; i++)
+    for (i = 0; i < refinementPasses; i++)
     {
-        mid = (near + far) * 0.5;
-        if (_sameTop(top + vectorScale(direction, mid), normal))
+        midpointDistance = (lastSupportedDistance + probeDistance) * 0.5;
+        if (_sameTop(top + vectorScale(direction, midpointDistance), normal))
         {
-            near = mid;
+            lastSupportedDistance = midpointDistance;
         }
         else
         {
-            far = mid;
+            probeDistance = midpointDistance;
         }
     }
-    outside = start + vectorScale(direction, far + 0.25);
+    outside = start + vectorScale(direction, probeDistance + outsideMargin);
     hit = bulletTrace(outside, start, false, undefined);
     // Near a steep end face, lowering the probe can move it back inside
     // the brush. Retry just below the landing plane to recover the edge normal.
-    if (hit["fraction"] == 0 && vectorDot(hit["normal"], hit["normal"]) < 0.001)
+    if (hit["fraction"] == 0 && vectorDot(hit["normal"], hit["normal"]) < zeroNormalToleranceSquared)
     {
-        shallow = top - vectorScale(normal, 0.125);
-        hit = bulletTrace(shallow + vectorScale(direction, far + 0.25), shallow, false, undefined);
+        shallow = top - vectorScale(normal, shallowProbeDepth);
+        hit = bulletTrace(shallow + vectorScale(direction, probeDistance + outsideMargin), shallow, false,
+                          undefined);
     }
-    if (hit["fraction"] == 1 || abs(vectorDot(hit["normal"], normal)) > 0.99)
+    if (hit["fraction"] == 1 || abs(vectorDot(hit["normal"], normal)) > parallelNormalThreshold)
     {
         return undefined;
     }
@@ -278,30 +280,34 @@ _side(start, direction, normal)
     // At a thin tapered edge, collision padding on the underside is amplified
     // when intersected with the top plane. Never extrapolate past the measured
     // surface edge; retain the face orientation but use the last supported point.
-    if (vectorDot(boundary["position"] - top, direction) > far + 0.25)
+    if (vectorDot(boundary["position"] - top, direction) > probeDistance + outsideMargin)
     {
-        boundary["position"] = top + vectorScale(direction, near);
+        boundary["position"] = top + vectorScale(direction, lastSupportedDistance);
     }
     return boundary;
 }
 
 _sameTop(point, normal)
 {
+    probeDepth = 2;
+    shallowProbeHeight = 0.25;
+    minimumNormalAgreement = 0.999;
+    positionToleranceSquared = 0.0625;
     if (!isDefined(normal))
     {
         normal = (0, 0, 1);
     }
-    hit = bulletTrace(point + vectorScale(normal, 2), point - vectorScale(normal, 2), false,
-                      undefined);
+    hit = bulletTrace(point + vectorScale(normal, probeDepth),
+                      point - vectorScale(normal, probeDepth), false, undefined);
     // A tall probe can start inside an adjoining inclined wall even though the
     // landing itself is clear. Retry close to the surface before rejecting it.
-    if (hit["fraction"] < 1 && vectorDot(hit["normal"], normal) < 0.999)
+    if (hit["fraction"] < 1 && vectorDot(hit["normal"], normal) < minimumNormalAgreement)
     {
-        hit = bulletTrace(point + vectorScale(normal, 0.25), point - vectorScale(normal, 2), false,
-                          undefined);
+        hit = bulletTrace(point + vectorScale(normal, shallowProbeHeight),
+                          point - vectorScale(normal, probeDepth), false, undefined);
     }
-    return hit["fraction"] < 1 && vectorDot(hit["normal"], normal) > 0.999 &&
-           distanceSquared(hit["position"], point) < 0.0625;
+    return hit["fraction"] < 1 && vectorDot(hit["normal"], normal) > minimumNormalAgreement &&
+           distanceSquared(hit["position"], point) < positionToleranceSquared;
 }
 
 _tangent(vector, normal)
@@ -312,8 +318,9 @@ _tangent(vector, normal)
 // Intersect the side face with the landing plane, removing the trace's height offset.
 _boundary(hit, top, direction, normal)
 {
+    minimumRayPlaneAlignment = 0.001;
     denominator = vectorDot(hit["normal"], direction);
-    if (abs(denominator) < 0.001)
+    if (abs(denominator) < minimumRayPlaneAlignment)
     {
         return undefined;
     }
@@ -321,15 +328,6 @@ _boundary(hit, top, direction, normal)
     hit["position"] = top + vectorScale(direction, distance);
     hit["normal"] = _tangent(hit["normal"], normal);
     return hit;
-}
-rectangle(origin, axis, side, distances)
-{
-    points = [];
-    points[0] = origin + vectorScale(axis, distances[0]) + vectorScale(side, distances[1]);
-    points[1] = origin - vectorScale(axis, distances[2]) + vectorScale(side, distances[1]);
-    points[2] = origin - vectorScale(axis, distances[2]) - vectorScale(side, distances[3]);
-    points[3] = origin + vectorScale(axis, distances[0]) - vectorScale(side, distances[3]);
-    return points;
 }
 
 // Brush compilation can leave nominally rectangular sides slightly nonparallel.
@@ -362,7 +360,66 @@ _corners(origin, axis, side, faces, distances)
 // Do not treat a missing surface (fraction one) as an obstruction.
 _solidAt(point, normal)
 {
-    hit = bulletTrace(point + vectorScale(normal, 0.125), point - vectorScale(normal, 0.125), false,
-                      undefined);
-    return hit["fraction"] == 0 && vectorDot(hit["normal"], hit["normal"]) < 0.001;
+    probeHalfHeight = 0.125;
+    zeroNormalToleranceSquared = 0.001;
+    hit = bulletTrace(point + vectorScale(normal, probeHalfHeight),
+                      point - vectorScale(normal, probeHalfHeight), false, undefined);
+    return hit["fraction"] == 0 &&
+           vectorDot(hit["normal"], hit["normal"]) < zeroNormalToleranceSquared;
+}
+
+// Use the same short vertical probe for native detection and the CoD2 fallback.
+traceGroundBelow(origin)
+{
+    probeStartHeight = 2;
+    probeDepth = 24;
+    return bulletTrace(origin + (0, 0, probeStartHeight), origin - (0, 0, probeDepth), false,
+                       undefined);
+}
+
+// A failed surface probe can be a wall or an exposed edge. Trace both cases.
+obstructionAtProbe(probe, normal, top, start)
+{
+    parallelNormalThreshold = 0.99;
+    above = top + normal;
+    wall = bulletTrace(above, probe + normal, false, undefined);
+    if (wall["fraction"] == 1)
+    {
+        wall = bulletTrace(probe - normal, start, false, undefined);
+        wall["normal"] = vectorScale(wall["normal"], -1);
+    }
+    if (wall["fraction"] == 1 || abs(vectorDot(wall["normal"], normal)) > parallelNormalThreshold)
+    {
+        return undefined;
+    }
+    return wall;
+}
+
+// Find the first side this obstruction can tighten without extending the landing.
+trimToWall(wall, top, normal, directions, faces, distances)
+{
+    minimumRayPlaneAlignment = 0.001;
+    minimumOpposingAlignment = 0.95;
+    edgeDistanceTolerance = 0.01;
+    for (edgeIndex = 0; edgeIndex < directions.size; edgeIndex++)
+    {
+        faceNormal = _tangent(wall["normal"], normal);
+        denominator = vectorDot(wall["normal"], directions[edgeIndex]);
+        if (abs(denominator) < minimumRayPlaneAlignment)
+        {
+            continue;
+        }
+        wallDistance = vectorDot(wall["position"] - top, wall["normal"]) / denominator;
+        if (vectorDot(faceNormal, faces[edgeIndex]) < 0 - minimumOpposingAlignment &&
+           wallDistance > 0 && wallDistance < distances[edgeIndex] - edgeDistanceTolerance)
+        {
+            boundary = _boundary(wall, top, directions[edgeIndex], normal);
+            trim = spawnStruct();
+            trim.edgeIndex = edgeIndex;
+            trim.normal = vectorScale(boundary["normal"], -1);
+            trim.distance = vectorDot(boundary["position"] - top, trim.normal);
+            return trim;
+        }
+    }
+    return undefined;
 }
