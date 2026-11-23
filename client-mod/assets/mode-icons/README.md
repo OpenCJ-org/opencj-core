@@ -49,4 +49,4 @@ The approved amber bunny + OS badge is exported separately for future use:
 `oldschool/` contains the 16:20 PNG, standalone transparent rabbit SVG/PNG,
 pre-scaled game TGA/IWI, attribution and hashes. `oldschool-bunny.zip` bundles
 those exports. The optional renderer also uses CairoSVG. This does not add a
-mode, change the live seven-badge build, or register a material in mod.csv.
+mode, change the live eight-badge build, or register a material in mod.csv.

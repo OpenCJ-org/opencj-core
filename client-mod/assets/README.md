@@ -8,7 +8,7 @@ to edit or regenerate it here and under `source/`; do not add brainstorm preview
 | Checkpoint waypoint | `checkpoints/waypoint.svg`, `checkpoints/palette.json`, `source/build_checkpoint_materials.py` | `checkpoints/` |
 | Competitive Top 10 | `ranks/competitive/competitive.svg`, `source/build_competitive_icon.py` | `ranks/competitive/` |
 | Challenge ranks 1-10 | `ranks/rings/rank-*.svg`, `ranks/rings/palette.json`, `source/build_rank_icons.py` | `ranks/rings/` |
-| Seven active mode badges | `source/build_mode_icons.py`, `source/mode-icons/*.svg` | `mode-icons/` |
+| Eight active mode badges | `source/build_mode_icons.py`, `source/mode-icons/*.svg` | `mode-icons/` |
 | Optional Oldschool bunny | `source/mode-icons/rabbit.svg`, `source/build_mode_icons.py --oldschool-only` | `mode-icons/oldschool/`, including reusable symbol SVG |
 | Branding | `source/build_logo.py` | `branding/` |
 | Flags | `source/build_flag_atlas.py`, `source/flag_atlas_manifest.json` | `flags/flag-icons-v7.5.0/` |
