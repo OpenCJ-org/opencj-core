@@ -151,9 +151,10 @@ of up to three consecutive ordinary checkpoints. Reorders, multiple independent
 edits, changed requirements, and shared route connections are refused; the draft remains.
 
 Publication and gameplay refresh have separate outcomes. If publication commits
-but a database read fails during refresh, the current playable graph stays active
+but a database read fails or an alternative references an invalid group leader,
+the current playable graph stays active
 and the editor retains the draft. Its message confirms that publication succeeded;
-retry `!cp finalize` after the database is available. Repeating an unchanged
+retry `!cp finalize` after database access or the invalid group link is repaired. Repeating an unchanged
 publication retains the published checkpoint IDs. A successful refresh closes the
 editor and starts a fresh run.
 

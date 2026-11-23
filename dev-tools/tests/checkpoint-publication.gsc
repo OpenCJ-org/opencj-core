@@ -19,6 +19,7 @@ main()
     checkSharedBranches(editor);
     checkLoadedMetadata();
     checkGraphReload();
+    checkInvalidGroupLinks();
     checkLostCommitReply(editor);
     checkFinalizationRun(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
@@ -356,6 +357,10 @@ publicationQuery(query)
         return undefined;
     }
     result = openCJ\mySQL::mysqlSyncQuery(query);
+    if (isDefined(level.invalidGroupLink) && isSubStr(query, "GROUP_CONCAT"))
+    {
+        result = corruptGroupLink(result, level.invalidGroupLink);
+    }
     if(query == "COMMIT" && isDefined(level.hidePublicationCommitReply) &&
        level.hidePublicationCommitReply)
     {
@@ -525,4 +530,60 @@ checkLoadedGraphRoutes()
     check(sharedStart.endCheckpoints.size == 2 &&
           !isDefined(openCJ\checkpoints::getRouteNameForCheckpoint(sharedStart)),
           "shared opening keeps both reachable routes without choosing one");
+}
+
+// Corrupt only the fixture's returned row; the stored synthetic graph remains unchanged.
+corruptGroupLink(rows, linkKind)
+{
+    for (i = 0; i < rows.size; i++)
+    {
+        groupLeaderId = rows[i][10];
+        if (!isDefined(groupLeaderId))
+        {
+            continue;
+        }
+        if (linkKind == "missing")
+        {
+            rows[i][10] = "2147483000";
+        }
+        else if (linkKind == "self")
+        {
+            rows[i][10] = rows[i][0];
+        }
+        else
+        {
+            for (j = 0; j < rows.size; j++)
+            {
+                if (rows[j][0] == groupLeaderId)
+                {
+                    // Make the leader point back to its alternative, creating a two-node cycle.
+                    rows[j][10] = rows[i][0];
+                    break;
+                }
+            }
+        }
+        return rows;
+    }
+    check(false, "synthetic graph contains an alternative to corrupt");
+    return rows;
+}
+
+checkInvalidGroupLinks()
+{
+    previousStart = level.checkpoints_startCheckpoint;
+    previousEpoch = level.checkpointLayoutEpoch;
+    linkKinds = [];
+    linkKinds[0] = "missing";
+    linkKinds[1] = "self";
+    linkKinds[2] = "cycle";
+    for (i = 0; i < linkKinds.size; i++)
+    {
+        level.invalidGroupLink = linkKinds[i];
+        reloaded = openCJ\checkpoints::onInit();
+        level.invalidGroupLink = undefined;
+        check(!reloaded, "invalid alternative leader rejects refresh: " + linkKinds[i]);
+        check(level.checkpoints_startCheckpoint == previousStart &&
+              level.checkpointLayoutEpoch == previousEpoch,
+              "invalid alternative leader preserves playable graph: " + linkKinds[i]);
+    }
 }

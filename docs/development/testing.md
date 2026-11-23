@@ -245,7 +245,9 @@ Graph loading uses the real database, with fixture-only hooks rejecting each of
 its checkpoint and metadata queries in turn. Checks cover retaining the previous
 graph and layout epoch, an empty first-load result, and recovery after reads resume.
 Known synthetic routes verify their connections, alternative groups, reachable
-finishes and step counts independently of the loader traversal.
+finishes and step counts independently of the loader traversal. Returned-row
+corruption checks reject missing, self-linked and cyclic alternative leaders
+without replacing the playable graph or changing stored data.
 Finalization checks keep publication, editor closure and run-creation SQL real.
 They verify that rejected publication retains the editor, a failed refresh after
 commit retains the published rows and allows retry, and successful finalization

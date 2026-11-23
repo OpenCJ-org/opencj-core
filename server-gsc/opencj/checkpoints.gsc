@@ -103,7 +103,11 @@ onInit()
             checkpoints[i] = decodeCheckpointRow(checkpointRows[i]);
         }
         linkCheckpointChildren(checkpoints);
-        resolveCheckpointBrothers(checkpoints);
+        if(!resolveCheckpointBrothers(checkpoints))
+        {
+            restoreCheckpointGraph(previousGraph);
+            return false;
+        }
         startCheckpoint = level.checkpoints_startCheckpoint;
         for(i = 0; i < checkpoints.size; i++)
         {
@@ -219,6 +223,7 @@ linkCheckpointChildren(checkpoints)
     }
 }
 
+// Alternative areas must point directly to a loaded leader, never another alternative.
 resolveCheckpointBrothers(checkpoints)
 {
     for(i = 0; i < checkpoints.size; i++)
@@ -228,15 +233,25 @@ resolveCheckpointBrothers(checkpoints)
         {
             continue;
         }
+        leaderId = checkpoint.bigBrother;
+        leader = undefined;
         for(j = 0; j < checkpoints.size; j++)
         {
-            if(i != j && checkpoint.bigBrother == checkpoints[j].id)
+            if(i != j && leaderId == checkpoints[j].id)
             {
-                checkpoint.bigBrother = checkpoints[j];
+                leader = checkpoints[j];
                 break;
             }
         }
+        if(!isDefined(leader) || isDefined(leader.bigBrother))
+        {
+            printf("WARNING: Invalid group leader " + leaderId +
+                   " for checkpoint " + checkpoint.id + "\n");
+            return false;
+        }
+        checkpoint.bigBrother = leader;
     }
+    return true;
 }
 
 // Walk back from each finish to record reachable routes and distances to a finish.
