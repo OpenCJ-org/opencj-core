@@ -573,9 +573,10 @@ _loadCache(runID, expectedFrames, cache)
     {
         // Each bounded query already yields. Do not add another frame wait after decoding.
         nextChunk = 0;
+        runStorage = 0; // Native chunk source: 0 is a run, 1 is a clip.
         while(loaded && numberOfDemoFrames(runID) < expectedFrames)
         {
-            rows = openCJ\mySQL::awaitNative(demoLoadChunks(runID, runID, 0, nextChunk));
+            rows = openCJ\mySQL::awaitNative(demoLoadChunks(runID, runID, runStorage, nextChunk));
             // Cancellation destroys the old native owner. The same run ID may now belong
             // to a newer request, so this loader must not read, finish, or destroy it.
             if(cache.cancelled)
@@ -1169,8 +1170,14 @@ cancelRequest()
 
 demoControls()
 {
-    buttons = int(self leftButtonPressed()) + 2 * int(self rightButtonPressed()) +
-              4 * int(self leanLeftButtonPressed()) + 8 * int(self leanRightButtonPressed());
+    slowerButton = 1;
+    fasterButton = 2;
+    previousCheckpointButton = 4;
+    nextCheckpointButton = 8;
+    buttons = slowerButton * int(self leftButtonPressed()) +
+              fasterButton * int(self rightButtonPressed()) +
+              previousCheckpointButton * int(self leanLeftButtonPressed()) +
+              nextCheckpointButton * int(self leanRightButtonPressed());
     pressedButtons = buttons & ~self.demoControlButtons;
     self.demoControlButtons = buttons;
     rates = [];
@@ -1179,7 +1186,8 @@ demoControls()
     rates[2] = 1;
     rates[3] = 2;
     rates[4] = 4;
-    rateIndex = 2;
+    normalSpeedIndex = 2;
+    rateIndex = normalSpeedIndex;
     rate = abs(self.demoRate);
     for(i = 0; i < rates.size; i++)
     {
@@ -1188,23 +1196,23 @@ demoControls()
             rateIndex = i;
         }
     }
-    if((pressedButtons & 1) && rateIndex > 0)
+    if((pressedButtons & slowerButton) && rateIndex > 0)
     {
         rateIndex--;
     }
-    if((pressedButtons & 2) && rateIndex < 4)
+    if((pressedButtons & fasterButton) && rateIndex + 1 < rates.size)
     {
         rateIndex++;
     }
-    if(pressedButtons & 3)
+    if(pressedButtons & (slowerButton | fasterButton))
     {
         self setDemoSpeed("" + rates[rateIndex]);
     }
-    if(pressedButtons & 4)
+    if(pressedButtons & previousCheckpointButton)
     {
         self.demoCheckpointRequest = -1;
     }
-    if(pressedButtons & 8)
+    if(pressedButtons & nextCheckpointButton)
     {
         self.demoCheckpointRequest = 1;
     }
@@ -1487,9 +1495,11 @@ demoFrameStep()
 
 demoTime(frameCount)
 {
-    seconds = int(frameCount / 20);
-    minutes = int(seconds / 60);
-    seconds = seconds % 60;
+    recordedFramesPerSecond = 20;
+    secondsPerMinute = 60;
+    seconds = int(frameCount / recordedFramesPerSecond);
+    minutes = int(seconds / secondsPerMinute);
+    seconds = seconds % secondsPerMinute;
     prefix = "";
     if(seconds < 10)
     {
@@ -1556,7 +1566,10 @@ demoUpdateOverlay()
         if(!isDefined(self.demoClipCursor) || self.demoClipCursor != frameIndex)
         {
             self.demoClipCursor = frameIndex;
-            self setClientCvar("opencj_clip_cursor_x", 20 + frameIndex * 600 / frameCount);
+            timelineLeft = 20;
+            timelineWidth = 600;
+            self setClientCvar("opencj_clip_cursor_x",
+                               timelineLeft + frameIndex * timelineWidth / frameCount);
         }
     }
     if(!isDefined(self.demoStatusText) || self.demoStatusText != statusText)
@@ -1787,7 +1800,8 @@ toggleTechnique()
     {
         self.demoTechnique = 0;
     }
-    self.demoTechnique = (self.demoTechnique + 1) % 4;
+    techniqueCount = 4; // Original, fullbeat, halfbeat, and inverted input.
+    self.demoTechnique = (self.demoTechnique + 1) % techniqueCount;
     self demoSetTechnique(self.demoTechnique);
     self.demoFPSCacheKey = undefined;
     self.demoFPSStateFrame = undefined;
@@ -1797,21 +1811,25 @@ toggleTechnique()
 }
 updateTechniqueLabel()
 {
-    mode = 0;
+    originalTechnique = 0;
+    fullbeatTechnique = 1;
+    halfbeatTechnique = 2;
+    invertedTechnique = 3;
+    mode = originalTechnique;
     if(isDefined(self.demoTechnique))
     {
         mode = self.demoTechnique;
     }
     text = "Original";
-    if(mode == 1)
+    if(mode == fullbeatTechnique)
     {
         text = "Fullbeat";
     }
-    else if(mode == 2)
+    else if(mode == halfbeatTechnique)
     {
         text = "Halfbeat";
     }
-    else if(mode == 3)
+    else if(mode == invertedTechnique)
     {
         text = "Invert";
     }
@@ -1820,7 +1838,7 @@ updateTechniqueLabel()
         self.demoTechniqueLabel = text;
         self setClientCvar("opencj_demo_technique", text);
     }
-    fallback = mode != 0 && self demoTechniqueFallback();
+    fallback = mode != originalTechnique && self demoTechniqueFallback();
     if(!isDefined(self.demoTechniqueFallback) || self.demoTechniqueFallback != fallback)
     {
         self.demoTechniqueFallback = fallback;
@@ -2033,42 +2051,43 @@ demoCheckpointText()
     {
         return "";
     }
-    enders = level.routeEnders[self.demoRouteName];
-    if(!isDefined(enders))
+    routeEnders = level.routeEnders[self.demoRouteName];
+    if(!isDefined(routeEnders))
     {
         return "";
     }
-    cpID = self readPlaybackFrame_checkpoint();
-    if(!isDefined(cpID))
+    checkpointID = self readPlaybackFrame_checkpoint();
+    if(!isDefined(checkpointID))
     {
         return "";
     }
-    total = undefined;
-    for(i = 0; i < enders.size; i++)
+    totalCheckpoints = undefined;
+    for(i = 0; i < routeEnders.size; i++)
     {
-        depth = enders[i].checkpointsFromStart;
-        if(isDefined(depth) && (!isDefined(total) || depth > total))
+        checkpointsFromStart = routeEnders[i].checkpointsFromStart;
+        if(isDefined(checkpointsFromStart) &&
+           (!isDefined(totalCheckpoints) || checkpointsFromStart > totalCheckpoints))
         {
-            total = depth;
+            totalCheckpoints = checkpointsFromStart;
         }
     }
-    if(!isDefined(total) || total <= 0)
+    if(!isDefined(totalCheckpoints) || totalCheckpoints <= 0)
     {
         return "";
     }
-    passed = 0;
-    if(cpID > 0)
+    passedCheckpoints = 0;
+    if(checkpointID > 0)
     {
-        cp = openCJ\checkpoints::getCheckpointByID(cpID);
-        if(!isDefined(cp))
-        {
-            return "";
-        }
-        passed = cp.checkpointsFromStart;
-        if(!isDefined(passed) || passed > total)
+        checkpoint = openCJ\checkpoints::getCheckpointByID(checkpointID);
+        if(!isDefined(checkpoint))
         {
             return "";
         }
+        passedCheckpoints = checkpoint.checkpointsFromStart;
+        if(!isDefined(passedCheckpoints) || passedCheckpoints > totalCheckpoints)
+        {
+            return "";
+        }
     }
-    return "Checkpoint " + passed + " / " + total;
+    return "Checkpoint " + passedCheckpoints + " / " + totalCheckpoints;
 }
