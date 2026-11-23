@@ -27,7 +27,9 @@ if not engine_path.is_file():
 try:
     engine_relative_path = engine_path.relative_to(ROOT)
 except ValueError:
-    parser.error("The selected engine must be inside the core checkout for the Compose mount")
+    parser.error(
+        "The selected engine must be inside the core checkout for the Compose mount"
+    )
 engine_container_path = "/workspace/" + engine_relative_path.as_posix()
 token = uuid.uuid4().hex[:8]
 tag = "history-save-192-" + token
@@ -75,10 +77,16 @@ def redact(text):
 
 try:
     assert (
-        db("SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='" + database + "';")
+        db(
+            "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='"
+            + database
+            + "';"
+        )
         == "0"
     )
-    assert db("SELECT COUNT(*) FROM mysql.user WHERE User='opencj' AND Host='%';") == "1"
+    assert (
+        db("SELECT COUNT(*) FROM mysql.user WHERE User='opencj' AND Host='%';") == "1"
+    )
     dump = subprocess.run(
         [
             "docker",
@@ -105,7 +113,9 @@ try:
     metadata = db(
         "SELECT DEFAULT_CHARACTER_SET_NAME,DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='openCJ_cod4';"
     ).split("\t")
-    assert len(metadata) == 2 and all(re.fullmatch(r"[a-zA-Z0-9_]+", v) for v in metadata)
+    assert len(metadata) == 2 and all(
+        re.fullmatch(r"[a-zA-Z0-9_]+", v) for v in metadata
+    )
     db(
         "CREATE DATABASE "
         + database
@@ -139,9 +149,11 @@ try:
     shutil.copyfile(
         ROOT / "dev-tools/tests/history-save-192.gsc", mod / "opencj/history192test.gsc"
     )
-    (mod / "maps/mp/gametypes/cj.gsc").write_text('main() { level.script = getCvar("mapname"); }\n')
+    (mod / "maps/mp/gametypes/cj.gsc").write_text(
+        'main() { level.script = getCvar("mapname"); }\n'
+    )
     (mod / "maps/mp/gametypes/_callbacksetup.gsc").write_text(
-        'CodeCallback_StartGameType() { thread openCJ\\history192Test::main(); }\n'
+        "CodeCallback_StartGameType() { thread openCJ\\history192Test::main(); }\n"
         + "\n".join(
             "CodeCallback_" + callback + "() {}"
             for callback in [
@@ -157,9 +169,11 @@ try:
     # Observe production warning decisions without requiring a human client.
     p = mod / "opencj/historysave.gsc"
     source = p.read_text()
-    warning = 'self iPrintLnBold(message);'
+    warning = "self iPrintLnBold(message);"
     assert source.count(warning) == 1
-    p.write_text(source.replace(warning, "self openCJ\\history192Test::recordWarning(message);"))
+    p.write_text(
+        source.replace(warning, "self openCJ\\history192Test::recordWarning(message);")
+    )
     # Delay delivery of one real SQL result; do not stub the database operation.
     p = mod / "opencj/mysql.gsc"
     source = p.read_text()
@@ -169,22 +183,24 @@ try:
     request_function = request_match.group(0)
     result_wait = re.compile(
         r'(?m)^[ \t]*level\s+waittill\(\s*"mysqlQueryDone"\s*\+\s*[A-Za-z_]\w*\s*,'
-        r'\s*[A-Za-z_]\w*\s*,\s*[A-Za-z_]\w*\s*\)\s*;[ \t]*\n'
+        r"\s*[A-Za-z_]\w*\s*,\s*[A-Za-z_]\w*\s*\)\s*;[ \t]*\n"
     )
     delay = (
-        '    if (isDefined(level.history192Delay) && level.history192Delay && '
+        "    if (isDefined(level.history192Delay) && level.history192Delay && "
         'isSubStr(query, "SELECT savePosition("))\n'
-        '    {\n'
+        "    {\n"
         '        self notify("history192_result_ready");\n'
-        '        wait 0.2;\n'
-        '    }\n'
+        "        wait 0.2;\n"
+        "    }\n"
     )
     request_function, replacements = result_wait.subn(
         lambda match: match.group(0) + delay, request_function
     )
     assert replacements == 1, "Expected one SQL completion wait"
     p.write_text(
-        source[:request_match.start()] + request_function + source[request_match.end():]
+        source[: request_match.start()]
+        + request_function
+        + source[request_match.end() :]
     )
     cfg = (ROOT / "dev-tools/local/runtime/mods/opencj/opencj-dev.cfg").read_text()
     lines = [line for line in cfg.splitlines() if re.match(r"\s*set(?:a)?\s+db_", line)]
@@ -193,23 +209,45 @@ try:
         if match:
             secrets.append(match.group(1))
     lines = [
-        re.sub(r'(db_base\s+).*', lambda m: m.group(1) + '"' + database[:-1] + '"', line)
+        re.sub(
+            r"(db_base\s+).*", lambda m: m.group(1) + '"' + database[:-1] + '"', line
+        )
         for line in lines
     ]
     assert any(database[:-1] in line for line in lines)
-    private.write_text("\n".join(lines) + '\nset history192_database "' + database + '"\n')
+    private.write_text(
+        "\n".join(lines) + '\nset history192_database "' + database + '"\n'
+    )
     private.chmod(0o600)
     if globals().get("SQL_ADAPTER_VERIFY"):
-        shutil.copyfile(ROOT / "dev-tools/tests/sql-adapter.gsc", mod / "opencj/sqladaptertest.gsc")
-        fixture = mod / "opencj/history192test.gsc"
-        fixture.write_text(
-            fixture.read_text().replace("    extraSaveChecks();", "    extraSaveChecks();")
+        shutil.copyfile(
+            ROOT / "dev-tools/tests/sql-adapter.gsc", mod / "opencj/sqladaptertest.gsc"
         )
+        fixture = mod / "opencj/history192test.gsc"
+        shutil.copyfile(
+            ROOT / "dev-tools/tests/demo-publication-190.gsc",
+            mod / "opencj/publicationcapacity.gsc",
+        )
+        sql_script = mod / "opencj/mysql.gsc"
+        sql_source, replacements = re.subn(
+            r"(?m)^_request(?=\s*\()", "_capacityRealRequest", sql_script.read_text()
+        )
+        assert replacements == 1, "Expected one production SQL request entry"
+        sql_source += r"""
+_request(query, policy, key, scope, queueWaitMs, retainRows)
+{
+    return openCJ\publicationCapacity::request(query, policy, key, scope, queueWaitMs, retainRows);
+}
+"""
+        sql_script.write_text(sql_source)
         test_source = fixture.read_text()
         assert "    a extraSaveChecks();" in test_source
         test_source = test_source.replace(
             "    a extraSaveChecks();",
-            "    a extraSaveChecks();\n    openCJ\\sqlAdapterTest::run(a,b);\n    openCJ\\sqlAdapterTest::queueForMapChange();",
+            "    a extraSaveChecks();\n"
+            '    check(openCJ\\publicationCapacity::run(), "publication retry and receipt recovery");\n'
+            "    openCJ\\sqlAdapterTest::run(a,b);\n"
+            "    openCJ\\sqlAdapterTest::queueForMapChange();",
         )
         test_source = test_source.replace(
             "main()\n{",
@@ -248,7 +286,9 @@ try:
             "g++ -m32 -std=c++11 -O0 -g -pthread /workspace/dev-tools/tests/sql-adapter.cpp /workspace/server-ext/mysql_async_pool.cpp -lmysqlclient -o "
             + pool_binary,
         ]
-        compiled = subprocess.run(build, cwd=ROOT / "dev-tools", capture_output=True, text=True)
+        compiled = subprocess.run(
+            build, cwd=ROOT / "dev-tools", capture_output=True, text=True
+        )
         (home / "pool-build.log").write_text(compiled.stdout + compiled.stderr)
         assert compiled.returncode == 0, "Pool test compile failed"
         command = [
@@ -269,7 +309,12 @@ try:
         (home / "pool.log").chmod(0o600)
         for line in pool.stdout.splitlines():
             if line.startswith(
-                ("SQLPOOL METRIC", "SQLPOOL COMPLETE", "SQLPOOL FAILURE", "SQLPOOL CHECK 0:")
+                (
+                    "SQLPOOL METRIC",
+                    "SQLPOOL COMPLETE",
+                    "SQLPOOL FAILURE",
+                    "SQLPOOL CHECK 0:",
+                )
             ):
                 print(line, flush=True)
         assert pool.returncode == 0, "Pool regression failed; inspect pool.log"
@@ -301,7 +346,9 @@ try:
     ]:
         cmd += ["+set", key, val]
     cmd += ["+exec", "history192.cfg", "+map", "mp_killhouse"]
-    subprocess.run(cmd, cwd=ROOT / "dev-tools", check=True, capture_output=True, text=True)
+    subprocess.run(
+        cmd, cwd=ROOT / "dev-tools", check=True, capture_output=True, text=True
+    )
     started = True
     log = ""
     map_changed = False
@@ -309,7 +356,11 @@ try:
         time.sleep(1)
         proc = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
         log = redact(proc.stdout + proc.stderr)
-        if globals().get("SQL_ADAPTER_VERIFY") and "SQLPOOL_MAP_READY" in log and not map_changed:
+        if (
+            globals().get("SQL_ADAPTER_VERIFY")
+            and "SQLPOOL_MAP_READY" in log
+            and not map_changed
+        ):
             import socket
 
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -325,7 +376,10 @@ try:
             header = b""
             while b"\r\n\r\n" not in header:
                 header += sock.recv(4096)
-            assert b"101" in header.split(b"\r\n", 1)[0] or b"200" in header.split(b"\r\n", 1)[0]
+            assert (
+                b"101" in header.split(b"\r\n", 1)[0]
+                or b"200" in header.split(b"\r\n", 1)[0]
+            )
             sock.sendall(b"map mp_killhouse\n")
             # Docker attach can discard buffered stdin if closed immediately.
             # Keep the upgraded connection alive long enough to consume output.
@@ -342,11 +396,22 @@ try:
             map_changed = True
         if any(
             word in log
-            for word in ("HISTORY192 COMPLETE", "script compile error", "script runtime error")
+            for word in (
+                "HISTORY192 COMPLETE",
+                "script compile error",
+                "script runtime error",
+            )
         ):
             break
     for line in log.splitlines():
-        if line.startswith(("HISTORY192 COMPLETE", "HISTORY192 CHECK 0:")):
+        if line.startswith(
+            (
+                "HISTORY192 COMPLETE",
+                "HISTORY192 CHECK 0:",
+                "CAP PUBLICATION RECOVERY COMPLETE",
+                "CAP PUBLICATION FAIL",
+            )
+        ):
             print(line, flush=True)
     for error in ("script compile error", "script runtime error"):
         if error in log:
@@ -357,23 +422,33 @@ try:
         ).strip()
         for repo in ("server-ext", "server-gsc", "server-db", "dev-tools")
     }
-    report["binarySha256"] = hashlib.sha256(
-        (ROOT / "cod4x-server/bin/cod4x18_dedrun").read_bytes()
-    ).hexdigest()
+    report["binarySha256"] = hashlib.sha256(engine_path.read_bytes()).hexdigest()
     report["reconnectWarnings"] = log.count("MYSQL_OPT_RECONNECT")
-    assert report["reconnectWarnings"] <= 5, "Reconnect options changed during healthy queries"
+    assert (
+        report["reconnectWarnings"] <= 5
+    ), "Reconnect options changed during healthy queries"
     report["actualMapTransition"] = (
         map_changed
-        and "HISTORY192 CHECK 1: accepted write persists through an actual engine map change" in log
+        and "HISTORY192 CHECK 1: accepted write persists through an actual engine map change"
+        in log
     )
-    report["checks"] = sum(line.startswith("HISTORY192 CHECK 1:") for line in log.splitlines())
+    report["checks"] = sum(
+        line.startswith("HISTORY192 CHECK 1:") for line in log.splitlines()
+    )
     report["observations"] = {
         match.group(1): bool(int(match.group(2)))
         for match in re.finditer(r"HISTORY192 OBSERVATION (\w+)=(\d+)", log)
     }
-    report["verificationCompleted"] = "HISTORY192 COMPLETE failures=0" in log and not any(
-        word in log
-        for word in ("script compile error", "script runtime error", "HISTORY192 CHECK 0:")
+    report["verificationCompleted"] = (
+        "HISTORY192 COMPLETE failures=0" in log
+        and not any(
+            word in log
+            for word in (
+                "script compile error",
+                "script runtime error",
+                "HISTORY192 CHECK 0:",
+            )
+        )
     )
     report["fixtureCounts"] = db(
         "SELECT (SELECT COUNT(*) FROM playerRuns),(SELECT COUNT(*) FROM playerSaves),(SELECT COUNT(*) FROM demoRuns),(SELECT COUNT(*) FROM demoChunks);",
@@ -395,15 +470,30 @@ finally:
     if created:
         db("DROP DATABASE " + database + ";")
     report["disposableDatabaseRemoved"] = (
-        db("SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='" + database + "';")
+        db(
+            "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='"
+            + database
+            + "';"
+        )
         == "0"
     )
     report["testContainerRemoved"] = not subprocess.check_output(
-        ["docker", "ps", "-a", "--filter", "name=^/" + name + "$", "--format", "{{.Names}}"],
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            "name=^/" + name + "$",
+            "--format",
+            "{{.Names}}",
+        ],
         text=True,
     ).strip()
     (home / "result.json").write_text(json.dumps(report, indent=2) + "\n")
     print(
-        "Cleanup:", report["disposableDatabaseRemoved"], report["testContainerRemoved"], flush=True
+        "Cleanup:",
+        report["disposableDatabaseRemoved"],
+        report["testContainerRemoved"],
+        flush=True,
     )
     print("Evidence:", home, flush=True)

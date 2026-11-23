@@ -53,7 +53,9 @@ parser.add_argument(
     default=4,
     help="Isolated comparison; five requires an explicit test binary",
 )
-parser.add_argument("--binary", type=Path, default=ROOT / "cod4x-server/bin/cod4x18_dedrun")
+parser.add_argument(
+    "--binary", type=Path, default=ROOT / "cod4x-server/bin/cod4x18_dedrun"
+)
 args = parser.parse_args()
 args.binary = args.binary.resolve()
 assert args.binary.is_relative_to(ROOT) and args.binary.is_file()
@@ -150,7 +152,9 @@ def chunks(seed=0):
             if f % 100 == 60:
                 flags |= 16384
             fps = 333 if f % 30 < 15 else 250
-            raw += struct.pack("<fffHHHHHIB", x, y, z, 0, (f * 137) % 65536, 0, flags, fps, 1, 8)
+            raw += struct.pack(
+                "<fffHHHHHIB", x, y, z, 0, (f * 137) % 65536, 0, flags, fps, 1, 8
+            )
             # Valid native presentation, unarmed, with changing velocity/bob.
             raw += struct.pack(
                 "<HHHBBHBhhhhhhHHHBB",
@@ -209,18 +213,24 @@ def seed():
     for start in range(0, 10000, 500):
         target(
             "INSERT INTO playerRuns(runID,playerID,mapID,finishcpID,finishTimeStamp,FPSMode) VALUES"
-            + ",".join(f"({10000+i},{i%512+1},1,1,NOW(),'mix')" for i in range(start, start + 500))
+            + ",".join(
+                f"({10000+i},{i%512+1},1,1,NOW(),'mix')"
+                for i in range(start, start + 500)
+            )
             + ";"
             + "INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives,FPSMode) VALUES"
             + ",".join(
-                f"({10000+i},1,{100000+i},20,2,{i%5},0,0,'mix')" for i in range(start, start + 500)
+                f"({10000+i},1,{100000+i},20,2,{i%5},0,0,'mix')"
+                for i in range(start, start + 500)
             )
             + ";"
         )
     for start in range(0, 1000, 100):
         target(
             "INSERT INTO playerRuns(runID,playerID,mapID,FPSMode) VALUES"
-            + ",".join(f"({20000+i},{i%32+1},1,'mix')" for i in range(start, start + 100))
+            + ",".join(
+                f"({20000+i},{i%32+1},1,'mix')" for i in range(start, start + 100)
+            )
             + ";"
             + "INSERT INTO playerSaves(runID,saveNumber,alpha,beta,gamma,explosiveJumps,doubleExplosives,flags,FPSMode) VALUES"
             + ",".join(
@@ -257,7 +267,10 @@ def seed():
         payloads = chunks(i)
         target(
             "INSERT INTO demoChunks(runID,chunkNum,payload) VALUES"
-            + ",".join(f"({3000+i},{j},UNHEX('{payload}'))" for j, payload in enumerate(payloads))
+            + ",".join(
+                f"({3000+i},{j},UNHEX('{payload}'))"
+                for j, payload in enumerate(payloads)
+            )
             + ";"
         )
     report["syntheticRows"] = {
@@ -288,7 +301,17 @@ try:
     network = database_network()
     assert image == "mysql:8.0"
     p = run(
-        ["docker", "run", "-d", "--name", dbname, "--network", network, "--memory", "1536m"]
+        [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            dbname,
+            "--network",
+            network,
+            "--memory",
+            "1536m",
+        ]
         + (["--cpus", str(args.db_cpus)] if args.db_cpus else [])
         + ["--env-file", str(private), image, "--log-bin-trust-function-creators=1"]
     )
@@ -325,11 +348,17 @@ try:
     schema = re.sub(r"DEFINER=\S+\s", "DEFINER=CURRENT_USER ", schema)
     assert not re.search(r"^\s*(CREATE DATABASE|USE)\b", schema, re.I | re.M)
     report["sourceSchemaSha256"] = hashlib.sha256(dump.stdout.encode()).hexdigest()
-    db("CREATE DATABASE " + database + " CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
+    db(
+        "CREATE DATABASE "
+        + database
+        + " CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+    )
     target(schema)
     migration = (ROOT / "server-db/migrations/018-demo-publication.sql").read_text()
     target(migration)
-    report["publicationMigrationSha256"] = hashlib.sha256(migration.encode()).hexdigest()
+    report["publicationMigrationSha256"] = hashlib.sha256(
+        migration.encode()
+    ).hexdigest()
     db(
         "CREATE USER 'capacity'@'%' IDENTIFIED BY '"
         + password
@@ -350,30 +379,39 @@ try:
     for folder in ("opencj", "maps"):
         shutil.copytree(ROOT / "server-gsc" / folder, mod / folder)
     assert (
-        args.load_batch == 32 and args.load_concurrency == 0 and args.fps_cache_limit == 512
+        args.load_batch == 32
+        and args.load_concurrency == 0
+        and args.fps_cache_limit == 512
     ), "Use unchanged production paths for acceptance"
     for asset in ("mod.ff", "z_opencj.iwd"):
         (mod / asset).symlink_to("/mod-assets/" + asset)
     (home / "plugins").mkdir()
     (home / "steamclient.so").symlink_to("/game/steamclient.so")
 
-    shutil.copyfile(ROOT / "dev-tools/tests/sql-capacity-190.gsc", mod / "opencj/sqlcapacity.gsc")
+    shutil.copyfile(
+        ROOT / "dev-tools/tests/sql-capacity-190.gsc", mod / "opencj/sqlcapacity.gsc"
+    )
     p = mod / "opencj/sqlcapacity.gsc"
     fixture = p.read_text()
-    fixture = fixture.replace('stats[0]==4 &&', f'stats[0]=={args.workers} &&').replace(
-        'four workers and empty completion backlog',
-        'configured workers and empty completion backlog',
+    fixture = fixture.replace("stats[0]==4 &&", f"stats[0]=={args.workers} &&").replace(
+        "four workers and empty completion backlog",
+        "configured workers and empty completion backlog",
     )
     fixture = fixture.replace(
-        "    clipTransfers();", r"    openCJ\publicationCapacity::run();" + "\n    clipTransfers();"
+        "    clipTransfers();",
+        r'    check(openCJ\publicationCapacity::run(),"publication recovery");'
+        + "\n    clipTransfers();",
     )
     p.write_text(fixture)
     shutil.copyfile(
-        ROOT / "dev-tools/tests/demo-publication-190.gsc", mod / "opencj/publicationcapacity.gsc"
+        ROOT / "dev-tools/tests/demo-publication-190.gsc",
+        mod / "opencj/publicationcapacity.gsc",
     )
-    (mod / "maps/mp/gametypes/cj.gsc").write_text('main(){level.script=getCvar("mapname");}\n')
+    (mod / "maps/mp/gametypes/cj.gsc").write_text(
+        'main(){level.script=getCvar("mapname");}\n'
+    )
     (mod / "maps/mp/gametypes/_callbacksetup.gsc").write_text(
-        'CodeCallback_StartGameType(){thread openCJ\\sqlCapacity::main();}\n'
+        "CodeCallback_StartGameType(){thread openCJ\\sqlCapacity::main();}\n"
         + "\n".join(
             "CodeCallback_" + c + "(){}"
             for c in (
@@ -391,19 +429,23 @@ try:
     initializer = 'level.database["port"], 4);'
     assert s.count(initializer) == 1
     s = s.replace(initializer, f'level.database["port"], {args.workers});')
-    needle = '    id=mysql_async_submit(query, policy, key, scope, deadline, int(save));'
-    assert s.count(needle) == 1
-    s = s.replace(needle, '    capacityStarted=capacityClock();\n' + needle)
-    needle = '    result.rows=rows;\n    result.status=outcome[0];'
-    assert s.count(needle) == 1
-    s = s.replace(
-        needle, '    openCJ\\sqlCapacity::queryMetric(policy,capacityStarted,outcome);\n' + needle
+    needle = (
+        "    id=mysql_async_submit(query, policy, key, scope, deadline, int(save));"
     )
-    needle = '    ret = mysql_query(level.mySQL, query);'
+    assert s.count(needle) == 1
+    s = s.replace(needle, "    capacityStarted=capacityClock();\n" + needle)
+    needle = "    result.rows=rows;\n    result.status=outcome[0];"
     assert s.count(needle) == 1
     s = s.replace(
         needle,
-        '    capacityStarted=capacityClock();\n'
+        "    openCJ\\sqlCapacity::queryMetric(policy,capacityStarted,outcome);\n"
+        + needle,
+    )
+    needle = "    ret = mysql_query(level.mySQL, query);"
+    assert s.count(needle) == 1
+    s = s.replace(
+        needle,
+        "    capacityStarted=capacityClock();\n"
         + needle
         + '\n    printf("CAP SQL "+level.capStage+" 5 "+(capacityClock()-capacityStarted)+" "+ret+" 0 0\\n");',
     )
@@ -417,7 +459,10 @@ try:
     )
     declaration = "_request(query, policy, key, scope, deadline, save)\n{"
     assert s.count(declaration) == 1
-    s = s.replace(declaration, "_capacityRealRequest(query, policy, key, scope, deadline, save)\n{")
+    s = s.replace(
+        declaration,
+        "_capacityRealRequest(query, policy, key, scope, deadline, save)\n{",
+    )
     s += r"""
 _request(query, policy, key, scope, deadline, save)
 {
@@ -477,7 +522,14 @@ _request(query, policy, key, scope, deadline, save)
         ("capacity_ticks", args.seconds * 20),
     ]:
         cmd += ["+set", key, str(value)]
-    cmd += ["+exec", "capacity.cfg", "+loadplugin", "capacity_clock", "+map", "mp_killhouse"]
+    cmd += [
+        "+exec",
+        "capacity.cfg",
+        "+loadplugin",
+        "capacity_clock",
+        "+map",
+        "mp_killhouse",
+    ]
     p = run(cmd, cwd=ROOT / "dev-tools")
     assert p.returncode == 0, "Isolated engine launch failed"
     started = True
@@ -522,13 +574,18 @@ _request(query, policy, key, scope, deadline, save)
             "exceeded maximum number",
         ):
             if marker in log:
-                print(log[max(0, log.index(marker) - 100) : log.index(marker) + 1600], flush=True)
+                print(
+                    log[max(0, log.index(marker) - 100) : log.index(marker) + 1600],
+                    flush=True,
+                )
     phases = {}
     for name in ("record32", "mixed16", "finish32_watch32", "shared32"):
         metrics = {}
         sql = [
             tuple(map(int, m))
-            for m in re.findall(r"CAP SQL " + name + r" (\d+) (\d+) (\d+) (\d+) (\d+)", log)
+            for m in re.findall(
+                r"CAP SQL " + name + r" (\d+) (\d+) (\d+) (\d+) (\d+)", log
+            )
         ]
         for policy, label in (
             (0, "progress"),
@@ -545,7 +602,8 @@ _request(query, policy, key, scope, deadline, save)
                     "queueMs": quantiles([x[3] for x in values]),
                     "executionMs": quantiles([x[4] for x in values]),
                     "outcomes": {
-                        str(o): sum(x[2] == o for x in values) for o in set(x[2] for x in values)
+                        str(o): sum(x[2] == o for x in values)
+                        for o in set(x[2] for x in values)
                     },
                 }
         metrics["demoLoadMs"] = quantiles(
@@ -557,13 +615,22 @@ _request(query, policy, key, scope, deadline, save)
         end = re.search(r"CAP END " + name + r" (\d+) (\d+) (\d+) (\d+)", log)
         if end:
             metrics.update(
-                dict(zip(("wallMs", "ticks", "peakJobs", "peakQueryBytes"), map(int, end.groups())))
+                dict(
+                    zip(
+                        ("wallMs", "ticks", "peakJobs", "peakQueryBytes"),
+                        map(int, end.groups()),
+                    )
+                )
             )
         phases[name] = metrics
     report["frameIntervals"] = {
-        name: dict(zip(("samples", "p95Ms", "p99Ms", "maxMs", "over75Ms"), map(int, m[1:])))
+        name: dict(
+            zip(("samples", "p95Ms", "p99Ms", "maxMs", "over75Ms"), map(int, m[1:]))
+        )
         for m in re.findall(r"CAP TICKS (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)", log)
-        for name in [("setup", "record32", "mixed16", "finish32_watch32", "shared32")[int(m[0])]]
+        for name in [
+            ("setup", "record32", "mixed16", "finish32_watch32", "shared32")[int(m[0])]
+        ]
     }
     report["hitches"] = [
         dict(zip(("stage", "endedAtMs", "intervalMs"), map(int, m)))
@@ -580,7 +647,8 @@ _request(query, policy, key, scope, deadline, save)
         hitch.update(synchronousCalls=len(calls), synchronousMs=sum(calls))
     report["phases"] = phases
     report["liveBinaryUnchanged"] = (
-        production_binary_hash == hashlib.sha256(production_binary.read_bytes()).hexdigest()
+        production_binary_hash
+        == hashlib.sha256(production_binary.read_bytes()).hexdigest()
     )
     complete = re.search(r"CAP COMPLETE (\d+) (\d+)", log)
     report["completed"] = bool(complete)
@@ -599,7 +667,9 @@ _request(query, policy, key, scope, deadline, save)
                 "phases": {
                     k: {
                         "wallMs": v.get("wallMs"),
-                        "progressP95": v.get("progress", {}).get("completionMs", {}).get("p95"),
+                        "progressP95": v.get("progress", {})
+                        .get("completionMs", {})
+                        .get("p95"),
                         "menuP95": v.get("menu", {}).get("completionMs", {}).get("p95"),
                         "demoLoadMs": v["demoLoadMs"],
                         "demoUploadMs": v["demoUploadMs"],
@@ -611,7 +681,9 @@ _request(query, policy, key, scope, deadline, save)
         flush=True,
     )
     assert report["verificationPassed"], "Capacity verification did not pass"
-    assert report["liveBinaryUnchanged"], "Production executable changed during isolated comparison"
+    assert report[
+        "liveBinaryUnchanged"
+    ], "Production executable changed during isolated comparison"
 finally:
     report["binaryUnchanged"] = (
         hashlib.sha256(binary.read_bytes()).hexdigest() == report["binarySha256"]
@@ -622,7 +694,9 @@ finally:
     )
     if started:
         p = run(["docker", "logs", engine])
-        (home / "console.log").write_text((p.stdout + p.stderr).replace(password, "<redacted>"))
+        (home / "console.log").write_text(
+            (p.stdout + p.stderr).replace(password, "<redacted>")
+        )
         (home / "console.log").chmod(0o600)
         p = run(["docker", "rm", "-f", engine])
         report["engineRemoved"] = p.returncode == 0
