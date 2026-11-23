@@ -1517,8 +1517,15 @@ rename(previousName, newName)
         activeSectionName = newName;
     }
     self openCJ\checkpointCreation::_close();
-    self openCJ\checkpointPublish::activate();
+    refreshed = self openCJ\checkpointPublish::activate();
     self openCJ\checkpointCreation::_start(activeSectionName);
+    if(!refreshed)
+    {
+        self sendLocalChatMessage(
+            "Rename saved, but gameplay refresh failed. Retry !cp finalize to refresh the routes.",
+            true);
+        return true;
+    }
     refreshRenamedRoute(previousName, newName);
     self sendLocalChatMessage(
         "Renamed " + previousName + " to " + newName +

@@ -1746,7 +1746,13 @@ finalize()
     {
         routeName = self.cpc.publishedLabel;
     }
-    self openCJ\checkpointPublish::activate();
+    if (!self openCJ\checkpointPublish::activate())
+    {
+        self.cpc.finalizing = undefined;
+        self.cpc.status = "Published, but gameplay refresh failed. Draft retained; retry !cp finalize.";
+        self sendLocalChatMessage(self.cpc.status, true);
+        return;
+    }
     // Run creation rejects active editors. Close this completed edit before requesting it;
     // normal scoring still waits for the new run ID and the gameplay spawn callback.
     self _close();

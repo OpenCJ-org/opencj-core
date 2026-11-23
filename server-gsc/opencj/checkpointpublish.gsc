@@ -99,7 +99,10 @@ validationError(rows)
 // Refresh the graph without invalidating other players' checkpoint references.
 activate()
 {
-    openCJ\checkpoints::onInit();
+    if (!openCJ\checkpoints::onInit())
+    {
+        return false;
+    }
     level thread openCJ\mapRoutes::refresh();
     self openCJ\challenges::onRoutesPublished();
     players = getEntArray("player", "classname");
@@ -128,6 +131,7 @@ activate()
             player openCJ\checkpointPointers::onCheckpointsChanged();
         }
     }
+    return true;
 }
 
 _writeRoute()
@@ -482,22 +486,32 @@ _fail(message)
 // Older installations may lack area/section tables; their ordinary checkpoints still work.
 loadAreas()
 {
-    level.checkpointRoutes = [];
     if (getCodVersion() != 4)
     {
-        return;
+        level.checkpointRoutes = [];
+        return true;
     }
     areaTables = openCJ\mySQL::mysqlSyncQuery("SHOW TABLES LIKE 'checkpointAreas'");
-    if (!isDefined(areaTables) || areaTables.size == 0)
+    if (!isDefined(areaTables))
     {
-        return;
+        return false;
     }
-    loadRouteColors();
+    if (areaTables.size == 0)
+    {
+        level.checkpointRoutes = [];
+        return true;
+    }
+    routeColors = loadRouteColors();
+    if (!isDefined(routeColors))
+    {
+        return false;
+    }
     areaRows = readAreaMetadata(openCJ\mapID::getMapID());
     if (!isDefined(areaRows))
     {
-        return;
+        return false;
     }
+    level.checkpointRoutes = routeColors;
     for (i = 0; i < areaRows.size; i++)
     {
         checkpointId = int(areaRows[i][0]);
@@ -534,14 +548,20 @@ loadAreas()
             checkpoint.routeInfo = sectionInfo;
         }
     }
+    return true;
 }
 
 loadRouteColors()
 {
     colorColumns = openCJ\mySQL::mysqlSyncQuery("SHOW COLUMNS FROM routes LIKE 'colorRGB'");
-    if (!isDefined(colorColumns) || colorColumns.size == 0)
+    if (!isDefined(colorColumns))
     {
-        return;
+        return undefined;
+    }
+    routeColors = [];
+    if (colorColumns.size == 0)
+    {
+        return routeColors;
     }
     routeRows = openCJ\mySQL::mysqlSyncQuery(
         "SELECT r.cpID,r.routeName,CONCAT('#',LPAD(HEX(r.colorRGB),6,'0')) " +
@@ -549,7 +569,7 @@ loadRouteColors()
         "WHERE c.mapID=" + openCJ\mapID::getMapID() + " AND r.colorRGB IS NOT NULL");
     if (!isDefined(routeRows))
     {
-        return;
+        return undefined;
     }
     for (i = 0; i < routeRows.size; i++)
     {
@@ -558,18 +578,23 @@ loadRouteColors()
         routeInfo.name = routeRows[i][1];
         routeInfo.hex = toLower(routeRows[i][2]);
         routeInfo.color = openCJ\checkpointCreation::routeRGB(routeInfo.hex);
-        level.checkpointRoutes[routeInfo.name] = routeInfo;
+        routeColors[routeInfo.name] = routeInfo;
     }
+    return routeColors;
 }
 
 readAreaMetadata(mapID)
 {
     sectionColumns = openCJ\mySQL::mysqlSyncQuery(
         "SHOW COLUMNS FROM checkpointAreas LIKE 'sectionName'");
+    if (!isDefined(sectionColumns))
+    {
+        return undefined;
+    }
     query =
         "SELECT cpID,vertices,allowDoubleRPG,draftName,NULL,platformRef,heightAbove " +
         "FROM checkpointAreas WHERE mapID=" + mapID;
-    if (isDefined(sectionColumns) && sectionColumns.size)
+    if (sectionColumns.size)
     {
         query =
             "SELECT a.cpID,a.vertices,a.allowDoubleRPG,a.draftName," +

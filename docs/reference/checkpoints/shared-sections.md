@@ -67,6 +67,12 @@ renames an internal section, the outcome may remain unknown: both draft copies
 and the alternating manifests are retained. Check the published names before
 retrying; an error reply alone does not prove that the database rename failed.
 
+A committed rename also stays saved if the following gameplay refresh fails.
+The editor reopens under the saved name and reports that refresh still needs a
+retry. The previous playable graph remains active; after database access recovers,
+use `!cp finalize` to publish and refresh the complete network. This does not
+roll back the rename or discard its recovery snapshots.
+
 Complete every branch, mark its finish, then use `!cp finalize` to publish the
 network in one database transaction. A shared finish is supported. Finalization
 may reuse an identical recorded route but rejects unsupported changes to

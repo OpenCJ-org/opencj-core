@@ -150,6 +150,13 @@ Supported changes are one checkpoint's geometry/alternatives, or insertion/delet
 of up to three consecutive ordinary checkpoints. Reorders, multiple independent
 edits, changed requirements, and shared route connections are refused; the draft remains.
 
+Publication and gameplay refresh have separate outcomes. If publication commits
+but a database read fails during refresh, the current playable graph stays active
+and the editor retains the draft. Its message confirms that publication succeeded;
+retry `!cp finalize` after the database is available. Repeating an unchanged
+publication retains the published checkpoint IDs. A successful refresh closes the
+editor and starts a fresh run.
+
 Unchanged checkpoints keep their IDs. Removed IDs and historical statistics remain
 stored with the checkpoint marked retired. Before migration the old geometry is
 saved beside the draft as `.before-migration-<time>.b`. The layout replacement and

@@ -126,6 +126,7 @@ def main():
         )
         if options.fixture.name == "checkpoint-publication.gsc":
             install_commit_observer(fixture.home, "checkpointpublish.gsc")
+            install_commit_observer(fixture.home, "checkpoints.gsc")
             install_finalization_observers(fixture.home)
         elif options.fixture.name == "checkpoint-network.gsc":
             install_commit_observer(fixture.home, "checkpointnetwork.gsc")

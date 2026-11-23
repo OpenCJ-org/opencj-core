@@ -236,10 +236,15 @@ route and player rows are synthetic. The test checks repeated publication,
 alternative connections, checkpoint ID and historical-statistics preservation,
 rejected requirement/color edits, bounded recovery-name lookup, retirement, and
 rollback after a partial write.
-Finalization checks keep publication, editor closure and run-creation SQL real,
-while observing graph refresh and gameplay presentation callbacks. They verify
-that rejected publication retains the editor and successful publication creates
-a fresh run; they do not exercise the player's actual spawn or HUD rendering.
+Graph loading uses the real database, with fixture-only hooks rejecting each of
+its checkpoint and metadata queries in turn. Checks cover retaining the previous
+graph and layout epoch, an empty first-load result, and recovery after reads resume.
+Finalization checks keep publication, editor closure and run-creation SQL real.
+They verify that rejected publication retains the editor, a failed refresh after
+commit retains the published rows and allows retry, and successful finalization
+creates a fresh run. Normal graph-refresh and gameplay presentation callbacks
+are observed; the failed-refresh case enters the real loader. These checks do not
+exercise the player's actual spawn or HUD rendering.
 The engine account is restricted to that fixture schema. The runner deletes its
 schema, account and temporary credential file on exit; logs and draft snapshots
 remain under ignored `dev-tools/local/`. Both publication fixtures simulate a lost
@@ -260,6 +265,8 @@ section files and SQL. Fixture-only hooks observe editor reopening, navigation
 and graph-refresh calls; they do not replace the persistence or command logic.
 The file-open hook simulates failed approach/manifest writes and checks that the
 pending edit remains recoverable. Rename checks distinguish a committed change,
-a rollback and an unresolved reply while retaining recovery drafts. These are
+a rollback and an unresolved reply while retaining recovery drafts. A rejected
+graph-refresh callback verifies that a committed rename stays saved without
+relabeling the still-active graph. These are
 simulated failures at those boundaries, not operating-system disk faults.
 It uses the same owned schema/account and isolated file tree.

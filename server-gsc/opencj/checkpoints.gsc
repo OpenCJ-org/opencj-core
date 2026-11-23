@@ -86,11 +86,7 @@ onRunStarted()
 
 onInit()
 {
-    if(!isDefined(level.checkpointLayoutEpoch))
-    {
-        level.checkpointLayoutEpoch = 0;
-    }
-    level.checkpointLayoutEpoch++;
+    previousGraph = captureCheckpointGraph();
     level.checkpoints_startCheckpoint = spawnStruct();
     level.checkpoints_startCheckpoint.isEleAllowed = false;
     level.checkpoints_startCheckpoint.childs = [];
@@ -110,6 +106,12 @@ onInit()
             rows = openCJ\mySQL::mysqlSyncQuery(
                 "SELECT a.cpID, a.x, a.y, a.z, a.radius, a.onGround, GROUP_CONCAT(b.childCpID), a.ender, a.elevate, a.endShaderColor, c.bigBrotherID, a.allowSave, NULL FROM checkpoints a LEFT JOIN checkpointConnections b ON a.cpID = b.cpID LEFT JOIN checkpointBrothers c ON a.cpID = c.cpID WHERE a.retired=0 AND a.mapID = " +
                 openCJ\mapid::getMapID() + " GROUP BY a.cpID");
+        }
+
+        if(!isDefined(rows))
+        {
+            restoreCheckpointGraph(previousGraph);
+            return false;
         }
 
         // First we obtain all checkpoints for the current map from the database
@@ -214,7 +216,11 @@ onInit()
         level.checkpoints_startCheckpoint.checkpointsFromStart = 0;
 
         level.checkpoints_checkpoints = checkpoints;
-        openCJ\checkpointPublish::loadAreas();
+        if(!openCJ\checkpointPublish::loadAreas())
+        {
+            restoreCheckpointGraph(previousGraph);
+            return false;
+        }
         linkContactAreas(checkpoints);
 
         // Now it's time to figure out the route that each checkpoint is part of.
@@ -316,6 +322,47 @@ onInit()
         // as store all routes it encounters into level.routeEnders
         _parseRoutesAndFixUnnamedRoutes();
     }
+    if(!isDefined(level.checkpointLayoutEpoch))
+    {
+        level.checkpointLayoutEpoch = 0;
+    }
+    level.checkpointLayoutEpoch++;
+    return true;
+}
+
+// Keep graph objects alive until all synchronous data reads have succeeded.
+// No waits occur while onInit replaces them, so a rejected refresh can restore them together.
+captureCheckpointGraph()
+{
+    previousGraph = spawnStruct();
+    previousGraph.start = level.checkpoints_startCheckpoint;
+    previousGraph.checkpoints = level.checkpoints_checkpoints;
+    previousGraph.routes = level.checkpointRoutes;
+    previousGraph.routeEnders = level.routeEnders;
+    return previousGraph;
+}
+
+restoreCheckpointGraph(previousGraph)
+{
+    if(isDefined(previousGraph.start))
+    {
+        level.checkpoints_startCheckpoint = previousGraph.start;
+        level.checkpoints_checkpoints = previousGraph.checkpoints;
+        level.checkpointRoutes = previousGraph.routes;
+        level.routeEnders = previousGraph.routeEnders;
+        return;
+    }
+
+    // Startup has no earlier graph to recover; leave an explicit empty graph.
+    level.checkpoints_startCheckpoint = spawnStruct();
+    level.checkpoints_startCheckpoint.isEleAllowed = false;
+    level.checkpoints_startCheckpoint.childs = [];
+    level.checkpoints_startCheckpoint.checkpointsFromStart = 0;
+    level.checkpoints_startCheckpoint.checkpointsTillEnd = 0;
+    level.checkpoints_startCheckpoint.endCheckpoints = [];
+    level.checkpoints_checkpoints = [];
+    level.checkpointRoutes = [];
+    level.routeEnders = [];
 }
 
 _parseRoutesAndFixUnnamedRoutes()

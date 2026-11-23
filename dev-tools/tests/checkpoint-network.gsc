@@ -356,8 +356,15 @@ checkRouteRename(editor)
         return;
     }
     routeId = int(routeRows[0][0]);
-    check(editor openCJ\checkpointNetwork::rename("edit_hard", "edit_steep"),
-          "rename updates network files and database together");
+    editor.route = "edit_hard";
+    level.rejectNetworkActivation = true;
+    level.networkActivationObserved = false;
+    renamed = editor openCJ\checkpointNetwork::rename("edit_hard", "edit_steep");
+    level.rejectNetworkActivation = false;
+    check(renamed, "committed rename remains successful when gameplay refresh fails");
+    check(level.networkActivationObserved && editor.route == "edit_hard",
+          "failed rename refresh leaves player route caches on their current graph");
+    editor.route = undefined;
     network = editor openCJ\checkpointNetwork::load();
     check(isDefined(network.paths["edit_steep"]) && !isDefined(network.paths["edit_hard"]),
           "renamed route is the active manifest entry");
@@ -390,6 +397,11 @@ openEditor(routeName)
 recordActivation()
 {
     level.networkActivationObserved = true;
+    if (isDefined(level.rejectNetworkActivation) && level.rejectNetworkActivation)
+    {
+        return false;
+    }
+    return true;
 }
 
 // Reconcile the stable route ID before changing recovery manifests after a missing COMMIT reply.

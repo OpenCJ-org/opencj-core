@@ -18,6 +18,7 @@ main()
     checkUnusedRouteReplacement(editor);
     checkSharedBranches(editor);
     checkLoadedMetadata();
+    checkGraphReload();
     checkLostCommitReply(editor);
     checkFinalizationRun(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
@@ -349,6 +350,11 @@ checkLostCommitReply(editor)
 
 publicationQuery(query)
 {
+    if (isDefined(level.rejectedGraphQueryFragment) &&
+        isSubStr(query, level.rejectedGraphQueryFragment))
+    {
+        return undefined;
+    }
     result = openCJ\mySQL::mysqlSyncQuery(query);
     if(query == "COMMIT" && isDefined(level.hidePublicationCommitReply) &&
        level.hidePublicationCommitReply)
@@ -380,6 +386,18 @@ checkFinalizationRun(editor)
     check(!editor openCJ\playerRuns::hasRunID() && level.finalizeActivations == 0,
           "rejected publication does not start gameplay or refresh the graph");
     editor.cpc.routeHex = "#123456";
+    level.forwardGraphActivation = true;
+    level.rejectedGraphQueryFragment = "GROUP_CONCAT";
+    editor openCJ\checkpointCreation::finalize();
+    level.rejectedGraphQueryFragment = undefined;
+    level.forwardGraphActivation = false;
+    check(isDefined(editor.cpc) && !isDefined(editor.cpc.finalizing),
+          "failed gameplay refresh retains the published draft for retry");
+    check(!editor openCJ\playerRuns::hasRunID() && isSubStr(editor.cpc.status, "Published"),
+          "failed refresh reports committed publication without starting a run");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='finalize_route'", 4,
+                "failed gameplay refresh does not undo committed publication");
+    level.finalizeActivations = 0;
     editor openCJ\checkpointCreation::finalize();
     check(!isDefined(editor.cpc), "successful finalization closes the editor");
     check(!isDefined(checkpointHud) && !isDefined(actionsHud) && !isDefined(routeHud),
@@ -405,6 +423,11 @@ checkFinalizationRun(editor)
 recordActivation()
 {
     level.finalizeActivations++;
+    if (isDefined(level.forwardGraphActivation) && level.forwardGraphActivation)
+    {
+        return self openCJ\checkpointPublish::activate();
+    }
+    return true;
 }
 
 recordHudRefresh()
@@ -418,4 +441,55 @@ recordPointerRefresh()
 recordRunCreated()
 {
     level.finalizeRunCreated++;
+}
+
+// A failed refresh must not replace the currently playable graph with incomplete state.
+checkGraphReload()
+{
+    openCJ\checkpoints::onInit();
+    check(level.checkpoints_checkpoints.size > 0, "real graph loader connects published checkpoints");
+    previousStart = level.checkpoints_startCheckpoint;
+    previousCheckpoint = level.checkpoints_checkpoints[0];
+    previousRoute = level.checkpointRoutes["fixture_route"];
+    previousRouteEnder = level.routeEnders["fixture_route"][0];
+    previousEpoch = level.checkpointLayoutEpoch;
+    failedQueries = [];
+    failedQueries[0] = "GROUP_CONCAT";
+    failedQueries[1] = "SHOW TABLES LIKE 'checkpointAreas'";
+    failedQueries[2] = "SHOW COLUMNS FROM routes LIKE 'colorRGB'";
+    failedQueries[3] = "FROM routes r JOIN checkpoints c";
+    failedQueries[4] = "SHOW COLUMNS FROM checkpointAreas LIKE 'sectionName'";
+    failedQueries[5] = "LEFT JOIN checkpointSectionColors";
+    for (i = 0; i < failedQueries.size; i++)
+    {
+        level.rejectedGraphQueryFragment = failedQueries[i];
+        reloaded = openCJ\checkpoints::onInit();
+        level.rejectedGraphQueryFragment = undefined;
+        check(!reloaded, "unavailable graph query rejects refresh: " + failedQueries[i]);
+        check(level.checkpoints_startCheckpoint == previousStart &&
+              level.checkpoints_checkpoints[0] == previousCheckpoint,
+              "failed query preserves current graph objects: " + failedQueries[i]);
+        check(level.checkpointRoutes["fixture_route"] == previousRoute &&
+              level.routeEnders["fixture_route"][0] == previousRouteEnder,
+              "failed query preserves route metadata: " + failedQueries[i]);
+        check(level.checkpointLayoutEpoch == previousEpoch,
+              "failed query keeps the current layout epoch: " + failedQueries[i]);
+    }
+
+    // Simulate the first map load, where there is no earlier playable graph.
+    level.checkpoints_startCheckpoint = undefined;
+    level.checkpoints_checkpoints = [];
+    level.checkpointRoutes = [];
+    level.routeEnders = [];
+    level.checkpointLayoutEpoch = undefined;
+    level.rejectedGraphQueryFragment = "GROUP_CONCAT";
+    reloaded = openCJ\checkpoints::onInit();
+    level.rejectedGraphQueryFragment = undefined;
+    check(!reloaded && isDefined(level.checkpoints_startCheckpoint),
+          "failed initial load leaves an explicit empty start checkpoint");
+    check(level.checkpoints_startCheckpoint.childs.size == 0 &&
+          level.checkpoints_checkpoints.size == 0 && !isDefined(level.checkpointLayoutEpoch),
+          "failed initial load has no partial graph or successful-layout epoch");
+    check(openCJ\checkpoints::onInit() && level.checkpoints_checkpoints.size > 0,
+          "initial load can recover after the database becomes available");
 }
