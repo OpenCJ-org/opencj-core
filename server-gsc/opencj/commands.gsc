@@ -286,51 +286,78 @@ cancelRestoreLookup()
 
 // Useful commands for debugging maps
 
+// Validate the selected entity before marking the run assisted and moving the player.
 _onCmdEntTele(args)
 {
     if (self.sessionState != "playing")
     {
         return;
     }
-
-    if (isDefined(args) && (args.size >= 1))
+    if (!isDefined(args) || args.size == 0)
     {
-        entArray = getEntArray(args[0], "targetname");
-        sendError = false;
-        if (isDefined(entArray) && (entArray.size > 0))
-        {
-            idx = 0;
-            if (args.size > 1)
-            {
-                idx = int(args[1]);
-            }
-
-            if (entArray.size > idx)
-            {
-                self openCJ\mapBoost::cancel();
-                self setOrigin(entArray[idx].origin);
-                self openCJ\cheating::setCheating(true);
-                self sendLocalChatMessage("Teleported you to entity: " + args[0] + "[" + idx + "]");
-            }
-            else
-            {
-                self sendLocalChatMessage("Index of " + args[0] + " only goes to " + (entArray.size - 1), true);
-            }
-        }
-        else
-        {
-            self sendLocalChatMessage("Entity not found", true);
-        }
+        return;
     }
+    targetName = args[0];
+    entities = getEntArray(targetName, "targetname");
+    if (!isDefined(entities) || entities.size == 0)
+    {
+        self sendLocalChatMessage("Entity not found", true);
+        return;
+    }
+    entityIndex = 0;
+    if (args.size > 1)
+    {
+        entityIndex = _parseTeleportInteger(args[1]);
+    }
+    if (!isDefined(entityIndex) || entityIndex < 0 || entityIndex >= entities.size)
+    {
+        self sendLocalChatMessage("Use an entity index from 0 to " + (entities.size - 1), true);
+        return;
+    }
+
+    self openCJ\cheating::setCheating(true);
+    self openCJ\mapBoost::cancel();
+    self setOrigin(entities[entityIndex].origin);
+    self sendLocalChatMessage("Teleported you to entity: " + targetName + "[" + entityIndex + "]");
 }
 
 _onCmdSetOrigin(args)
 {
-    if (self.sessionState == "playing")
+    if (self.sessionState != "playing")
     {
-        self openCJ\mapBoost::cancel();
-        self setOrigin((int(args[0]), int(args[1]), int(args[2])));
+        return;
     }
+    // Command registration requires exactly three coordinate arguments.
+    coordinates = [];
+    for (i = 0; i < args.size; i++)
+    {
+        coordinates[i] = _parseTeleportInteger(args[i]);
+        if (!isDefined(coordinates[i]))
+        {
+            self sendLocalChatMessage("Use integer coordinates, for example: !setorigin -10 20 30", true);
+            return;
+        }
+    }
+
+    // Administrative movement must not leave an ordinary competitive run eligible to continue.
+    self openCJ\cheating::setCheating(true);
+    self openCJ\mapBoost::cancel();
+    self setOrigin((coordinates[0], coordinates[1], coordinates[2]));
+}
+
+// Require canonical signed decimal input: the legacy native validator also accepts numeric prefixes.
+_parseTeleportInteger(text)
+{
+    if (!isValidInt(text))
+    {
+        return undefined;
+    }
+    value = int(text);
+    if ("" + value != text)
+    {
+        return undefined;
+    }
+    return value;
 }
 
 _onCmdTeleSave(args)

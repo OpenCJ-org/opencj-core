@@ -28,6 +28,7 @@ main()
     checkPermissionChanges(player);
     checkHelpPages(player);
     checkExactAliasSelection(player);
+    checkTeleportInputs(player);
     checkChatNotifications(player);
     finish();
 }
@@ -293,4 +294,59 @@ finish()
 {
     printf("COMMAND TEST COMPLETE failures=" + level.commandFailures +
            " checks=" + level.commandChecks + "\n");
+}
+
+// Invalid debug input must preserve position and competitive state; valid movement marks assistance.
+checkTeleportInputs(player)
+{
+    previousOrigin = player getOrigin();
+    previousSessionState = player.sessionState;
+    player.sessionState = "playing";
+    player.cheating = false;
+    player.playerRuns_runID = undefined;
+
+    coordinates = [];
+    coordinates[0] = "12junk";
+    coordinates[1] = "20";
+    coordinates[2] = "30";
+    player openCJ\commands::_onCmdSetOrigin(coordinates);
+    check(player getOrigin() == previousOrigin && !player.cheating,
+          "invalid coordinate preserves position and competitive state");
+    coordinates[0] = "2147483648";
+    player openCJ\commands::_onCmdSetOrigin(coordinates);
+    check(player getOrigin() == previousOrigin && !player.cheating,
+          "overflowing coordinate cannot move the player");
+    // CoD4 PlayerCmd_setOrigin raises the supplied Z by one unit.
+    teleportLift = (0, 0, 1);
+    expectedPosition = (-10, 20, 30) + teleportLift;
+    coordinates[0] = "-10";
+    player openCJ\commands::_onCmdSetOrigin(coordinates);
+    check(player getOrigin() == expectedPosition && player.cheating,
+          "valid signed coordinates move the player and mark assistance");
+
+    target = spawn("script_origin", (30, 40, 50));
+    target.targetname = "command_test_target";
+    entityArgs = [];
+    entityArgs[0] = target.targetname;
+    invalidIndices = [];
+    invalidIndices[0] = "-1";
+    invalidIndices[1] = "1";
+    invalidIndices[2] = "junk";
+    invalidIndices[3] = "4294967296";
+    for (i = 0; i < invalidIndices.size; i++)
+    {
+        player.cheating = false;
+        entityArgs[1] = invalidIndices[i];
+        player openCJ\commands::_onCmdEntTele(entityArgs);
+        check(player getOrigin() == expectedPosition && !player.cheating,
+              "invalid entity index preserves position and state: " + invalidIndices[i]);
+    }
+    entityArgs[1] = "0";
+    player openCJ\commands::_onCmdEntTele(entityArgs);
+    check(player getOrigin() == target.origin + teleportLift && player.cheating,
+          "valid entity index moves the player and marks assistance");
+    target delete();
+    player setOrigin(previousOrigin - teleportLift);
+    player.sessionState = previousSessionState;
+    player.cheating = false;
 }

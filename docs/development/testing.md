@@ -310,6 +310,11 @@ IWD and the [artwork procedure](../../client-mod/assets/map-previews/README.md).
 The command-menu runner exercises registration, alias ranking, live permissions,
 list/detail pages and real menu/search notifications with a synthetic client.
 It initializes SQL cancellation constants without connecting to a database.
-Its empty-chat check covers dispatch before command-token indexing. The fixture
+Its empty-chat check covers dispatch before command-token indexing. Debug teleport
+cases exercise real handlers: malformed and overflowing coordinates and invalid
+entity indices preserve state, while valid movement marks the run assisted.
+These commands require ordinary signed decimal integers, without leading zeros
+or a plus sign; this rejects numeric prefixes and overflow before conversion is
+used for movement. The fixture
 uses the shared runner's engine/source selection, bounded wait and owned-container
 cleanup; it does not inspect the client's rendered menu.
