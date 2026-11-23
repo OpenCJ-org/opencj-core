@@ -1844,40 +1844,78 @@ void Gsc_Demo_MarkFailedSince()
 
 // Idle means grounded with an unchanged position AND view. Do not remove
 // aiming, stance changes, reloads, RPG shots, or transitions across a load.
-static bool demoIdleTogether(const sDemoFrame_t &a, const sDemoFrame_t &b)
+static bool demoIdleTogether(const sDemoFrame_t &firstFrame, const sDemoFrame_t &secondFrame)
 {
-    if (!(a.flags & DEMO_GROUNDED) || a.flags != b.flags || (a.flags & DEMO_ACTIVE_INPUT_MASK) ||
-        a.checkpointId != b.checkpointId || a.loadNow || b.loadNow || a.saveNow || b.saveNow ||
-        a.rpgNow || b.rpgNow)
+    if (!(firstFrame.flags & DEMO_GROUNDED) || firstFrame.flags != secondFrame.flags || (firstFrame.flags & DEMO_ACTIVE_INPUT_MASK) ||
+        firstFrame.checkpointId != secondFrame.checkpointId || firstFrame.loadNow || secondFrame.loadNow || firstFrame.saveNow || secondFrame.saveNow ||
+        firstFrame.rpgNow || secondFrame.rpgNow)
     {
         return false;
     }
     for (int axis = 0; axis < 3; ++axis)
     {
-        if (fabs(a.origin[axis] - b.origin[axis]) > 0.01f ||
-            fabs(std::remainder(a.angles[axis] - b.angles[axis], 360.0f)) > 0.01f)
+        if (fabs(firstFrame.origin[axis] - secondFrame.origin[axis]) > 0.01f ||
+            fabs(std::remainder(firstFrame.angles[axis] - secondFrame.angles[axis], 360.0f)) > 0.01f)
         {
             return false;
         }
     }
-    const auto &x = a.visual;
-    const auto &y = b.visual;
-    if (x.valid != y.valid)
+    const auto &firstVisual = firstFrame.visual;
+    const auto &secondVisual = secondFrame.visual;
+    if (firstVisual.valid != secondVisual.valid)
     {
         return false;
     }
-    if (x.valid &&
-        (x.weapon != y.weapon || x.weaponState || y.weaponState || x.weaponTime || y.weaponTime ||
-         x.weaponDelay || y.weaponDelay || x.landingEvent || y.landingEvent ||
-         fabs(x.ads - y.ads) > 0.001f || fabs(x.viewHeight - y.viewHeight) > 0.01f))
+    if (firstVisual.valid &&
+        (firstVisual.weapon != secondVisual.weapon || firstVisual.weaponState || secondVisual.weaponState || firstVisual.weaponTime || secondVisual.weaponTime ||
+         firstVisual.weaponDelay || secondVisual.weaponDelay || firstVisual.landingEvent || secondVisual.landingEvent ||
+         fabs(firstVisual.ads - secondVisual.ads) > 0.001f || fabs(firstVisual.viewHeight - secondVisual.viewHeight) > 0.01f))
     {
         return false;
     }
     return true;
 }
 
-// 0: complete speedrun/leaderboard; 1: successful low-RPG path;
-// 2: successful walkthrough. Preserve positioning and shorten only true idle pauses.
+enum DemoPlaybackStyle
+{
+    DEMO_COMPLETE_RUN = 0,
+    DEMO_SUCCESSFUL_PATH = 1,
+    DEMO_WALKTHROUGH = 2
+};
+constexpr size_t DEMO_IDLE_PAUSE_FRAMES = 20;
+constexpr size_t DEMO_IDLE_EDGE_FRAMES = 2;
+
+// Shorten true idle pauses while retaining both ends and explicit trim boundaries.
+static void shortenDemoIdlePauses(const sDemo_t &demo, int begin, int end,
+                                  std::vector<int> &timeline)
+{
+    // 20 Hz capture: shorten pauses of at least a second to 0.2 seconds.
+    // Keep both ends so movement starts/ends at its original recorded pose.
+    size_t retainedCount = 0;
+    for (size_t pauseBegin = 0; pauseBegin < timeline.size();)
+    {
+        size_t pauseEnd = pauseBegin + 1;
+        while (pauseEnd < timeline.size() && timeline[pauseEnd] == timeline[pauseEnd - 1] + 1 &&
+               timeline[pauseEnd] != begin && timeline[pauseEnd - 1] != end &&
+               demoIdleTogether(demo.pDemoFrames[timeline[pauseBegin]],
+                                demo.pDemoFrames[timeline[pauseEnd]]))
+        {
+            ++pauseEnd;
+        }
+        for (size_t i = pauseBegin; i < pauseEnd; ++i)
+        {
+            if (pauseEnd - pauseBegin < DEMO_IDLE_PAUSE_FRAMES ||
+                i < pauseBegin + DEMO_IDLE_EDGE_FRAMES || i >= pauseEnd - DEMO_IDLE_EDGE_FRAMES)
+            {
+                timeline[retainedCount++] = timeline[i];
+            }
+        }
+        pauseBegin = pauseEnd;
+    }
+    timeline.resize(retainedCount);
+}
+
+// Build a viewer-owned edit list over shared immutable frame indices.
 void Gsc_Demo_PlaybackStyle(int client)
 {
     if (rejectInvalidDemoClient(client))
@@ -1892,12 +1930,13 @@ void Gsc_Demo_PlaybackStyle(int client)
         return;
     }
     const sDemo_t *demo = opencj_playback[client].pDemo;
-    if (!demo || style < 0 || style > 2 || begin < 0 || end >= demo->size || begin > end)
+    if (!demo || style < DEMO_COMPLETE_RUN || style > DEMO_WALKTHROUGH || begin < 0 ||
+        end >= demo->size || begin > end)
     {
         stackPushUndefined();
         return;
     }
-    if (style == 0)
+    if (style == DEMO_COMPLETE_RUN)
     {
         std::vector<int>().swap(demoPlaybackTimeline[client]);
         opencj_playback[client].selectedFrame = begin;
@@ -1916,41 +1955,19 @@ void Gsc_Demo_PlaybackStyle(int client)
             timeline.push_back(i);
         }
     }
-    if (style == 2)
+    if (style == DEMO_WALKTHROUGH)
     {
-        // 20 Hz capture: shorten pauses of at least a second to 0.2 seconds.
-        // Keep both ends so movement starts/ends at its original recorded pose.
-        size_t write = 0;
-        for (size_t first = 0; first < timeline.size();)
-        {
-            size_t last = first + 1;
-            while (last < timeline.size() && timeline[last] == timeline[last - 1] + 1 &&
-                   timeline[last] != begin && timeline[last - 1] != end &&
-                   demoIdleTogether(demo->pDemoFrames[timeline[first]],
-                                    demo->pDemoFrames[timeline[last]]))
-            {
-                ++last;
-            }
-            for (size_t i = first; i < last; ++i)
-            {
-                if (last - first < 20 || i < first + 2 || i >= last - 2)
-                {
-                    timeline[write++] = timeline[i];
-                }
-            }
-            first = last;
-        }
-        timeline.resize(write);
+        shortenDemoIdlePauses(*demo, begin, end, timeline);
     }
-    auto a = std::lower_bound(timeline.begin(), timeline.end(), begin);
-    auto b = std::upper_bound(timeline.begin(), timeline.end(), end);
-    if (a == b)
+    auto rangeBegin = std::lower_bound(timeline.begin(), timeline.end(), begin);
+    auto rangeEnd = std::upper_bound(timeline.begin(), timeline.end(), end);
+    if (rangeBegin == rangeEnd)
     {
         stackPushUndefined();
         return;
     }
-    const int firstFrame = *a;
-    const int lastFrame = *(b - 1);
+    const int firstFrame = *rangeBegin;
+    const int lastFrame = *(rangeEnd - 1);
     // Publish only after the requested range contains playable frames.
     demoPlaybackTimeline[client].swap(timeline);
     opencj_playback[client].selectedFrame = firstFrame;
@@ -1986,13 +2003,13 @@ void Gsc_Demo_PlaybackTime(int client)
         stackPushArrayNext();
         return;
     }
-    auto a = std::lower_bound(timeline.begin(), timeline.end(), begin);
-    auto b = std::upper_bound(timeline.begin(), timeline.end(), end);
-    auto c = std::lower_bound(a, b, frame);
+    auto rangeBegin = std::lower_bound(timeline.begin(), timeline.end(), begin);
+    auto rangeEnd = std::upper_bound(timeline.begin(), timeline.end(), end);
+    auto selectedPosition = std::lower_bound(rangeBegin, rangeEnd, frame);
     stackMakeArray();
-    stackPushInt(int(c - a));
+    stackPushInt(int(selectedPosition - rangeBegin));
     stackPushArrayNext();
-    stackPushInt(std::max(0, int(b - a) - 1));
+    stackPushInt(std::max(0, int(rangeEnd - rangeBegin) - 1));
     stackPushArrayNext();
 }
 
@@ -2027,213 +2044,238 @@ void Gsc_Demo_Truncate()
     stackPushInt(count);
 }
 
+constexpr float DEMO_SETUP_RADIUS = 256;
+constexpr int DEMO_LANDING_TAIL_FRAMES = 10;
+
+struct DemoFrameRange
+{
+    int first = -1;
+    int last = -1;
+};
+
+static float demoOriginDistanceSquared(const sDemoFrame_t &frame, const float origin[3])
+{
+    float distanceSquared = 0;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        const float difference = frame.origin[axis] - origin[axis];
+        distanceSquared += difference * difference;
+    }
+    return distanceSquared;
+}
+
+// Include the checkpoint's departure and up to half a second of its landing.
+// A new load, takeoff, failed section or checkpoint stops that landing tail.
+static DemoFrameRange findCheckpointDemoRange(const sDemo_t &demo, int checkpointId,
+                                              bool skipFailures)
+{
+    DemoFrameRange range;
+    for (int index = 0; index < demo.size; ++index)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[index];
+        if (skipFailures && !frame.isKeyFrame)
+        {
+            continue;
+        }
+        if (frame.checkpointId == checkpointId)
+        {
+            if (range.first < 0)
+            {
+                range.first = index;
+            }
+            range.last = index;
+        }
+        else if (range.first >= 0)
+        {
+            range.last = index;
+            const int destinationCheckpoint = frame.checkpointId;
+            int groundedFrames = (frame.flags & DEMO_GROUNDED) ? 1 : 0;
+            for (int nextIndex = index + 1;
+                 groundedFrames > 0 && groundedFrames < DEMO_LANDING_TAIL_FRAMES &&
+                 nextIndex < demo.size;
+                 ++nextIndex)
+            {
+                const sDemoFrame_t &landingFrame = demo.pDemoFrames[nextIndex];
+                if ((skipFailures && !landingFrame.isKeyFrame) || landingFrame.loadNow ||
+                    landingFrame.checkpointId != destinationCheckpoint ||
+                    !(landingFrame.flags & DEMO_GROUNDED))
+                {
+                    break;
+                }
+                range.last = nextIndex;
+                ++groundedFrames;
+            }
+            break;
+        }
+    }
+    return range;
+}
+
+// Compare all grounded setup positions, not just checkpoint arrival. Large
+// platforms can span hundreds of units; airborne travel is not a setup match.
+static bool demoSetupIsNearby(const sDemo_t &demo, const DemoFrameRange &range, int checkpointId,
+                              const float origin[3], bool skipFailures)
+{
+    bool hasGroundedSetup = false;
+    for (int index = range.first; index <= range.last; ++index)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[index];
+        if (frame.checkpointId == checkpointId && (!skipFailures || frame.isKeyFrame) &&
+            (frame.flags & DEMO_GROUNDED))
+        {
+            hasGroundedSetup = true;
+        }
+    }
+    for (int index = range.first; index <= range.last; ++index)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[index];
+        if (frame.checkpointId != checkpointId || (skipFailures && !frame.isKeyFrame) ||
+            (hasGroundedSetup && !(frame.flags & DEMO_GROUNDED)))
+        {
+            continue;
+        }
+        if (demoOriginDistanceSquared(frame, origin) <= DEMO_SETUP_RADIUS * DEMO_SETUP_RADIUS)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Older recordings can be matched by position when checkpoint IDs are unavailable.
+static DemoFrameRange findNearestDemoRange(const sDemo_t &demo, const float origin[3],
+                                           bool skipFailures, bool requireNearby)
+{
+    DemoFrameRange range;
+    int segmentBegin = 0;
+    int groundedFrames = 0;
+    bool wasAirborne = false;
+    float nearestDistanceSquared = DEMO_SETUP_RADIUS * DEMO_SETUP_RADIUS;
+    float segmentDistanceSquared = nearestDistanceSquared;
+    for (int index = 0; index < demo.size; ++index)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[index];
+        if (skipFailures && !frame.isKeyFrame)
+        {
+            continue;
+        }
+        segmentDistanceSquared =
+            std::min(segmentDistanceSquared, demoOriginDistanceSquared(frame, origin));
+        if (frame.flags & DEMO_GROUNDED)
+        {
+            ++groundedFrames;
+        }
+        else
+        {
+            groundedFrames = 0;
+            wasAirborne = true;
+        }
+        if ((wasAirborne && groundedFrames >= DEMO_LANDING_TAIL_FRAMES) || index == demo.size - 1)
+        {
+            if (segmentDistanceSquared < nearestDistanceSquared)
+            {
+                range.first = segmentBegin;
+                range.last = index;
+                nearestDistanceSquared = segmentDistanceSquared;
+            }
+            segmentBegin = index;
+            groundedFrames = 0;
+            wasAirborne = false;
+            segmentDistanceSquared = DEMO_SETUP_RADIUS * DEMO_SETUP_RADIUS;
+        }
+    }
+    // Explicit legacy callers retain the whole-route fallback. Automatic
+    // location selection rejects a recording with no nearby passage.
+    if (range.first < 0 && !requireNearby)
+    {
+        range.first = 0;
+        range.last = demo.size - 1;
+    }
+    return range;
+}
+
 void Gsc_Demo_FindSegment()
 {
-    int id;
-    int cp;
-    int any;
+    int demoId;
+    int checkpointId;
+    int matchByPosition;
     vec3_t origin;
-    int args = Scr_GetNumParam();
-    if (args != 4 && args != 5 && args != 6)
+    const int argumentCount = Scr_GetNumParam();
+    if (argumentCount != 4 && argumentCount != 5 && argumentCount != 6)
     {
         stackPushUndefined();
         return;
     }
-    if (!Base_Gsc_GetValidDemoId(&id, args))
+    if (!Base_Gsc_GetValidDemoId(&demoId, argumentCount))
     {
         return;
     }
-    stackGetParamInt(1, &cp);
+    stackGetParamInt(1, &checkpointId);
     stackGetParamVector(2, origin);
-    stackGetParamInt(3, &any);
-    sDemo_t *demo = findDemoById(id);
+    stackGetParamInt(3, &matchByPosition);
+    const sDemo_t *demo = findDemoById(demoId);
     if (!demo || demo->size < 2)
     {
         stackPushUndefined();
         return;
     }
-    int skipFails = 0;
-    int strict = 0;
-    if (args > 4)
+    int skipFailures = 0;
+    int requireNearby = 0;
+    if (argumentCount > 4)
     {
-        stackGetParamInt(4, &skipFails);
+        stackGetParamInt(4, &skipFailures);
     }
-    if (args > 5)
+    if (argumentCount > 5)
     {
-        stackGetParamInt(5, &strict);
+        stackGetParamInt(5, &requireNearby);
     }
-    int first = -1;
-    int last = -1;
-    float nearest = 256.0f * 256.0f;
-    if (!any)
+
+    DemoFrameRange range;
+    if (matchByPosition)
     {
-        for (int i = 0; i < demo->size; ++i)
-        {
-            if (skipFails && !demo->pDemoFrames[i].isKeyFrame)
-            {
-                continue;
-            }
-            if (demo->pDemoFrames[i].checkpointId == cp)
-            {
-                if (first < 0)
-                {
-                    first = i;
-                }
-                last = i;
-            }
-            else if (first >= 0)
-            {
-                last = i;
-                // Show the landing for up to half a second, stopping before
-                // another takeoff, load, or checkpoint transition.
-                int destination = demo->pDemoFrames[i].checkpointId;
-                int grounded = (demo->pDemoFrames[i].flags & DEMO_GROUNDED) ? 1 : 0;
-                for (int j = i + 1; grounded > 0 && grounded < 10 && j < demo->size; ++j)
-                {
-                    const auto &frame = demo->pDemoFrames[j];
-                    if (!frame.isKeyFrame && skipFails)
-                    {
-                        break;
-                    }
-                    if (frame.loadNow || frame.checkpointId != destination || !(frame.flags & DEMO_GROUNDED))
-                    {
-                        break;
-                    }
-                    last = j;
-                    ++grounded;
-                }
-                break;
-            }
-        }
-        // Compare the viewer with the recorded setup across this checkpoint,
-        // not just its arrival frame (large platforms can span hundreds of units).
-        // Airborne travel toward the next platform is not a matching setup.
-        if (first >= 0)
-        {
-            bool nearby = false;
-            bool hasGround = false;
-            for (int i = first; i <= last; ++i)
-            {
-                if (demo->pDemoFrames[i].checkpointId == cp &&
-                    (!skipFails || demo->pDemoFrames[i].isKeyFrame) &&
-                    (demo->pDemoFrames[i].flags & DEMO_GROUNDED))
-                {
-                    hasGround = true;
-                }
-            }
-            for (int i = first; i <= last; ++i)
-            {
-                const auto &frame = demo->pDemoFrames[i];
-                if (frame.checkpointId != cp || (skipFails && !frame.isKeyFrame) ||
-                    (hasGround && !(frame.flags & DEMO_GROUNDED)))
-                {
-                    continue;
-                }
-                float d = 0;
-                for (int a = 0; a < 3; ++a)
-                {
-                    float x = frame.origin[a] - origin[a];
-                    d += x * x;
-                }
-                if (d <= nearest)
-                {
-                    nearby = true;
-                    break;
-                }
-            }
-            if (!nearby)
-            {
-                first = -1;
-            }
-        }
+        range = findNearestDemoRange(*demo, origin, skipFailures, requireNearby);
     }
     else
     {
-        int begin = 0;
-        int grounded = 0;
-        bool airborne = false;
-        float distance = nearest;
-        for (int i = 0; i < demo->size; ++i)
+        range = findCheckpointDemoRange(*demo, checkpointId, skipFailures);
+        if (range.first >= 0 &&
+            !demoSetupIsNearby(*demo, range, checkpointId, origin, skipFailures))
         {
-            const sDemoFrame_t &frame = demo->pDemoFrames[i];
-            if (skipFails && !frame.isKeyFrame)
-            {
-                continue;
-            }
-            float d = 0;
-            for (int a = 0; a < 3; ++a)
-            {
-                float x = frame.origin[a] - origin[a];
-                d += x * x;
-            }
-            if (d < distance)
-            {
-                distance = d;
-            }
-            if (frame.flags & DEMO_GROUNDED)
-            {
-                ++grounded;
-            }
-            else
-            {
-                grounded = 0;
-                airborne = true;
-            }
-            if ((airborne && grounded >= 10) || i == demo->size - 1)
-            {
-                if (distance < nearest)
-                {
-                    first = begin;
-                    last = i;
-                    nearest = distance;
-                }
-                begin = i;
-                grounded = 0;
-                airborne = false;
-                distance = 256.0f * 256.0f;
-            }
-        }
-        // Older explicit callers retain their whole-route fallback. Automatic
-        // location selection must reject a recording with no nearby passage.
-        if (first < 0 && !strict)
-        {
-            first = 0;
-            last = demo->size - 1;
+            range.first = -1;
         }
     }
-    if (first < 0 || last <= first)
+    if (range.first < 0 || range.last <= range.first)
     {
         stackPushUndefined();
         return;
     }
-    // Keep the original range fields; append local RPG usage and successful
-    // sample count so shared-route choices compare this jump, not whole runs.
-    int shots = 0;
-    int frames = 0;
-    for (int i = first; i <= last; ++i)
+
+    int shotCount = 0;
+    int frameCount = 0;
+    for (int index = range.first; index <= range.last; ++index)
     {
-        const auto &frame = demo->pDemoFrames[i];
-        if (skipFails && !frame.isKeyFrame)
+        const sDemoFrame_t &frame = demo->pDemoFrames[index];
+        if (skipFailures && !frame.isKeyFrame)
         {
             continue;
         }
-        ++frames;
+        ++frameCount;
         if (frame.rpgNow)
         {
-            ++shots;
+            ++shotCount;
         }
     }
+    // Preserve the script result order: range, local RPG usage, successful samples.
     stackMakeArray();
-    stackPushInt(first);
+    stackPushInt(range.first);
     stackPushArrayNext();
-    stackPushInt(last);
+    stackPushInt(range.last);
     stackPushArrayNext();
-    stackPushInt(shots);
+    stackPushInt(shotCount);
     stackPushArrayNext();
-    stackPushInt(frames);
+    stackPushInt(frameCount);
     stackPushArrayNext();
 }
-
 bool OpenCJ_Demo_IsPresentationActive(int client)
 {
 #ifdef COD4
@@ -3038,9 +3080,21 @@ void Gsc_Demo_CopyHistory()
     stackPushInt(id);
 }
 
-// [RPG shots, FPS category (-1=no airborne samples,0=125,1=mix,2=hax), elevation (-1=unknown,0=no,1=yes)]
-void Gsc_Demo_RangeInfo()
-{
+// [RPG shots, FPS category (-1=no airborne samples,0=125,1=mix,2=hax), elevation
+// (-1=unknown,0=no,1=yes)] These result values are shared with GSC clip filters and range labels.
+enum DemoFPSCategory {
+    DEMO_FPS_UNKNOWN = -1,
+    DEMO_FPS_125 = 0,
+    DEMO_FPS_MIXED = 1,
+    DEMO_FPS_OTHER = 2
+};
+enum DemoElevationStatus {
+    DEMO_ELEVATION_UNKNOWN = -1,
+    DEMO_ELEVATION_NONE = 0,
+    DEMO_ELEVATION_USED = 1
+};
+
+void Gsc_Demo_RangeInfo() {
     int id;
     int first;
     int last;
@@ -3053,60 +3107,61 @@ void Gsc_Demo_RangeInfo()
         stackPushUndefined();
         return;
     }
-    int shots = 0;
-    int fps = -1;
-    bool known = true;
-    bool ele = false;
+    int shotCount = 0;
+    int fpsCategory = DEMO_FPS_UNKNOWN;
+    bool elevationKnown = true;
+    bool elevationUsed = false;
     for (int i = first; i <= last; ++i) {
         const sDemoFrame_t &frame = demo->pDemoFrames[i];
-        shots += frame.rpgNow;
-        known = known && frame.eleKnown;
-        ele = ele || frame.eleUsed;
+        shotCount += frame.rpgNow;
+        elevationKnown = elevationKnown && frame.eleKnown;
+        elevationUsed = elevationUsed || frame.eleUsed;
         if (!(frame.flags & DEMO_GROUNDED)) {
             if (frame.fps != 125 && frame.fps != 250 && frame.fps != 333) {
-                fps = 2;
-            } else if (frame.fps != 125 && fps < 1) {
-                fps = 1;
-            } else if (fps < 0) {
-                fps = 0;
+                fpsCategory = DEMO_FPS_OTHER;
+            } else if (frame.fps != 125 && fpsCategory < DEMO_FPS_MIXED) {
+                fpsCategory = DEMO_FPS_MIXED;
+            } else if (fpsCategory < DEMO_FPS_125) {
+                fpsCategory = DEMO_FPS_125;
             }
         }
     }
+    int elevationStatus = DEMO_ELEVATION_UNKNOWN;
+    if (elevationUsed) {
+        elevationStatus = DEMO_ELEVATION_USED;
+    } else if (elevationKnown) {
+        elevationStatus = DEMO_ELEVATION_NONE;
+    }
     stackMakeArray();
-    stackPushInt(shots);
+    stackPushInt(shotCount);
     stackPushArrayNext();
-    stackPushInt(fps);
+    stackPushInt(fpsCategory);
     stackPushArrayNext();
-    stackPushInt(ele ? 1 : known ? 0 : -1);
+    stackPushInt(elevationStatus);
     stackPushArrayNext();
 }
 
-void Gsc_Demo_KeepLast()
-{
+void Gsc_Demo_KeepLast() {
     int id;
     int count;
-    if (!Base_Gsc_GetValidDemoId(&id, 2))
-    {
+    if (!Base_Gsc_GetValidDemoId(&id, 2)) {
         return;
     }
     stackGetParamInt(1, &count);
     sDemo_t *demo = findDemoById(id);
-    if (!demo || demo->isComplete || count < 1 || count > DEMO_MANUAL_HISTORY_LIMIT)
-    {
+    if (!demo || demo->isComplete || count < 1 || count > DEMO_MANUAL_HISTORY_LIMIT) {
         stackPushUndefined();
         return;
     }
     int removed = std::max(0, demo->size - count);
-    if (removed)
-    {
+    if (removed) {
         memmove(demo->pDemoFrames, demo->pDemoFrames + removed, count * sizeof(sDemoFrame_t));
         demo->size = count;
         ++demo->editVersion;
         demo->currentFrame = count - 1;
         demo->lastKeyFrame = count - 1;
         // Manual clips preserve every take, so every frame stays playable.
-        for (int i = 0; i < count; ++i)
-        {
+        for (int i = 0; i < count; ++i) {
             auto &frame = demo->pDemoFrames[i];
             frame.isKeyFrame = true;
             frame.prevKeyFrame = std::max(0, i - 1);
@@ -3116,8 +3171,15 @@ void Gsc_Demo_KeepLast()
     stackPushInt(removed);
 }
 
-void Gsc_Demo_ClipInfo()
-{
+constexpr int DEMO_TIMELINE_CELLS = 40;
+enum DemoTimelineEvent {
+    DEMO_TIMELINE_NO_EVENT = 0,
+    DEMO_TIMELINE_SAVE = 1,
+    DEMO_TIMELINE_LOAD = 2
+};
+
+// Preserve the script result order: pose, last load, then fixed-width event cells.
+void Gsc_Demo_ClipInfo() {
     int id;
     int index;
     const int args = Scr_GetNumParam();
@@ -3155,11 +3217,16 @@ void Gsc_Demo_ClipInfo()
     if (end >= demo->size) {
         end = demo->size - 1;
     }
-    int cells[40] = {};
-    const int cellCount = demo->size < 40 ? demo->size : 40;
+    int cells[DEMO_TIMELINE_CELLS] = {};
+    const int cellCount = std::min(demo->size, DEMO_TIMELINE_CELLS);
     for (int i = index; i <= end; ++i) {
         const auto &frame = demo->pDemoFrames[i];
-        const int event = frame.loadNow ? 2 : (frame.saveNow ? 1 : 0);
+        int event = DEMO_TIMELINE_NO_EVENT;
+        if (frame.loadNow) {
+            event = DEMO_TIMELINE_LOAD;
+        } else if (frame.saveNow) {
+            event = DEMO_TIMELINE_SAVE;
+        }
         int &cell = cells[i * cellCount / demo->size];
         if (event > cell) {
             cell = event;
@@ -3224,20 +3291,27 @@ void Gsc_Demo_FPSStats(int client) {
 
 // All transfer bookkeeping is main-thread owned. SQL workers own only queries
 // and MYSQL_RES until completion; binary payload bytes never enter GSC.
+constexpr int DEMO_SQL_BATCH_CHUNKS = 32;
+constexpr size_t DEMO_SQL_QUERY_BUFFER_BYTES = 256;
+constexpr int DEMO_SQL_READ_WAIT_MS = 10000;
+constexpr int DEMO_SQL_WRITE_WAIT_MS = 30000;
+enum DemoSQLColumn { DEMO_SQL_CHUNK_NUMBER = 0, DEMO_SQL_PAYLOAD = 1, DEMO_SQL_COLUMN_COUNT = 2 };
+
 struct DemoSQLRead {
     int nativeId;
     int nextChunk;
-    int error;
+    int outcomeOverride;
     unsigned long long generation;
     bool done;
 };
-static std::map<int,DemoSQLRead> demoSQLReads;
-long long OpenCJ_Demo_SQLClock() {
+static std::map<int, DemoSQLRead> demoSQLReads;
+long long OpenCJ_Demo_SQLClockMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
 
+// Keep compressed payloads native and limit each query to one bounded batch.
 void Gsc_Demo_LoadChunks() {
     int nativeId;
     int storedId;
@@ -3253,112 +3327,125 @@ void Gsc_Demo_LoadChunks() {
         stackPushInt(-SQL_INVALID);
         return;
     }
-    char query[256];
+    char query[DEMO_SQL_QUERY_BUFFER_BYTES];
     snprintf(
         query, sizeof(query),
-        "SELECT chunkNum,payload FROM %s WHERE %s=%d AND chunkNum>=%d ORDER BY chunkNum LIMIT 32",
-        clip ? "demoClipChunks" : "demoChunks", clip ? "clipID" : "runID", storedId, first);
-    int id = sqlPoolSubmit(query, true, SQL_READ, "", "", 10000);
+        "SELECT chunkNum,payload FROM %s WHERE %s=%d AND chunkNum>=%d ORDER BY chunkNum LIMIT %d",
+        clip ? "demoClipChunks" : "demoChunks", clip ? "clipID" : "runID", storedId, first,
+        DEMO_SQL_BATCH_CHUNKS);
+    int id = sqlPoolSubmit(query, true, SQL_READ, "", "", DEMO_SQL_READ_WAIT_MS);
     if (id > 0) {
         demoSQLReads[id] = {nativeId, first, 0, demo->generation, false};
     }
     stackPushInt(id);
 }
 
-bool OpenCJ_Demo_SQLReady(int id, long long deadline) {
-    auto it = demoSQLReads.find(id);
-    if (it == demoSQLReads.end()) {
+// Borrow the pool result across ticks and decode only within this frame's time budget.
+static bool decodeCompletedDemoRows(sDemo_t &demo, DemoSQLRead &load, MYSQL_RES *result,
+                                    long long deadlineMs) {
+    if (!result || mysql_num_fields(result) != DEMO_SQL_COLUMN_COUNT || !mysql_num_rows(result) ||
+        mysql_num_rows(result) > DEMO_SQL_BATCH_CHUNKS) {
+        load.outcomeOverride = SQL_INVALID;
+        load.done = true;
         return true;
     }
-    DemoSQLRead &read = it->second;
-    MYSQL_RES *result = nullptr;
-    SqlCompletion c;
-    if (!sqlPoolPeek(id, &result, &c)) {
-        return false;
-    }
-    auto d = opencj_demoIdToIdx.find(read.nativeId);
-    bool missing =
-        d == opencj_demoIdToIdx.end() || opencj_demos[d->second].generation != read.generation;
-    if (missing) {
-        read.error = SQL_CANCELLED;
-        read.done = true;
-        return true;
-    }
-    if (read.done) {
-        return true;
-    }
-    if (c.outcome != SQL_OK) {
-        read.done = true;
-        return true;
-    }
-    if (!result || mysql_num_fields(result) != 2 || !mysql_num_rows(result) ||
-        mysql_num_rows(result) > 32) {
-        read.error = SQL_INVALID;
-        read.done = true;
-        return true;
-    }
-    sDemo_t *demo = &opencj_demos[d->second];
     // Limit main-thread decode time, not the number of concurrent viewers.
-    while (OpenCJ_Demo_SQLClock() < deadline) {
+    while (OpenCJ_Demo_SQLClockMs() < deadlineMs) {
         MYSQL_ROW row = mysql_fetch_row(result);
         if (!row) {
-            read.done = true;
+            load.done = true;
             return true;
         }
-        unsigned long *lengths = mysql_fetch_lengths(result);
-        char *end = nullptr;
-        long chunk = row[0] ? strtol(row[0], &end, 10) : -1;
-        if (!row[0] || !end || *end || chunk != read.nextChunk || !row[1] || !lengths ||
-            !decodeDemoChunk(demo, reinterpret_cast<unsigned char *>(row[1]), lengths[1])) {
-            read.error = SQL_INVALID;
-            read.done = true;
+        unsigned long *fieldLengths = mysql_fetch_lengths(result);
+        char *numberEnd = nullptr;
+        long chunkNumber =
+            row[DEMO_SQL_CHUNK_NUMBER] ? strtol(row[DEMO_SQL_CHUNK_NUMBER], &numberEnd, 10) : -1;
+        if (!row[DEMO_SQL_CHUNK_NUMBER] || !numberEnd || *numberEnd ||
+            chunkNumber != load.nextChunk || !row[DEMO_SQL_PAYLOAD] || !fieldLengths ||
+            !decodeDemoChunk(&demo, reinterpret_cast<unsigned char *>(row[DEMO_SQL_PAYLOAD]),
+                             fieldLengths[DEMO_SQL_PAYLOAD])) {
+            load.outcomeOverride = SQL_INVALID;
+            load.done = true;
             return true;
         }
-        ++read.nextChunk;
+        ++load.nextChunk;
     }
     return false;
 }
 
-void OpenCJ_Demo_SQLStatus(int id, SqlCompletion *c) {
-    auto it = demoSQLReads.find(id);
-    if (it != demoSQLReads.end() && it->second.error) {
-        c->outcome = it->second.error;
+// Other SQL jobs are immediately publishable; demo jobs first consume their
+// native payloads. Generation checks prevent reuse of a destroyed demo handle.
+bool OpenCJ_Demo_SQLReady(int id, long long deadlineMs) {
+    auto foundRead = demoSQLReads.find(id);
+    if (foundRead == demoSQLReads.end()) {
+        return true;
+    }
+    DemoSQLRead &load = foundRead->second;
+    MYSQL_RES *result = nullptr;
+    SqlCompletion completion;
+    if (!sqlPoolPeek(id, &result, &completion)) {
+        return false;
+    }
+    auto foundDemo = opencj_demoIdToIdx.find(load.nativeId);
+    bool missing = foundDemo == opencj_demoIdToIdx.end() ||
+                   opencj_demos[foundDemo->second].generation != load.generation;
+    if (missing) {
+        load.outcomeOverride = SQL_CANCELLED;
+        load.done = true;
+        return true;
+    }
+    if (load.done) {
+        return true;
+    }
+    if (completion.outcome != SQL_OK) {
+        load.done = true;
+        return true;
+    }
+    sDemo_t &demo = opencj_demos[foundDemo->second];
+    return decodeCompletedDemoRows(demo, load, result, deadlineMs);
+}
+
+void OpenCJ_Demo_SQLStatus(int id, SqlCompletion *completion) {
+    auto foundRead = demoSQLReads.find(id);
+    if (foundRead != demoSQLReads.end() && foundRead->second.outcomeOverride) {
+        completion->outcome = foundRead->second.outcomeOverride;
     }
 }
 
+// Consume exactly one pool completion, free its result, and return the next chunk to GSC.
 bool OpenCJ_Demo_SQLTake(int id) {
-    auto it = demoSQLReads.find(id);
-    if (it == demoSQLReads.end()) {
+    auto foundRead = demoSQLReads.find(id);
+    if (foundRead == demoSQLReads.end()) {
         return false;
     }
     MYSQL_RES *result = nullptr;
-    SqlCompletion c;
-    if (!it->second.done || !sqlPoolTake(id, &result, &c)) {
+    SqlCompletion completion;
+    if (!foundRead->second.done || !sqlPoolTake(id, &result, &completion)) {
         stackPushUndefined();
         return true;
     }
     if (result) {
         mysql_free_result(result);
     }
-    if (c.outcome != SQL_OK || it->second.error) {
+    if (completion.outcome != SQL_OK || foundRead->second.outcomeOverride) {
         stackPushUndefined();
     } else {
         stackMakeArray();
         stackMakeArray();
-        stackPushInt(it->second.nextChunk);
+        stackPushInt(foundRead->second.nextChunk);
         stackPushArrayNext();
         stackPushArrayNext();
     }
-    demoSQLReads.erase(it);
+    demoSQLReads.erase(foundRead);
     return true;
 }
 
 // A destroyed recording may still have a script waiter. Retain cancellation
-// until that waiter consumes it, and never decode into a reused native ID.
+// until that waiter consumes foundRead, and never decode into a reused native ID.
 static void cancelDemoLoads(const sDemo_t &demo) {
-    for(const auto &entry : demoSQLReads) {
-        const DemoSQLRead &read = entry.second;
-        if(read.nativeId == demo.id && read.generation == demo.generation) {
+    for (const auto &entry : demoSQLReads) {
+        const DemoSQLRead &load = entry.second;
+        if (load.nativeId == demo.id && load.generation == demo.generation) {
             sqlPoolCancelRead(entry.first, SqlCompletionHandling::Retain);
         }
     }
@@ -3366,13 +3453,14 @@ static void cancelDemoLoads(const sDemo_t &demo) {
 
 void OpenCJ_Demo_SQLNewMap() {
     // Map teardown has no remaining script waiters. The pool still owns active
-    // connections until their workers stop; this main-thread bookkeeping can go now.
-    for(const auto &entry : demoSQLReads) {
+    // connections until their workers finish; this main-thread bookkeeping can go now.
+    for (const auto &entry : demoSQLReads) {
         sqlPoolCancelRead(entry.first, SqlCompletionHandling::Discard);
     }
     demoSQLReads.clear();
 }
 
+// Encode before admission. Once accepted, the pool owns the query through completion.
 void Gsc_Demo_UploadChunk() {
     int nativeId;
     int storedId;
@@ -3394,9 +3482,11 @@ void Gsc_Demo_UploadChunk() {
     std::string query = "INSERT INTO " + std::string(clip ? "demoClipChunks" : "demoChunks") +
                         " VALUES(" + std::to_string(storedId) + "," + std::to_string(chunk) +
                         ",UNHEX('" + demoHex(packed) + "'))";
-    stackPushInt(sqlPoolSubmit(query.c_str(), false, SQL_BACKGROUND, key.c_str(), "", 30000));
+    stackPushInt(sqlPoolSubmit(query.c_str(), false, SQL_BACKGROUND, key.c_str(), "",
+                               DEMO_SQL_WRITE_WAIT_MS));
 }
 
+// Pin ownership keeps source frames available while asynchronous users finish.
 void Gsc_Demo_Pin() {
     int id;
     if (!stackGetParams("i", &id)) {
@@ -3417,11 +3507,11 @@ void Gsc_Demo_Unpin() {
     if (!stackGetParams("i", &id)) {
         return;
     }
-    auto it = opencj_demoIdToIdx.find(id);
-    if (it == opencj_demoIdToIdx.end()) {
+    auto foundRead = opencj_demoIdToIdx.find(id);
+    if (foundRead == opencj_demoIdToIdx.end()) {
         return;
     }
-    sDemo_t *demo = &opencj_demos[it->second];
+    sDemo_t *demo = &opencj_demos[foundRead->second];
     if (demo->pins) {
         --demo->pins;
     }

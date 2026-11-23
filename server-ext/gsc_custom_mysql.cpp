@@ -101,7 +101,7 @@ void gsc_mysql_async_submit()
 void gsc_mysql_async_getdone_list()
 {
     int ids[512];int count=sqlPoolDone(ids,512),published=0;
-    long long deadline=OpenCJ_Demo_SQLClock()+4;
+    long long deadline=OpenCJ_Demo_SQLClockMs()+4;
     stackMakeArray();
     for(int i=0;i<count && published<64;i++)if(OpenCJ_Demo_SQLReady(ids[i],deadline))
     {stackPushInt(ids[i]);stackPushArrayNext();++published;}

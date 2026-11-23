@@ -66,7 +66,7 @@ void Gsc_Demo_FPSRead(int client);
 void Gsc_Demo_FPSStats(int client);
 
 struct SqlCompletion;
-long long OpenCJ_Demo_SQLClock();
+long long OpenCJ_Demo_SQLClockMs();
 bool OpenCJ_Demo_SQLReady(int id, long long deadline);
 void OpenCJ_Demo_SQLStatus(int id, SqlCompletion *completion);
 bool OpenCJ_Demo_SQLTake(int id);
