@@ -559,7 +559,7 @@
     {
       "id": "native-unit",
       "category": "integration",
-      "description": "Current demo technique, wall geometry and collision source regressions.",
+      "description": "Current demo technique, wall geometry and collision source regressions. Native player visibility and ping-sample behavior.",
       "requires": "g++ with C++17 and 32-bit development libraries; initialized CoD4 headers, no game assets.",
       "effects": "Temporary binaries removed on success/failure; no application services.",
       "commands": [
@@ -569,7 +569,8 @@
         "dev-tools/tests/demo-technique-24.cpp",
         "dev-tools/tests/platform-collision-sources.cpp",
         "dev-tools/tests/platform-wall-geometry.cpp",
-        "dev-tools/tests/run-native-unit.py"
+        "dev-tools/tests/run-native-unit.py",
+        "dev-tools/tests/native-player.cpp"
       ]
     },
     {

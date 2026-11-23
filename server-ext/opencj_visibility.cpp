@@ -143,6 +143,8 @@ void Gsc_Vis_HideForAll(int toHideId)
     opencj_globalHideList[toHideId] = (shouldBeHidden > 0);
 }
 
+static const int MAX_HIDE_RADIUS_UNITS = 4096;
+
 void Gsc_Vis_SetHideRadius(int playerId)
 {
     int radius = 0;
@@ -152,7 +154,7 @@ void Gsc_Vis_SetHideRadius(int playerId)
         return;
     }
 
-    if (radius < 0 || radius > 4096)
+    if (radius < 0 || radius > MAX_HIDE_RADIUS_UNITS)
     {
         stackError("Hide radius must be between 0 and 4096");
         return;
@@ -189,94 +191,76 @@ void Gsc_Vis_InitVisibility(int playerId)
     }
 }
 
-// Called from GSC loop for each player
+// Called only for active players with valid client state.
+// A demo body is visible to its owner and spectators following that owner.
+static bool shouldHidePlayer(int viewerNum, int subjectNum)
+{
+    bool viewerIsSpectating =
+        svs.clients[viewerNum].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR;
+    if (OpenCJ_Demo_IsPresentationActive(subjectNum))
+    {
+        bool isFollowingSubject =
+            viewerIsSpectating && SV_GameClientNum(viewerNum)->clientNum == subjectNum;
+        return !isFollowingSubject;
+    }
+    if (viewerIsSpectating)
+    {
+        return false;
+    }
+    if (opencj_globalHideList[subjectNum] || opencj_playerHideList[viewerNum][subjectNum])
+    {
+        return true;
+    }
+    if (opencj_hideModeConfig[viewerNum] == HIDE_NONE)
+    {
+        return false;
+    }
+    if (opencj_hideModeConfig[viewerNum] == HIDE_ALL)
+    {
+        return true;
+    }
+
+    const gentity_t *viewer = &g_entities[viewerNum];
+    const gentity_t *subject = &g_entities[subjectNum];
+    // Keep the existing integer coordinate rounding used by the hide-cylinder boundary.
+    int offsetX = (subject->r.currentOrigin[0] - viewer->r.currentOrigin[0]) + 0.5;
+    int offsetY = (subject->r.currentOrigin[1] - viewer->r.currentOrigin[1]) + 0.5;
+    int offsetZ = (subject->r.currentOrigin[2] - viewer->r.currentOrigin[2]) + 0.5;
+    if (abs(offsetZ) > opencj_hideCylinder[viewerNum].height)
+    {
+        return false;
+    }
+    int distanceSquared = offsetX * offsetX + offsetY * offsetY;
+    return distanceSquared <= opencj_hideCylinder[viewerNum].radiusSquared;
+}
+
+// Update each viewer/subject pair once; a player's own body stays visible to them.
 void Gsc_Vis_UpdatePlayerVisibility()
 {
-    // i = player that wants to hide a player
-    for (int i = 0; i < sv_maxclients->integer; i++)
+    for (int viewerNum = 0; viewerNum < sv_maxclients->integer; viewerNum++)
     {
-        gentity_t *wantsToHide = &g_entities[i];
-        if (!wantsToHide->client || (svs.clients[i].state != CS_ACTIVE))
+        gentity_t *viewer = &g_entities[viewerNum];
+        if (!viewer->client || svs.clients[viewerNum].state != CS_ACTIVE)
+        {
+            continue;
+        }
+        if (!svs.clients[viewerNum].gentity || !svs.clients[viewerNum].gentity->client)
         {
             continue;
         }
 
-        if (!svs.clients[i].gentity || !svs.clients[i].gentity->client)
+        for (int subjectNum = 0; subjectNum < sv_maxclients->integer; subjectNum++)
         {
-            continue;
-        }
-
-        // j = player that will be hidden
-        for (int j = 0; j < sv_maxclients->integer; j++)
-        {
-            if (j == i)
-            {
-                continue; // Don't do this for themself
-            }
-
-            gentity_t *willBeHidden = &g_entities[j];
-            if (!willBeHidden->client || (svs.clients[j].state != CS_ACTIVE))
+            if (subjectNum == viewerNum)
             {
                 continue;
             }
-
-            // A demo uses the viewer's own body for third-person rendering.
-            // Only that viewer (skipped above) and spectators following them
-            // may see it; ordinary visibility settings must not reveal it.
-            if (OpenCJ_Demo_IsPresentationActive(j))
+            gentity_t *subject = &g_entities[subjectNum];
+            if (!subject->client || svs.clients[subjectNum].state != CS_ACTIVE)
             {
-                bool following =
-                    svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR &&
-                    SV_GameClientNum(i)->clientNum == j;
-                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, !following);
+                continue;
             }
-            else if (svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR)
-            {
-                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
-            }
-            else if (opencj_globalHideList[j])
-            {
-                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, true);
-            }
-            else if (opencj_playerHideList[i][j])
-            {
-                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, true);
-            }
-            else if (opencj_hideModeConfig[i] == HIDE_NONE)
-            {
-                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
-            }
-            else if (opencj_hideModeConfig[i] == HIDE_ALL)
-            {
-                setEntityVisibilityForPlayer(willBeHidden, wantsToHide, true);
-            }
-            else /* HIDE_NEAR */
-            {
-                int diffOriginX =
-                    (willBeHidden->r.currentOrigin[0] - wantsToHide->r.currentOrigin[0]) + 0.5;
-                int diffOriginY =
-                    (willBeHidden->r.currentOrigin[1] - wantsToHide->r.currentOrigin[1]) + 0.5;
-                int diffOriginZ =
-                    (willBeHidden->r.currentOrigin[2] - wantsToHide->r.currentOrigin[2]) + 0.5;
-
-                if (abs(diffOriginZ) > opencj_hideCylinder[i].height)
-                {
-                    setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
-                }
-                else
-                {
-                    int squared2DDistanceBetweenPlayers =
-                        (diffOriginX * diffOriginX) + (diffOriginY * diffOriginY);
-                    if (squared2DDistanceBetweenPlayers > opencj_hideCylinder[i].radiusSquared)
-                    {
-                        setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
-                    }
-                    else
-                    {
-                        setEntityVisibilityForPlayer(willBeHidden, wantsToHide, true);
-                    }
-                }
-            }
+            setEntityVisibilityForPlayer(subject, viewer, shouldHidePlayer(viewerNum, subjectNum));
         }
     }
 }

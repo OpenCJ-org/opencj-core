@@ -1,4 +1,4 @@
-"""Build and run current geometry and demo-technique fixtures without a game server."""
+"""Build and run current geometry, player and demo-technique fixtures without a game server."""
 
 from pathlib import Path
 import shutil
@@ -16,6 +16,7 @@ def main():
     local.mkdir(exist_ok=True)
     sources = [
         "demo-technique-24.cpp",
+        "native-player.cpp",
         "platform-wall-geometry.cpp",
         "platform-collision-sources.cpp",
     ]

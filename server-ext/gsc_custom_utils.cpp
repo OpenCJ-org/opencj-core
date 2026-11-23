@@ -15,20 +15,20 @@ extern "C" {
 // Read-only directory enumeration, matching libcod's scandir contract.
 void Gsc_Utils_ScanDir()
 {
-    char *path;
-    if (!stackGetParams("s", &path))
+    char *directoryPath;
+    if (!stackGetParams("s", &directoryPath))
     {
         stackPushUndefined();
         return;
     }
-    DIR *dir = opendir(path);
-    if (!dir)
+    DIR *directory = opendir(directoryPath);
+    if (!directory)
     {
         stackPushUndefined();
         return;
     }
     stackMakeArray();
-    while (dirent *entry = readdir(dir))
+    while (dirent *entry = readdir(directory))
     {
         if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
         {
@@ -37,47 +37,57 @@ void Gsc_Utils_ScanDir()
         stackPushString(entry->d_name);
         stackPushArrayNext();
     }
-    closedir(dir);
+    closedir(directory);
 }
 
 #ifdef COD4
 // Match SV_Map's fastfile lookup, including custom maps that are not loaded.
 // The stock GSC mapExists() only searches the currently mounted BSP paths.
 extern qboolean DB_FileExists(const char *filename, int ffdir);
+// DB_BuildOSPath searches zone[/language] for 0 and usermaps/<map> for 2.
+static const int FASTFILE_ZONE_DIRECTORY = 0;
+static const int FASTFILE_USERMAP_DIRECTORY = 2;
+
 void Gsc_Utils_MapExists()
 {
-    char *input;
-    if (!stackGetParams("s", &input))
+    char *requestedMap;
+    if (!stackGetParams("s", &requestedMap))
     {
         stackPushBool(false);
         return;
     }
-    const size_t length = strlen(input);
-    if (!length || length >= MAX_QPATH)
+    const size_t mapNameLength = strlen(requestedMap);
+    if (!mapNameLength || mapNameLength >= MAX_QPATH)
     {
         stackPushBool(false);
         return;
     }
-    char name[MAX_QPATH];
-    for (size_t i = 0; i < length; ++i)
+    char mapName[MAX_QPATH];
+    for (size_t i = 0; i < mapNameLength; ++i)
     {
-        unsigned char c = (unsigned char)input[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-              c == '_' || c == '-'))
+        unsigned char character = (unsigned char)requestedMap[i];
+        bool isLetter = (character >= 'a' && character <= 'z') ||
+                        (character >= 'A' && character <= 'Z');
+        bool isDigit = character >= '0' && character <= '9';
+        bool isSeparator = character == '_' || character == '-';
+        if (!isLetter && !isDigit && !isSeparator)
         {
             stackPushBool(false);
             return;
         }
-        name[i] = tolower(c);
+        mapName[i] = tolower(character);
     }
-    name[length] = '\0';
+    mapName[mapNameLength] = '\0';
     // Load screens and shared zone assets are not selectable multiplayer maps.
-    if (length >= 5 && !strcmp(name + length - 5, "_load"))
+    if (mapNameLength >= 5 && !strcmp(mapName + mapNameLength - 5, "_load"))
     {
         stackPushBool(false);
         return;
     }
-    stackPushBool(DB_FileExists(name, 2) || (!strncmp(name, "mp_", 3) && DB_FileExists(name, 0)));
+    bool isUserMap = DB_FileExists(mapName, FASTFILE_USERMAP_DIRECTORY);
+    bool isStockMap = !isUserMap && !strncmp(mapName, "mp_", 3) &&
+                      DB_FileExists(mapName, FASTFILE_ZONE_DIRECTORY);
+    stackPushBool(isUserMap || isStockMap);
 }
 #endif
 
@@ -248,14 +258,14 @@ void Gsc_Utils_ContainsIllegalChars()
 
 void Gsc_Utils_Printf()
 {
-    char *buf = NULL;
-    stackGetParamString(0, &buf);
+    char *message = NULL;
+    stackGetParamString(0, &message);
 #ifdef COD4
     // Preserve the plugin's immediate engine-console logging. libc stdout can
     // remain buffered when a dedicated server runs under Docker or a service.
-    Com_Printf(CON_CHANNEL_SERVER, "%s", buf);
+    Com_Printf(CON_CHANNEL_SERVER, "%s", message);
 #else
-    printf("%s", buf);
+    printf("%s", message);
 #endif
 }
 

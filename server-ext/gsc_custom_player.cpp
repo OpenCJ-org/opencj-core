@@ -242,70 +242,75 @@ void Gsc_Player_SV_GameSendServerCommand(int id)
 	stackPushBool(qtrue);
 }
 
-void Gsc_Player_GetQueuedReliableMessages(int id)
+void Gsc_Player_GetQueuedReliableMessages(int clientNum)
 {
 #ifdef COD4
     // Match the retiring plugin's invalid-client result without indexing svs.
-    if (!sv_maxclients || id < 0 || id >= sv_maxclients->integer)
+    if (!sv_maxclients || clientNum < 0 || clientNum >= sv_maxclients->integer)
     {
         stackPushInt(0);
         return;
     }
 #endif
-    client_t *pClient = &svs.clients[id];
-    if (!pClient)
+    client_t *client = &svs.clients[clientNum];
+    if (!client)
     {
         stackPushUndefined();
         return;
     }
 
-    int nrQueued = pClient->reliableSequence - pClient->reliableAcknowledge;
-    stackPushInt(nrQueued);
+    int queuedMessageCount = client->reliableSequence - client->reliableAcknowledge;
+    stackPushInt(queuedMessageCount);
 }
 
 #ifdef COD4
+// Preserve the existing sample window and minimum population for this display metric.
+static const unsigned int PING_SAMPLE_WINDOW_MS = 5000;
+static const int MIN_PING_SAMPLES = 4;
+static const int PING_VARIATION_UNAVAILABLE = -1;
+
 // Spread of recent snapshot round-trip samples, not one-way network jitter.
-void Gsc_Player_GetPingVariation(int id)
+void Gsc_Player_GetPingVariation(int clientNum)
 {
-    if (id < 0 || id >= sv_maxclients->integer)
+    if (clientNum < 0 || clientNum >= sv_maxclients->integer)
     {
-        stackPushInt(-1);
+        stackPushInt(PING_VARIATION_UNAVAILABLE);
         return;
     }
-    const client_t *client = &svs.clients[id];
+    const client_t *client = &svs.clients[clientNum];
     if (client->state != CS_ACTIVE || client->netchan.remoteAddress.type == NA_BOT)
     {
-        stackPushInt(-1);
+        stackPushInt(PING_VARIATION_UNAVAILABLE);
         return;
     }
-    const unsigned int now = Sys_Milliseconds();
-    double sum = 0;
-    double squares = 0;
-    int count = 0;
-    for (int i = 0; i < PACKET_BACKUP; ++i)
+    const unsigned int nowMs = Sys_Milliseconds();
+    double sampleSumMs = 0;
+    double sampleSquaresMs = 0;
+    int sampleCount = 0;
+    for (int snapshotIndex = 0; snapshotIndex < PACKET_BACKUP; ++snapshotIndex)
     {
-        const clientSnapshot_t *frame = &client->frames[i];
-        if (frame->messageAcked == 0xFFFFFFFFu || now - frame->messageSent > 5000u)
+        const clientSnapshot_t *snapshot = &client->frames[snapshotIndex];
+        if (snapshot->messageAcked == 0xFFFFFFFFu || nowMs - snapshot->messageSent > PING_SAMPLE_WINDOW_MS)
         {
             continue;
         }
-        const unsigned int sample = frame->messageAcked - frame->messageSent;
-        if (sample > 5000u)
+        const unsigned int roundTripMs = snapshot->messageAcked - snapshot->messageSent;
+        if (roundTripMs > PING_SAMPLE_WINDOW_MS)
         {
             continue;
         }
-        sum += sample;
-        squares += double(sample) * sample;
-        ++count;
+        sampleSumMs += roundTripMs;
+        sampleSquaresMs += double(roundTripMs) * roundTripMs;
+        ++sampleCount;
     }
-    if (count < 4)
+    if (sampleCount < MIN_PING_SAMPLES)
     {
-        stackPushInt(-1);
+        stackPushInt(PING_VARIATION_UNAVAILABLE);
         return;
     }
-    const double mean = sum / count;
-    const double variance = squares / count - mean * mean;
-    stackPushInt(int(sqrt(variance > 0 ? variance : 0) + 0.5));
+    const double meanRoundTripMs = sampleSumMs / sampleCount;
+    const double varianceMs = sampleSquaresMs / sampleCount - meanRoundTripMs * meanRoundTripMs;
+    stackPushInt(int(sqrt(varianceMs > 0 ? varianceMs : 0) + 0.5));
 }
 #endif
 

@@ -51,6 +51,7 @@ to their listed harnesses, not standalone commands.
 | Demo view receipts | `demo-view-sql` |
 | Demo playback or camera | `demo-engine`, `camera-engine`, `native-unit`, `demo-storage` |
 | Checkpoint editor/contact/HUD | `checkpoint-engine`, `checkpoint-matching`, `focused-gsc` |
+| Player visibility or ping sampling | `native-unit`, `focused-gsc` |
 | Platform or movement code | `platform-engine`, `movement-engine`, `sticky-walls`, `native-unit` |
 | Menus or notification artwork | `compiled-menus`, `demo-menu-source`, `notification-assets` |
 | Query growth or capacity | `capacity` |
