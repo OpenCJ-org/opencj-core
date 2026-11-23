@@ -16,7 +16,15 @@ main()
         player.sessionTeam="allies";
         player.sessionState="playing";
         player.pers["team"]="allies";
-        player spawn((21168,384,-2316),(90,0,0));
+        spawnpoints = getEntArray("mp_dm_spawn", "classname");
+        check(spawnpoints.size > 0, "map provides a test spawn above a surface");
+        if(spawnpoints.size == 0)
+        {
+            printf("MEASURE SELFTEST COMPLETE failures=" + level.failures + "\n");
+            return;
+        }
+        player spawn(spawnpoints[0].origin + (0, 0, 32), (90, 0, 0));
+        player freezeControls(true);
         player openCJ\measurements::onCommandMeasure([]);
         check(isDefined(player.measureHud) && !isDefined(player.measureFirst),"first prompt");
         check(player.measureHud.archived && player.measureHud.alpha == 1,"prompt uses visible archival HUD pool");

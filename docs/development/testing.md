@@ -363,3 +363,11 @@ override, a second map's fractional value, and a return to the default.
 It requires all four stages, uses bounded waits and Docker commands, and records
 the selected binary and fixture hashes. Cleanup is attempted even if reading the final logs fails. The test checks server values and replicated
 configstrings; client rendering still requires an in-game check.
+
+### Measurement tool
+
+The measurement runner uses the shared engine/source selection and defaults to
+mp_killhouse. It places a synthetic player above an actual multiplayer spawn,
+then checks a real weapon trace, axis distances, rounding, misses, cancellation
+and lifecycle cleanup. No historical experimental binary is needed. The check
+covers server calculations and HUD state, not rendered text placement.
