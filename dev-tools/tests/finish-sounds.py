@@ -27,6 +27,7 @@ cols = [
     'anyPct',
     'hb',
     'hardTAS',
+    'tutorial',
 ]
 
 
@@ -42,6 +43,7 @@ def run(
     anyPct=0,
     hb=0,
     tas=0,
+    tutorial=0,
     finished=True,
     stats=True,
 ):
@@ -57,6 +59,7 @@ def run(
             anyPct,
             hb,
             tas,
+            tutorial,
         ],
         time=time,
         rpg=rpg,
@@ -153,6 +156,9 @@ for mode in ['ele', 'anyPct', 'hb', 'tas']:
     )
     case(mode + ' includes clean runs', better, current=run(100, pid=10, **{mode: 1}), expected=0)
 
+
+case('tutorial prior runs excluded', [run(i, time=i * 100, rpg=i, tutorial=1) for i in (1, 2, 3)])
+case('current tutorial gives ordinary completion', current=run(100, pid=10, tutorial=1), expected=0)
 
 def main():
     """Run the prepared ranking cases only when explicitly invoked."""
