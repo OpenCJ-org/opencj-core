@@ -102,7 +102,9 @@ is rejected because the fixture's platform and wall coordinates would be invalid
 The player-name runner accepts `--binary PATH` and `--scripts PATH` and requires
 `mp_killhouse`. It creates a separate schema and account, uses synthetic names,
 and removes its private configuration afterward. It does not read deployment
-credentials or replay old migrations over the current schema.
+credentials or replay old migrations over the current schema. Its record-panel scenarios
+hold real SQL replies in the fixture copy and verify obsolete run/instance replies,
+superseded checkpoint results, queued cancellation and result cleanup.
 
 The FPS-registration runner uses the stock `mp_killhouse` map by default and
 accepts `--binary PATH` and `--scripts PATH`. It runs the actual handshake

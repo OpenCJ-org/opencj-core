@@ -39,6 +39,7 @@ onSortingChanged()
 {
     if(!self isSpectator())
     {
+        self cancelReads();
         self thread _getRecords(self openCJ\checkpoints::getCurrentChildCheckpoints(),
                                 level.showRecordsPrefetch);
     }
@@ -46,6 +47,7 @@ onSortingChanged()
 
 onCheckpointsChanged()
 {
+    self cancelReads();
     self thread _getRecords(self openCJ\checkpoints::getCurrentChildCheckpoints(),
                             level.showRecordsPrefetch);
 }
@@ -74,6 +76,7 @@ onRunCreated()
 
 onRunStopped()
 {
+    self cancelReads();
     self hideForSpectators();
 }
 
@@ -114,6 +117,7 @@ onSpawnPlayer()
 
 onRunFinished(checkpoint)
 {
+    self cancelReads();
     checkpoints = [];
     checkpoints[0] = checkpoint;
     timePlayedMs = self openCJ\playTime::getTimePlayed();
@@ -152,6 +156,7 @@ onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, 
 
 _runChanged()
 {
+    self cancelReads();
     self.showRecords_rows = [];
     spectators = self getSpectatorList(true); // true -> include self as spectator
     for(i = 0; i < spectators.size; i++)
@@ -187,19 +192,15 @@ _getRecords(checkpoints, recordMode, timePlayedMs)
         return;
     }
 
-    if(recordMode != level.showRecordsCheckpointFlash)
-    {
-        self notify("writeRecordsRunning");
-        self endon("writeRecordsRunning");
-    }
-
+    request = self _beginRecordRead(recordMode);
     query = self recordQuery(checkpoints);
-
-    rows = self openCJ\mySQL::mysqlAsyncRead(query);
-    if(!isDefined(rows))
+    result = self openCJ\mySQL::_request(query, level.sqlConstants.policyMenu, "", request.scope,
+                                         level.sqlConstants.defaultQueueWaitMs, true);
+    if(!self _recordReadCurrent(request) || !isDefined(result) || !isDefined(result.rows))
     {
         return;
     }
+    rows = result.rows;
 
     if(!self openCJ\playerRuns::isRunFinished())
     {
@@ -233,6 +234,60 @@ _getRecords(checkpoints, recordMode, timePlayedMs)
             spectators[i] _updateRecords(self, rows, timePlayedMs, false);
         }
     }
+}
+
+// Prefetching the next checkpoint must not cancel the current checkpoint's brief flash.
+_beginRecordRead(recordMode)
+{
+    if(!isDefined(self.showRecordsReadEpoch))
+    {
+        self.showRecordsReadEpoch = 0;
+    }
+    if(!isDefined(self.showRecordsReadVersions))
+    {
+        self.showRecordsReadVersions = [];
+    }
+    kind = "cache";
+    if(recordMode == level.showRecordsCheckpointFlash)
+    {
+        kind = "flash";
+    }
+    if(!isDefined(self.showRecordsReadVersions[kind]))
+    {
+        self.showRecordsReadVersions[kind] = 0;
+    }
+    self.showRecordsReadVersions[kind]++;
+    request = spawnStruct();
+    request.kind = kind;
+    request.version = self.showRecordsReadVersions[kind];
+    request.epoch = self.showRecordsReadEpoch;
+    request.runID = self openCJ\playerRuns::getRunID();
+    request.instanceNumber = self openCJ\playerRuns::getRunInstanceNumber();
+    // A menu close must not cancel the run's record panel.
+    request.scope = "record-panel:" + self getEntityNumber() + ":" + kind;
+    mysql_async_cancel(request.scope, level.sqlConstants.scopeExact,
+                       level.sqlConstants.retainCompletion);
+    return request;
+}
+
+_recordReadCurrent(request)
+{
+    return request.epoch == self.showRecordsReadEpoch &&
+           request.version == self.showRecordsReadVersions[request.kind] &&
+           self openCJ\runStorage::isCurrent(request.runID, request.instanceNumber);
+}
+
+// Cancel queued/running reads, then reject any completion already delivered to a waiter.
+cancelReads()
+{
+    if(!isDefined(self.showRecordsReadEpoch))
+    {
+        self.showRecordsReadEpoch = 0;
+    }
+    self.showRecordsReadEpoch++;
+    self.showRecords_persistTime = undefined;
+    mysql_async_cancel("record-panel:" + self getEntityNumber() + ":",
+                       level.sqlConstants.scopePrefix, level.sqlConstants.retainCompletion);
 }
 
 // Build the record panel query using the player's current mode and sort settings.

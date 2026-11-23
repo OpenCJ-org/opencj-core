@@ -227,11 +227,56 @@ class PlayerNameVerification:
         self.verify_cooldown_and_moderation()
         self.verify_concurrent_claims()
 
+    def install_record_observers(self):
+        """Hold actual SQL replies only in this fixture copy to exercise stale callbacks."""
+        scripts = self.home / "mods/opencj/opencj"
+        records = scripts / "showrecords.gsc"
+        source, count = re.subn(
+            r"(?m)^recordQuery\s*\(", "_fixtureOriginalRecordQuery(", records.read_text()
+        )
+        if count != 1:
+            raise RuntimeError("Expected one record-query builder in the fixture")
+        source += r"""
+recordQuery(checkpoints)
+{
+    return "/* name-record-fixture */ " + self _fixtureOriginalRecordQuery(checkpoints);
+}
+"""
+        records.write_text(source)
+        mysql = scripts / "mysql.gsc"
+        source, count = re.subn(
+            r"(?m)^_request\s*\(", "_fixtureOriginalRequest(", mysql.read_text()
+        )
+        if count != 1:
+            raise RuntimeError("Expected one SQL request entry point in the fixture")
+        source += r"""
+_request(query, policy, key, scope, queueWaitMs, retainRows)
+{
+    result = self _fixtureOriginalRequest(query, policy, key, scope, queueWaitMs, retainRows);
+    if(isSubStr(query, "/* name-record-fixture */"))
+    {
+        self.nameTestRecordReplyReady = true;
+        self.nameTestRecordOutcome = result.status;
+        if(isDefined(level.nameTestHoldRecordReplies) && level.nameTestHoldRecordReplies)
+        {
+            deadlineMs = getTime() + 5000;
+            while(!level.nameTestReleaseRecordReply && getTime() < deadlineMs)
+            {
+                wait .05;
+            }
+        }
+    }
+    return result;
+}
+"""
+        mysql.write_text(source)
+
     def prepare_engine(self):
         self.query_database("DELETE FROM playerNamePreferences;", self.database)
         source_hashes, _ = gsc_fixture.prepare_fixture(
             self.options, self.home, retained_callbacks=()
         )
+        self.install_record_observers()
         settings = {
             "db_host": "db",
             "db_user": self.account,

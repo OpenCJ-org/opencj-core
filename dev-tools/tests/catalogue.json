@@ -390,7 +390,7 @@
     {
       "id": "player-names",
       "category": "integration",
-      "description": "Preferred names and regular-name policy.",
+      "description": "Preferred names and regular-name policy; record-panel late replies and queued cancellation.",
       "requires": "Selected disposable current database, matching engine and game/compiled assets.",
       "effects": "Copies schema only; creates/removes its own schema, account and private config; runs an isolated engine with synthetic names.",
       "files": [

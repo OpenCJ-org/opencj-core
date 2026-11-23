@@ -3,6 +3,7 @@
 main() // Threaded
 {
     self openCJ\notifications::onDisconnect();
+    self openCJ\showRecords::cancelReads();
     self openCJ\halfBeat::disableCorrection();
     self openCJ\mySQL::cancelMenuReads();
     self openCJ\country::cancelLookup();

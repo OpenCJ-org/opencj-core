@@ -31,6 +31,7 @@ main()
     verifyRegularNames(player);
     verifyPreferredNameCommands(player, otherPlayer);
     verifyRecordNamePanels(player, otherPlayer);
+    verifyRecordQueryLifetime(player);
     player = verifyReconnectCooldowns(player, otherPlayer);
     wait .2;
     verifyInvalidModeratorTargets(player);
@@ -56,7 +57,8 @@ verifyRegularNames(player)
           "first regular rename is immediately allowed");
     acceptedChangeSeconds = player.nameLastChange;
     player openCJ\playerNames::_rename("TooQuick");
-    check(player.nameAccepted == "FirstChange" && player.name == "FirstChange" && player.nameLastChange == acceptedChangeSeconds,
+    check(player.nameAccepted == "FirstChange" && player.name == "FirstChange" &&
+              player.nameLastChange == acceptedChangeSeconds,
           "regular cooldown preserves published name and timestamp");
     player.nameLastChange = getRealTime() - 60;
     player openCJ\playerNames::_rename("AfterMinute");
@@ -96,7 +98,8 @@ verifyRegularNames(player)
 verifyPreferredNameCommands(player, otherPlayer)
 {
     preferredNameCommand = level.commands["prefname"];
-    check(isDefined(preferredNameCommand) && isDefined(preferredNameCommand.redactArgs) && preferredNameCommand.redactArgs &&
+    check(isDefined(preferredNameCommand) && isDefined(preferredNameCommand.redactArgs) &&
+              preferredNameCommand.redactArgs &&
               openCJ\commands_base::availableCommands(0, "prefname").size == 1,
           "preferred-name command is discoverable and redacts arguments");
     check(level.commands["frename"].minAdminLevel == 40 &&
@@ -231,7 +234,8 @@ verifyReconnectCooldowns(player, otherPlayer)
     player.nameLastChange = getRealTime() - 60;
     player openCJ\playerNames::_rename("ReconnectAfter");
     check(player.name == "ReconnectAfter", "regular cooldown expires normally after reconnect");
-    check(!isDefined(otherPlayer.nameLastChange), "another account does not inherit the reconnect cooldown");
+    check(!isDefined(otherPlayer.nameLastChange),
+          "another account does not inherit the reconnect cooldown");
     player.nameLastChange = getRealTime() - 60;
     player openCJ\playerNames::_rememberRegularName();
     // Reinitialization must preserve game memory; it must not reset the timer.
@@ -253,12 +257,10 @@ check(value, label)
     printf("NAME SELFTEST " + int(value) + ": " + label + "\n");
 }
 
-
 // Reject overflowing or nonpositive account IDs before issuing any moderation write.
 verifyInvalidModeratorTargets(player)
 {
-    check(openCJ\playerNames::parsePlayerID("1") == 1,
-          "smallest player ID is accepted");
+    check(openCJ\playerNames::parsePlayerID("1") == 1, "smallest player ID is accepted");
     check(openCJ\playerNames::parsePlayerID("0000000001") == 1,
           "leading zeros retain the intended player ID");
     check(openCJ\playerNames::parsePlayerID("2147483647") == 2147483647,
@@ -287,4 +289,146 @@ verifyInvalidModeratorTargets(player)
           "overflowing moderator input cannot reset another account");
     player.login_playerID = 1;
     player.adminLevel = 0;
+}
+
+// Real SQL runs first; the fixture copy holds its reply until the run identity changes.
+verifyRecordQueryLifetime(player)
+{
+    player.playerRuns_runID = 901;
+    player.runInstanceNumber = 1;
+    player.playerRuns_runFinished = false;
+    player.allowHalfBeat = false;
+    verifyObsoleteRecordReply(player, "run");
+    verifyObsoleteRecordReply(player, "instance");
+
+    verifySupersededRecordReply(player);
+    level.nameTestHoldRecordReplies = false;
+    player.nameTestRecordRequestDone = false;
+    player thread requestCheckpointRecords();
+    waitForRecordRequest(player);
+    check(isDefined(player.showRecords_persistTime),
+          "current checkpoint reply still starts the normal record flash");
+
+    verifyQueuedRecordCancellation(player);
+}
+
+// A completed reply must still belong to the same run and its restored instance.
+verifyObsoleteRecordReply(player, identityPart)
+{
+    player.showRecords_persistTime = undefined;
+    player.nameTestRecordReplyReady = false;
+    player.nameTestRecordRequestDone = false;
+    level.nameTestHoldRecordReplies = true;
+    level.nameTestReleaseRecordReply = false;
+    player thread requestCheckpointRecords();
+    deadlineMs = getTime() + 5000;
+    while(!player.nameTestRecordReplyReady && getTime() < deadlineMs)
+    {
+        wait .05;
+    }
+    check(player.nameTestRecordReplyReady, "real record SQL reply is ready before changing run");
+    if(identityPart == "run")
+    {
+        player.playerRuns_runID++;
+    }
+    else
+    {
+        player.runInstanceNumber++;
+    }
+    level.nameTestReleaseRecordReply = true;
+    waitForRecordRequest(player);
+    check(!isDefined(player.showRecords_persistTime),
+          "obsolete run or instance reply cannot flash old checkpoint records");
+}
+
+verifyQueuedRecordCancellation(player)
+{
+    // Occupy every native worker so the record request is provably still queued.
+    stats = mysql_async_stats();
+    cancelledBefore = stats[11];
+    workerCount = stats[0];
+    for(i = 0; i < workerCount; i++)
+    {
+        // Progress jobs reserve all workers; read jobs deliberately leave write capacity free.
+        blockerID = mysql_async_submit("SELECT SLEEP(1)", level.sqlConstants.policyProgress, "", "",
+                                       level.sqlConstants.defaultQueueWaitMs, 1);
+        check(isDefined(blockerID) && blockerID > 0, "native worker blocker is admitted");
+    }
+    deadlineMs = getTime() + 2000;
+    stats = mysql_async_stats();
+    while(stats[2] != workerCount && getTime() < deadlineMs)
+    {
+        wait .05;
+        stats = mysql_async_stats();
+    }
+    check(stats[2] == workerCount, "native workers are occupied before queuing record read");
+    player.nameTestRecordRequestDone = false;
+    player thread requestCheckpointRecords();
+    wait .05;
+    stats = mysql_async_stats();
+    check(stats[1] == 1, "obsolete record read is queued before stopping its run");
+    player.playerRuns_runID = undefined;
+    player.runInstanceNumber = undefined;
+    player openCJ\showRecords::onRunStopped();
+    wait .15;
+    stats = mysql_async_stats();
+    check(stats[1] == 0 && stats[11] == cancelledBefore + 1,
+          "stopping the run cancels its queued record read before execution");
+    waitForRecordRequest(player);
+    deadlineMs = getTime() + 3000;
+    stats = mysql_async_stats();
+    while(stats[4] != 0 && getTime() < deadlineMs)
+    {
+        wait .05;
+        stats = mysql_async_stats();
+    }
+    check(stats[4] == 0, "record queue scenario releases all native results");
+    check(player.nameTestRecordOutcome == level.sqlConstants.outcomeCancelled,
+          "cancelled record request settles with the native cancelled outcome");
+    player.showRecords_persistTime = undefined;
+    player openCJ\showRecords::_hideRecords(true);
+}
+
+requestCheckpointRecords(timePlayedMs)
+{
+    if(!isDefined(timePlayedMs))
+    {
+        timePlayedMs = 1234;
+    }
+    self openCJ\showRecords::_getRecords([], level.showRecordsCheckpointFlash, timePlayedMs);
+    self.nameTestRecordRequestDone = true;
+}
+
+waitForRecordRequest(player)
+{
+    deadlineMs = getTime() + 5000;
+    while(!player.nameTestRecordRequestDone && getTime() < deadlineMs)
+    {
+        wait .05;
+    }
+    check(player.nameTestRecordRequestDone, "record request settles within the fixture deadline");
+}
+
+// A new checkpoint may finish reading before an older, already completed callback resumes.
+verifySupersededRecordReply(player)
+{
+    level.nameTestHoldRecordReplies = true;
+    level.nameTestReleaseRecordReply = false;
+    player.nameTestRecordReplyReady = false;
+    player.nameTestRecordRequestDone = false;
+    player thread requestCheckpointRecords(1111);
+    deadlineMs = getTime() + 5000;
+    while(!player.nameTestRecordReplyReady && getTime() < deadlineMs)
+    {
+        wait .05;
+    }
+    check(player.nameTestRecordReplyReady, "older checkpoint result is held before replacement");
+    level.nameTestHoldRecordReplies = false;
+    player thread requestCheckpointRecords(2222);
+    waitForRecordRequest(player);
+    check(player.showRecords_visibleTime == 2222, "newest checkpoint time is displayed");
+    level.nameTestReleaseRecordReply = true;
+    wait .15;
+    check(player.showRecords_visibleTime == 2222,
+          "older completed checkpoint reply cannot overwrite the newer panel");
 }
