@@ -2,6 +2,7 @@ main()
 {
     wait 2;
     level.brushFailures = 0;
+    checkParallelLandingEdges();
     tinySquare = [];
     tinySquare[0] = (0, 0, 0);
     tinySquare[1] = (0.1, 0, 0);
@@ -567,4 +568,28 @@ polygonArea(points)
             openCJ\checkpointArea::crossProduct(points[i] - points[0], points[i + 1] - points[0]);
     }
     return length(sum) * 0.5;
+}
+
+// The legacy trace path must reject walls that cannot define a corner.
+checkParallelLandingEdges()
+{
+    faces = [];
+    faces[0] = (1, 0, 0);
+    faces[1] = (0, 1, 0);
+    faces[2] = (-1, 0, 0);
+    faces[3] = (0, -1, 0);
+    distances = [];
+    distances[0] = 10;
+    distances[1] = 20;
+    distances[2] = 10;
+    distances[3] = 20;
+    points = openCJ\checkpointPlatform::_corners(
+        (0, 0, 0), (1, 0, 0), (0, 1, 0), faces, distances);
+    check(isDefined(points) && points[0] == (10, 20, 0),
+          "perpendicular landing edges intersect at the expected corner");
+
+    faces[1] = faces[0];
+    points = openCJ\checkpointPlatform::_corners(
+        (0, 0, 0), (1, 0, 0), (0, 1, 0), faces, distances);
+    check(!isDefined(points), "parallel landing edges are rejected without dividing by zero");
 }

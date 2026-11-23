@@ -117,6 +117,10 @@ detectAt(origin)
     for (attempt = 0; attempt <= 4; attempt++)
     {
         points = _corners(top["position"], axis, side, faces, distances);
+        if (!isDefined(points))
+        {
+            return undefined;
+        }
         center = vectorScale(points[0] + points[1] + points[2] + points[3], 0.25);
         trimmed = false;
         for (i = 0; i < 4 && !trimmed; i++)
@@ -342,6 +346,11 @@ _corners(origin, axis, side, faces, distances)
         c = vectorDot(faces[j], axis);
         d = vectorDot(faces[j], side);
         determinant = a * d - b * c;
+        // Parallel edge planes have no unique intersection; reject this landing.
+        if (determinant == 0)
+        {
+            return undefined;
+        }
         x = (distances[i] * d - b * distances[j]) / determinant;
         y = (a * distances[j] - distances[i] * c) / determinant;
         points[i] = origin + vectorScale(axis, x) + vectorScale(side, y);
