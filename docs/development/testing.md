@@ -229,7 +229,8 @@ rejected requirement/color edits, bounded recovery-name lookup, retirement, and
 rollback after a partial write.
 The engine account is restricted to that fixture schema. The runner deletes its
 schema, account and temporary credential file on exit; logs and draft snapshots
-remain under ignored `dev-tools/local/`. Both publication fixtures simulate a lost reply after a real commit and verify
+remain under ignored `dev-tools/local/`. Both publication fixtures simulate a lost
+reply after a real commit and verify
 that retries retain one set of route/checkpoint IDs. This does not exercise a live
 player's editor UI, actual network transport failures or concurrent publishers.
 
@@ -244,4 +245,8 @@ rejection, alternating-manifest recovery, damaged snapshot preservation and a
 missing opening. It also drives split, merge, rejoin and rename through real
 section files and SQL. Fixture-only hooks observe editor reopening, navigation
 and graph-refresh calls; they do not replace the persistence or command logic.
+The file-open hook simulates failed approach/manifest writes and checks that the
+pending edit remains recoverable. Rename checks distinguish a committed change,
+a rollback and an unresolved reply while retaining recovery drafts. These are
+simulated failures at those boundaries, not operating-system disk faults.
 It uses the same owned schema/account and isolated file tree.
