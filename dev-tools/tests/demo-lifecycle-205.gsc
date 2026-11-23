@@ -98,6 +98,7 @@ main()
     p.notificationResultUntil=getTime()+5000;
     p openCJ\notifications::onDisconnect();
     check(!isDefined(p.notificationFlash) && !isDefined(p.notificationResultUntil),"disconnect shares feedback cleanup");
+    p clipDatabaseFailureChecks();
     printf("DEMO LIFECYCLE COMPLETE failures="+level.lifecycleFailures+" checks="+level.lifecycleChecks+"\n");
 }
 setup(p)
@@ -174,4 +175,43 @@ cacheOwnershipChecks()
     openCJ\demos::releaseCache(demoID);
     destroyDemo(demoID);
     level.demoCache[key] = undefined;
+}
+
+
+// The fixture has no SQL connection: synchronous timestamp/UUID reads must fail cleanly.
+clipDatabaseFailureChecks()
+{
+    check(!openCJ\clips::initializeSessions(), "missing session identity leaves clips unavailable");
+    level.clipStorageReady = true;
+    level.demoStorageReady = true;
+    level.mapid_mapID = 1;
+    level.clipSession = "isolated";
+    self.login_playerID = 1;
+    self openCJ\clips::record();
+    check(!isDefined(self.clipRecording), "missing timestamp leaves no clip recording");
+
+    nativeID = demoCreateTransient();
+    addFrameToDemo(nativeID, (0, 0, 100), (0, 90, 0), 1, 0, 0, 0, 0, 333);
+    addFrameToDemo(nativeID, (1, 0, 100), (0, 90, 0), 1, 0, 0, 0, 0, 333);
+    recording = spawnStruct();
+    recording.id = nativeID;
+    recording.first = 0;
+    recording.last = 1;
+    recording.busy = false;
+    recording.permanent = true;
+    recording.date = "2026-01-01 00:00:00";
+    self.clipEdit = recording;
+    self openCJ\clips::submit("Fixture clip");
+    check(!recording.busy && !isDefined(self.clipUploadNative)
+          && !isDefined(self.clipUploadToken),
+          "missing upload token releases its pin and permits another attempt");
+    check(self.clipEdit == recording && numberOfDemoFrames(nativeID) == 2,
+          "failed upload preserves the editor recording");
+    recording.first = -1;
+    self openCJ\clips::submit("Fixture clip");
+    check(!recording.busy && !isDefined(self.clipUploadNative),
+          "invalid native range releases the upload pin");
+    self.clipEdit = undefined;
+    destroyDemo(nativeID);
+    check(!isDefined(numberOfDemoFrames(nativeID)), "failed upload leaves no native pin behind");
 }

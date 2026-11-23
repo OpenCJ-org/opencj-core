@@ -13,21 +13,11 @@ onInit()
         isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT clipID FROM demoClips LIMIT 0"));
     if(level.clipStorageReady)
     {
-        rows = openCJ\mySQL::mysqlSyncQuery("SELECT UUID()");
-        level.clipSession = rows[0][0];
-        openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoClipSessions(sessionID) VALUES(" +
-                                     dbStr(level.clipSession) + ")");
-        level.clipViewSession = getCvar("opencj_clip_view_session");
-        if(level.clipViewSession == "")
+        level.clipStorageReady = initializeSessions();
+        if(level.clipStorageReady)
         {
-            rows = openCJ\mySQL::mysqlSyncQuery("SELECT UUID()");
-            level.clipViewSession = rows[0][0];
-            setCvar("opencj_clip_view_session", level.clipViewSession);
+            level thread sessionHeartbeat();
         }
-        openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoClipSessions(sessionID) VALUES(" +
-                                     dbStr(level.clipViewSession) +
-                                     ") ON DUPLICATE KEY UPDATE heartbeat=NOW()");
-        level thread sessionHeartbeat();
     }
     cmd = openCJ\commands_base::registerCommand("record", "!record", ::_record, 0, 0, 0);
     openCJ\commands_base::addAlias(cmd, "startrecord");
@@ -36,6 +26,57 @@ onInit()
     openCJ\commands_base::registerCommand("renameclip", "!renameclip <id> <name>", ::_rename, 2,
                                           undefined, 0);
     openCJ\commands_base::registerCommand("deleteclip", "!deleteclip <id>", ::_delete, 1, 1, 0);
+}
+
+// A failed schema/session operation must leave clips unavailable rather than partially enabled.
+initializeSessions()
+{
+    level.clipSession = readDatabaseValue("SELECT UUID()");
+    if(!isDefined(level.clipSession))
+    {
+        return false;
+    }
+    registered = openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoClipSessions(sessionID) VALUES(" +
+                                              dbStr(level.clipSession) + ")");
+    if(!isDefined(registered))
+    {
+        return false;
+    }
+    viewSession = getCvar("opencj_clip_view_session");
+    if(viewSession == "")
+    {
+        viewSession = readDatabaseValue("SELECT UUID()");
+        if(!isDefined(viewSession))
+        {
+            return false;
+        }
+    }
+    registered = openCJ\mySQL::mysqlSyncQuery("INSERT INTO demoClipSessions(sessionID) VALUES(" +
+                                              dbStr(viewSession) +
+                                              ") ON DUPLICATE KEY UPDATE heartbeat=NOW()");
+    if(!isDefined(registered))
+    {
+        return false;
+    }
+    level.clipViewSession = viewSession;
+    setCvar("opencj_clip_view_session", viewSession);
+    return true;
+}
+
+// Timestamp and UUID queries need one nonempty value before native ownership can move.
+readDatabaseValue(query)
+{
+    rows = openCJ\mySQL::mysqlSyncQuery(query);
+    if(!isDefined(rows) || rows.size != 1 || rows[0].size != 1)
+    {
+        return undefined;
+    }
+    value = rows[0][0];
+    if(!isDefined(value) || value == "")
+    {
+        return undefined;
+    }
+    return value;
 }
 
 sessionHeartbeat()
@@ -123,6 +164,12 @@ record()
         self sendLocalChatMessage("Clips are not available in tutorial mode.", true);
         return;
     }
+    recordedAt = readDatabaseValue("SELECT NOW()");
+    if(!isDefined(recordedAt))
+    {
+        self sendLocalChatMessage("Could not start the clip recording. Please try again.", true);
+        return;
+    }
     id = demoCreateTransient();
     if(!isDefined(id))
     {
@@ -134,8 +181,7 @@ record()
     rec.loaded = false;
     rec.saved = false;
     rec.lastTick = -1;
-    rows = openCJ\mySQL::mysqlSyncQuery("SELECT NOW()");
-    rec.date = rows[0][0];
+    rec.date = recordedAt;
     self.clipRecording = rec;
     self capture();
     self sendLocalChatMessage(
@@ -371,11 +417,24 @@ submit(description)
         session = "NULL";
     }
     info = demoClipInfo(rec.id, rec.first);
-    origin = info[0];
-    rows = openCJ\mySQL::mysqlSyncQuery("SELECT UUID()");
-    token = rows[0][0];
-    self.clipUploadToken = token;
     stats = demoRangeInfo(rec.id, rec.first, rec.last);
+    if(!isDefined(info) || !isDefined(stats))
+    {
+        self releaseUpload();
+        rec.busy = false;
+        self setClientCvar("opencj_clip_hint", "The selected recording range is unavailable.");
+        return;
+    }
+    origin = info[0];
+    token = readDatabaseValue("SELECT UUID()");
+    if(!isDefined(token))
+    {
+        self releaseUpload();
+        rec.busy = false;
+        self setClientCvar("opencj_clip_hint", "Could not start the upload. Please try again.");
+        return;
+    }
+    self.clipUploadToken = token;
     fps = "NULL";
     if(stats[1] == 0)
     {

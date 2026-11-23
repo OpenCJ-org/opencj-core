@@ -43,6 +43,7 @@ run(player, otherPlayer)
     check(result.status == 0 && result.rows[0][0] == "1",
           "GSC receives successful rowset and outcome");
     longQueryBuilderChecks();
+    clipSessionChecks();
     demoTransferChecks();
     stats = mysql_async_stats();
     check(stats[0] == 4 && stats[4] == 0, "four workers and no uncollected GSC jobs");
@@ -255,4 +256,30 @@ afterMap()
           "actual map change preserves permanent worker pool");
     check(stats[4] == 0, "old-map requests/results cleaned after actual map change");
     openCJ\history192Test::finish();
+}
+
+
+// Session identities must be committed before clip storage is reported as available.
+clipSessionChecks()
+{
+    previousViewSession = getCvar("opencj_clip_view_session");
+    setCvar("opencj_clip_view_session", "");
+    registered = openCJ\clips::initializeSessions();
+    check(registered, "clip initialization registers map and view sessions");
+    if(!registered)
+    {
+        setCvar("opencj_clip_view_session", previousViewSession);
+        return;
+    }
+    rows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT COUNT(*) FROM demoClipSessions WHERE sessionID IN ('"
+        + level.clipSession + "','" + level.clipViewSession + "')");
+    check(isDefined(rows) && int(rows[0][0]) == 2,
+          "both clip sessions exist before use");
+    check(getCvar("opencj_clip_view_session") == level.clipViewSession,
+          "registered view session survives map changes");
+    openCJ\mySQL::mysqlSyncQuery(
+        "DELETE FROM demoClipSessions WHERE sessionID IN ('"
+        + level.clipSession + "','" + level.clipViewSession + "')");
+    setCvar("opencj_clip_view_session", previousViewSession);
 }
