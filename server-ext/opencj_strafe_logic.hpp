@@ -3,25 +3,43 @@
 #include <math.h>
 #include <string.h>
 
+// These flag values are also returned by the strafeTransition GSC function.
+enum CJ_StrafeTransitionFlags {
+    CJ_STRAFE_PHASE_SWITCH = 1,
+    CJ_STRAFE_HALFBEAT = 2,
+    CJ_STRAFE_BACKWARD = 4
+};
+
+// A long command gap no longer describes one continuous strafe.
+static constexpr int CJ_STRAFE_MAX_COMMAND_GAP_MS = 250;
+static constexpr float CJ_HALFBEAT_SPEED_TOLERANCE = 0.0001f;
+
 inline int CJ_InputSign(int value)
 {
     return (value > 0) - (value < 0);
 }
 
-// 1 = phase switch, 2 = halfbeat single-key phase, 4 = backward counterpart.
-// Adjacent directions (WA -> A, WA -> W) are adjustments, not phase switches.
-inline int CJ_StrafeTransition(int af, int ar, int f, int r)
+// Compare key directions and return the phase flags. Adjacent directions
+// (WA -> A, WA -> W) are adjustments, not phase switches.
+inline int CJ_StrafeTransition(int anchorForward, int anchorRight, int forward, int right)
 {
-    af = CJ_InputSign(af);
-    ar = CJ_InputSign(ar);
-    f = CJ_InputSign(f);
-    r = CJ_InputSign(r);
-    if ((!af && !ar) || (!f && !r) || af * f + ar * r > 0) {
+    anchorForward = CJ_InputSign(anchorForward);
+    anchorRight = CJ_InputSign(anchorRight);
+    forward = CJ_InputSign(forward);
+    right = CJ_InputSign(right);
+    const bool missingDirection = (!anchorForward && !anchorRight) || (!forward && !right);
+    const bool adjacentDirection = anchorForward * forward + anchorRight * right > 0;
+    if (missingDirection || adjacentDirection) {
         return 0;
     }
-    int flags = 1;
-    if (!f && r && af && ar == -r) {
-        flags |= 2 | (af < 0 ? 4 : 0);
+
+    int flags = CJ_STRAFE_PHASE_SWITCH;
+    const bool oppositeSingleKey = !forward && right && anchorForward && anchorRight == -right;
+    if (oppositeSingleKey) {
+        flags |= CJ_STRAFE_HALFBEAT;
+        if (anchorForward < 0) {
+            flags |= CJ_STRAFE_BACKWARD;
+        }
     }
     return flags;
 }
@@ -34,7 +52,7 @@ struct CJ_StrafeState {
     int forward;
     int right;
     int halfbeatForward;
-    int time;
+    int commandTimeMs;
 };
 
 inline void CJ_ResetStrafe(CJ_StrafeState &state)
@@ -42,59 +60,76 @@ inline void CJ_ResetStrafe(CJ_StrafeState &state)
     memset(&state, 0, sizeof(state));
 }
 
-inline int CJ_UpdateStrafe(CJ_StrafeState &s, int forward, int right, bool airborne, int time)
+// Track phase changes within one airborne sequence. Landing, a rewind or a
+// command gap starts a new sequence so an old halfbeat cannot affect movement.
+inline int CJ_UpdateStrafe(CJ_StrafeState &state, int forward, int right, bool airborne,
+                           int commandTimeMs)
 {
-    int f = CJ_InputSign(forward);
-    int r = CJ_InputSign(right);
-    if (!s.valid || time < s.time || time - s.time > 250 || !airborne || !s.airborne) {
-        s.valid = true;
-        s.airborne = airborne;
-        s.anchorForward = f;
-        s.anchorRight = r;
-        s.forward = f;
-        s.right = r;
-        s.halfbeatForward = 0;
-        s.time = time;
+    const int forwardSign = CJ_InputSign(forward);
+    const int rightSign = CJ_InputSign(right);
+    const bool commandGap =
+        state.valid && (commandTimeMs < state.commandTimeMs ||
+                        commandTimeMs - state.commandTimeMs > CJ_STRAFE_MAX_COMMAND_GAP_MS);
+    const bool continuousFlight = airborne && state.airborne;
+    if (!state.valid || commandGap || !continuousFlight) {
+        state.valid = true;
+        state.airborne = airborne;
+        state.anchorForward = forwardSign;
+        state.anchorRight = rightSign;
+        state.forward = forwardSign;
+        state.right = rightSign;
+        state.halfbeatForward = 0;
+        state.commandTimeMs = commandTimeMs;
         return 0;
     }
+
     int flags = 0;
-    if (f != s.forward || r != s.right) {
-        flags = CJ_StrafeTransition(s.anchorForward, s.anchorRight, f, r);
-        if (flags & 1) {
-            s.anchorForward = f;
-            s.anchorRight = r;
-            s.halfbeatForward = (flags & 2) ? ((flags & 4) ? -1 : 1) : 0;
-        } else if (!f && !r) {
-            s.halfbeatForward = 0;
-        } else if (f || r != s.right) {
-            s.halfbeatForward = 0;
+    if (forwardSign != state.forward || rightSign != state.right) {
+        flags = CJ_StrafeTransition(state.anchorForward, state.anchorRight, forwardSign, rightSign);
+        if (flags & CJ_STRAFE_PHASE_SWITCH) {
+            state.anchorForward = forwardSign;
+            state.anchorRight = rightSign;
+            state.halfbeatForward = 0;
+            if (flags & CJ_STRAFE_HALFBEAT) {
+                state.halfbeatForward = (flags & CJ_STRAFE_BACKWARD) ? -1 : 1;
+            }
+        } else if (!forwardSign && !rightSign) {
+            state.halfbeatForward = 0;
+        } else if (forwardSign || rightSign != state.right) {
+            state.halfbeatForward = 0;
         }
-        if ((f && r) || (!s.anchorForward && !s.anchorRight)) {
-            s.anchorForward = f;
-            s.anchorRight = r;
+        if ((forwardSign && rightSign) || (!state.anchorForward && !state.anchorRight)) {
+            state.anchorForward = forwardSign;
+            state.anchorRight = rightSign;
         }
-        s.forward = f;
-        s.right = r;
+        state.forward = forwardSign;
+        state.right = rightSign;
     }
-    s.time = time;
-    s.airborne = airborne;
+    state.commandTimeMs = commandTimeMs;
+    state.airborne = airborne;
     return flags;
 }
 
 // Compare actual acceleration with the engine's fullbeat result. Preserve
 // pre-existing momentum, actual steering direction and all vertical velocity.
-inline float CJ_CapHalfbeatGain(const float *before, const float *reference, float *actual)
+// Non-finite speeds leave the input velocity unchanged and report no correction.
+inline float CJ_CapHalfbeatGain(const float *priorVelocity, const float *referenceVelocity,
+                                float *actualVelocity)
 {
-    float prior = hypotf(before[0], before[1]);
-    float allowed = fmaxf(prior, hypotf(reference[0], reference[1]));
-    float speed = hypotf(actual[0], actual[1]);
-    if (!isfinite(prior) || !isfinite(allowed) || !isfinite(speed) || speed <= allowed + 0.0001f ||
-        speed <= 0) {
+    const float priorSpeed = hypotf(priorVelocity[0], priorVelocity[1]);
+    const float allowedSpeed =
+        fmaxf(priorSpeed, hypotf(referenceVelocity[0], referenceVelocity[1]));
+    const float actualSpeed = hypotf(actualVelocity[0], actualVelocity[1]);
+    const bool finiteSpeeds =
+        isfinite(priorSpeed) && isfinite(allowedSpeed) && isfinite(actualSpeed);
+    if (!finiteSpeeds || actualSpeed <= allowedSpeed + CJ_HALFBEAT_SPEED_TOLERANCE ||
+        actualSpeed <= 0) {
         return 0;
     }
-    float scale = allowed / speed;
-    actual[0] *= scale;
-    actual[1] *= scale;
-    return speed - allowed;
+
+    const float speedScale = allowedSpeed / actualSpeed;
+    actualVelocity[0] *= speedScale;
+    actualVelocity[1] *= speedScale;
+    return actualSpeed - allowedSpeed;
 }
 #endif

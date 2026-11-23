@@ -6,11 +6,19 @@
 #include <math.h>
 #include <string.h>
 extern "C" {
-void Plugin_Printf(const char *, ...);
-client_t *Plugin_GetClientForClientNum(int);
-int Plugin_Cvar_VariableIntegerValue(const char *);
-void OpenCJ_PM_Accelerate(playerState_t *, const pml_t *, const float *, float, float);
+void Plugin_Printf(const char *format, ...);
+client_t *Plugin_GetClientForClientNum(int clientNum);
+int Plugin_Cvar_VariableIntegerValue(const char *name);
+void OpenCJ_PM_Accelerate(playerState_t *playerState, const pml_t *movementFrame,
+                          const float *wishDirection, float wishSpeed, float acceleration);
 }
+// Use a slot outside the two connected test clients. All state is reset after the run.
+static constexpr int CORRECTION_CLIENT_NUM = MAX_CLIENTS - 1;
+static constexpr int FULL_KEY_INPUT = 127;
+static constexpr float PLAYER_WISH_SPEED = 190;
+static constexpr bool CORRECTION_ENABLED = true;
+static constexpr bool CORRECTION_DISABLED = false;
+
 static int checks;
 static int failures;
 static void check(bool ok, const char *name) {
@@ -20,44 +28,51 @@ static void check(bool ok, const char *name) {
     }
     Plugin_Printf("STRAFE NATIVE CHECK %d: %s\n", ok, name);
 }
-static bool same(const float *a, const float *b) {
-    return fabsf(a[0] - b[0]) < 0.0001f && fabsf(a[1] - b[1]) < 0.0001f && a[2] == b[2];
+
+static bool sameVelocity(const float *velocityAngle, const float *b) {
+    return fabsf(velocityAngle[0] - b[0]) < 0.0001f && fabsf(velocityAngle[1] - b[1]) < 0.0001f &&
+           velocityAngle[2] == b[2];
 }
-static void setup(playerState_t &ps, pmove_t &pm, pml_t &pml, float rotation, float speed, float dt,
-                  int right = 1, int forward = 1) {
-    memset(&ps, 0, sizeof(ps));
-    memset(&pm, 0, sizeof(pm));
-    memset(&pml, 0, sizeof(pml));
-    ps.clientNum = 63;
-    ps.speed = 190;
-    ps.groundEntityNum = 1023;
-    float a = rotation * 0.01745329252f;
-    float view = a + (forward < 0 ? 3.14159265359f : 0) + forward * right * 0.2f;
-    ps.velocity[0] = speed * cosf(a);
-    ps.velocity[1] = speed * sinf(a);
-    ps.velocity[2] = 700;
-    ps.oldVelocity[0] = ps.velocity[0];
-    ps.oldVelocity[1] = ps.velocity[1];
-    pml.forward[0] = cosf(view);
-    pml.forward[1] = sinf(view);
-    pml.right[0] = sinf(view);
-    pml.right[1] = -cosf(view);
-    pml.frametime = dt;
-    pml.msec = int(dt * 1000);
-    pm.ps = &ps;
-    pm.cmd.serverTime = 1004;
-    pm.cmd.rightmove = right * 127;
+
+static void prepareMovement(playerState_t &playerState, pmove_t &movementContext,
+                            pml_t &movementFrame, float rotationDegrees, float speed,
+                            float frameSeconds, int right = 1, int forward = 1) {
+    memset(&playerState, 0, sizeof(playerState));
+    memset(&movementContext, 0, sizeof(movementContext));
+    memset(&movementFrame, 0, sizeof(movementFrame));
+    playerState.clientNum = CORRECTION_CLIENT_NUM;
+    playerState.speed = PLAYER_WISH_SPEED;
+    playerState.groundEntityNum = ENTITYNUM_NONE;
+    float velocityAngle = rotationDegrees * 0.01745329252f;
+    float viewAngle = velocityAngle + (forward < 0 ? 3.14159265359f : 0) + forward * right * 0.2f;
+    playerState.velocity[0] = speed * cosf(velocityAngle);
+    playerState.velocity[1] = speed * sinf(velocityAngle);
+    playerState.velocity[2] = 700;
+    playerState.oldVelocity[0] = playerState.velocity[0];
+    playerState.oldVelocity[1] = playerState.velocity[1];
+    movementFrame.forward[0] = cosf(viewAngle);
+    movementFrame.forward[1] = sinf(viewAngle);
+    movementFrame.right[0] = sinf(viewAngle);
+    movementFrame.right[1] = -cosf(viewAngle);
+    movementFrame.frametime = frameSeconds;
+    movementFrame.msec = int(frameSeconds * 1000);
+    movementContext.ps = &playerState;
+    movementContext.cmd.serverTime = 1004;
+    movementContext.cmd.rightmove = right * FULL_KEY_INPUT;
 }
-static void seed(playerState_t &ps, pmove_t &pm, bool enabled, int af = 1, int ar = -1) {
-    opencj_initMovement(63);
-    opencj_setHalfbeatCorrection(63, enabled);
-    usercmd_t previous = pm.cmd;
+
+static void seedPreviousDiagonal(playerState_t &playerState, pmove_t &movementContext, bool enabled,
+                                 int anchorForward = 1, int anchorRight = -1) {
+    opencj_initMovement(CORRECTION_CLIENT_NUM);
+    opencj_setHalfbeatCorrection(CORRECTION_CLIENT_NUM, enabled);
+    usercmd_t previous = movementContext.cmd;
     previous.serverTime = 1000;
-    previous.forwardmove = 127 * af;
-    previous.rightmove = 127 * ar;
-    opencj_observeMovement(&ps, &previous);
+    previous.forwardmove = FULL_KEY_INPUT * anchorForward;
+    previous.rightmove = FULL_KEY_INPUT * anchorRight;
+    opencj_observeMovement(&playerState, &previous);
 }
-static void run() {
+
+static void testStrafeTransitions() {
     check(CJ_StrafeTransition(1, -1, 1, 1) == 1, "WA to WD is fullbeat");
     check(CJ_StrafeTransition(1, -1, 0, 1) == 3, "WA to D is halfbeat");
     check(CJ_StrafeTransition(1, 1, 0, -1) == 3, "WD to A is halfbeat");
@@ -84,96 +99,124 @@ static void run() {
     CJ_UpdateStrafe(state, 0, 1, true, 124);
     CJ_UpdateStrafe(state, 0, 1, true, 500);
     check(state.halfbeatForward == 0, "stale command gap clears correction");
+}
 
+static void testConstantSpeedTurn() {
     float before[3] = {300, 400, 20};
     float reference[3] = {340, sqrtf(500 * 500 - 340 * 340), 20};
     float actual[3];
     memcpy(actual, reference, sizeof(actual));
     check(CJ_CapHalfbeatGain(before, reference, actual) == 0,
           "constant-speed turn does not trigger a penalty");
+}
 
-    const float rotations[] = {0, 45, 90, 135, 230};
-    const float durations[] = {0.002f, 0.003f, 0.004f, 0.008f, 0.016f, 0.05f};
+// Compare the real engine's diagonal and single-key results for one movement frame.
+static void testCorrection(float rotationDegrees, float frameSeconds, int forward, int right) {
+    playerState_t playerState;
+    pmove_t movementContext;
+    pml_t movementFrame;
+    prepareMovement(playerState, movementContext, movementFrame, rotationDegrees, 500, frameSeconds,
+                    right, forward);
+    playerState_t original = playerState;
+    playerState_t fullbeat = playerState;
+    float direction[3] = {right * movementFrame.right[0], right * movementFrame.right[1], 0};
+    float diagonalDirection[3] = {
+        forward * movementFrame.forward[0] + right * movementFrame.right[0],
+        forward * movementFrame.forward[1] + right * movementFrame.right[1], 0};
+    float directionLength = hypotf(diagonalDirection[0], diagonalDirection[1]);
+    diagonalDirection[0] /= directionLength;
+    diagonalDirection[1] /= directionLength;
+    OpenCJ_PM_Accelerate(&original, &movementFrame, direction, PLAYER_WISH_SPEED, 1);
+    OpenCJ_PM_Accelerate(&fullbeat, &movementFrame, diagonalDirection, PLAYER_WISH_SPEED, 1);
+    check(hypotf(original.velocity[0], original.velocity[1]) > 500.001f,
+          "fixture exercises positive halfbeat gain");
+    seedPreviousDiagonal(playerState, movementContext, CORRECTION_DISABLED, forward, -right);
+    opencj_airAccelerate(&movementContext, &movementFrame, direction, PLAYER_WISH_SPEED);
+    check(sameVelocity(playerState.velocity, original.velocity),
+          "allowed halfbeat matches original engine exactly");
+    prepareMovement(playerState, movementContext, movementFrame, rotationDegrees, 500, frameSeconds,
+                    right, forward);
+    seedPreviousDiagonal(playerState, movementContext, CORRECTION_ENABLED, forward, -right);
+    opencj_airAccelerate(&movementContext, &movementFrame, direction, PLAYER_WISH_SPEED);
+    float speed = hypotf(playerState.velocity[0], playerState.velocity[1]);
+    check(speed >= 499.999f &&
+              speed <= fmaxf(500, hypotf(fullbeat.velocity[0], fullbeat.velocity[1])) + 0.001f,
+          "disallowed halfbeat bounded by engine fullbeat without removing momentum");
+    check(hypotf(original.velocity[0], original.velocity[1]) - speed > 0.001f,
+          "disallowed correction actually removes excess gain");
+    check(playerState.velocity[2] == 700, "vertical rocket/bounce momentum preserved");
+    check(fabsf(playerState.velocity[0] * original.velocity[1] -
+                playerState.velocity[1] * original.velocity[0]) < 0.1f,
+          "actual steering direction preserved");
+}
+
+static void testCorrectionAcrossDirections() {
+    const float rotationAngles[] = {0, 45, 90, 135, 230};
+    const float frameDurations[] = {0.002f, 0.003f, 0.004f, 0.008f, 0.016f, 0.05f};
     for (int forward = -1; forward <= 1; forward += 2) {
         for (int right = -1; right <= 1; right += 2) {
-            for (float rotation : rotations) {
-                for (float dt : durations) {
-                    playerState_t ps;
-                    pmove_t pm;
-                    pml_t pml;
-                    setup(ps, pm, pml, rotation, 500, dt, right, forward);
-                    playerState_t original = ps;
-                    playerState_t fullbeat = ps;
-                    float direction[3] = {right * pml.right[0], right * pml.right[1], 0};
-                    float diag[3] = {forward * pml.forward[0] + right * pml.right[0],
-                                     forward * pml.forward[1] + right * pml.right[1], 0};
-                    float len = hypotf(diag[0], diag[1]);
-                    diag[0] /= len;
-                    diag[1] /= len;
-                    OpenCJ_PM_Accelerate(&original, &pml, direction, 190, 1);
-                    OpenCJ_PM_Accelerate(&fullbeat, &pml, diag, 190, 1);
-                    check(hypotf(original.velocity[0], original.velocity[1]) > 500.001f,
-                          "fixture exercises positive halfbeat gain");
-                    seed(ps, pm, false, forward, -right);
-                    opencj_airAccelerate(&pm, &pml, direction, 190);
-                    check(same(ps.velocity, original.velocity),
-                          "allowed halfbeat matches original engine exactly");
-                    setup(ps, pm, pml, rotation, 500, dt, right, forward);
-                    seed(ps, pm, true, forward, -right);
-                    opencj_airAccelerate(&pm, &pml, direction, 190);
-                    float speed = hypotf(ps.velocity[0], ps.velocity[1]);
-                    check(
-                        speed >= 499.999f && speed <= fmaxf(500, hypotf(fullbeat.velocity[0],
-                                                                        fullbeat.velocity[1])) +
-                                                          0.001f,
-                        "disallowed halfbeat bounded by engine fullbeat without removing momentum");
-                    check(hypotf(original.velocity[0], original.velocity[1]) - speed > 0.001f,
-                          "disallowed correction actually removes excess gain");
-                    check(ps.velocity[2] == 700, "vertical rocket/bounce momentum preserved");
-                    check(fabsf(ps.velocity[0] * original.velocity[1] -
-                                ps.velocity[1] * original.velocity[0]) < 0.1f,
-                          "actual steering direction preserved");
+            for (float rotationDegrees : rotationAngles) {
+                for (float frameSeconds : frameDurations) {
+                    testCorrection(rotationDegrees, frameSeconds, forward, right);
                 }
             }
         }
     }
-    for (int exclusion = 0; exclusion < 5; ++exclusion) {
-        playerState_t ps;
-        pmove_t pm;
-        pml_t pml;
-        setup(ps, pm, pml, 0, 900, 0.004f);
-        if (exclusion == 0) {
-            pml.groundPlane = 1;
+}
+
+enum CorrectionExclusion { SLOPE, NOCLIP, LARGE_FRAME, LANDING_ADJUSTMENT, RESET_HISTORY };
+
+static void testExcludedMovement() {
+    const CorrectionExclusion exclusions[] = {SLOPE, NOCLIP, LARGE_FRAME, LANDING_ADJUSTMENT,
+                                              RESET_HISTORY};
+    for (CorrectionExclusion exclusion : exclusions) {
+        playerState_t playerState;
+        pmove_t movementContext;
+        pml_t movementFrame;
+        prepareMovement(playerState, movementContext, movementFrame, 0, 900, 0.004f);
+        if (exclusion == SLOPE) {
+            movementFrame.groundPlane = 1;
         }
-        if (exclusion == 1) {
-            ps.pm_type = 2;
+        if (exclusion == NOCLIP) {
+            playerState.pm_type = 2;
         }
-        if (exclusion == 2) {
-            pml.frametime = 0.1f;
+        if (exclusion == LARGE_FRAME) {
+            movementFrame.frametime = 0.1f;
         }
-        playerState_t original = ps;
-        float direction[3] = {pml.right[0], pml.right[1], 0};
-        OpenCJ_PM_Accelerate(&original, &pml, direction, 190, 1);
-        seed(ps, pm, true, 1, exclusion == 3 ? 1 : -1);
-        if (exclusion == 4) {
-            opencj_resetMovement(63);
+        playerState_t original = playerState;
+        float direction[3] = {movementFrame.right[0], movementFrame.right[1], 0};
+        OpenCJ_PM_Accelerate(&original, &movementFrame, direction, PLAYER_WISH_SPEED, 1);
+        seedPreviousDiagonal(playerState, movementContext, CORRECTION_ENABLED, 1,
+                             exclusion == LANDING_ADJUSTMENT ? 1 : -1);
+        if (exclusion == RESET_HISTORY) {
+            opencj_resetMovement(CORRECTION_CLIENT_NUM);
         }
-        opencj_airAccelerate(&pm, &pml, direction, 190);
-        check(same(ps.velocity, original.velocity),
+        opencj_airAccelerate(&movementContext, &movementFrame, direction, PLAYER_WISH_SPEED);
+        check(sameVelocity(playerState.velocity, original.velocity),
               "slope/noclip/large-step/landing-adjustment/reset exclusions preserve engine result");
     }
-    opencj_initMovement(63);
+}
+
+static void run() {
+    testStrafeTransitions();
+    testConstantSpeedTurn();
+    testCorrectionAcrossDirections();
+    testExcludedMovement();
+    opencj_initMovement(CORRECTION_CLIENT_NUM);
     Plugin_Printf("STRAFE NATIVE COMPLETE failures=%d checks=%d\n", failures, checks);
 }
+
 extern "C" int OnInit() {
     return 0;
 }
+
 extern "C" void OnInfoRequest(pluginInfo_t *info) {
     memset(info, 0, sizeof(*info));
     info->handlerVersion.major = PLUGIN_HANDLER_VERSION_MAJOR;
     strcpy(info->fullName, "OpenCJ isolated strafe verification");
     info->pluginVersion.major = 1;
 }
+
 extern "C" void OnFrame() {
     static bool done = false;
     static bool callbackDone = false;
@@ -181,22 +224,22 @@ extern "C" void OnFrame() {
         callbackDone = true;
         client_t *client = Plugin_GetClientForClientNum(0);
         if (client && client->gentity && client->gentity->client) {
-            playerState_t &ps = client->gentity->client->ps;
-            int ground = ps.groundEntityNum;
-            ps.groundEntityNum = 1023;
-            usercmd_t cmd = {};
-            cmd.serverTime = client->lastUsercmd.serverTime + 10;
-            cmd.forwardmove = 127;
-            cmd.rightmove = -127;
+            playerState_t &playerState = client->gentity->client->ps;
+            int savedGroundEntity = playerState.groundEntityNum;
+            playerState.groundEntityNum = ENTITYNUM_NONE;
+            usercmd_t command = {};
+            command.serverTime = client->lastUsercmd.serverTime + 10;
+            command.forwardmove = FULL_KEY_INPUT;
+            command.rightmove = -FULL_KEY_INPUT;
             opencj_invalidateMovementInput(0);
-            opencj_onClientMoveCommand(client, &cmd);
-            cmd.serverTime += 3;
-            cmd.rightmove = 127;
-            opencj_onClientMoveCommand(client, &cmd);
-            cmd.serverTime += 3;
-            cmd.forwardmove = 0;
-            opencj_onClientMoveCommand(client, &cmd);
-            ps.groundEntityNum = ground;
+            opencj_onClientMoveCommand(client, &command);
+            command.serverTime += 3;
+            command.rightmove = FULL_KEY_INPUT;
+            opencj_onClientMoveCommand(client, &command);
+            command.serverTime += 3;
+            command.forwardmove = 0;
+            opencj_onClientMoveCommand(client, &command);
+            playerState.groundEntityNum = savedGroundEntity;
         }
     }
     if (!done && Plugin_Cvar_VariableIntegerValue("opencj_test_movement")) {

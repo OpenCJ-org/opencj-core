@@ -6,9 +6,9 @@ extern "C" {
 void Gsc_Cod4_GetAscii();
 void Gsc_Cod4_ForceDownloadCvars();
 void Gsc_Cod4_FindConfigstringIndex();
-void Gsc_Cod4_AddVelocity(int id);
-void Gsc_Cod4_GetIP(int id);
-void Gsc_Cod4_IsSprinting(int id);
+void Gsc_Cod4_AddVelocity(int clientNum);
+void Gsc_Cod4_GetIP(int clientNum);
+void Gsc_Cod4_IsSprinting(int clientNum);
 }
 #endif
 #endif

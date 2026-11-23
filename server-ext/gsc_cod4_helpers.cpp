@@ -7,9 +7,9 @@ extern "C" {
 #include "../cod4x-server/src/sys_net.h"
 #include "../cod4x-server/src/cvar.h"
 
-static bool validClient(int id)
+static bool isValidClient(int clientNum)
 {
-    return sv_maxclients && id >= 0 && id < sv_maxclients->integer;
+    return sv_maxclients && clientNum >= 0 && clientNum < sv_maxclients->integer;
 }
 
 void Gsc_Cod4_GetAscii()
@@ -25,24 +25,25 @@ void Gsc_Cod4_ForceDownloadCvars()
     Cvar_RegisterBool("cl_wwwdownload", qtrue, CVAR_SYSTEMINFO | CVAR_ROM, "");
 }
 
+// Find an existing table entry; return zero when the range or name is unavailable.
 void Gsc_Cod4_FindConfigstringIndex()
 {
-    const char *name = Scr_GetString(0);
-    const int start = Scr_GetInt(1);
-    const int count = Scr_GetInt(2);
+    const char *configstringName = Scr_GetString(0);
+    const int tableStartIndex = Scr_GetInt(1);
+    const int tableEntryCount = Scr_GetInt(2);
     // Slot zero of each table is reserved. Never allocate or alter configstrings.
     // Validate with subtraction so a malicious count cannot overflow the bound.
-    if (!name[0] || start < 0 || start >= MAX_CONFIGSTRINGS || count <= 1 ||
-        count > MAX_CONFIGSTRINGS - start)
+    if (!configstringName[0] || tableStartIndex < 0 || tableStartIndex >= MAX_CONFIGSTRINGS ||
+        tableEntryCount <= 1 || tableEntryCount > MAX_CONFIGSTRINGS - tableStartIndex)
     {
         Scr_AddInt(0);
         return;
     }
-    char value[MAX_STRING_CHARS];
-    for (int index = start + 1; index < start + count; ++index)
+    char configstringValue[MAX_STRING_CHARS];
+    for (int index = tableStartIndex + 1; index < tableStartIndex + tableEntryCount; ++index)
     {
-        SV_GetConfigstring(index, value, sizeof(value));
-        if (!Q_stricmp(value, name))
+        SV_GetConfigstring(index, configstringValue, sizeof(configstringValue));
+        if (!Q_stricmp(configstringValue, configstringName))
         {
             // GSC uses this in the client's configstring-update command, which
             // needs the absolute index, not the offset within this table.
@@ -53,37 +54,39 @@ void Gsc_Cod4_FindConfigstringIndex()
     Scr_AddInt(0);
 }
 
-void Gsc_Cod4_AddVelocity(int id)
+void Gsc_Cod4_AddVelocity(int clientNum)
 {
     vec3_t velocity;
     Scr_GetVector(0, velocity);
-    playerState_t *ps = validClient(id) ? SV_GameClientNum(id) : NULL;
-    if (!ps)
+    playerState_t *playerState = isValidClient(clientNum) ? SV_GameClientNum(clientNum) : NULL;
+    if (!playerState)
     {
         Scr_AddInt(0);
         return;
     }
     for (int axis = 0; axis < 3; ++axis)
     {
-        ps->velocity[axis] += velocity[axis];
+        playerState->velocity[axis] += velocity[axis];
     }
     Scr_AddInt(1);
 }
 
-void Gsc_Cod4_GetIP(int id)
+void Gsc_Cod4_GetIP(int clientNum)
 {
     char address[NET_ADDRSTRMAXLEN] = {0};
-    if (validClient(id))
+    if (isValidClient(clientNum))
     {
-        NET_AdrToStringShortMT(&svs.clients[id].netchan.remoteAddress, address, sizeof(address));
+        NET_AdrToStringShortMT(&svs.clients[clientNum].netchan.remoteAddress, address,
+                               sizeof(address));
     }
     Scr_AddString(address);
 }
 
-void Gsc_Cod4_IsSprinting(int id)
+void Gsc_Cod4_IsSprinting(int clientNum)
 {
-    playerState_t *ps = validClient(id) ? SV_GameClientNum(id) : NULL;
-    Scr_AddInt(ps && ps->sprintState.lastSprintStart > ps->sprintState.lastSprintEnd);
+    playerState_t *playerState = isValidClient(clientNum) ? SV_GameClientNum(clientNum) : NULL;
+    Scr_AddInt(playerState &&
+               playerState->sprintState.lastSprintStart > playerState->sprintState.lastSprintEnd);
 }
 }
 #endif
