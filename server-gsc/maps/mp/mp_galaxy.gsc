@@ -8,16 +8,25 @@
 main()
 {
     maps\mp\_load::main();
-    setDvar("jump_slowdownenable","0");
-    setDvar("bg_fallDamageMaxHeight",9999);
-    setDvar("bg_fallDamageMinHeight",9998);
-    setDvar("player_recoilScaleOn","0");
-    rotator=getEnt("rotate","targetname");
-    rotator2=getEnt("rotate2","targetname");
-    rotator3=getEnt("rotate3","targetname");
-    if(isDefined(rotator)) rotator thread rotateModel(22);
-    if(isDefined(rotator2)) rotator2 thread rotateModel(10);
-    if(isDefined(rotator3)) rotator3 thread rotateModel(10);
+    setDvar("jump_slowdownenable", "0");
+    setDvar("bg_fallDamageMaxHeight", 9999);
+    setDvar("bg_fallDamageMinHeight", 9998);
+    setDvar("player_recoilScaleOn", "0");
+    rotator = getEnt("rotate", "targetname");
+    rotator2 = getEnt("rotate2", "targetname");
+    rotator3 = getEnt("rotate3", "targetname");
+    if(isDefined(rotator))
+    {
+        rotator thread rotateModel(22);
+    }
+    if(isDefined(rotator2))
+    {
+        rotator2 thread rotateModel(10);
+    }
+    if(isDefined(rotator3))
+    {
+        rotator3 thread rotateModel(10);
+    }
     thread onConnect();
     thread loungeMessage();
     thread genauMessage();
@@ -38,11 +47,16 @@ main()
 
 teleports()
 {
-    triggers=getEntArray("teleport","targetname");
-    if(isDefined(triggers))
+    triggers = getEntArray("teleport", "targetname");
+    if (isDefined(triggers))
     {
-        for(i=0;i<triggers.size;i=i+1)
-            if (!(triggers[i] isLoungeTeleport())) triggers[i] thread teleporter();
+        for (i = 0; i < triggers.size; i = i + 1)
+        {
+            if (!(triggers[i] isLoungeTeleport()))
+            {
+                triggers[i] thread teleporter();
+            }
+        }
     }
 }
 
@@ -57,12 +71,24 @@ teleporter()
 
 teleportPlayer(player)
 {
-    if (!isDefined(player) || !isPlayer(player)) return false;
-    if (!isDefined(self.target) || isLoungeTeleport()) return false;
+    if (!isDefined(player) || !isPlayer(player))
+    {
+        return false;
+    }
+    if (!isDefined(self.target) || isLoungeTeleport())
+    {
+        return false;
+    }
     destination = getEnt(self.target, "targetname");
-    if (!isDefined(destination) || !(player isTouching(self))) return false;
-    angles = (0,0,0);
-    if (isDefined(destination.angles)) angles = destination.angles;
+    if (!isDefined(destination) || !(player isTouching(self)))
+    {
+        return false;
+    }
+    angles = (0, 0, 0);
+    if (isDefined(destination.angles))
+    {
+        angles = destination.angles;
+    }
     player setOriginAndAngles(destination.origin, angles);
     return true;
 }
@@ -70,31 +96,41 @@ teleportPlayer(player)
 
 isLoungeTeleport()
 {
-    if (!isDefined(self.target)) return false;
+    if (!isDefined(self.target))
+    {
+        return false;
+    }
     // Disable the private entrance and twelve practice shortcuts. Keep normal
     // route/finish portals and the exit from the old lounge usable.
-    disabled = strTok("auto38 auto40 auto41 auto42 auto43 auto44 auto45 auto46 auto47 auto48 auto49 auto50 auto51", " ");
+    disabled = strTok(
+        "auto38 auto40 auto41 auto42 auto43 auto44 auto45 auto46 auto47 auto48 auto49 auto50 auto51",
+        " ");
     for (i = 0; i < disabled.size; i++)
-        if (self.target == disabled[i]) return true;
+    {
+        if (self.target == disabled[i])
+        {
+            return true;
+        }
+    }
     return false;
 }
 
 rotateModel(seconds)
 {
-    self.rotationSeconds=seconds;
+    self.rotationSeconds = seconds;
     for(;;)
     {
-        self rotateYaw(360,self.rotationSeconds);
-        wait ((self.rotationSeconds) - 0.1);
+        self rotateYaw(360, self.rotationSeconds);
+        wait((self.rotationSeconds) - 0.1);
     }
 }
 
 weaponDisplays()
 {
-    deagle=spawn("script_model",(-4868,-1660,1226));
-    ak74u=spawn("script_model",(-4868,-1980,1226));
-    sniper=spawn("script_model",(-4868,-2300,1226));
-    usp=spawn("script_model",(912,688,1176));
+    deagle = spawn("script_model", (-4868, -1660, 1226));
+    ak74u = spawn("script_model", (-4868, -1980, 1226));
+    sniper = spawn("script_model", (-4868, -2300, 1226));
+    usp = spawn("script_model", (912, 688, 1176));
     deagle setModel("weapon_desert_eagle_gold");
     ak74u setModel("weapon_ak74u");
     sniper setModel("weapon_remington700");
@@ -108,13 +144,25 @@ weaponDisplays()
 finishMessage(targetname, routeName)
 {
     trigger = getEnt(targetname, "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     for (;;)
     {
         trigger waittill("trigger", player);
-        if (!isDefined(player) || !isPlayer(player)) continue;
-        if (!isDefined(player.galaxyFinishes)) player.galaxyFinishes = [];
-        if (isDefined(player.galaxyFinishes[routeName])) continue;
+        if (!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
+        if (!isDefined(player.galaxyFinishes))
+        {
+            player.galaxyFinishes = [];
+        }
+        if (isDefined(player.galaxyFinishes[routeName]))
+        {
+            continue;
+        }
         player.galaxyFinishes[routeName] = true;
         player iPrintLnBold("Congratulations, you finished " + routeName + "!");
     }
@@ -124,8 +172,11 @@ onConnect()
 {
     for(;;)
     {
-        level waittill("connected",player);
-        if(isDefined(player)&&isPlayer(player)) player thread onSpawn();
+        level waittill("connected", player);
+        if(isDefined(player) && isPlayer(player))
+        {
+            player thread onSpawn();
+        }
     }
 }
 
@@ -150,7 +201,10 @@ testwayTimer()
     middle = getEnt("test_check", "targetname");
     finish = getEnt("test_end", "targetname");
     reset = getEnt("reset_test", "targetname");
-    if (!isDefined(start) || !isDefined(middle) || !isDefined(finish) || !isDefined(reset)) return;
+    if (!isDefined(start) || !isDefined(middle) || !isDefined(finish) || !isDefined(reset))
+    {
+        return;
+    }
     // This optional four-minute challenge is separate from the normal OpenCJ routes.
     active = false;
     checked = false;
@@ -165,7 +219,10 @@ testwayTimer()
             checked = false;
             completed = false;
             elapsed = 0;
-            if (!resetting) self iPrintLn("Testway timer reset.");
+            if (!resetting)
+            {
+                self iPrintLn("Testway timer reset.");
+            }
             resetting = true;
         }
         else
@@ -177,7 +234,10 @@ testwayTimer()
                 checked = false;
                 elapsed = 0;
             }
-            if (active && self isTouching(middle)) checked = true;
+            if (active && self isTouching(middle))
+            {
+                checked = true;
+            }
             if (active && checked && !completed && self isTouching(finish))
             {
                 completed = true;
@@ -190,7 +250,10 @@ testwayTimer()
             elapsed++;
             wait 1;
         }
-        else wait 0.05;
+        else
+        {
+            wait 0.05;
+        }
     }
 }
 
@@ -213,18 +276,24 @@ testwayFinish(seconds)
 
 ambientMusic()
 {
-    AmbientPlay ("bgmusic");
+    AmbientPlay("bgmusic");
 }
 
 musicToggle()
 {
     trigger = getEnt("musictrigger", "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     level.galaxyMusicEnabled = true;
     for (;;)
     {
         trigger waittill("trigger", player);
-        if (!isDefined(player) || !isPlayer(player)) continue;
+        if (!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         level.galaxyMusicEnabled = !level.galaxyMusicEnabled;
         if (level.galaxyMusicEnabled)
         {
@@ -242,15 +311,21 @@ musicToggle()
 
 loungeMessage()
 {
-    trigger=getEnt("text10","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text10", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxyLoungeMessageShown))
         {
-            player.galaxyLoungeMessageShown=1;
+            player.galaxyLoungeMessageShown = 1;
             player iprintlnbold("^6You just entered 1804's private lounge...");
         }
     }
@@ -258,15 +333,21 @@ loungeMessage()
 
 genauMessage()
 {
-    trigger=getEnt("text13","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text13", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxyGenauMessageShown))
         {
-            player.galaxyGenauMessageShown=1;
+            player.galaxyGenauMessageShown = 1;
             player iprintlnbold("^5genau m8");
         }
     }
@@ -274,15 +355,21 @@ genauMessage()
 
 puzzleMessage()
 {
-    trigger=getEnt("text14","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text14", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxyPuzzleMessageShown))
         {
-            player.galaxyPuzzleMessageShown=1;
+            player.galaxyPuzzleMessageShown = 1;
             player iprintlnbold("How do you get it tho?");
         }
     }
@@ -290,15 +377,21 @@ puzzleMessage()
 
 surpriseMessage()
 {
-    trigger=getEnt("text16","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text16", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxySurpriseMessageShown))
         {
-            player.galaxySurpriseMessageShown=1;
+            player.galaxySurpriseMessageShown = 1;
             player iprintlnbold("Ohh shit");
         }
     }
@@ -306,15 +399,21 @@ surpriseMessage()
 
 surpriseMessage2()
 {
-    trigger=getEnt("text17","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text17", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxySurpriseMessage2Shown))
         {
-            player.galaxySurpriseMessage2Shown=1;
+            player.galaxySurpriseMessage2Shown = 1;
             player iprintlnbold("Ohhhhhhhh shiiiiiiiiit");
         }
     }
@@ -322,15 +421,21 @@ surpriseMessage2()
 
 sickMessage()
 {
-    trigger=getEnt("text18","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text18", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxySickMessageShown))
         {
-            player.galaxySickMessageShown=1;
+            player.galaxySickMessageShown = 1;
             player iprintlnbold("sick cunt");
         }
     }
@@ -338,15 +443,21 @@ sickMessage()
 
 ggMessage()
 {
-    trigger=getEnt("text19","targetname");
-    if(!isDefined(trigger)) return;
+    trigger = getEnt("text19", "targetname");
+    if(!isDefined(trigger))
+    {
+        return;
+    }
     for(;;)
     {
-        trigger waittill("trigger",player);
-        if(!isDefined(player) || !isPlayer(player)) continue;
+        trigger waittill("trigger", player);
+        if(!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if(!isDefined(player.galaxyGgMessageShown))
         {
-            player.galaxyGgMessageShown=1;
+            player.galaxyGgMessageShown = 1;
             player iprintlnbold("gg");
         }
     }

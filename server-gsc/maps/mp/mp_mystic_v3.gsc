@@ -2,8 +2,11 @@
 main()
 {
 	maps\mp\_load::main();
-    triggers = getEntArray("enter", "targetname");
-    for (i = 0; i < triggers.size; i++) triggers[i] thread teleporter();
+	triggers = getEntArray("enter", "targetname");
+	for (i = 0; i < triggers.size; i++)
+	{
+		triggers[i] thread teleporter();
+	}
 
 	game["allies"] = "marines";
 	game["axis"] = "opfor";
@@ -12,15 +15,14 @@ main()
 	game["allies_soldiertype"] = "desert";
 	game["axis_soldiertype"] = "desert";
 
-	setdvar( "r_specularcolorscale", "1" );
-	setdvar("jump_slowdownEnable", "0" );
-	setdvar("bg_falldamagemaxheight", "9999" );
-	setdvar("bg_falldamageminheight", "9998" );
-	setdvar("r_glowbloomintensity0",".25");
-	setdvar("r_glowbloomintensity1",".25");
-	setdvar("r_glowskybleedintensity0",".3");
-	setdvar("compassmaxrange","1800");
-
+	setdvar("r_specularcolorscale", "1");
+	setdvar("jump_slowdownEnable", "0");
+	setdvar("bg_falldamagemaxheight", "9999");
+	setdvar("bg_falldamageminheight", "9998");
+	setdvar("r_glowbloomintensity0", ".25");
+	setdvar("r_glowbloomintensity1", ".25");
+	setdvar("r_glowskybleedintensity0", ".3");
+	setdvar("compassmaxrange", "1800");
 }
 
 teleporter()
@@ -34,12 +36,24 @@ teleporter()
 
 teleportPlayer(player)
 {
-    if (!isDefined(player) || !isPlayer(player)) return false;
-    if (!isDefined(self.target)) return false;
+    if (!isDefined(player) || !isPlayer(player))
+    {
+        return false;
+    }
+    if (!isDefined(self.target))
+    {
+        return false;
+    }
     destination = getEnt(self.target, "targetname");
-    if (!isDefined(destination) || !(player isTouching(self))) return false;
-    angles = (0,0,0);
-    if (isDefined(destination.angles)) angles = destination.angles;
+    if (!isDefined(destination) || !(player isTouching(self)))
+    {
+        return false;
+    }
+    angles = (0, 0, 0);
+    if (isDefined(destination.angles))
+    {
+        angles = destination.angles;
+    }
     // Native placement clears carried velocity and jump/sprint state.
     player setOriginAndAngles(destination.origin, angles);
     return true;

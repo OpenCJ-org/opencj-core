@@ -9,7 +9,6 @@ main()
 {
 	maps\mp\_load::main();
 
-
 	game["allies"] = "marines";
 	game["axis"] = "opfor";
 	game["attackers"] = "axis";
@@ -17,7 +16,7 @@ main()
 	game["allies_soldiertype"] = "desert";
 	game["axis_soldiertype"] = "desert";
 
-	setdvar( "r_specularcolorscale", "1" );
+	setdvar("r_specularcolorscale", "1");
 
 	thread teleport_easy();
 	thread teleport_inter();
@@ -38,10 +37,12 @@ addFunc(targetname, function)
 {
 	entArray = getEntArray(targetname, "targetname");
 
-	for(Idx = 0;Idx < entArray.size;Idx++)
+	for(Idx = 0; Idx < entArray.size; Idx++)
 	{
 		if(isDefined(entArray[Idx]))
-			thread [[function]](entArray[Idx]);
+		{
+			thread [[function]] (entArray[Idx]);
+		}
 	}
 }
 
@@ -52,10 +53,15 @@ fps(trigger, user)
 		for(;;)
 		{
 			trigger waittill("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			if(!isDefined(user) || !isPlayer(user))
+			{
+				continue;
+			}
 
 			if(isDefined(user.fps))
+			{
 				continue;
+			}
 
 			thread fps(trigger, user);
 		}
@@ -65,7 +71,7 @@ fps(trigger, user)
 
 	user.fps = true;
 
-	for(;user isTouching(trigger);)
+	for(; user isTouching(trigger);)
 	{
 		user setClientDvar("com_maxFPS", 125);
 		wait 0.05;
@@ -92,7 +98,10 @@ teleport_hard()
 teleporter(targetname, destination)
 {
     trigger = getEnt(targetname, "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     for (;;)
     {
         trigger waittill("trigger", player);
@@ -103,8 +112,14 @@ teleporter(targetname, destination)
 
 teleportPlayer(player, destination)
 {
-    if (!isDefined(player) || !isPlayer(player) || !isDefined(destination)) return false;
-    if (!(player isTouching(self))) return false;
+    if (!isDefined(player) || !isPlayer(player) || !isDefined(destination))
+    {
+        return false;
+    }
+    if (!(player isTouching(self)))
+    {
+        return false;
+    }
     // No blackout delay or deferred player action. Keep the player's view and
     // original destination; OpenCJ placement clears carried velocity/state.
     player setOriginAndAngles(destination, player getPlayerAngles());
@@ -117,13 +132,19 @@ guid()
 	guid1 = "f2df1d5da54956fbc366153dd0abeafb";
 	guid2 = "69b801c1025c7bf543468ab53b31043d";
 
-	guidtrig = getent("guid1","targetname");
-	if (!isDefined(guidtrig)) return;
+	guidtrig = getent("guid1", "targetname");
+	if(!isDefined(guidtrig))
+	{
+		return;
+	}
 
 	while(1)
 	{
-		guidtrig waittill("trigger", player );
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		guidtrig waittill("trigger", player);
+		if(!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
 		tempGuid = player getGUID();
 
@@ -156,7 +177,7 @@ guid()
 			}
 			else
 			{
-				player iprintlnbold ("For ^1Chucky ^7and ^1Tommy ^7Only ^3xD");
+				player iprintlnbold("For ^1Chucky ^7and ^1Tommy ^7Only ^3xD");
 				wait 2;
 			}
 		}
@@ -166,20 +187,31 @@ guid()
 credits()
 {
     trigger = getEnt("credits", "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     for (;;)
     {
         trigger waittill("trigger", player);
-        if (!isDefined(player) || !isPlayer(player)) continue;
+        if (!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
         if (player useButtonPressed())
+        {
             player thread showCredits();
+        }
     }
 }
 
 showCredits()
 {
     self endon("disconnect");
-    if (isDefined(self.blue2Credits)) return;
+    if (isDefined(self.blue2Credits))
+    {
+        return;
+    }
     hud = newClientHudElem(self);
     self.blue2Credits = hud;
     hud.alignX = "center";
@@ -192,12 +224,12 @@ showCredits()
     hud.font = "objective";
     hud.fontScale = 2;
     hud.glowAlpha = 1;
-    hud.glowColor = (1,0,0);
+    hud.glowColor = (1, 0, 0);
     hud setText("Mp_Blue2, created by Chucky, have fun!");
     hud setPulseFX(40, 5400, 200);
     wait 6;
     hud.fontScale = 1.4;
-    hud.glowColor = (1,1,0);
+    hud.glowColor = (1, 1, 0);
     hud setText("Xfire: chucky3379");
     hud setPulseFX(40, 5400, 200);
     wait 6;
@@ -212,17 +244,20 @@ showCredits()
 
 start_easy_msg()
 {
-	start_easy_msg = getent("easystart","targetname");
+	start_easy_msg = getent("easystart", "targetname");
 
 	if ( isdefined(start_easy_msg) )
 	{
-		while(true)
+		while (true)
 		{
-			start_easy_msg waittill ("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			start_easy_msg waittill("trigger", user);
+			if ( !isDefined(user) || !isPlayer(user) )
+			{
+				continue;
+			}
 
 			user.starteasy = true;
-			user iprintlnbold ("^5You've picked ^2Easy. ^5Good luck & have fun! ^3Map by ^2Chucky.");
+			user iprintlnbold("^5You've picked ^2Easy. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
 		}
 	}
@@ -230,16 +265,20 @@ start_easy_msg()
 
 start_inter_msg()
 {
-	msg_inter = getent("interstart","targetname");
+	msg_inter = getent("interstart", "targetname");
 
-	if(isdefined(msg_inter))
+	if (isdefined(msg_inter))
 	{
-		while(true)
+		while (true)
 		{
-			msg_inter waittill ("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			msg_inter waittill("trigger", user);
+			if (!isDefined(user) || !isPlayer(user))
+			{
+				continue;
+			}
 
-			user iprintlnbold ("^5You've picked ^2Intermediate. ^5Good luck & have fun! ^3Map by ^2Chucky.");
+			user iprintlnbold(
+			    "^5You've picked ^2Intermediate. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
 		}
 	}
@@ -247,16 +286,19 @@ start_inter_msg()
 
 start_hard_msg()
 {
-	start_hard_msg = getent("hardstart","targetname");
+	start_hard_msg = getent("hardstart", "targetname");
 
 	if ( isdefined(start_hard_msg) )
 	{
-		while(true)
+		while (true)
 		{
-			start_hard_msg waittill ("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			start_hard_msg waittill("trigger", user);
+			if ( !isDefined(user) || !isPlayer(user) )
+			{
+				continue;
+			}
 
-			user iprintlnbold ("^5You've picked ^2Hard. ^5Good luck & have fun! ^3Map by ^2Chucky.");
+			user iprintlnbold("^5You've picked ^2Hard. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
 		}
 	}
@@ -264,19 +306,23 @@ start_hard_msg()
 
 end_easy_msg()
 {
-	end_easy_msg = getent("easyend","targetname");
+	end_easy_msg = getent("easyend", "targetname");
 
 	if(isdefined(end_easy_msg))
 	{
 		while(true)
 		{
-			end_easy_msg waittill ("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			end_easy_msg waittill("trigger", user);
+			if(!isDefined(user) || !isPlayer(user))
+			{
+				continue;
+			}
 
 			if(!isDefined(user.endeasy) || !user.endeasy)
 			{
 				user.endeasy = true;
-				iprintlnbold ("^5Congratulations ^3" + user.name + " ^5you've completed ^2Easy!\n^3Map by ^2Chucky.");
+				iprintlnbold("^5Congratulations ^3" + user.name +
+				             " ^5you've completed ^2Easy!\n^3Map by ^2Chucky.");
 			}
 		}
 	}
@@ -284,18 +330,22 @@ end_easy_msg()
 
 end_inter_msg()
 {
-	end_inter_msg = getent("interend","targetname");
-	if ( isdefined(end_inter_msg) )
+	end_inter_msg = getent("interend", "targetname");
+	if (isdefined(end_inter_msg))
 	{
-		while(true)
+		while (true)
 		{
-			end_inter_msg waittill ("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			end_inter_msg waittill("trigger", user);
+			if (!isDefined(user) || !isPlayer(user))
+			{
+				continue;
+			}
 
-			if(!isDefined(user.endinter) || !user.endinter)
+			if (!isDefined(user.endinter) || !user.endinter)
 			{
 				user.endinter = true;
-				iprintlnbold ("^5Congratulations ^3" + user.name + " ^5you've completed ^2Intermediate!\n^3Map by ^2Chucky.");
+				iprintlnbold("^5Congratulations ^3" + user.name +
+				             " ^5you've completed ^2Intermediate!\n^3Map by ^2Chucky.");
 			}
 		}
 	}
@@ -303,18 +353,22 @@ end_inter_msg()
 
 end_hard_msg()
 {
-	end_hard_msg = getent("hardend","targetname");
-	if ( isdefined(end_hard_msg) )
+	end_hard_msg = getent("hardend", "targetname");
+	if (isdefined(end_hard_msg))
 	{
-		while(true)
+		while (true)
 		{
-			end_hard_msg waittill ("trigger", user);
-			if (!isDefined(user) || !isPlayer(user)) continue;
+			end_hard_msg waittill("trigger", user);
+			if (!isDefined(user) || !isPlayer(user))
+			{
+				continue;
+			}
 
-			if(!isDefined(user.endhard) || !user.endhard)
+			if (!isDefined(user.endhard) || !user.endhard)
 			{
 				user.endhard = true;
-				iprintlnbold ("^5Congratulations ^3" + user.name + " ^5you've completed ^2Hard!\n^3Map by ^2Chucky.");
+				iprintlnbold("^5Congratulations ^3" + user.name +
+				             " ^5you've completed ^2Hard!\n^3Map by ^2Chucky.");
 			}
 		}
 	}

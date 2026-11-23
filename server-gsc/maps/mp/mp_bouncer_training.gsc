@@ -20,7 +20,10 @@ main()
     // Ambient audio is controlled by OpenCJ's shared map cleanup.
 
     triggers = getEntArray("teleport", "targetname");
-    for (i = 0; i < triggers.size; i++) triggers[i] thread transporter();
+    for (i = 0; i < triggers.size; i++)
+    {
+        triggers[i] thread transporter();
+    }
     thread jumper();
 }
 
@@ -36,10 +39,19 @@ transporter()
 
 teleportPlayer(player)
 {
-    if (!isDefined(player) || !isPlayer(player)) return false;
-    if (!isDefined(self.target)) return false;
+    if (!isDefined(player) || !isPlayer(player))
+    {
+        return false;
+    }
+    if (!isDefined(self.target))
+    {
+        return false;
+    }
     destination = getEnt(self.target, "targetname");
-    if (!isDefined(destination) || !(player isTouching(self))) return false;
+    if (!isDefined(destination) || !(player isTouching(self)))
+    {
+        return false;
+    }
     // No pre-teleport delay: a subsequent load cannot be undone by this trigger.
     // OpenCJ placement also clears velocity/jump/sprint state and old links.
     player setOriginAndAngles(destination.origin, destination.angles);
@@ -49,12 +61,18 @@ teleportPlayer(player)
 jumper()
 {
     trigger = getEnt("jump", "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     points = [];
     for (i = 1; i <= 4; i++)
     {
         point = getEnt("air" + i, "targetname");
-        if (!isDefined(point)) return;
+        if (!isDefined(point))
+        {
+            return;
+        }
         points[points.size] = point.origin;
     }
 
@@ -75,8 +93,14 @@ jumper()
 
 ride(player, points)
 {
-    if (!isDefined(player) || !isPlayer(player) || !(player isTouching(self))) return;
-    if (!isDefined(points) || points.size != 4) return;
+    if (!isDefined(player) || !isPlayer(player) || !(player isTouching(self)))
+    {
+        return;
+    }
+    if (!isDefined(points) || points.size != 4)
+    {
+        return;
+    }
 
     // Clear carried speed, then keep the original path and travel timings.
     player setOriginAndAngles(player.origin, player.angles);

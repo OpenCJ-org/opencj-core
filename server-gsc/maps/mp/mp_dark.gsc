@@ -17,18 +17,29 @@ main()
 
     removeWeaponReward();
     triggers = getEntArray("enter", "targetname");
-    for (i = 0; i < triggers.size; i++) triggers[i] thread transporter();
+    for (i = 0; i < triggers.size; i++)
+    {
+        triggers[i] thread transporter();
+    }
 }
 
 removeWeaponReward()
 {
     reward = getEnt("give_gravity_trig", "targetname");
-    if (isDefined(reward)) reward delete();
+    if (isDefined(reward))
+    {
+        reward delete();
+    }
     // The separate gravity-gun prompt has no targetname in the shipped map.
     // Remove only that prompt; keep the map's route finish/credit hint.
     hints = getEntArray("trigger_use_touch", "classname");
     for (i = 0; i < hints.size; i++)
-        if (distanceSquared(hints[i].origin, (-4162, 12660, 87)) < 1) hints[i] delete();
+    {
+        if (distanceSquared(hints[i].origin, (-4162, 12660, 87)) < 1)
+        {
+            hints[i] delete();
+        }
+    }
 }
 
 transporter()
@@ -44,10 +55,19 @@ transporter()
 
 teleportPlayer(player)
 {
-    if (!isDefined(player) || !isPlayer(player)) return false;
-    if (!isDefined(self.target)) return false;
+    if (!isDefined(player) || !isPlayer(player))
+    {
+        return false;
+    }
+    if (!isDefined(self.target))
+    {
+        return false;
+    }
     destination = getEnt(self.target, "targetname");
-    if (!isDefined(destination) || !(player isTouching(self))) return false;
+    if (!isDefined(destination) || !(player isTouching(self)))
+    {
+        return false;
+    }
     // The normal OpenCJ save/load placement clears velocity, jump and sprint state.
     player setOriginAndAngles(destination.origin, destination.angles);
     return true;

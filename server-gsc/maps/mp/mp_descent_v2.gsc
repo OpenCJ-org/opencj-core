@@ -28,12 +28,12 @@ main()
 	game["allies_soldiertype"] = "desert";
 	game["axis_soldiertype"] = "desert";
 
-	setdvar( "r_specularcolorscale", "9" );
+	setdvar("r_specularcolorscale", "9");
 
-	setdvar("r_glowbloomintensity0",".25");
-	setdvar("r_glowbloomintensity1",".25");
-	setdvar("r_glowskybleedintensity0",".3");
-	setdvar("compassmaxrange","1800");
+	setdvar("r_glowbloomintensity0", ".25");
+	setdvar("r_glowbloomintensity1", ".25");
+	setdvar("r_glowskybleedintensity0", ".3");
+	setdvar("compassmaxrange", "1800");
 
 	thread easyEnd();
 	thread hardEnd();
@@ -53,12 +53,21 @@ easyEnd()
 {
     level endon("game_ended");
     trigger = getEnt("easyend", "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     for (;;)
     {
         trigger waittill("trigger", player);
-        if (!isDefined(player) || !isPlayer(player)) continue;
-        if (player.sessionState != "playing" || (isDefined(player.easyEnd) && player.easyEnd)) continue;
+        if (!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
+        if (player.sessionState != "playing" || (isDefined(player.easyEnd) && player.easyEnd))
+        {
+            continue;
+        }
         player iPrintLnBold("Congratulations, you finished ^5mp_descent_v2 ^2Easy!");
         player.easyEnd = true;
     }
@@ -68,12 +77,21 @@ hardEnd()
 {
     level endon("game_ended");
     trigger = getEnt("hardend", "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     for (;;)
     {
         trigger waittill("trigger", player);
-        if (!isDefined(player) || !isPlayer(player)) continue;
-        if (player.sessionState != "playing" || (isDefined(player.hardEnd) && player.hardEnd)) continue;
+        if (!isDefined(player) || !isPlayer(player))
+        {
+            continue;
+        }
+        if (player.sessionState != "playing" || (isDefined(player.hardEnd) && player.hardEnd))
+        {
+            continue;
+        }
         iPrintLnBold("^5" + player.name + " ^7finished ^5mp_descent_v2 ^1Hard!");
         player.hardEnd = true;
     }
@@ -84,18 +102,27 @@ msg1()
 	level endon("game_ended");
 
 	trigger = getent("msg1", "targetname");
-	if (!isDefined(trigger)) return;
+	if (!isDefined(trigger))
+	{
+		return;
+	}
 
-	while(1)
+	while (1)
 	{
 		trigger waittill("trigger", player);
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		if (!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
-		if(player.sessionstate != "playing")
+		if (player.sessionstate != "playing")
+		{
 			wait 0.05;
+		}
 		else
 		{
-			iPrintLnBold("Thanks to ^3Paragon, Soap, Sycotic, ShadowLinkX, Furi, and Wez ^7for testing!"); //INSERT TEXT HERE
+			iPrintLnBold(
+			    "Thanks to ^3Paragon, Soap, Sycotic, ShadowLinkX, Furi, and Wez ^7for testing!"); //INSERT TEXT HERE
 			wait 10;
 		}
 	}
@@ -106,19 +133,27 @@ msg2()
 	level endon("game_ended");
 
 	trigger = getent("msg2", "targetname");
-	if (!isDefined(trigger)) return;
+	if (!isDefined(trigger))
+	{
+		return;
+	}
 
-	while(1)
+	while (1)
 	{
 		trigger waittill("trigger", player);
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		if (!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
-		if(player.sessionstate != "playing")
+		if (player.sessionstate != "playing")
+		{
 			wait 0.05;
+		}
 		else
 		{
 			iPrintLnBold("^4Map by: ^1=.VaRtaZiaN.="); //INSERT TEXT HERE
-			iPrintLnBold("^3XFire: ^1vartazian147");  //INSERT TEXT HERE
+			iPrintLnBold("^3XFire: ^1vartazian147");   //INSERT TEXT HERE
 			wait 10;
 		}
 	}
@@ -129,15 +164,23 @@ msg3()
 	level endon("game_ended");
 
 	trigger = getent("msg3", "targetname");
-	if (!isDefined(trigger)) return;
+	if (!isDefined(trigger))
+	{
+		return;
+	}
 
-	while(1)
+	while (1)
 	{
 		trigger waittill("trigger", player);
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		if (!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
-		if(player.sessionstate != "playing")
+		if (player.sessionstate != "playing")
+		{
 			wait 0.05;
+		}
 		else
 		{
 			iPrintLnBold("Thanks to ^2Tommy ^7for most of  the scripting!"); //INSERT TEXT HERE
@@ -151,15 +194,23 @@ msg4()
 	level endon("game_ended");
 
 	trigger = getent("msg4", "targetname");
-	if (!isDefined(trigger)) return;
+	if (!isDefined(trigger))
+	{
+		return;
+	}
 
-	while(1)
+	while (1)
 	{
 		trigger waittill("trigger", player);
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		if (!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
-		if(player.sessionstate != "playing")
+		if (player.sessionstate != "playing")
+		{
 			wait 0.05;
+		}
 		else
 		{
 			iPrintLnBold("" + player.name + " ^7is a ^5BOSS"); //INSERT TEXT HERE
@@ -173,15 +224,23 @@ msg5()
 	level endon("game_ended");
 
 	trigger = getent("msg5", "targetname");
-	if (!isDefined(trigger)) return;
+	if (!isDefined(trigger))
+	{
+		return;
+	}
 
-	while(1)
+	while (1)
 	{
 		trigger waittill("trigger", player);
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		if (!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
-		if(player.sessionstate != "playing")
+		if (player.sessionstate != "playing")
+		{
 			wait 0.05;
+		}
 		else
 		{
 			iPrintLnBold("CoDRadiant ^8SUCKS ^7._."); //INSERT TEXT HERE
@@ -195,15 +254,23 @@ msg6()
 	level endon("game_ended");
 
 	trigger = getent("msg6", "targetname");
-	if (!isDefined(trigger)) return;
+	if (!isDefined(trigger))
+	{
+		return;
+	}
 
-	while(1)
+	while (1)
 	{
 		trigger waittill("trigger", player);
-		if (!isDefined(player) || !isPlayer(player)) continue;
+		if (!isDefined(player) || !isPlayer(player))
+		{
+			continue;
+		}
 
-		if(player.sessionstate != "playing")
+		if (player.sessionstate != "playing")
+		{
 			wait 0.05;
+		}
 		else
 		{
 			iPrintLnBold("Map took ^410.12 GB ^7to compile."); //INSERT TEXT HERE
@@ -235,7 +302,10 @@ teleporter(targetname, destination, angles)
 {
     level endon("game_ended");
     trigger = getEnt(targetname, "targetname");
-    if (!isDefined(trigger)) return;
+    if (!isDefined(trigger))
+    {
+        return;
+    }
     for (;;)
     {
         trigger waittill("trigger", player);
@@ -246,9 +316,18 @@ teleporter(targetname, destination, angles)
 
 teleportPlayer(player, destination, angles)
 {
-    if (!isDefined(player) || !isPlayer(player)) return false;
-    if (!isDefined(destination) || !isDefined(angles)) return false;
-    if (!(player isTouching(self))) return false;
+    if (!isDefined(player) || !isPlayer(player))
+    {
+        return false;
+    }
+    if (!isDefined(destination) || !isDefined(angles))
+    {
+        return false;
+    }
+    if (!(player isTouching(self)))
+    {
+        return false;
+    }
     // Original destination/angle, applied immediately. Native placement also
     // clears velocity and movement state, without a deferred action after load.
     player setOriginAndAngles(destination, angles);
