@@ -5,69 +5,75 @@
 #include <set>
 extern "C"
 {
-    void Plugin_ScrAddFunction(char *, void (*)());
-    void Plugin_Printf(const char *, ...);
-    const char *Plugin_Scr_GetString(unsigned);
-    const char *SL_ConvertToString(unsigned);
+    void Plugin_ScrAddFunction(char *name, void (*function)());
+    void Plugin_Printf(const char *format, ...);
+    const char *Plugin_Scr_GetString(unsigned parameterIndex);
+    const char *SL_ConvertToString(unsigned stringID);
 }
-struct Counts
+struct ReachableCounts
 {
-    unsigned children = 0, objects = 0, stringBytes = 0;
-    std::set<unsigned> seen, strings;
+    unsigned childCount = 0;
+    unsigned objectCount = 0;
+    unsigned uniqueStringBytes = 0;
+    std::set<unsigned> visitedObjects;
+    std::set<unsigned> visitedStrings;
 };
-static void walk(unsigned object, Counts &c, bool root = false)
+// Called synchronously from the VM. Values cannot change during this traversal.
+// Shared objects and cycles are counted once; strings include their terminator.
+static void countReachableValues(unsigned objectID, ReachableCounts &counts, bool isRoot = false)
 {
-    unsigned type = Scr_GetObjectType(object);
-    if (!root && type != VAR_ARRAY && type != VAR_OBJECT)
+    unsigned objectType = Scr_GetObjectType(objectID);
+    if (!isRoot && objectType != VAR_ARRAY && objectType != VAR_OBJECT)
     {
         return;
     }
-    if (!c.seen.insert(object).second)
+    if (!counts.visitedObjects.insert(objectID).second)
     {
         return;
     }
-    ++c.objects;
-    for (unsigned v = FindFirstSibling(object); v; v = FindNextSibling(v))
+    ++counts.objectCount;
+    for (unsigned childID = FindFirstSibling(objectID); childID; childID = FindNextSibling(childID))
     {
-        ++c.children;
-        unsigned t = GetValueType(v);
-        if (t == VAR_UNDEFINED)
+        ++counts.childCount;
+        unsigned valueType = GetValueType(childID);
+        if (valueType == VAR_UNDEFINED)
         {
             continue;
         }
-        VariableUnion u = *GetVariableValueAddress(v);
-        if (t == VAR_POINTER)
+        VariableUnion value = *GetVariableValueAddress(childID);
+        if (valueType == VAR_POINTER)
         {
-            walk(u.pointerValue, c);
+            countReachableValues(value.pointerValue, counts);
         }
-        if ((t == VAR_STRING || t == VAR_ISTRING) && c.strings.insert(u.stringValue).second)
+        if ((valueType == VAR_STRING || valueType == VAR_ISTRING) &&
+            counts.visitedStrings.insert(value.stringValue).second)
         {
-            c.stringBytes += std::strlen(SL_ConvertToString(u.stringValue)) + 1;
+            counts.uniqueStringBytes += std::strlen(SL_ConvertToString(value.stringValue)) + 1;
         }
     }
 }
-static void audit()
+static void auditScriptMemory()
 {
     const char *label = Plugin_Scr_GetString(0);
-    unsigned object = Scr_GetObject(1);
-    Counts c;
-    walk(object, c, true);
-    int huds = 0;
+    unsigned objectID = Scr_GetObject(1);
+    ReachableCounts counts;
+    countReachableValues(objectID, counts, true);
+    int hudCount = 0;
     for (int i = 0; i < MAX_HUDELEMS; ++i)
     {
         if (g_hudelems[i].elem.type)
         {
-            ++huds;
+            ++hudCount;
         }
     }
     Plugin_Printf(
         "MEM %s values=%d objects=%d threads=%d huds=%d reachableChildren=%u reachableObjects=%u uniqueStringBytes=%u\n",
         label, gScrVarPub.numScriptValues, gScrVarPub.numScriptObjects, gScrVarPub.numScriptThreads,
-        huds, c.children, c.objects, c.stringBytes);
+        hudCount, counts.childCount, counts.objectCount, counts.uniqueStringBytes);
 }
 extern "C" int OnInit()
 {
-    Plugin_ScrAddFunction(const_cast<char *>("memoryAudit"), audit);
+    Plugin_ScrAddFunction(const_cast<char *>("memoryAudit"), auditScriptMemory);
     Plugin_Printf("MEM SIZES variable=%u playerState=%u hud=%u\n",
                   unsigned(sizeof(VariableValueInternal)), unsigned(sizeof(playerState_t)),
                   unsigned(sizeof(game_hudelem_t)));

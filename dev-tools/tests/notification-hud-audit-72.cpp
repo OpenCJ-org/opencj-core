@@ -5,75 +5,90 @@
 #include "../../cod4x-server/src/g_shared.h"
 extern "C"
 {
-    int Plugin_Scr_GetInt(unsigned);
-    void Plugin_Scr_AddInt(int);
-    void BG_LerpHudColors(const hudelem_t *, int, hudelem_color_t *);
+    int Plugin_Scr_GetInt(unsigned parameterIndex);
+    void Plugin_Scr_AddInt(int value);
+    void BG_LerpHudColors(const hudelem_t *hud, int timeMs, hudelem_color_t *color);
 }
-static void probe()
+// Reproduce the alpha bits received by a client, then sample its current fade.
+// Return -1 for invalid geometry; zero means no visible overlay at this update.
+static void probeNotificationOverlay()
 {
-    const int client = Plugin_Scr_GetInt(0), result = Plugin_Scr_GetInt(1);
-    int alpha = 0, count = 0, left = 0, right = 0;
-    bool valid = true;
+    constexpr int overlaySort = -1000;
+    constexpr int screenWidth = 640;
+    constexpr int screenHeight = 480;
+    constexpr int edgeWidth = 64;
+    constexpr int rightEdgeX = screenWidth - edgeWidth;
+    constexpr unsigned char transmittedAlphaMask = 0xf8;
+    const int clientNumber = Plugin_Scr_GetInt(0);
+    const bool isResultOverlay = Plugin_Scr_GetInt(1) != 0;
+    int alphaByte = 0;
+    int overlayCount = 0;
+    int leftCount = 0;
+    int rightCount = 0;
+    bool validGeometry = true;
     for (int i = 0; i < MAX_HUDELEMS; i++)
     {
         const game_hudelem_t &hud = g_hudelems[i];
-        if (!hud.elem.type || hud.clientNum != client || hud.elem.sort != -1000)
+        if (!hud.elem.type || hud.clientNum != clientNumber || hud.elem.sort != overlaySort)
         {
             continue;
         }
-        ++count;
-        hudelem_t wire = hud.elem;
-        hudelem_color_t c;
-        wire.color.split.a = (unsigned char)wire.color.split.a & 0xf8;
-        wire.fromColor.split.a = (unsigned char)wire.fromColor.split.a & 0xf8;
-        BG_LerpHudColors(&wire, level.time, &c);
-        int current = (unsigned char)c.split.a;
-        if (count > 1 && current != alpha)
+        ++overlayCount;
+        hudelem_t encodedHud = hud.elem;
+        hudelem_color_t interpolatedColor;
+        encodedHud.color.split.a = (unsigned char)encodedHud.color.split.a & transmittedAlphaMask;
+        encodedHud.fromColor.split.a =
+            (unsigned char)encodedHud.fromColor.split.a & transmittedAlphaMask;
+        BG_LerpHudColors(&encodedHud, level.time, &interpolatedColor);
+        int currentAlphaByte = (unsigned char)interpolatedColor.split.a;
+        if (overlayCount > 1 && currentAlphaByte != alphaByte)
         {
-            valid = false;
+            validGeometry = false;
         }
-        alpha = current;
-        if (!(wire.flags & HUDDISPLAY_FOREGROUND) || wire.height != 480 ||
-            wire.materialIndex == 0 || wire.y != 0)
+        alphaByte = currentAlphaByte;
+        if (!(encodedHud.flags & HUDDISPLAY_FOREGROUND) || encodedHud.height != screenHeight ||
+            encodedHud.materialIndex == 0 || encodedHud.y != 0)
         {
-            valid = false;
+            validGeometry = false;
         }
-        if (result)
+        if (isResultOverlay)
         {
-            if (wire.width != 640 || wire.x != 0)
+            if (encodedHud.width != screenWidth || encodedHud.x != 0)
             {
-                valid = false;
+                validGeometry = false;
             }
         }
         else
         {
-            if (wire.width != 64)
+            if (encodedHud.width != edgeWidth)
             {
-                valid = false;
+                validGeometry = false;
             }
-            if (wire.x == 0)
+            if (encodedHud.x == 0)
             {
-                ++left;
+                ++leftCount;
             }
-            else if (wire.x == 576)
+            else if (encodedHud.x == rightEdgeX)
             {
-                ++right;
+                ++rightCount;
             }
             else
             {
-                valid = false;
+                validGeometry = false;
             }
         }
     }
-    if (count && (count != (result ? 1 : 2) || (!result && (left != 1 || right != 1))))
+    const int expectedOverlayCount = isResultOverlay ? 1 : 2;
+    const bool missingEdgePair = !isResultOverlay && (leftCount != 1 || rightCount != 1);
+    if (overlayCount && (overlayCount != expectedOverlayCount || missingEdgePair))
     {
-        valid = false;
+        validGeometry = false;
     }
-    Plugin_Scr_AddInt(valid ? alpha : -1);
+    Plugin_Scr_AddInt(validGeometry ? alphaByte : -1);
 }
 extern "C" int OnInit()
 {
     MemoryAuditInit();
-    Plugin_ScrAddFunction(const_cast<char *>("notificationHudProbe"), probe);
+    Plugin_ScrAddFunction(const_cast<char *>("notificationHudProbe"), probeNotificationOverlay);
     return 0;
 }

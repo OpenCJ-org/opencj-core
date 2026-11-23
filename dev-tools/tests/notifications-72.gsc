@@ -3,10 +3,11 @@ main()
 {
     level.n72Checks = 0;
     level.n72Failures = 0;
+    level.n72PlayerCount = 32;
     level.n72Public = [];
     level.n72Private = [];
-    expected = getCvar("notify72_database");
-    if(getSubStr(expected, 0, 17) != "opencj_verify_72_")
+    databaseName = getCvar("notify72_database");
+    if(getSubStr(databaseName, 0, 17) != "opencj_verify_72_")
     {
         return;
     }
@@ -15,84 +16,115 @@ main()
     openCJ\commands_base::onInit();
     openCJ\notifications::onInit();
     check(isDefined(level.commands["notifications"]), "command available to automatic help");
+    createPlayers();
+    verifyBurstCleanup();
+    verifyActionModes();
+    player = level.clients[0];
+    verifyEdgeFades(player);
+    verifyPreferencePersistence(player);
+    verifyResultFades(player);
+    verifyResultPriority(player);
+    verifyRecordMessages(player);
+    verifyChallengeAwards(player);
+    verifyCheckpointReplies(player);
+    printf("N72 COMPLETE failures=" + level.n72Failures + " checks=" + level.n72Checks + "\n");
+}
+
+// Create isolated logged-in clients with default feedback.
+createPlayers()
+{
     level.clients = [];
     wait 1;
-    for(i = 0; i < 32; i++)
+    for(i = 0; i < level.n72PlayerCount; i++)
     {
-        p = addTestClient();
+        player = addTestClient();
         wait .05;
-        level.clients[i] = p;
-        p.sessionTeam = "allies";
-        p.sessionState = "playing";
-        p.pers["team"] = "allies";
-        p spawn((0, 0, 700), (0, 0, 0));
-        p freezeControls(true);
-        p.login_playerID = i + 1;
-        p.playingDemo = false;
-        p openCJ\settings::onPlayerConnect();
-        p.settingsLoaded = true;
-        p openCJ\notifications::action("save", "Saved");
-        check(p openCJ\notifications::wantsText("save") && !isDefined(p.notificationFlash),
+        level.clients[i] = player;
+        player.sessionTeam = "allies";
+        player.sessionState = "playing";
+        player.pers["team"] = "allies";
+        player spawn((0, 0, 700), (0, 0, 0));
+        player freezeControls(true);
+        player.login_playerID = i + 1;
+        player.playingDemo = false;
+        player openCJ\settings::onPlayerConnect();
+        player.settingsLoaded = true;
+        player openCJ\notifications::action("save", "Saved");
+        check(player openCJ\notifications::wantsText("save") && !isDefined(player.notificationFlash),
               "default text without HUD " + i);
     }
+}
+
+// Check that bursts reuse one pair and release it for every player.
+verifyBurstCleanup()
+{
     memoryAudit("text", level);
-    for(i = 0; i < 32; i++)
+    for(i = 0; i < level.n72PlayerCount; i++)
     {
-        p = level.clients[i];
-        p.settingValues["notify_save"] = 3;
-        p openCJ\notifications::action("save", "Saved");
-        original = p.notificationFlash;
-        originalRight = p.notificationFlashRight;
+        player = level.clients[i];
+        player.settingValues["notify_save"] = 3;
+        player openCJ\notifications::action("save", "Saved");
+        originalOverlay = player.notificationFlash;
+        originalRightOverlay = player.notificationFlashRight;
         for(j = 0; j < 20; j++)
         {
-            p openCJ\notifications::action("save", "Saved");
+            player openCJ\notifications::action("save", "Saved");
         }
-        check(isDefined(original) && p.notificationFlash == original &&
-                  p.notificationFlashRight == originalRight,
+        check(isDefined(originalOverlay) && player.notificationFlash == originalOverlay &&
+                  player.notificationFlashRight == originalRightOverlay,
               "one edge pair during burst " + i);
     }
     memoryAudit("flashing", level);
     wait .35;
-    for(i = 0; i < 32; i++)
+    for(i = 0; i < level.n72PlayerCount; i++)
     {
         check(!isDefined(level.clients[i].notificationFlash) &&
                   !isDefined(level.clients[i].notificationFlashRight),
               "expired pair freed " + i);
     }
     memoryAudit("expired", level);
-    p = level.clients[0];
-    p.settingValues["notify_save"] = 0;
-    p openCJ\notifications::action("save", "Saved");
-    check(!isDefined(p.notificationFlash) && !p openCJ\notifications::wantsText("save"),
-          "off is silent");
-    p.settingValues["notify_save"] = 2;
-    p.playingDemo = true;
-    p openCJ\notifications::action("save", "Saved");
-    check(!isDefined(p.notificationFlash), "demo playback cannot flash");
-    p.playingDemo = false;
-    p openCJ\notifications::action("save", "Saved");
-    check(isDefined(p.notificationFlash), "flash mode creates overlay");
-    p openCJ\notifications::onDisconnect();
-    check(!isDefined(p.notificationFlash), "disconnect cleanup");
-    check(!isDefined(openCJ\notifications::modeValue("invalid")), "invalid mode rejected");
+}
 
+// Check silent, flash, demo and disconnect behavior.
+verifyActionModes()
+{
+    player = level.clients[0];
+    player.settingValues["notify_save"] = 0;
+    player openCJ\notifications::action("save", "Saved");
+    check(!isDefined(player.notificationFlash) && !player openCJ\notifications::wantsText("save"),
+          "off is silent");
+    player.settingValues["notify_save"] = 2;
+    player.playingDemo = true;
+    player openCJ\notifications::action("save", "Saved");
+    check(!isDefined(player.notificationFlash), "demo playback cannot flash");
+    player.playingDemo = false;
+    player openCJ\notifications::action("save", "Saved");
+    check(isDefined(player.notificationFlash), "flash mode creates overlay");
+    player openCJ\notifications::onDisconnect();
+    check(!isDefined(player.notificationFlash), "disconnect cleanup");
+    check(!isDefined(openCJ\notifications::modeValue("invalid")), "invalid mode rejected");
+}
+
+// Measure the encoded edge fade across real engine updates.
+verifyEdgeFades(player)
+{
     for(strength = 1; strength <= 3; strength++)
     {
-        p.settingValues["notify_strength"] = strength;
-        p openCJ\notifications::action("save");
-        peak = 0;
+        player.settingValues["notify_strength"] = strength;
+        player openCJ\notifications::action("save");
+        peakAlphaByte = 0;
         visibleFrames = 0;
-        valid = true;
+        validGeometry = true;
         for(i = 0; i < 8; i++)
         {
-            opacity = notificationHudProbe(p getEntityNumber(), 0);
+            opacity = notificationHudProbe(player getEntityNumber(), 0);
             if(opacity < 0)
             {
-                valid = false;
+                validGeometry = false;
             }
-            if(opacity > peak)
+            if(opacity > peakAlphaByte)
             {
-                peak = opacity;
+                peakAlphaByte = opacity;
             }
             if(opacity > 0)
             {
@@ -100,22 +132,26 @@ main()
             }
             wait .05;
         }
-        check(valid, "only two edge bands with clear center " + strength);
-        check(peak == 40 + 16 * strength, "encoded opacity reaches intended peak " + strength);
+        check(validGeometry, "only two edge bands with clear center " + strength);
+        check(peakAlphaByte == 40 + 16 * strength, "encoded opacity reaches intended peak " + strength);
         check(visibleFrames >= 5, "flash persists across client updates " + strength);
-        check(!isDefined(p.notificationFlash), "fade probe overlay released " + strength);
+        check(!isDefined(player.notificationFlash), "fade probe overlay released " + strength);
     }
+}
 
+// Save command choices and reload them from the disposable database.
+verifyPreferencePersistence(player)
+{
     args = [];
     args[0] = "all";
     args[1] = "both";
-    p openCJ\notifications::command(args);
+    player openCJ\notifications::command(args);
     args[0] = "load";
     args[1] = "flash";
-    p openCJ\notifications::command(args);
+    player openCJ\notifications::command(args);
     args[0] = "strength";
     args[1] = "medium";
-    p openCJ\notifications::command(args);
+    player openCJ\notifications::command(args);
     rows = undefined;
     for(i = 0; i < 40; i++)
     {
@@ -128,43 +164,47 @@ main()
         }
     }
     check(isDefined(rows) && rows.size == 5, "five notification preferences persisted");
-    p.settingValues = [];
-    p openCJ\settings::loadSettingsFromDatabase();
-    check(p openCJ\notifications::mode("checkpoint") == 3 &&
-              p openCJ\notifications::mode("save") == 3 &&
-              p openCJ\notifications::mode("load") == 2 &&
-              p openCJ\notifications::mode("results") == 3,
+    player.settingValues = [];
+    player openCJ\settings::loadSettingsFromDatabase();
+    check(player openCJ\notifications::mode("checkpoint") == 3 &&
+              player openCJ\notifications::mode("save") == 3 &&
+              player openCJ\notifications::mode("load") == 2 &&
+              player openCJ\notifications::mode("results") == 3,
           "action and result choices restored");
-    check(p.settingValues["notify_strength"] == 2, "strength restored");
-    check(!p openCJ\notifications::wantsText("load"), "flash mode suppresses routine text");
+    check(player.settingValues["notify_strength"] == 2, "strength restored");
+    check(!player openCJ\notifications::wantsText("load"), "flash mode suppresses routine text");
+}
 
+// Check action colors and the stronger result overlay.
+verifyResultFades(player)
+{
     check(openCJ\notifications::color("checkpoint") == (.05, 1, .10), "checkpoint green");
     check(openCJ\notifications::color("save") == (.05, .25, 1), "save blue");
     check(openCJ\notifications::color("load") == (1, .05, .05), "load red");
-    p.playerRuns_runID = 1002;
-    p.runInstanceNumber = 1;
-    p.playerRuns_runFinished = true;
-    p.settingValues["notify_results"] = 1;
-    p openCJ\notifications::beginResults(1002);
-    check(!isDefined(p.notificationFlash), "results default to text");
-    p.settingValues["notify_results"] = 3;
+    player.playerRuns_runID = 1002;
+    player.runInstanceNumber = 1;
+    player.playerRuns_runFinished = true;
+    player.settingValues["notify_results"] = 1;
+    player openCJ\notifications::beginResults(1002);
+    check(!isDefined(player.notificationFlash), "results default to text");
+    player.settingValues["notify_results"] = 3;
     for(strength = 1; strength <= 3; strength++)
     {
-        p.settingValues["notify_strength"] = strength;
-        p openCJ\notifications::beginResults(1002);
-        peak = 0;
+        player.settingValues["notify_strength"] = strength;
+        player openCJ\notifications::beginResults(1002);
+        peakAlphaByte = 0;
         visibleFrames = 0;
-        valid = true;
+        validGeometry = true;
         for(i = 0; i < 15; i++)
         {
-            opacity = notificationHudProbe(p getEntityNumber(), 1);
+            opacity = notificationHudProbe(player getEntityNumber(), 1);
             if(opacity < 0)
             {
-                valid = false;
+                validGeometry = false;
             }
-            if(opacity > peak)
+            if(opacity > peakAlphaByte)
             {
-                peak = opacity;
+                peakAlphaByte = opacity;
             }
             if(opacity > 0)
             {
@@ -172,78 +212,87 @@ main()
             }
             wait .05;
         }
-        check(valid, "result uses one full-screen overlay " + strength);
-        check(peak == 56 + 16 * strength, "result has stronger encoded peak " + strength);
+        check(validGeometry, "result uses one full-screen overlay " + strength);
+        check(peakAlphaByte == 56 + 16 * strength, "result has stronger encoded peak " + strength);
         check(visibleFrames >= 10, "result remains more noticeable " + strength);
-        check(!isDefined(p.notificationFlash), "result overlay expires " + strength);
+        check(!isDefined(player.notificationFlash), "result overlay expires " + strength);
     }
-    p openCJ\notifications::beginResults(1002);
-    original = p.notificationFlash;
-    p openCJ\notifications::result("challenge", 1002);
-    check(p.notificationResultPriority == 2 && p.notificationFlash == original,
+}
+
+// Keep finish, challenge and record emphasis within the same run window.
+verifyResultPriority(player)
+{
+    player openCJ\notifications::beginResults(1002);
+    originalOverlay = player.notificationFlash;
+    player openCJ\notifications::result("challenge", 1002);
+    check(player.notificationResultPriority == 2 && player.notificationFlash == originalOverlay,
           "challenge upgrades same finish flash");
-    p openCJ\notifications::result("record", 1002);
-    p openCJ\notifications::result("finish", 1002);
-    check(p.notificationResultPriority == 3 && p.notificationFlash == original,
+    player openCJ\notifications::result("record", 1002);
+    player openCJ\notifications::result("finish", 1002);
+    check(player.notificationResultPriority == 3 && player.notificationFlash == originalOverlay,
           "record takes priority without stacking");
     check(!isDefined(level.clients[1].notificationFlash),
           "completion never flashes for other players");
-    p openCJ\notifications::cancelFlash();
-    p openCJ\notifications::beginResults(1002);
-    p.runInstanceNumber = 2;
-    p openCJ\notifications::result("record", 1002);
-    check(p.notificationResultPriority == 1, "old-instance record cannot upgrade flash");
-    p.runInstanceNumber = 1;
-    p.notificationResultUntil = getTime() - 1;
-    p openCJ\notifications::result("record", 1002);
-    check(p.notificationResultPriority == 1, "late record outside result window ignored");
-    p openCJ\notifications::cancelFlash();
-    p openCJ\notifications::beginResults(1002);
-    p openCJ\notifications::action("load");
-    p openCJ\notifications::result("record", 1002);
-    check(!isDefined(p.notificationResultRun) && !p.notificationFlashResult &&
-              isDefined(p.notificationFlashRight),
+    player openCJ\notifications::cancelFlash();
+    player openCJ\notifications::beginResults(1002);
+    player.runInstanceNumber = 2;
+    player openCJ\notifications::result("record", 1002);
+    check(player.notificationResultPriority == 1, "old-instance record cannot upgrade flash");
+    player.runInstanceNumber = 1;
+    player.notificationResultUntil = getTime() - 1;
+    player openCJ\notifications::result("record", 1002);
+    check(player.notificationResultPriority == 1, "late record outside result window ignored");
+    player openCJ\notifications::cancelFlash();
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\notifications::action("load");
+    player openCJ\notifications::result("record", 1002);
+    check(!isDefined(player.notificationResultRun) && !player.notificationFlashResult &&
+              isDefined(player.notificationFlashRight),
           "load cancels result window and returns to edge feedback");
-    p openCJ\notifications::cancelFlash();
-    p openCJ\notifications::beginResults(1002);
-    p openCJ\notifications::cancelAll();
-    check(!isDefined(p.notificationFlash) && !isDefined(p.notificationResultRun),
+    player openCJ\notifications::cancelFlash();
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\notifications::cancelAll();
+    check(!isDefined(player.notificationFlash) && !isDefined(player.notificationResultRun),
           "demo entry cancels active finish emphasis");
-    p.playingDemo = true;
-    p openCJ\notifications::beginResults(1002);
-    check(!isDefined(p.notificationFlash), "demo playback cannot start result flash");
-    p.playingDemo = false;
-    p openCJ\notifications::cancelResults();
+    player.playingDemo = true;
+    player openCJ\notifications::beginResults(1002);
+    check(!isDefined(player.notificationFlash), "demo playback cannot start result flash");
+    player.playingDemo = false;
+    player openCJ\notifications::cancelResults();
+}
 
-    row = [];
+// Check record comparison text, ownership and duplicate callbacks.
+verifyRecordMessages(player)
+{
+    recordRow = [];
     for(i = 0; i < 15; i++)
     {
-        row[i] = 0;
+        recordRow[i] = 0;
     }
-    row[1] = 0;
-    row[8] = 8000;
-    row[9] = 8;
-    row[10] = 10000;
-    row[11] = 10;
-    check(openCJ\recordNotices::improvement(row) == "time: 0:02.000 faster",
+    recordRow[1] = 0;
+    recordRow[8] = 8000;
+    recordRow[9] = 8;
+    recordRow[10] = 10000;
+    recordRow[11] = 10;
+    check(openCJ\recordNotices::improvement(recordRow) == "time: 0:02.000 faster",
           "time improvement text");
-    row[8] = 10000;
-    check(openCJ\recordNotices::improvement(row) == "time: tied, 2 fewer RPGs",
+    recordRow[8] = 10000;
+    check(openCJ\recordNotices::improvement(recordRow) == "time: tied, 2 fewer RPGs",
           "time tiebreak text");
-    row[1] = 1;
-    check(openCJ\recordNotices::improvement(row) == "RPGs: 2 fewer", "RPG improvement text");
-    row[9] = 10;
-    row[8] = 8000;
-    check(openCJ\recordNotices::improvement(row) == "RPGs: tied, 0:02.000 faster",
+    recordRow[1] = 1;
+    check(openCJ\recordNotices::improvement(recordRow) == "RPGs: 2 fewer", "RPG improvement text");
+    recordRow[9] = 10;
+    recordRow[8] = 8000;
+    check(openCJ\recordNotices::improvement(recordRow) == "RPGs: tied, 0:02.000 faster",
           "RPG tiebreak text");
-    row[8] = 10000;
-    check(openCJ\recordNotices::improvement(row) == "", "exact ties do not announce");
-    row[10] = undefined;
-    check(openCJ\recordNotices::improvement(row) == "", "first finish is not a beaten record");
+    recordRow[8] = 10000;
+    check(openCJ\recordNotices::improvement(recordRow) == "", "exact ties do not announce");
+    recordRow[10] = undefined;
+    check(openCJ\recordNotices::improvement(recordRow) == "", "first finish is not a beaten record");
     malformedRows = [];
     for(i = 0; i < 4; i++)
     {
-        malformedRows[i] = row;
+        malformedRows[i] = recordRow;
     }
     malformedRows[3] = [];
     check(!isDefined(openCJ\recordNotices::decodeRecords(malformedRows)),
@@ -251,80 +300,88 @@ main()
     check(openCJ\recordNotices::improvement([]) == "",
           "short record row cannot produce an improvement");
 
-    p openCJ\notifications::beginResults(1002);
-    p openCJ\recordNotices::onRunFinished(1002);
-    check(p.notificationResultPriority == 3, "actual matching record selects record emphasis");
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\recordNotices::onRunFinished(1002);
+    check(player.notificationResultPriority == 3, "actual matching record selects record emphasis");
     check(level.n72Public.size == 1 && level.n72Private.size == 1,
           "server record global and PB private");
     check(level.n72Private[0].player == 1, "PB only goes to finishing player");
-    p openCJ\recordNotices::onRunFinished(1002);
+    player openCJ\recordNotices::onRunFinished(1002);
     check(level.n72Public.size == 1 && level.n72Private.size == 1,
           "duplicate callback does not repeat announcement");
-    p.notificationFinishedRun = undefined;
-    p openCJ\recordNotices::onRunFinished(2002);
+    player.notificationFinishedRun = undefined;
+    player openCJ\recordNotices::onRunFinished(2002);
     check(level.n72Public.size == 1 && level.n72Private.size == 1,
           "ten-minutes-faster any percent run cannot beat checkpoint record");
+}
 
-    p openCJ\notifications::cancelFlash();
-    p openCJ\notifications::cancelResults();
+// Award each challenge once and show only the new completion.
+verifyChallengeAwards(player)
+{
+    player openCJ\notifications::cancelFlash();
+    player openCJ\notifications::cancelResults();
     level.challengesReady = true;
     level.challengeTierPoints[1] = 100;
     level.challengeTierPoints[2] = 0;
-    p.challengePoints = 0;
-    p.challengeRank = 1;
-    before = level.n72Private.size;
-    p openCJ\notifications::beginResults(1002);
-    p openCJ\challenges::awardRun(1002);
-    check(p.challengePoints == 10 && level.n72Private.size == before + 1,
+    player.challengePoints = 0;
+    player.challengeRank = 1;
+    privateMessageCount = level.n72Private.size;
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\challenges::awardRun(1002);
+    check(player.challengePoints == 10 && level.n72Private.size == privateMessageCount + 1,
           "actual challenge award prints private completion");
-    check(p.notificationResultPriority == 2, "actual challenge award selects gold emphasis");
-    p openCJ\notifications::cancelFlash();
-    p openCJ\notifications::beginResults(1002);
-    p openCJ\challenges::awardRun(1002);
-    check(level.n72Private.size == before + 1 && p.notificationResultPriority == 1,
+    check(player.notificationResultPriority == 2, "actual challenge award selects gold emphasis");
+    player openCJ\notifications::cancelFlash();
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\challenges::awardRun(1002);
+    check(level.n72Private.size == privateMessageCount + 1 && player.notificationResultPriority == 1,
           "already awarded challenge does not repeat celebration");
-    p openCJ\notifications::cancelFlash();
-    p openCJ\notifications::cancelResults();
+    player openCJ\notifications::cancelFlash();
+    player openCJ\notifications::cancelResults();
+}
 
-    rows = p openCJ\mySQL::mysqlAsyncRead(
+// Compare exact checkpoint categories and reject obsolete replies.
+verifyCheckpointReplies(player)
+{
+    rows = player openCJ\mySQL::mysqlAsyncRead(
         openCJ\recordNotices::checkpointQuery(1002, 1, "mix", 0, 0, 0, 0, "rpgs"));
     check(isDefined(rows) && rows.size == 1 && int(rows[0][0]) == 9000 && int(rows[0][1]) == 8,
           "checkpoint split excludes faster any percent result");
-    rows = p openCJ\mySQL::mysqlAsyncRead(
+    rows = player openCJ\mySQL::mysqlAsyncRead(
         openCJ\recordNotices::checkpointQuery(2002, 1, "mix", 0, 1, 0, 0, "time"));
     check(isDefined(rows) && !rows.size, "any percent checkpoint has no comparable prior split");
-    p.playerRuns_runID = 1002;
-    p.runInstanceNumber = 1;
+    player.playerRuns_runID = 1002;
+    player.runInstanceNumber = 1;
     level.checkpointLayoutEpoch = 1;
-    p.FPSMode = "mix";
-    p.allowHalfBeat = false;
+    player.FPSMode = "mix";
+    player.allowHalfBeat = false;
     level.statisticsStrings_explosiveJumps = "fixtureRPGs";
-    p.statistics["fixtureRPGs"] = 7;
-    p.settingValues["lbsort"] = "time";
-    p.settingValues["notify_checkpoint"] = 1;
-    before = level.n72Private.size;
-    p openCJ\recordNotices::checkpoint(1002, 1, 8000);
-    check(level.n72Private.size == before + 1 &&
-              level.n72Private[before].text == "Checkpoint passed | ^20:01.000 ahead",
+    player.statistics["fixtureRPGs"] = 7;
+    player.settingValues["lbsort"] = "time";
+    player.settingValues["notify_checkpoint"] = 1;
+    privateMessageCount = level.n72Private.size;
+    player openCJ\recordNotices::checkpoint(1002, 1, 8000);
+    check(level.n72Private.size == privateMessageCount + 1 &&
+              level.n72Private[privateMessageCount].text == "Checkpoint passed | ^20:01.000 ahead",
           "checkpoint split uses comparable completed run");
     level.n72DelayCheckpoint = true;
     level.n72CheckpointWaiting = false;
-    before = level.n72Private.size;
-    p thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
+    privateMessageCount = level.n72Private.size;
+    player thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
     waitForCheckpoint();
-    p.playerRuns_runID = 9999;
+    player.playerRuns_runID = 9999;
     wait .30;
-    check(level.n72Private.size == before, "late checkpoint response rejected after run change");
-    p.playerRuns_runID = 1002;
+    check(level.n72Private.size == privateMessageCount, "late checkpoint response rejected after run change");
+    player.playerRuns_runID = 1002;
     level.n72CheckpointWaiting = false;
-    p thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
+    player thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
     waitForCheckpoint();
-    p openCJ\notifications::action("load");
+    player openCJ\notifications::action("load");
     wait .30;
-    check(level.n72Private.size == before, "load cancels pending checkpoint message");
+    check(level.n72Private.size == privateMessageCount, "load cancels pending checkpoint message");
     level.n72DelayCheckpoint = false;
-    printf("N72 COMPLETE failures=" + level.n72Failures + " checks=" + level.n72Checks + "\n");
 }
+
 capturePublic(message)
 {
     level.n72Public[level.n72Public.size] = message;
@@ -348,9 +405,11 @@ check(ok, label)
 
 waitForCheckpoint()
 {
-    for(i = 0; i < 100 && !level.n72CheckpointWaiting; i++)
+    maxPolls = 100;
+    pollIntervalSeconds = .05;
+    for(i = 0; i < maxPolls && !level.n72CheckpointWaiting; i++)
     {
-        wait .05;
+        wait pollIntervalSeconds;
     }
     check(level.n72CheckpointWaiting, "checkpoint response reached test delay");
 }
