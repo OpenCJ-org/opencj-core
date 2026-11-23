@@ -7,7 +7,7 @@ python3 -B dev-tools/scripts/test.py portable
 ```
 
 This validates the test catalogue, then runs the explicitly reviewed setup,
-discovery, SQL-client, console transport, GeoIP and Discord unit tests plus source/asset checks. It requires
+discovery, SQL-client, name-policy, console transport, GeoIP and Discord unit tests plus source/asset checks. It requires
 Python 3 and Git, but no Docker, initialized installation, database credentials,
 game assets or network access. SQL-client tests use short-lived Python child processes;
 Discord uses a temporary Unix socket. Failures,
@@ -45,6 +45,7 @@ to their listed harnesses, not standalone commands.
 | Setup/configuration/target selection | `setup-unit` |
 | Test registration or launcher | `discovery-unit` |
 | GeoIP parsing and import | `geoip-unit`, `geoip-database`, `geoip-engine` |
+| Private name-policy maintenance | `name-policy-unit` |
 | Persistent SQL-client transport and cleanup | `database-client-unit` |
 | Fresh schema, permissions or backup | `database-bootstrap`, `database-volume` |
 | Challenge routes, shop or finish ranking | `feature-sql`, `notification-sql` |

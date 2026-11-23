@@ -52,6 +52,18 @@
       "mode": "unit"
     },
     {
+      "id": "name-policy-unit",
+      "category": "portable",
+      "description": "Private name-policy normalization, dry runs, failure reporting and receipt permissions.",
+      "requires": "Python 3 standard library; no Docker, database or network.",
+      "effects": "Synthetic inputs, mocked external commands and temporary private receipts.",
+      "files": [
+        "server-db/tools/test_name_rules.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
       "id": "geoip-unit",
       "category": "portable",
       "description": "GeoIP input parsing, overlaps, gzip integrity, country mapping and private credential handling.",

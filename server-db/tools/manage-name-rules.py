@@ -9,6 +9,7 @@ import argparse
 import getpass
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -18,6 +19,7 @@ MAX_INPUT_CHARACTERS = 128
 MAX_SEED_LETTERS = 15
 MIN_CONTAINED_LETTERS = 4
 SEED_SEVERITY = 4
+DATABASE_TIMEOUT_SECONDS = 180
 
 SOURCE_COMMIT = "c27924319aa9bd6f917e3782b4f4b6604a50b652"
 SOURCE_BASE = "https://raw.githubusercontent.com/dsojevic/profanity-list/" + SOURCE_COMMIT + "/"
@@ -117,22 +119,29 @@ def parse_options(arguments=None):
 
 def query_database(database, query):
     """Keep submitted SQL and database error output out of public diagnostics."""
-    result = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "-i",
-            "opencj-dev-db-1",
-            "sh",
-            "-c",
-            'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$@"',
-            "name-rules",
-            database,
-        ],
-        input=query,
-        text=True,
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "exec",
+                "-i",
+                "opencj-dev-db-1",
+                "sh",
+                "-c",
+                'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$@"',
+                "name-rules",
+                database,
+            ],
+            input=query,
+            text=True,
+            capture_output=True,
+            timeout=DATABASE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # Killing the local client does not prove that the database rolled back a write.
+        raise RuntimeError(
+            "Rule operation timed out. Its outcome is unknown; inspect the rules before retrying."
+        ) from None
     if result.returncode:
         raise RuntimeError("Rule operation failed; no submitted text was logged.")
     return result.stdout.strip()
@@ -214,9 +223,14 @@ def prepare_change(options):
 
 
 def write_receipt(path, receipt):
+    """Create private permissions before any maintenance metadata reaches the file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(receipt, indent=2) + "\n")
-    path.chmod(0o600)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w") as stream:
+        # Existing files also need tightening before they receive replacement metadata.
+        os.fchmod(stream.fileno(), 0o600)
+        json.dump(receipt, stream, indent=2)
+        stream.write("\n")
 
 
 def main(arguments=None):

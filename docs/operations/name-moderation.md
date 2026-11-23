@@ -27,7 +27,10 @@ python3 tools/manage-name-rules.py --list
 Replace `RULE_ID` with the numeric rule ID. New terms and full-name exceptions
 are read through a hidden terminal prompt; listing prints IDs and metadata only.
 Use `--dry-run` when reviewing a proposed import or change. If using `--receipt`,
-choose a private ignored location.
+choose a private ignored location. Receipts are written with owner-only permissions.
+
+Database commands stop waiting after three minutes. A timeout does not establish
+whether a write committed; inspect the current rules before retrying.
 
 ## Optional seed source
 
