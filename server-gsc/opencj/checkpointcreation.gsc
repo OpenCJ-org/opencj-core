@@ -1585,10 +1585,12 @@ _readFile(fileHandle, routeName)
             return undefined;
         }
     }
+    revision = int(header[3]);
     confirmedCount = int(header[4]);
+    selectedIndex = int(header[5]);
     maxCheckpointsPerRoute = 256;
-    if (confirmedCount < 0 || confirmedCount > maxCheckpointsPerRoute || int(header[5]) < 0 ||
-       int(header[5]) > confirmedCount)
+    if (revision < 0 || confirmedCount < 0 || confirmedCount > maxCheckpointsPerRoute ||
+       selectedIndex < 0 || selectedIndex > confirmedCount)
     {
         return undefined;
     }
@@ -1616,8 +1618,8 @@ _readFile(fileHandle, routeName)
             draft.sharedHex = header[9];
         }
     }
-    draft.revision = int(header[3]);
-    draft.selected = int(header[5]);
+    draft.revision = revision;
+    draft.selected = selectedIndex;
     draft.rows = [];
     for (i = 0; i <= confirmedCount; i++)
     {
