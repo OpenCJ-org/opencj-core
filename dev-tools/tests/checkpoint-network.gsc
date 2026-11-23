@@ -251,6 +251,10 @@ checkEditingCommands(editor)
     {
         return;
     }
+    arguments[0] = "merge";
+    checkFailedMerge(editor, arguments, editor.cpc.path, "approach write");
+    manifestPath = editor openCJ\checkpointNetwork::basePath() + "network";
+    checkFailedMerge(editor, arguments, manifestPath, "manifest write");
     if (!checkMergeAndSplit(editor, arguments))
     {
         return;
@@ -476,4 +480,52 @@ checkDamagedRenameDestination(editor)
                 "rejected rename leaves the source database name");
     checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='damaged_rename'", 0,
                 "rejected rename does not publish the unreadable destination");
+}
+
+checkFailedMerge(editor, arguments, failedPath, scenario)
+{
+    network = editor openCJ\checkpointNetwork::load();
+    sharedName = "shared_" + (network.revision + 1);
+    pendingCheckpoint = editor.cpc.draft;
+    level.rejectDraftWritePath = failedPath;
+    merged = editor openCJ\checkpointNetwork::merge(arguments);
+    level.rejectDraftWritePath = undefined;
+    check(!merged, scenario + " failure rejects merge");
+    check(openCJ\checkpointCreation::_encode(editor.cpc.draft) ==
+          openCJ\checkpointCreation::_encode(pendingCheckpoint),
+          scenario + " failure keeps pending geometry in the editor");
+    retained = editor openCJ\checkpointNetwork::readSection(sharedName);
+    check(isDefined(retained) && retained.draft.points.size == 4,
+          scenario + " failure keeps the prepared shared recovery draft");
+    recoveredNetwork = editor openCJ\checkpointNetwork::load();
+    check(recoveredNetwork.revision == network.revision,
+          scenario + " failure keeps the prior manifest revision");
+    if (failedPath == editor openCJ\checkpointNetwork::basePath() + "network")
+    {
+        savedApproach = editor openCJ\checkpointNetwork::readSection(editor.cpc.route);
+        check(savedApproach.draft.points.size == 4,
+              "manifest failure restores the saved pending approach");
+    }
+    // Reset only this synthetic scenario so the following normal merge can reuse its name.
+    editor.cpc.draft = pendingCheckpoint;
+    editor openCJ\checkpointNetwork::writeSection(editor.cpc.route, editor.cpc);
+    sharedPath = editor openCJ\checkpointNetwork::basePath() + sharedName;
+    if (FS_TestFile(sharedPath + ".a"))
+    {
+        FS_Remove(sharedPath + ".a");
+    }
+    if (FS_TestFile(sharedPath + ".b"))
+    {
+        FS_Remove(sharedPath + ".b");
+    }
+}
+
+draftFileOpen(path, mode)
+{
+    if(mode == "write" && isDefined(level.rejectDraftWritePath) &&
+       (path == level.rejectDraftWritePath + ".a" || path == level.rejectDraftWritePath + ".b"))
+    {
+        return 0;
+    }
+    return FS_FOpen(path, mode);
 }

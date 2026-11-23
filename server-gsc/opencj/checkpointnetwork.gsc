@@ -520,19 +520,14 @@ merge(commandArguments)
     {
         return self fail("Could not save the common landing; merge unchanged.");
     }
-    self.cpc.draft = openCJ\checkpointCreation::_empty();
-    if (!self openCJ\checkpointCreation::_save())
-    {
-        return false;
-    }
     for (i = 1; i < commandArguments.size; i++)
     {
         routePath = network.paths[commandArguments[i]];
         routePath.sections[routePath.sections.size] = sharedSectionName;
     }
-    if (!self save(network))
+    if (!self saveMerge(network))
     {
-        return self fail("Could not save merge; section draft retained.");
+        return false;
     }
     self openCJ\checkpointCreation::_close();
     self openCJ\checkpointCreation::_start(sharedSectionName);
@@ -541,6 +536,31 @@ merge(commandArguments)
         ". Confirm this common landing and continue once for all routes. Use !cp split " +
         labelCommand(commandArguments) + " if they separate again.");
     return true;
+}
+
+// Save the approach without duplicating its joining checkpoint in the shared section.
+// Until the manifest succeeds, keep the pending edit recoverable in its original approach.
+saveMerge(network)
+{
+    pendingCheckpoint = self.cpc.draft;
+    self.cpc.draft = openCJ\checkpointCreation::_empty();
+    if (!self openCJ\checkpointCreation::_save())
+    {
+        self.cpc.draft = pendingCheckpoint;
+        return false;
+    }
+    if (self save(network))
+    {
+        return true;
+    }
+
+    self.cpc.draft = pendingCheckpoint;
+    if (!self openCJ\checkpointCreation::_save())
+    {
+        return self fail(
+            "Merge failed; pending edit remains in memory. Retry !cp save; shared draft retained.");
+    }
+    return self fail("Could not save merge; original paths and pending edit retained.");
 }
 
 // Every route sharing an incoming approach must participate, with no unfinished separate landing.
@@ -1098,19 +1118,9 @@ mergeExisting(commandArguments, network, openingDraft)
             routePath.sections[routePath.sections.size] = continuationSections[j];
         }
     }
-    // Save the incoming approach without duplicating the joining checkpoint.
-    pendingCheckpoint = self.cpc.draft;
-    self.cpc.draft = openCJ\checkpointCreation::_empty();
-    if(!self openCJ\checkpointCreation::_save())
+    if(!self saveMerge(network))
     {
-        self.cpc.draft = pendingCheckpoint;
         return false;
-    }
-    if(!self save(network))
-    {
-        self.cpc.draft = pendingCheckpoint;
-        self openCJ\checkpointCreation::_save();
-        return self fail("Could not save merge; original paths retained.");
     }
     self openCJ\checkpointCreation::_close();
     self openCJ\checkpointCreation::_start(sharedSectionName);

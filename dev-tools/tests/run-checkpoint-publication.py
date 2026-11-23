@@ -39,6 +39,20 @@ def install_network_navigation_observers(home):
     path.write_text(source)
 
 
+def install_network_file_observers(home):
+    """Inject an open failure for one selected fixture path; delegate every other file operation."""
+    for script_name in ("checkpointcreation.gsc", "checkpointnetwork.gsc"):
+        path = home / "mods/opencj/opencj" / script_name
+        source, count = re.subn(
+            r"\bFS_FOpen\s*\(",
+            lambda match: r"openCJ\platformTest::draftFileOpen(",
+            path.read_text(),
+        )
+        if count == 0:
+            raise RuntimeError("Draft file boundary was not found: " + script_name)
+        path.write_text(source)
+
+
 def main():
     options = gsc_fixture.parse_options(
         default_fixture=ROOT / "dev-tools/tests/checkpoint-publication.gsc",
@@ -64,6 +78,7 @@ def main():
         elif options.fixture.name == "checkpoint-network.gsc":
             install_commit_observer(fixture.home, "checkpointnetwork.gsc")
             install_network_navigation_observers(fixture.home)
+            install_network_file_observers(fixture.home)
         fixture.write_engine_config()
         result = gsc_fixture.run_prepared_fixture(
             options,
