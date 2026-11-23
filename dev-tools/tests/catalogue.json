@@ -673,6 +673,18 @@
         "python3 -B dev-tools/tests/run-checkpoint-publication.py",
         "python3 -B dev-tools/tests/run-checkpoint-publication.py --fixture dev-tools/tests/checkpoint-network.gsc --completion-marker \"NETWORK SELFTEST COMPLETE\""
       ]
+    },
+    {
+      "id": "audio-converter-unit",
+      "category": "portable",
+      "description": "Finish audio interpolation, quiet PCM output, silence and decoder cleanup.",
+      "requires": "Python standard library; decoder boundary is synthetic, libsndfile is not loaded.",
+      "effects": "Temporary WAV outputs only; no source audio, game or running service.",
+      "files": [
+        "dev-tools/tests/test_finish_sounds.py"
+      ],
+      "commands": [],
+      "mode": "unit"
     }
   ]
 }

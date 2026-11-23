@@ -15,6 +15,11 @@ on standalone redistribution; credit does not override that restriction.
 
 Run `python3 dev-tools/scripts/build-finish-sounds.py` from the workspace on the
 server to regenerate the WAV assets (requires libsndfile with MP3 support).
+Use `--output-dir <directory>` to inspect a separate build without replacing the
+checked-in WAVs. The converter validates decoded metadata before allocating its
+sample buffer and closes the decoder on failures. Silent audio produces silent
+PCM, with `null` peak/RMS dBFS values in the report.
+
 The converter never amplifies the source, caps peaks at -6 dBFS and RMS at
 -20 dBFS, and outputs 44.1 kHz 16-bit PCM. `opencj_finish.csv` applies a further
 50% volume using the interface volume group. These are loaded 2D sounds embedded

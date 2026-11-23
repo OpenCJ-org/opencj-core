@@ -279,3 +279,12 @@ graph-refresh callback verifies that a committed rename stays saved without
 relabeling the still-active graph. These are
 simulated failures at those boundaries, not operating-system disk faults.
 It uses the same owned schema/account and isolated file tree.
+
+### Finish audio conversion
+
+The portable `audio-converter-unit` group checks channel-preserving resampling,
+quiet PCM bytes, silent input, invalid metadata and decoder-handle cleanup using
+a synthetic decoder boundary. It does not require libsndfile or source audio.
+For an actual MP3 conversion, run the converter with libsndfile and an explicit
+`--output-dir` as described in the [audio source guide](../../client-mod/audio-source/README.md).
+Compare both resulting WAVs and retain their Pixabay notice when packaging them.

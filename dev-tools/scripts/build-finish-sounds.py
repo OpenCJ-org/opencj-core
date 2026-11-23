@@ -1,84 +1,145 @@
-"""Decode the supplied MP3s with libsndfile; make quiet 44.1 kHz PCM16 game assets."""
+"""Decode the supplied MP3s with libsndfile into quiet 44.1 kHz PCM16 game assets."""
 
-from pathlib import Path
+import argparse
 import array
-import ctypes as C
+import ctypes
 import ctypes.util
 import json
 import math
+from pathlib import Path
 import sys
 import wave
 
-root = Path(__file__).resolve().parents[2]
-lib = C.CDLL(ctypes.util.find_library('sndfile'))
+ROOT = Path(__file__).resolve().parents[2]
+OUTPUT_SAMPLE_RATE = 44100
+PCM_SAMPLE_BYTES = 2
+PCM_POSITIVE_PEAK = 32767
+PEAK_LIMIT_DBFS = -6
+RMS_LIMIT_DBFS = -20
+SNDFILE_READ_MODE = 0x10
+SOURCES = [
+    ("freesound_gamestudio-level-complete-394515.mp3", "route_complete.wav"),
+    ("universfield-victory-fanfare-152480.mp3", "route_record.wav"),
+]
 
 
-class Info(C.Structure):
+class SoundFileInfo(ctypes.Structure):
+    """Keep the field order and widths of libsndfile's SF_INFO ABI."""
+
     _fields_ = [
-        ('frames', C.c_int64),
-        ('samplerate', C.c_int),
-        ('channels', C.c_int),
-        ('format', C.c_int),
-        ('sections', C.c_int),
-        ('seekable', C.c_int),
+        ("frames", ctypes.c_int64),
+        ("samplerate", ctypes.c_int),
+        ("channels", ctypes.c_int),
+        ("format", ctypes.c_int),
+        ("sections", ctypes.c_int),
+        ("seekable", ctypes.c_int),
     ]
 
 
-lib.sf_open.argtypes = [C.c_char_p, C.c_int, C.POINTER(Info)]
-lib.sf_open.restype = C.c_void_p
-lib.sf_readf_float.argtypes = [C.c_void_p, C.POINTER(C.c_float), C.c_int64]
-lib.sf_readf_float.restype = C.c_int64
-lib.sf_close.argtypes = [C.c_void_p]
-report = []
-for source, target in [
-    ('freesound_gamestudio-level-complete-394515.mp3', 'route_complete.wav'),
-    ('universfield-victory-fanfare-152480.mp3', 'route_record.wav'),
-]:
-    path = root / 'client-mod/audio-source' / source
-    info = Info()
-    handle = lib.sf_open(str(path).encode(), 0x10, C.byref(info))
+def load_decoder():
+    library_path = ctypes.util.find_library("sndfile")
+    if not library_path:
+        raise RuntimeError("libsndfile with MP3 support is required")
+    decoder = ctypes.CDLL(library_path)
+    decoder.sf_open.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(SoundFileInfo)]
+    decoder.sf_open.restype = ctypes.c_void_p
+    decoder.sf_readf_float.argtypes = [
+        ctypes.c_void_p, ctypes.POINTER(ctypes.c_float), ctypes.c_int64
+    ]
+    decoder.sf_readf_float.restype = ctypes.c_int64
+    decoder.sf_close.argtypes = [ctypes.c_void_p]
+    decoder.sf_close.restype = ctypes.c_int
+    return decoder
+
+
+def read_audio(decoder, path):
+    """Decode interleaved samples and release the file even when decoding fails."""
+    info = SoundFileInfo()
+    handle = decoder.sf_open(str(path).encode(), SNDFILE_READ_MODE, ctypes.byref(info))
     if not handle:
-        raise RuntimeError('Cannot decode ' + source)
+        raise RuntimeError("Cannot decode " + str(path))
     try:
-        raw = (C.c_float * (info.frames * info.channels))()
-        count = lib.sf_readf_float(handle, raw, info.frames)
+        if info.frames <= 0 or info.samplerate <= 0 or info.channels not in (1, 2):
+            raise ValueError("Expected nonempty mono or stereo audio: " + str(path))
+        raw_samples = (ctypes.c_float * (info.frames * info.channels))()
+        decoded_frames = decoder.sf_readf_float(handle, raw_samples, info.frames)
         # MP3 frame estimates can include encoder padding beyond the decoded end.
-        assert 0 < count <= info.frames and info.channels in (1, 2)
-        samples = list(raw[: count * info.channels])
+        if not 0 < decoded_frames <= info.frames:
+            raise ValueError("Decoder returned an invalid frame count: " + str(path))
+        samples = list(raw_samples[:decoded_frames * info.channels])
     finally:
-        lib.sf_close(handle)
-    if info.samplerate != 44100:
-        ratio = info.samplerate / 44100
-        samples = [
-            samples[min(int(i * ratio), count - 1) * info.channels + c] * (1 - (i * ratio % 1))
-            + samples[min(int(i * ratio) + 1, count - 1) * info.channels + c] * (i * ratio % 1)
-            for i in range(round(count / ratio))
-            for c in range(info.channels)
-        ]
-    peak = max(abs(v) for v in samples)
-    rms = math.sqrt(sum(v * v for v in samples) / len(samples))
-    # Never amplify the originals. Cap both peaks (-6 dBFS) and RMS (-20 dBFS).
-    gain = min(1, 10 ** (-6 / 20) / peak, 10 ** (-20 / 20) / rms)
-    pcm = array.array('h', (round(v * gain * 32767) for v in samples))
-    if sys.byteorder != 'little':
+        decoder.sf_close(handle)
+    return samples, info.channels, info.samplerate
+
+
+def resample_audio(samples, channels, source_sample_rate):
+    """Linearly interpolate each channel without mixing adjacent channels."""
+    if source_sample_rate == OUTPUT_SAMPLE_RATE:
+        return samples
+    frame_count = len(samples) // channels
+    source_frames_per_output_frame = source_sample_rate / OUTPUT_SAMPLE_RATE
+    output_samples = []
+    for frame_index in range(round(frame_count / source_frames_per_output_frame)):
+        source_position = frame_index * source_frames_per_output_frame
+        interpolation_factor = source_position % 1
+        first_frame = min(int(source_position), frame_count - 1)
+        next_frame = min(int(source_position) + 1, frame_count - 1)
+        for channel in range(channels):
+            first_sample = samples[first_frame * channels + channel]
+            next_sample = samples[next_frame * channels + channel]
+            output_samples.append(
+                first_sample * (1 - interpolation_factor) + next_sample * interpolation_factor
+            )
+    return output_samples
+
+
+def decibels(amplitude):
+    # Silence has no finite dBFS value; represent it as null in the JSON report.
+    return round(20 * math.log10(amplitude), 2) if amplitude > 0 else None
+
+
+def write_audio(samples, channels, destination):
+    """Never amplify the source; cap peaks and RMS before encoding signed PCM."""
+    if not samples or not all(math.isfinite(sample) for sample in samples):
+        raise ValueError("Audio must contain finite decoded samples")
+    peak = max(abs(sample) for sample in samples)
+    rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+    gain = 1
+    if peak > 0:
+        gain = min(1, 10 ** (PEAK_LIMIT_DBFS / 20) / peak, 10 ** (RMS_LIMIT_DBFS / 20) / rms)
+    pcm = array.array("h", (round(sample * gain * PCM_POSITIVE_PEAK) for sample in samples))
+    if sys.byteorder != "little":
         pcm.byteswap()
-    out = root / 'client-mod/cod4/sound/opencj' / target
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with wave.open(str(out), 'wb') as f:
-        f.setnchannels(info.channels)
-        f.setsampwidth(2)
-        f.setframerate(44100)
-        f.writeframes(pcm.tobytes())
-    report.append(
-        dict(
-            source=source,
-            output=target,
-            seconds=round(len(samples) / info.channels / 44100, 3),
-            channels=info.channels,
-            gain_db=round(20 * math.log10(gain), 2),
-            peak_dbfs=round(20 * math.log10(peak * gain), 2),
-            rms_dbfs=round(20 * math.log10(rms * gain), 2),
-            alias_volume=0.5,
-        )
-    )
-print(json.dumps(report, indent=2))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(destination), "wb") as output:
+        output.setnchannels(channels)
+        output.setsampwidth(PCM_SAMPLE_BYTES)
+        output.setframerate(OUTPUT_SAMPLE_RATE)
+        output.writeframes(pcm.tobytes())
+    return {
+        "seconds": round(len(samples) / channels / OUTPUT_SAMPLE_RATE, 3),
+        "channels": channels,
+        "gain_db": decibels(gain),
+        "peak_dbfs": decibels(peak * gain),
+        "rms_dbfs": decibels(rms * gain),
+        "alias_volume": 0.5,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "client-mod/cod4/sound/opencj")
+    options = parser.parse_args()
+    decoder = load_decoder()
+    report = []
+    for source_name, target_name in SOURCES:
+        source = ROOT / "client-mod/audio-source" / source_name
+        samples, channels, sample_rate = read_audio(decoder, source)
+        samples = resample_audio(samples, channels, sample_rate)
+        levels = write_audio(samples, channels, options.output_dir / target_name)
+        report.append({"source": source_name, "output": target_name, **levels})
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()
