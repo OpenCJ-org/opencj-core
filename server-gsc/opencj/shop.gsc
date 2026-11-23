@@ -7,61 +7,80 @@ onInit()
     {
         return;
     }
+    // Categories match the stored catalogue and the three client tabs.
+    level.shopCategoryModel = 0;
+    level.shopCategoryPistol = 1;
+    level.shopCategoryRPG = 2;
     precacheMenu("opencj_shop");
     precacheMenu("opencj_shop_confirm");
     precacheMenu("opencj_shop_inspect");
+
     level.shopItems = [];
-    for(i = 0; i < 12; i++)
+    previewCountPerCategory = 12;
+    previewPrice = 9999;
+    for(i = 0; i < previewCountPerCategory; i++)
     {
-        add("pistol.preview" + i, 1, "Desert Eagle " + (i + 1), "weapon_desert_eagle",
-            "deserteagle_mp", "default");
-        add("rpg.preview" + i, 2, "RPG " + (i + 1), "weapon_rpg7", "rpg_mp", "default");
+        _addPreviewItem("pistol.preview" + i, level.shopCategoryPistol, "Desert Eagle " + (i + 1),
+                        "weapon_desert_eagle", "deserteagle_mp", "default", previewPrice);
+        _addPreviewItem("rpg.preview" + i, level.shopCategoryRPG, "RPG " + (i + 1),
+                        "weapon_rpg7", "rpg_mp", "default", previewPrice);
     }
     openCJ\commands_base::registerCommand("shop", "!shop", ::command, 0, 0, 0);
 }
-add(key, category, name, image, slot, resource)
+
+// Keep preview records stable in SQL while purchasing remains disabled.
+_addPreviewItem(itemKey, category, displayName, image, slot, resource, price)
 {
     item = spawnStruct();
-    item.key = key;
+    item.key = itemKey;
     item.category = category;
-    item.name = name;
+    item.name = displayName;
     item.image = image;
-    item.price = 9999;
+    item.price = price;
     item.available = false;
     item.resource = resource;
     item.slot = slot;
     openCJ\mySQL::mysqlSyncQuery(
-        "INSERT INTO shopCatalog(itemKey,category,slot,price,available) VALUES ('" + key + "'," +
-        category + ",'" + slot + "'," + item.price + "," + int(item.available) +
-        ") ON DUPLICATE KEY UPDATE category=VALUES(category),slot=VALUES(slot),price=VALUES(price),available=VALUES(available)");
+        "INSERT INTO shopCatalog(itemKey,category,slot,price,available)"
+        + " VALUES ('" + itemKey + "'," + category + ",'" + slot + "',"
+        + item.price + "," + int(item.available) + ")"
+        + " ON DUPLICATE KEY UPDATE category=VALUES(category),slot=VALUES(slot),"
+        + "price=VALUES(price),available=VALUES(available)");
     level.shopItems[level.shopItems.size] = item;
 }
+
 onPlayerConnected()
 {
     if(getCodVersion() != 4)
     {
         return;
     }
-    self.shopTab = 1;
+    self.shopTab = level.shopCategoryPistol;
     self.shopLoaded = false;
     self thread responses();
 }
+
 command(args)
 {
     self openMenu("opencj_shop");
 }
-availablePoints(total, spent)
+
+availablePoints(totalPoints, spentPoints)
 {
-    remaining = total - spent;
-    if(remaining < 0)
+    remainingPoints = totalPoints - spentPoints;
+    if(remainingPoints < 0)
     {
         return 0;
     }
-    return remaining;
+    return remainingPoints;
 }
+
+// Route menu actions while limiting repeated requests from the same client.
 responses()
 {
     self endon("disconnect");
+    requestIntervalMs = 200;
+    itemPrefix = "item:";
     for(;;)
     {
         self waittill("menuresponse", menu, response);
@@ -84,7 +103,7 @@ responses()
             self stopInspect();
             continue;
         }
-        if(isDefined(self.shopRequestAt) && getTime() - self.shopRequestAt < 200)
+        if(isDefined(self.shopRequestAt) && getTime() - self.shopRequestAt < requestIntervalMs)
         {
             continue;
         }
@@ -110,36 +129,46 @@ responses()
         {
             self inspect();
         }
-        else if(getSubStr(response, 0, 5) == "item:")
+        else if(getSubStr(response, 0, itemPrefix.size) == itemPrefix)
         {
-            index = getSubStr(response, 5);
-            if(!isValidInt(index))
-            {
-                continue;
-            }
-            index = int(index);
-            if(!isDefined(self.shopRows) || index < 0 || index >= self.shopRows.size)
-            {
-                continue;
-            }
-            item = self.shopRows[index];
-            self.shopSelection = item.key;
-            self setClientCvar("ocj_shop_detail_error", "");
-            self setClientCvar("ocj_shop_confirm_name", item.name);
-            self setClientCvar("ocj_shop_confirm_owned", int(isDefined(self.shopOwned[item.key])));
-            self setClientCvar("ocj_shop_confirm_equipped",
-                               int(isDefined(self.shopEquipped) &&
-                                   isDefined(self.shopEquipped[item.slot]) &&
-                                   self.shopEquipped[item.slot] == item.key));
-            self setClientCvar("ocj_shop_confirm_buy",
-                               int(item.available && !isDefined(self.shopOwned[item.key])));
-            self setClientCvar("ocj_shop_confirm_cost", item.price + " points");
-            self closeInGameMenu();
-            self closeMenu();
-            self openMenu("opencj_shop_confirm");
+            self _selectItem(getSubStr(response, itemPrefix.size));
         }
     }
 }
+
+// Validate the visible row before opening its purchase or inspection details.
+_selectItem(indexText)
+{
+    if(!isValidInt(indexText))
+    {
+        return;
+    }
+    rowIndex = int(indexText);
+    if(!isDefined(self.shopRows) || rowIndex < 0 || rowIndex >= self.shopRows.size)
+    {
+        return;
+    }
+    item = self.shopRows[rowIndex];
+    purchased = isDefined(self.shopOwned[item.key]);
+    equipped = self _isItemEquipped(item);
+    self.shopSelection = item.key;
+    self setClientCvar("ocj_shop_detail_error", "");
+    self setClientCvar("ocj_shop_confirm_name", item.name);
+    self setClientCvar("ocj_shop_confirm_owned", int(purchased));
+    self setClientCvar("ocj_shop_confirm_equipped", int(equipped));
+    self setClientCvar("ocj_shop_confirm_buy", int(item.available && !purchased));
+    self setClientCvar("ocj_shop_confirm_cost", item.price + " points");
+    self closeInGameMenu();
+    self closeMenu();
+    self openMenu("opencj_shop_confirm");
+}
+
+_isItemEquipped(item)
+{
+    return isDefined(self.shopEquipped) && isDefined(self.shopEquipped[item.slot]) &&
+           self.shopEquipped[item.slot] == item.key;
+}
+
 // Closing or replacing this screen cancels its reads; purchases have separate ownership.
 show()
 {
@@ -157,12 +186,13 @@ show()
                            "Your account is loading. Reopen the shop in a moment.");
         return;
     }
-    id = self openCJ\login::getPlayerID();
+    accountID = self openCJ\login::getPlayerID();
     totals = self openCJ\mySQL::mysqlAsyncMenuQuery(
-        "SELECT (SELECT COALESCE(SUM(pointsAwarded),0) FROM challengeCompletions WHERE playerID=" +
-            id + "),(SELECT COALESCE(SUM(pointsSpent),0) FROM shopPurchases WHERE playerID=" + id +
-            ")",
-        "shop");
+        "SELECT"
+        + " (SELECT COALESCE(SUM(pointsAwarded),0)"
+        + " FROM challengeCompletions WHERE playerID=" + accountID + ")"
+        + ",(SELECT COALESCE(SUM(pointsSpent),0)"
+        + " FROM shopPurchases WHERE playerID=" + accountID + ")", "shop");
     if(!self openCJ\mySQL::menuReadCurrent(menuToken))
     {
         return;
@@ -173,29 +203,36 @@ show()
         return;
     }
 
-    owned = self openCJ\mySQL::mysqlAsyncMenuQuery(
-        "SELECT itemKey FROM shopPurchases WHERE playerID=" + id, "shop");
+    ownedRows = self openCJ\mySQL::mysqlAsyncMenuQuery(
+        "SELECT itemKey FROM shopPurchases WHERE playerID=" + accountID, "shop");
     if(!self openCJ\mySQL::menuReadCurrent(menuToken))
     {
         return;
     }
-    if(!isDefined(owned))
+    if(!isDefined(ownedRows))
     {
         self setClientCvar("ocj_shop_error", "Shop data is unavailable. Please try again later.");
         return;
     }
-    total = int(totals[0][0]);
-    spent = int(totals[0][1]);
+    totalPoints = int(totals[0][0]);
+    spentPoints = int(totals[0][1]);
     self.shopOwned = [];
-    for(i = 0; i < owned.size; i++)
+    for(i = 0; i < ownedRows.size; i++)
     {
-        self.shopOwned[owned[i][0]] = true;
+        itemKey = ownedRows[i][0];
+        self.shopOwned[itemKey] = true;
     }
+    self _renderCatalogue(totalPoints, spentPoints);
+}
+
+// Publish the selected category after both account reads have completed.
+_renderCatalogue(totalPoints, spentPoints)
+{
     self.shopRows = [];
-    values = [];
-    values["ocj_shop_tab"] = self.shopTab;
-    values["ocj_shop_balance"] = availablePoints(total, spent) + " points available";
-    values["ocj_shop_totals"] = "Total earned: " + total + "  |  Spent: " + spent;
+    clientValues = [];
+    clientValues["ocj_shop_tab"] = self.shopTab;
+    clientValues["ocj_shop_balance"] = availablePoints(totalPoints, spentPoints) + " points available";
+    clientValues["ocj_shop_totals"] = "Total earned: " + totalPoints + "  |  Spent: " + spentPoints;
     for(i = 0; i < level.shopItems.size; i++)
     {
         item = level.shopItems[i];
@@ -203,29 +240,28 @@ show()
         {
             continue;
         }
-        row = self.shopRows.size;
-        self.shopRows[row] = item;
-        prefix = "ocj_shop_" + row + "_";
+        rowIndex = self.shopRows.size;
+        self.shopRows[rowIndex] = item;
+        valuePrefix = "ocj_shop_" + rowIndex + "_";
         purchased = isDefined(self.shopOwned[item.key]);
-        state = "Currently unavailable";
+        purchaseState = "Currently unavailable";
         if(purchased)
         {
-            state = "Purchased";
+            purchaseState = "Purchased";
         }
-        if(isDefined(self.shopEquipped) && isDefined(self.shopEquipped[item.slot]) &&
-           self.shopEquipped[item.slot] == item.key)
+        if(self _isItemEquipped(item))
         {
-            state = "Purchased / Equipped";
+            purchaseState = "Purchased / Equipped";
         }
-        values[prefix + "name"] = item.name;
-        values[prefix + "price"] = item.price + " points";
-        values[prefix + "image"] = item.image;
-        values[prefix + "state"] = state;
-        values[prefix + "owned"] = int(purchased);
-        values[prefix + "buy"] = int(item.available && !purchased);
+        clientValues[valuePrefix + "name"] = item.name;
+        clientValues[valuePrefix + "price"] = item.price + " points";
+        clientValues[valuePrefix + "image"] = item.image;
+        clientValues[valuePrefix + "state"] = purchaseState;
+        clientValues[valuePrefix + "owned"] = int(purchased);
+        clientValues[valuePrefix + "buy"] = int(item.available && !purchased);
     }
-    values["ocj_shop_rows"] = self.shopRows.size;
-    self openCJ\scoreboard::sendChanged(values);
+    clientValues["ocj_shop_rows"] = self.shopRows.size;
+    self openCJ\scoreboard::sendChanged(clientValues);
     self setClientCvar("ocj_shop_busy", 0);
 }
 
@@ -313,6 +349,7 @@ findItem(key)
     }
     return undefined;
 }
+
 resource(slot)
 {
     if(getCodVersion() != 4 || !isDefined(self.shopEquipped))
@@ -331,6 +368,8 @@ resource(slot)
     }
     return item.resource;
 }
+
+// Let the database settle the purchase before refreshing equipment and reopening the shop.
 purchase(equipOnly)
 {
     self endon("disconnect");
@@ -353,7 +392,12 @@ purchase(equipOnly)
     rows = self openCJ\mySQL::mysqlAsyncQuery(
         "CALL shopBuyOrEquip(" + self openCJ\login::getPlayerID() + ",'" +
         openCJ\mySQL::escapeString(item.key) + "'," + int(equipOnly) + "," + item.price + ")");
-    if(isDefined(rows) && rows.size && rows[0][0] == "ok")
+    outcome = undefined;
+    if(isDefined(rows) && rows.size)
+    {
+        outcome = rows[0][0];
+    }
+    if(isDefined(outcome) && outcome == "ok")
     {
         self.shopLoaded = false;
         self loadEquipment();
@@ -364,15 +408,15 @@ purchase(equipOnly)
     {
         message =
             "Purchase could not be confirmed. Reopen the shop to check ownership and balance.";
-        if(isDefined(rows) && rows.size && rows[0][0] == "balance")
+        if(isDefined(outcome) && outcome == "balance")
         {
             message = "You do not have enough available points.";
         }
-        if(isDefined(rows) && rows.size && rows[0][0] == "price_changed")
+        if(isDefined(outcome) && outcome == "price_changed")
         {
             message = "The price has changed. Reopen the shop before purchasing.";
         }
-        if(isDefined(rows) && rows.size && rows[0][0] == "owned")
+        if(isDefined(outcome) && outcome == "owned")
         {
             message = "You already own this item.";
         }
@@ -387,6 +431,8 @@ purchase(equipOnly)
         self openMenu("opencj_shop");
     }
 }
+
+// Temporarily show the selected item while retaining the exact weapon and ammo state.
 inspect()
 {
     if(isDefined(self.shopInspect) || !isDefined(self.shopSelection) ||
@@ -406,54 +452,62 @@ inspect()
     {
         return;
     }
-    weapon = undefined;
-    if(item.category == 1)
+    previewWeapon = undefined;
+    if(item.category == level.shopCategoryPistol)
     {
-        weapon = level.weapons_loadouts[item.resource];
+        previewWeapon = level.weapons_loadouts[item.resource];
     }
-    if(item.category == 2)
+    if(item.category == level.shopCategoryRPG)
     {
-        weapon = level.weapons_rpgs[item.resource];
+        previewWeapon = level.weapons_rpgs[item.resource];
     }
-    if(item.category != 0 && !isDefined(weapon))
+    if(item.category != level.shopCategoryModel && !isDefined(previewWeapon))
     {
         return;
     }
-    state = spawnStruct();
-    state.weapons = [];
-    state.current = self getCurrentWeapon();
-    list = self getWeaponsList();
-    for(i = 0; i < list.size; i++)
-    {
-        w = spawnStruct();
-        w.name = list[i];
-        w.clip = self getWeaponAmmoClip(list[i]);
-        w.stock = self getWeaponAmmoStock(list[i]);
-        state.weapons[state.weapons.size] = w;
-    }
+    previewState = self _captureLoadout();
     self notify("shop_inspect_started");
-    self.shopInspect = state;
+    self.shopInspect = previewState;
     self freezeControls(true);
     self setVelocity((0, 0, 0));
     // Frozen controls block input; disableWeapons also hides the viewmodel.
     self enableWeapons();
-    if(item.category == 0)
+    if(item.category == level.shopCategoryModel)
     {
         self openCJ\playerModels::_setModel(item.resource);
     }
     else
     {
         self takeAllWeapons();
-        self giveWeapon(weapon);
-        self giveMaxAmmo(weapon);
-        self setSpawnWeapon(weapon);
-        self switchToWeaponSeamless(weapon);
+        self giveWeapon(previewWeapon);
+        self giveMaxAmmo(previewWeapon);
+        self setSpawnWeapon(previewWeapon);
+        self switchToWeaponSeamless(previewWeapon);
     }
     self closeInGameMenu();
     self closeMenu();
     self openMenu("opencj_shop_inspect");
     self thread watchInspect();
 }
+
+// Inspection must restore ammo as well as weapon names when the preview ends.
+_captureLoadout()
+{
+    loadout = spawnStruct();
+    loadout.weapons = [];
+    loadout.current = self getCurrentWeapon();
+    weaponNames = self getWeaponsList();
+    for(i = 0; i < weaponNames.size; i++)
+    {
+        weaponState = spawnStruct();
+        weaponState.name = weaponNames[i];
+        weaponState.clip = self getWeaponAmmoClip(weaponNames[i]);
+        weaponState.stock = self getWeaponAmmoStock(weaponNames[i]);
+        loadout.weapons[loadout.weapons.size] = weaponState;
+    }
+    return loadout;
+}
+
 stopInspect()
 {
     if(!isDefined(self.shopInspect))
@@ -461,19 +515,19 @@ stopInspect()
         return;
     }
     self notify("shop_inspect_stopped");
-    state = self.shopInspect;
+    loadout = self.shopInspect;
     self.shopInspect = undefined;
     self takeAllWeapons();
-    for(i = 0; i < state.weapons.size; i++)
+    for(i = 0; i < loadout.weapons.size; i++)
     {
-        w = state.weapons[i];
-        self giveWeapon(w.name);
-        self setWeaponAmmoClip(w.name, w.clip);
-        self setWeaponAmmoStock(w.name, w.stock);
+        weaponState = loadout.weapons[i];
+        self giveWeapon(weaponState.name);
+        self setWeaponAmmoClip(weaponState.name, weaponState.clip);
+        self setWeaponAmmoStock(weaponState.name, weaponState.stock);
     }
-    if(state.current != "none")
+    if(loadout.current != "none")
     {
-        self setSpawnWeapon(state.current);
+        self setSpawnWeapon(loadout.current);
     }
     self openCJ\playerModels::setPlayerModel();
     self freezeControls(false);
@@ -482,18 +536,22 @@ stopInspect()
     self closeMenu();
 }
 
+// Restore control if the player leaves normal play or abandons the preview.
 watchInspect()
 {
     self endon("disconnect");
     self endon("shop_inspect_stopped");
-    started = getTime();
+    startedAtMs = getTime();
+    maximumInspectMs = 120000;
+    inspectPollSeconds = 0.1;
     while(isDefined(self.shopInspect))
     {
-        if(self.sessionState != "playing" || isDefined(self.cpc) || getTime() - started > 120000)
+        if(self.sessionState != "playing" || isDefined(self.cpc) ||
+           getTime() - startedAtMs > maximumInspectMs)
         {
             self thread stopInspect();
             return;
         }
-        wait 0.1;
+        wait inspectPollSeconds;
     }
 }
