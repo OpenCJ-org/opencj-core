@@ -304,9 +304,16 @@ backUpPublishedDraft(routeName, oldRows)
     backup.routeHex = activeDraft.routeHex;
     basePath = activeDraft.path + ".before-migration-" + getTime();
     backup.path = basePath;
-    for(suffix = 0; FS_TestFile(backup.path + ".b"); suffix++)
+    // Match reset's collision budget; never overwrite an earlier recovery snapshot.
+    maximumBackupNames = 10000;
+    for(suffix = 0; suffix < maximumBackupNames && FS_TestFile(backup.path + ".b"); suffix++)
     {
         backup.path = basePath + "-" + suffix;
+    }
+    if(suffix == maximumBackupNames)
+    {
+        self fail("No free migration backup filename; draft and published route retained");
+        return false;
     }
     self.cpc = backup;
     saved = self openCJ\checkpointCreation::_save();

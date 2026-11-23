@@ -142,6 +142,15 @@ def copy_scripts(options, mod):
 def install_observation_hooks(mod, fixture_name):
     """Observe selected side effects only in the isolated script copy."""
     hooks = {
+        "checkpoint-publication.gsc": (
+            "opencj/checkpointmigration.gsc",
+            (
+                (
+                    r"\bFS_TestFile\s*\(",
+                    r"openCJ\platformTest::migrationBackupExists(",
+                ),
+            ),
+        ),
         "checkpoint-list.gsc": (
             "opencj/checkpointlist.gsc",
             (

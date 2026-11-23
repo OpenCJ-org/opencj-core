@@ -11,6 +11,7 @@ main()
     editor.login_playerID = 1;
     editor.cpc = routeDraft("fixture_route");
     checkInitialPublication(editor);
+    checkBackupCapacity(editor);
     checkRouteMigration(editor);
     checkPartialWriteRollback(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
@@ -188,4 +189,32 @@ check(condition, label)
     }
     printf("PUBLICATION CHECK " + condition + ": " + label + "\n");
     return condition;
+}
+
+// Simulate filename collisions without creating thousands of files or touching live drafts.
+checkBackupCapacity(editor)
+{
+    originalPath = editor.cpc.path;
+    originalRevision = editor.cpc.revision;
+    level.forceMigrationBackupCollision = true;
+    level.migrationBackupLookups = 0;
+    saved = editor openCJ\checkpointMigration::backUpPublishedDraft(editor.cpc.route, editor.cpc.rows);
+    level.forceMigrationBackupCollision = false;
+    maximumBackupNames = 10000;
+    check(!saved, "exhausted recovery names reject migration");
+    check(level.migrationBackupLookups == maximumBackupNames, "recovery filename search is bounded");
+    check(editor.cpc.path == originalPath && editor.cpc.revision == originalRevision,
+          "exhausted backup names preserve the active draft");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas", 4,
+                "exhausted backup names preserve published geometry");
+}
+
+migrationBackupExists(path)
+{
+    if(isDefined(level.forceMigrationBackupCollision) && level.forceMigrationBackupCollision)
+    {
+        level.migrationBackupLookups++;
+        return true;
+    }
+    return FS_TestFile(path);
 }
