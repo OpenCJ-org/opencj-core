@@ -103,6 +103,10 @@ class PlayerNameVerification:
 
     def seed_players_and_rules(self):
         """Keep all policy terms and account records synthetic inside the fixture."""
+        # A schema-only export omits this singleton, which serializes preferred-name writes.
+        self.query_database(
+            "INSERT INTO preferredNameWriteLock(singleton) VALUES(1);", self.database
+        )
         self.query_database(
             """
             INSERT INTO playerInformation(playerID,playerName,adminLevel) VALUES
