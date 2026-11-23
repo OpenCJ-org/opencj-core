@@ -19,6 +19,10 @@ retain their own build and runtime responsibilities.
 
 ## Start here
 
+The first release target is **beta-0.1.0**. Use `bash setup.sh` for the interactive
+[server installer](docs/setup/server.md), including separate instances, shared
+databases and an optional independently supplied website.
+
 Read the [development guide](dev-tools/README.md),
 [documentation index](docs/README.md) and
 [test guide](docs/development/testing.md).

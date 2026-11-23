@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Initialize an empty CoD4 development database from the versioned schema."""
+"""Initialize an empty CoD4 database from the versioned schema."""
 
 import argparse
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -27,8 +28,23 @@ def check(db):
     return len(rows)
 
 
-def bootstrap(db):
+def baseline_sql():
+    """Keep the legacy export intact while importing into the selected empty schema."""
+    sql = (ROOT / "server-db/exports/openCJ_cod4.sql").read_text()
+    for statement in (r"^CREATE DATABASE IF NOT EXISTS `openCJ_cod4`.*;\n",
+                      r"^USE `openCJ_cod4`;\n"):
+        sql, count = re.subn(statement, "", sql, flags=re.MULTILINE)
+        if count != 1:
+            raise RuntimeError("Unexpected baseline database selection; import refused")
+    return sql
+
+
+def bootstrap(db, database=DATABASE, runtime_account="opencj"):
     """Refuse existing data; a partial failure requires deliberate recovery."""
+    if not re.fullmatch(r"[A-Za-z0-9_]+", database + runtime_account):
+        raise ValueError("Invalid database or runtime account")
+    if db.query("SELECT DATABASE();") != database:
+        raise RuntimeError("Selected database differs from bootstrap target")
     existing_object_count = db.query(
         """
         SELECT
@@ -45,18 +61,21 @@ def bootstrap(db):
     )
     if existing_object_count != "0":
         raise RuntimeError("Bootstrap requires an empty database; existing data was preserved.")
-    if db.query("SELECT COUNT(*) FROM mysql.user WHERE User='opencj' AND Host='%';") != "1":
+    if db.query(
+        "SELECT COUNT(*) FROM mysql.user WHERE User="
+        + runtime_access.quote_literal(runtime_account) + " AND Host='%';"
+    ) != "1":
         raise RuntimeError(
-            "Create the opencj runtime account through the development Compose setup first."
+            f"Create the {runtime_account} runtime account through Compose setup first."
         )
-    db.query((ROOT / "server-db/exports/openCJ_cod4.sql").read_text())
+    db.query(baseline_sql())
     # The historical schema export already includes this later addition.
     # Only this freshly imported, empty schema is normalized before replaying
     # migration 008. Existing databases never enter this bootstrap path.
     db.query("ALTER TABLE checkpoints DROP COLUMN allowSave;")
     db.query(migrate.LEDGER)
     migrate.apply_migrations(db, migrate.load_migrations(), allow_empty=True)
-    runtime_access.apply_policy(db, DATABASE)
+    runtime_access.apply_policy(db, database, account=runtime_account)
     return check(db)
 
 

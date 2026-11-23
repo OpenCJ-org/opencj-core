@@ -169,3 +169,24 @@ step's raw results and personal decisions in private records.
 Record unfinished work honestly. These maintenance rules reduce regressions;
 they do not replace review when dependencies, deployment methods or project
 requirements change.
+
+
+## Release setup and dependencies
+
+Keep `setup.sh`, `VERSION`, the release image and the server-installation guide
+consistent. Initialize only pinned engine submodules. Build in isolated outputs;
+never let a setup test rebuild or restart a live installation. Keep Docker/client
+credentials out of command output and the gameplay container's mounts.
+
+Changes to release configuration, assets, database transports or startup require
+the portable setup checks and the relevant `server-setup` integration scenarios.
+Test a fresh named schema and repeat-run preservation. Existing/shared databases
+must pass the checksummed migration ledger without automatic bootstrap, grant
+changes or upgrades. Refuse unrelated volumes and preserve interrupted migrations.
+
+Keep downloadable dependencies/source records explicit, verify asset checksums,
+and retain component/file-specific notices in installed outputs. Optional website
+integration must use its supplied Compose contract, never an invented application
+or stale `server-web`. Keep known release/security limits and verification scope
+in current documentation. Do not claim blank-host, real-client or long-duration
+acceptance from container startup or mocked prerequisite checks.

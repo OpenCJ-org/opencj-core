@@ -42,7 +42,7 @@ to their listed harnesses, not standalone commands.
 
 | Change | Catalogue group |
 | --- | --- |
-| Setup/configuration/target selection | `setup-unit` |
+| Setup/configuration/target selection | `setup-unit`, `server-setup` |
 | Test registration or launcher | `discovery-unit` |
 | GeoIP parsing and import | `geoip-unit`, `geoip-database`, `geoip-engine` |
 | Private name-policy maintenance | `name-policy-unit` |
@@ -439,3 +439,22 @@ connects, verifies systeminfo publication, then repeats the checks after a real
 map restart. Both stages are required. Server file/HTTP hosting stays disabled.
 An optional cvar-script revision records its resolved commit and file hash for
 historical comparisons; it changes only the fixture copy.
+
+
+### Release installer
+
+The `server-setup` group launches actual independent installations using the
+single-script setup implementation. Supply licensed game and compiled mod asset
+directories explicitly. It builds images in Docker, uses separate volumes,
+networks, ports and synthetic data, and checks actual game-protocol replies.
+It covers repeat-run process/data preservation, rejected bootstrap/DDL and unsafe
+gameplay privileges, independent
+and shared databases, real SSH forwarding with disposable keys, and a synthetic
+optional website project. It removes only resources it created; cleanup failure
+makes the run fail. Evidence stays under ignored `dev-tools/local/`.
+
+It does not install Docker onto the host, configure a real rented VM, exercise
+Claude's not-yet-supplied website or connect a human game client. The portable
+setup tests additionally exercise rejected inputs, archive traversal/special
+files, missing/checksummed downloads, secret boundaries and edited-file
+preservation. They do not establish live network behavior.

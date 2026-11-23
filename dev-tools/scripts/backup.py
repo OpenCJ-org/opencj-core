@@ -66,7 +66,7 @@ def create_snapshot(target, container, database_names, sources):
             container,
             "sh",
             "-c",
-            'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root '
+            'MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$(cat \"$MYSQL_ROOT_PASSWORD_FILE\")}" exec mysqldump -u root '
             '--single-transaction --hex-blob --routines --triggers --events '
             '--no-tablespaces --set-gtid-purged=OFF --column-statistics=0 --databases '
             + " ".join(database_names),

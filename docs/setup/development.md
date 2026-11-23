@@ -1,5 +1,8 @@
 # Getting started
 
+For operational servers, use the [single-script server installer](server.md).
+The commands below remain the development workflow.
+
 Use an Ubuntu 24.04 x86_64 development host with Docker Engine, Compose v2,
 Git and Python 3. The container build supplies the 32-bit compiler toolchain.
 The optional host helper is `dev-tools/scripts/install-host.sh`; review it before use.

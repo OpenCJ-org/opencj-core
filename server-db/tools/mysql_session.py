@@ -13,27 +13,30 @@ CLIENT_EXIT_TIMEOUT_SECONDS = 5
 
 
 class MySQL:
-    def __init__(self, container, database, runtime=False):
-        for value in (container, database):
+    def __init__(self, container, database, runtime=False, *, command=None):
+        if command is None and not container:
+            raise ValueError("A database container or explicit client command is required")
+        for value in (container or "client", database):
             if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
                 raise ValueError("Invalid container/database identifier")
         identity = (
-            'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u "$MYSQL_USER"'
+            'MYSQL_PWD="${MYSQL_PASSWORD:-$(cat \"$MYSQL_PASSWORD_FILE\")}" exec mysql -u "$MYSQL_USER"'
             if runtime
-            else 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -u root'
+            else 'MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$(cat \"$MYSQL_ROOT_PASSWORD_FILE\")}" exec mysql -u root'
         )
+        client_command = command or [
+            "docker",
+            "exec",
+            "-i",
+            container,
+            "sh",
+            "-c",
+            identity
+            + " --batch --raw --skip-column-names --unbuffered --binary-as-hex "
+            + database,
+        ]
         self.process = subprocess.Popen(
-            [
-                "docker",
-                "exec",
-                "-i",
-                container,
-                "sh",
-                "-c",
-                identity
-                + " --batch --raw --skip-column-names --unbuffered --binary-as-hex "
-                + database,
-            ],
+            client_command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

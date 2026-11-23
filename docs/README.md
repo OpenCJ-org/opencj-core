@@ -55,3 +55,6 @@ more detailed than the current guide.
 
 See [reviewable code cleanup](development/code-cleanup.md) for preserving feature
 history and original blame during the approved readability work.
+
+- [Install a server](setup/server.md): beta instances, databases and optional website.
+- [Beta readiness](operations/beta-readiness.md): remaining source and acceptance limits.
