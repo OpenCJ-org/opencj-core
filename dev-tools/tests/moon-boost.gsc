@@ -3,6 +3,7 @@ main()
     wait 1;
     level.failures = 0;
     level.checkpointLayoutEpoch = 1;
+    openCJ\historySave::onInit();
     a=addTestClient(); b=addTestClient();
     wait 0.5;
     check(isDefined(a) && isDefined(b), "two real clients");

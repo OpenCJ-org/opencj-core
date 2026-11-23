@@ -38,8 +38,11 @@ keep = {
         'loadPosition',
         'rememberPosition',
     },
-    'playerruns': {'restoreRun'},
-    'historysave': {'historyLoad', '_loadSavesFromDatabase'},
+    'playerruns': {
+        'restoreRun', 'setRunIDAndInstanceNumber', 'getRunID',
+        'getRunInstanceNumber', 'hasRunID', 'isRunFinished',
+    },
+    'historysave': None,
 }
 custom = {
     ('login', 'isLoggedIn'): 'return true;',
@@ -56,13 +59,27 @@ custom = {
     ('saveposition', 'incrementBackwardsCount'): 'return amount;',
     ('spawnpoints', 'getPlayerSpawnpoint'): 'return self.testSpawn;',
     ('spawnpoints', 'getSpectatorSpawnpoint'): 'return self.testSpawn;',
-    ('mysql', 'mysqlAsyncQuery'): '''
-    rows=[];
-    if(isSubStr(query,"SELECT x, y, z"))return rows;
-    row=[];row[0]=1;row[1]=0;row[2]=0;row[3]=0;rows[0]=row;
-    return rows;
-''',
+
 }
+
+# Match the current read/write wrapper contract: a SELECT returns rows, never a
+# scalar status. Keep the real bounded history loader for empty-run relocation.
+history_rows = """
+    rows = [];
+    if(isSubStr(query, "SELECT s.saveNumber"))
+    {
+        return rows;
+    }
+    row = [];
+    row[0] = 1;
+    row[1] = 0;
+    row[2] = 0;
+    row[3] = 0;
+    rows[0] = row;
+    return rows;
+"""
+for function in ("mysqlAsyncQuery", "mysqlAsyncRead", "mysqlAsyncWrite"):
+    custom[("mysql", function)] = history_rows
 
 
 # Replace bodies using a comment/string-aware mask so braces in strings or
@@ -94,7 +111,7 @@ for p in (mod / 'opencj').rglob('*.gsc'):
         # Match actual production parameter names for fixture-only service results.
         if key == 'saveposition' and fn == 'getSavedPosition':
             body = 'return self.testSaves[' + args.split(',')[0].strip() + '];'
-        if key == 'mysql' and fn == 'mysqlAsyncQuery':
+        if key == 'mysql' and fn in ('mysqlAsyncQuery', 'mysqlAsyncRead', 'mysqlAsyncWrite'):
             body = body.replace('query,', args.split(',')[0].strip() + ',')
         s = s[:start] + '\n' + body + '\n' + s[end:]
     p.write_text(s)
