@@ -318,6 +318,7 @@ restoreRun(runID) // Call this function as a thread
     {
         oldRunID = self getRunID();
     }
+    self _invalidatePendingCreation();
     if(self openCJ\historySave::historyLoad(runID)) // Sets runID and runInstanceNumber
     {
         self.playerRuns_runFinishing = false;
@@ -355,7 +356,8 @@ restoreRun(runID) // Call this function as a thread
 
 _clearRunVars()
 {
-    // Clear run variables
+    self _invalidatePendingCreation();
+    self openCJ\historySave::cancelPendingPage();
     self.playerRuns_runFinishing = false;
     self.playerRuns_runStarted = false;
     self.playerRuns_runPaused = false;
@@ -401,46 +403,69 @@ isRunFinished()
 
 setRunIDAndInstanceNumber(runID, instanceNumber)
 {
+    self _invalidatePendingCreation();
     self.playerRuns_runID = runID;
     self.runInstanceNumber = instanceNumber;
 }
 
+// Invalidate pending creation replies when another run is selected or requested.
+_invalidatePendingCreation()
+{
+    if (!isDefined(self.playerRuns_creationVersion))
+    {
+        self.playerRuns_creationVersion = 0;
+    }
+    self.playerRuns_creationVersion++;
+}
+
+// Publish the run and its instance together, only for the latest creation request.
 _createRunID()
 {
-    if (isDefined(self.cpc))return;
+    if (isDefined(self.cpc))
+    {
+        return;
+    }
     self endon("cpc_started");
-    if(!self openCJ\login::IsLoggedIn())
+    self endon("disconnect");
+    if (!self openCJ\login::IsLoggedIn())
     {
         return;
     }
 
-    self endon("disconnect");
-
-    // Clear run variables
-    _clearRunVars();
-    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT createRunID(" + self openCJ\login::getPlayerID() + ", " + openCJ\mapID::getMapID() + ")", "player:"+self openCJ\login::getPlayerID());
-
-    if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
+    self _clearRunVars();
+    creationVersion = self.playerRuns_creationVersion;
+    playerID = self openCJ\login::getPlayerID();
+    query = "SELECT createRunID(" + playerID + ", " + openCJ\mapID::getMapID() + ")";
+    rows = self openCJ\mySQL::mysqlAsyncWrite(query, "player:" + playerID);
+    // The first write may already have committed. An obsolete request must not
+    // start its next write or overwrite a run selected while that write was pending.
+    if (self.playerRuns_creationVersion != creationVersion)
+    {
+        return;
+    }
+    if (!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
     {
         self iprintlnbold("Could not create runID. Please reconnect");
+        return;
     }
-    else
+
+    runID = int(rows[0][0]);
+    rows = self openCJ\mySQL::mysqlAsyncWrite(
+        "SELECT createRunInstance(" + runID + ")", "run:" + runID);
+    if (self.playerRuns_creationVersion != creationVersion)
     {
-        self.playerRuns_runID = int(rows[0][0]);
-
-        self iprintln("^5Created ^7new run (" + self.playerRuns_runID + ")");
-
-        rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT createRunInstance(" + self.playerRuns_runID + ")", "run:"+self.playerRuns_runID);
-        if(isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
-        {
-            self.runInstanceNumber = int(rows[0][0]);
-            self openCJ\events\onRunCreated::main();
-        }
-        else
-        {
-            self iprintlnbold("Could not set run instance number. Please reconnect");
-        }
+        return;
     }
+    if (!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
+    {
+        self iprintlnbold("Could not set run instance number. Please reconnect");
+        return;
+    }
+
+    instanceNumber = int(rows[0][0]);
+    self setRunIDAndInstanceNumber(runID, instanceNumber);
+    self iprintln("^5Created ^7new run (" + runID + ")");
+    self openCJ\events\onRunCreated::main();
 }
 
 hasRunStarted()

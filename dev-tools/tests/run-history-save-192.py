@@ -201,7 +201,14 @@ try:
         'isSubStr(query, level.history192DelayedQuery))\n'
         "    {\n"
         '        self notify("history192_result_ready");\n'
-        "        wait 0.2;\n"
+        "        if (isDefined(level.history192HoldReply) && level.history192HoldReply)\n"
+        "        {\n"
+        '            self waittill("history192_release_result");\n'
+        "        }\n"
+        "        else\n"
+        "        {\n"
+        "            wait 0.2;\n"
+        "        }\n"
         "    }\n"
     )
     delay += (
@@ -209,6 +216,13 @@ try:
         'isSubStr(query, "SELECT runFinished("))\n'
         "    {\n"
         "        level.history192FinishRequests++;\n"
+        "    }\n"
+    )
+    delay += (
+        "    if (isDefined(level.history192InstanceRequests) && "
+        'isSubStr(query, "SELECT createRunInstance("))\n'
+        "    {\n"
+        "        level.history192InstanceRequests++;\n"
         "    }\n"
     )
     request_function, replacements = result_wait.subn(
@@ -223,6 +237,9 @@ try:
     # Run identity changes remain real; omit HUD callbacks that need a human client.
     (mod / "opencj/events/onrunstopped.gsc").write_text(
         "main()\n{\n    self.history192Stopped = true;\n}\n"
+    )
+    (mod / "opencj/events/onruncreated.gsc").write_text(
+        "main()\n{\n    self.history192CreatedEvents++;\n}\n"
     )
     cfg = (ROOT / "dev-tools/local/runtime/mods/opencj/opencj-dev.cfg").read_text()
     lines = [line for line in cfg.splitlines() if re.match(r"\s*set(?:a)?\s+db_", line)]

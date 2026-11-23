@@ -327,6 +327,9 @@ verifyDelayedRunReplies()
     self verifyDelayedRunSave();
     self verifyDelayedCheckpointFinish(checkpoint);
     self verifyDelayedTutorialFinish(checkpoint);
+    self verifyDelayedRunCreation("SELECT createRunID(", 0);
+    self verifyDelayedRunCreation("SELECT createRunInstance(", 1);
+    self verifyOverlappingRunCreation();
 }
 
 verifyDelayedFinish(checkpoint, resumeSameRun)
@@ -466,4 +469,63 @@ verifyDelayedTutorialFinish(checkpoint)
     check(scalar("SELECT tutorial FROM playerRuns WHERE runID = " + originalRunID) == 1,
           "ignoring a tutorial mark reply preserves its completed database write");
     level.history192FinishRequests = undefined;
+}
+
+
+verifyDelayedRunCreation(delayedQuery, expectedInstanceRequests)
+{
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self.history192CreatedEvents = 0;
+    level.history192InstanceRequests = 0;
+    level.history192DelayedQuery = delayedQuery;
+
+    self thread createRunWithDelayedReply("history192_creation_done");
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self waittill("history192_creation_done");
+    level.history192DelayedQuery = undefined;
+
+    check(self openCJ\runStorage::isCurrent(replacementRunID, replacementInstance),
+          "late creation reply preserves the selected run: " + delayedQuery);
+    check(self.history192CreatedEvents == 0,
+          "late creation reply cannot announce or respawn a superseded run");
+    check(level.history192InstanceRequests == expectedInstanceRequests,
+          "superseded creation stops before submitting another instance write");
+    level.history192InstanceRequests = undefined;
+}
+
+// Hold the first reply until a newer creation has completed, without relying on SQL timing.
+verifyOverlappingRunCreation()
+{
+    self.history192CreatedEvents = 0;
+    level.history192InstanceRequests = 0;
+    level.history192DelayedQuery = "SELECT createRunID(";
+    level.history192HoldReply = true;
+    self thread createRunWithDelayedReply("history192_first_creation_done");
+    self waittill("history192_result_ready");
+    level.history192DelayedQuery = undefined;
+
+    self thread createRunWithDelayedReply("history192_second_creation_done");
+    self waittill("history192_second_creation_done");
+    selectedRunID = self openCJ\playerRuns::getRunID();
+    selectedInstance = self openCJ\playerRuns::getRunInstanceNumber();
+
+    self notify("history192_release_result");
+    self waittill("history192_first_creation_done");
+    level.history192HoldReply = false;
+
+    check(self openCJ\runStorage::isCurrent(selectedRunID, selectedInstance),
+          "an older creation reply cannot replace the newer completed creation");
+    check(self.history192CreatedEvents == 1,
+          "overlapping creations announce and spawn only the current request");
+    check(level.history192InstanceRequests == 1,
+          "obsolete creation does not submit another instance write");
+    level.history192InstanceRequests = undefined;
+}
+
+createRunWithDelayedReply(completionEvent)
+{
+    self openCJ\playerRuns::_createRunID();
+    self notify(completionEvent);
 }
