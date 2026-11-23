@@ -246,7 +246,8 @@ def prepare_fixture(options, home, *, retained_callbacks=("CodeCallback_FragButt
 
 
 def server_command(
-    options, home, container_name, map_name, plugin_names, extra_settings=None
+    options, home, container_name, map_name, plugin_names, extra_settings=None,
+    config_files=()
 ):
     container_home = "/workspace/" + home.relative_to(ROOT).as_posix()
     command = [
@@ -279,6 +280,8 @@ def server_command(
         settings.update(extra_settings)
     for setting, value in settings.items():
         command.extend(["+set", setting, value])
+    for config_file in config_files:
+        command.extend(["+exec", config_file])
     for plugin_name in plugin_names:
         command.extend(["+loadplugin", plugin_name])
     command.extend(["+map", map_name])
@@ -345,7 +348,8 @@ def run_prepared_fixture(
     plugin_names=(),
     extra_completion_markers=(),
     timeout_seconds=COMPLETION_TIMEOUT_SECONDS,
-    extra_settings=None
+    extra_settings=None,
+    config_files=()
 ):
     """Run an already prepared private copy and retain its actual source hashes."""
     fixture_hashes = script_hashes(home / "mods/opencj")
@@ -354,7 +358,8 @@ def run_prepared_fixture(
     try:
         subprocess.run(
             server_command(
-                options, home, container_name, map_name, plugin_names, extra_settings
+                options, home, container_name, map_name, plugin_names, extra_settings,
+                config_files
             ),
             cwd=ROOT / "dev-tools",
             check=True,

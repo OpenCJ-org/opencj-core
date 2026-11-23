@@ -350,9 +350,9 @@
     {
       "id": "notifications-engine",
       "category": "integration",
-      "description": "Notification HUD, preferences and record announcements.",
+      "description": "Notification HUD lifetime, saved preferences, exact-category records and late replies.",
       "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets.",
-      "effects": "Isolated synthetic players and HUD plugin; private logs.",
+      "effects": "Copies schema only into a disposable database container; 32 synthetic players and HUD plugin. Removes engine, database and temporary credentials; retains private logs.",
       "files": [
         "dev-tools/tests/run-notifications-72.py",
         "dev-tools/tests/notifications-72.gsc",

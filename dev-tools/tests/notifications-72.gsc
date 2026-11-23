@@ -203,3 +203,18 @@ waitForCheckpoint()
     for(i=0;i<100 && !level.n72CheckpointWaiting;i++)wait .05;
     check(level.n72CheckpointWaiting,"checkpoint response reached test delay");
 }
+
+// Hold delivery after the real query completes, so stale-result checks remain real.
+observeSQLResult(query)
+{
+    if (!isDefined(level.n72DelayCheckpoint) || !level.n72DelayCheckpoint)
+    {
+        return;
+    }
+    if (getSubStr(query, 0, 6) != "SELECT" || !isSubStr(query, "checkpointStatistics cs"))
+    {
+        return;
+    }
+    level.n72CheckpointWaiting = true;
+    wait .20;
+}

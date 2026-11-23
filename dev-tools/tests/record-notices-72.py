@@ -1,9 +1,8 @@
 """Read-only MySQL fixtures for production #72 exact-category comparison SQL."""
 
 from compose_environment import database_container
+from query_sql import gsc_expression
 from pathlib import Path
-import ast
-import json
 import re
 import subprocess
 
@@ -12,11 +11,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def cases():
     source = (ROOT / "server-gsc/opencj/recordnotices.gsc").read_text()
-    expr = source.split('    return "WITH finished', 1)[1].split(';', 1)[0]
-    query = ''.join(
-        '100' if p == 'runID' else ast.literal_eval(p)
-        for p in re.findall(r'"(?:[^"\\]|\\.)*"|\brunID\b', '"WITH finished' + expr)
-    )
+    # Read the public query builder, independent of its line wrapping.
+    builder = re.search(r"(?ms)^finishQuery\s*\([^)]*\)\s*\{.*?^\}", source)
+    if not builder:
+        raise RuntimeError("Production finishQuery was not found")
+    expression = re.search(r'\breturn\s+((?:"(?:[^"\\]|\\.)*"|[^;])+);', builder[0])
+    if not expression:
+        raise RuntimeError("Production finishQuery return was not found")
+    query = gsc_expression(expression[1], {"runID": 100})
     cols = [
         'runID',
         'playerID',
