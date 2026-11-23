@@ -17,7 +17,8 @@ main()
     started = getTime();
     p openCJ\clientInit::onConnected();
     check(getTime() - started < 300, "first attempt has no fixed startup delay");
-    check(p openCJ\fpsRegistration::canStart() && p.clientInitReady, "fresh FPS and acknowledgement accepted");
+    check(p openCJ\fpsRegistration::canStart() && p.clientInitReady,
+          "fresh FPS and acknowledgement accepted");
     check(p.fpsTestAttempts == 1, "one fast attempt");
 
     p = makePlayer("", 1);
@@ -44,7 +45,8 @@ main()
     p.fpsTestReplyValue = "";
     p openCJ\clientInit::onConnected();
     check(p.clientInitAcknowledged, "menu acknowledgement received");
-    check(!p.clientInitReady && !p openCJ\fpsRegistration::canStart(), "acknowledgement alone cannot bypass missing FPS");
+    check(!p.clientInitReady && !p openCJ\fpsRegistration::canStart(),
+          "acknowledgement alone cannot bypass missing FPS");
 
     p = makePlayer("", 1);
     p.fpsTestReplyValue = "999";
@@ -59,7 +61,10 @@ main()
     check(!p openCJ\fpsRegistration::canStart(), "failure blocks start");
     check(p.fpsTestAttempts == 3, "three bounded attempts");
     check(p.fpsTestSpawns == 0 && !p.clientInitPending, "failure terminates without spawning");
-    check(p.fpsTestMessage == "^1Cannot start run: FPS registration failed. Reconnect; contact an admin if it persists.", "terminal failure replaces pending guidance");
+    check(
+        p.fpsTestMessage ==
+            "^1Cannot start run: FPS registration failed. Reconnect; contact an admin if it persists.",
+        "terminal failure replaces pending guidance");
     p.fpsTestReportedFPS = "333";
     check(p openCJ\fpsRegistration::canStart(), "late real registration recovers");
     p.fpsTestReportedFPS = "";
@@ -70,8 +75,10 @@ main()
     p.clientInitAcknowledged = true;
     p.clientInitReady = true;
     p openCJ\clientInit::onConnected();
-    check(!p.clientInitReady && !p.clientInitAcknowledged, "stale readiness does not complete setup");
-    check(p openCJ\fpsRegistration::canStart(), "cosmetic failure does not invalidate existing FPS");
+    check(!p.clientInitReady && !p.clientInitAcknowledged,
+          "stale readiness does not complete setup");
+    check(p openCJ\fpsRegistration::canStart(),
+          "cosmetic failure does not invalidate existing FPS");
     logPrint("[FPSREG_TEST] PASS all assertions" + "\n");
 }
 makePlayer(value, successAttempt)
@@ -88,7 +95,7 @@ makePlayer(value, successAttempt)
 }
 check(ok, label)
 {
-    if (!ok)
+    if(!ok)
     {
         logPrint("[FPSREG_TEST] FAIL " + label + "\n");
         assert(false);

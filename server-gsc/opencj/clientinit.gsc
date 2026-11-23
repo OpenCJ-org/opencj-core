@@ -4,8 +4,10 @@ onConnected()
 {
     self endon("disconnect");
     level endon("game_ended");
-    if (getCodVersion() != 4)
+    if(getCodVersion() != 4)
+    {
         return;
+    }
 
     self.clientInitPending = true;
     self.clientInitAcknowledged = false;
@@ -17,17 +19,21 @@ onConnected()
     self setClientCvar("opencj_init_fps", int(self.fpsRegistrationRequested));
     self thread watchAcknowledgement();
 
-    for (attempt = 0; attempt < 3; attempt++)
+    for(attempt = 0; attempt < 3; attempt++)
     {
         self openMenu("opencj_client_init");
-        for (poll = 0; poll < 20; poll++)
+        for(poll = 0; poll < 20; poll++)
         {
             wait 0.05;
-            if (self acknowledged())
+            if(self acknowledged())
+            {
                 break;
+            }
         }
-        if (self acknowledged())
+        if(self acknowledged())
+        {
             break;
+        }
         // The menu closes itself after its immediate work. Server closeMenu
         // would cancel a request that the client has deferred behind another UI.
     }
@@ -36,16 +42,22 @@ onConnected()
     self.clientInitPending = false;
     self notify("client_init_finished");
     self openCJ\fpsRegistration::finish();
-    if (!self.clientInitReady)
+    if(!self.clientInitReady)
+    {
         printf("Client startup: client did not acknowledge initialization.\n");
+    }
 }
 
 acknowledged()
 {
-    if (!self.clientInitAcknowledged)
+    if(!self.clientInitAcknowledged)
+    {
         return false;
-    if (!self.fpsRegistrationRequested)
+    }
+    if(!self.fpsRegistrationRequested)
+    {
         return true;
+    }
     return openCJ\fpsRegistration::hasRestoredFPS(self getUserInfo("com_maxfps"));
 }
 
@@ -54,17 +66,21 @@ watchAcknowledgement()
     self endon("disconnect");
     self endon("client_init_finished");
     level endon("game_ended");
-    for (;;)
+    for(;;)
     {
         self waittill("menuresponse", menu, response);
         // A response to this connection's request, not a persisted ready cvar.
-        if (menu == "opencj_client_init" && response == "ready")
+        if(menu == "opencj_client_init" && response == "ready")
+        {
             self.clientInitAcknowledged = true;
+        }
     }
 }
 
 waitUntilFinished()
 {
-    while (isDefined(self.clientInitPending) && self.clientInitPending)
+    while(isDefined(self.clientInitPending) && self.clientInitPending)
+    {
         wait 0.05;
+    }
 }

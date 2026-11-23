@@ -6,13 +6,19 @@ hasReportedFPS(value)
 
 canStart()
 {
-    if (getCodVersion() != 4)
+    if(getCodVersion() != 4)
+    {
         return true;
-    if (isDefined(self.fpsRegistrationPending) && self.fpsRegistrationPending)
+    }
+    if(isDefined(self.fpsRegistrationPending) && self.fpsRegistrationPending)
+    {
         return false;
+    }
     value = self getUserInfo("com_maxfps");
-    if (isDefined(self.fpsRegistrationRequested) && self.fpsRegistrationRequested)
+    if(isDefined(self.fpsRegistrationRequested) && self.fpsRegistrationRequested)
+    {
         return hasRestoredFPS(value);
+    }
     return hasReportedFPS(value);
 }
 
@@ -33,7 +39,7 @@ begin()
 finish()
 {
     self.fpsRegistrationPending = false;
-    if (!self canStart())
+    if(!self canStart())
     {
         // A pending message must never suppress the terminal failure message.
         self.fpsRegistrationMessageAt = undefined;
@@ -41,11 +47,13 @@ finish()
         return;
     }
 
-    if (isDefined(self.fpsRegistrationMessageAt))
+    if(isDefined(self.fpsRegistrationMessageAt))
+    {
         self iprintln("^2FPS verified. Ready to play.");
+    }
 
     // Complete an initial spawn that was held while registration was pending.
-    if (isDefined(self.fpsRegistrationSpawnPending) && self.fpsRegistrationSpawnPending)
+    if(isDefined(self.fpsRegistrationSpawnPending) && self.fpsRegistrationSpawnPending)
     {
         self.fpsRegistrationSpawnPending = false;
         self openCJ\events\spawnPlayer::main(self.fpsRegistrationSpawnAtSave);
@@ -54,11 +62,18 @@ finish()
 
 explainBlocked()
 {
-    if (isDefined(self.fpsRegistrationMessageAt) && getTime() < self.fpsRegistrationMessageAt + 5000)
+    if(isDefined(self.fpsRegistrationMessageAt) && getTime() < self.fpsRegistrationMessageAt + 5000)
+    {
         return;
+    }
     self.fpsRegistrationMessageAt = getTime();
-    if (isDefined(self.fpsRegistrationPending) && self.fpsRegistrationPending)
+    if(isDefined(self.fpsRegistrationPending) && self.fpsRegistrationPending)
+    {
         self iprintln("^3Checking FPS settings - you will join automatically.");
+    }
     else
-        self iprintlnbold("^1Cannot start run: FPS registration failed. Reconnect; contact an admin if it persists.");
+    {
+        self iprintlnbold(
+            "^1Cannot start run: FPS registration failed. Reconnect; contact an admin if it persists.");
+    }
 }
