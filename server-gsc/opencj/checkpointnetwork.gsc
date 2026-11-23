@@ -365,12 +365,39 @@ split(commandArguments)
     }
     network = self load();
     isNewNetwork = !isDefined(network);
+    network = self prepareSplitNetwork(commandArguments, network);
+    if (!isDefined(network))
+    {
+        return false;
+    }
+    if (!self appendSplitSections(commandArguments, network, isNewNetwork))
+    {
+        return false;
+    }
+    if (!self save(network))
+    {
+        return self fail("Network save failed; section drafts retained.");
+    }
+    self openCJ\checkpointCreation::_close();
+    self openCJ\checkpointCreation::_start(commandArguments[1]);
+    self sendLocalChatMessage(
+        "Split saved. Editing " + commandArguments[1] + "; !cp start " + commandArguments[2] +
+        " opens the other approach. Detect the common landing, then !cp merge " +
+        labelCommand(commandArguments) + ".");
+    return true;
+}
+
+// Validate all requested routes before creating any new section files.
+prepareSplitNetwork(commandArguments, network)
+{
+    isNewNetwork = !isDefined(network);
     if (isNewNetwork)
     {
         if (isDefined(self.cpc.sharedRoute))
         {
-            return self fail(
+            self fail(
                 "Legacy branch draft: finish or migrate it before creating a network.");
+            return undefined;
         }
         network = spawnStruct();
         network.root = self.cpc.route;
@@ -381,7 +408,8 @@ split(commandArguments)
             if (commandArguments[i] == network.root ||
                isDefined(self readSection(commandArguments[i])))
             {
-                return self fail("A requested name already has a draft; nothing changed.");
+                self fail("A requested name already has a draft; nothing changed.");
+                return undefined;
             }
         }
     }
@@ -390,21 +418,30 @@ split(commandArguments)
         routeOwners = members(network, self.cpc.route);
         if (routeOwners.size != commandArguments.size - 1)
         {
-            return self fail("List all routes sharing this section when splitting.");
+            self fail("List all routes sharing this section when splitting.");
+            return undefined;
         }
         for (i = 1; i < commandArguments.size; i++)
         {
             if (!isDefined(network.paths[commandArguments[i]]))
             {
-                return self fail("A later split must use the original route names.");
+                self fail("A later split must use the original route names.");
+                return undefined;
             }
             sections = network.paths[commandArguments[i]].sections;
             if (sections[sections.size - 1] != self.cpc.route)
             {
-                return self fail("Only the current end of a shared section can split.");
+                self fail("Only the current end of a shared section can split.");
+                return undefined;
             }
         }
     }
+    return network;
+}
+
+// Prepare each branch file before the caller saves the updated manifest.
+appendSplitSections(commandArguments, network, isNewNetwork)
+{
     for (i = 1; i < commandArguments.size; i++)
     {
         routeName = commandArguments[i];
@@ -433,16 +470,6 @@ split(commandArguments)
         routePath = network.paths[routeName];
         routePath.sections[routePath.sections.size] = sectionName;
     }
-    if (!self save(network))
-    {
-        return self fail("Network save failed; section drafts retained.");
-    }
-    self openCJ\checkpointCreation::_close();
-    self openCJ\checkpointCreation::_start(commandArguments[1]);
-    self sendLocalChatMessage(
-        "Split saved. Editing " + commandArguments[1] + "; !cp start " + commandArguments[2] +
-        " opens the other approach. Detect the common landing, then !cp merge " +
-        labelCommand(commandArguments) + ".");
     return true;
 }
 
@@ -484,6 +511,41 @@ merge(commandArguments)
         return self fail(
             "Detect the first common landing without confirming it, then !cp merge easy hard.");
     }
+    if (!self validateMergeApproaches(commandArguments, network))
+    {
+        return false;
+    }
+    sharedSectionName = "shared_" + (network.revision + 1);
+    if (!self newSection(sharedSectionName, openingDraft.routeHex, self.cpc.draft))
+    {
+        return self fail("Could not save the common landing; merge unchanged.");
+    }
+    self.cpc.draft = openCJ\checkpointCreation::_empty();
+    if (!self openCJ\checkpointCreation::_save())
+    {
+        return false;
+    }
+    for (i = 1; i < commandArguments.size; i++)
+    {
+        routePath = network.paths[commandArguments[i]];
+        routePath.sections[routePath.sections.size] = sharedSectionName;
+    }
+    if (!self save(network))
+    {
+        return self fail("Could not save merge; section draft retained.");
+    }
+    self openCJ\checkpointCreation::_close();
+    self openCJ\checkpointCreation::_start(sharedSectionName);
+    self sendLocalChatMessage(
+        "Merged " + labelCommand(commandArguments) +
+        ". Confirm this common landing and continue once for all routes. Use !cp split " +
+        labelCommand(commandArguments) + " if they separate again.");
+    return true;
+}
+
+// Every route sharing an incoming approach must participate, with no unfinished separate landing.
+validateMergeApproaches(commandArguments, network)
+{
     includesActiveSection = false;
     for (i = 1; i < commandArguments.size; i++)
     {
@@ -530,31 +592,6 @@ merge(commandArguments)
     {
         return self fail("The route being edited must be included in the merge.");
     }
-    sharedSectionName = "shared_" + (network.revision + 1);
-    if (!self newSection(sharedSectionName, openingDraft.routeHex, self.cpc.draft))
-    {
-        return self fail("Could not save the common landing; merge unchanged.");
-    }
-    self.cpc.draft = openCJ\checkpointCreation::_empty();
-    if (!self openCJ\checkpointCreation::_save())
-    {
-        return false;
-    }
-    for (i = 1; i < commandArguments.size; i++)
-    {
-        routePath = network.paths[commandArguments[i]];
-        routePath.sections[routePath.sections.size] = sharedSectionName;
-    }
-    if (!self save(network))
-    {
-        return self fail("Could not save merge; section draft retained.");
-    }
-    self openCJ\checkpointCreation::_close();
-    self openCJ\checkpointCreation::_start(sharedSectionName);
-    self sendLocalChatMessage(
-        "Merged " + labelCommand(commandArguments) +
-        ". Confirm this common landing and continue once for all routes. Use !cp split " +
-        labelCommand(commandArguments) + " if they separate again.");
     return true;
 }
 
@@ -1016,97 +1053,15 @@ mergeExisting(commandArguments, network, openingDraft)
     {
         return self fail("Merge from a new detected landing after your last separate checkpoint.");
     }
-    sourceOwners = members(network, sourceSectionName);
-    targetOwners = members(network, targetSectionName);
-    for(i = 0; i < sourceOwners.size; i++)
+    mergePlan = self planExistingMerge(commandArguments, network,
+                                       sourceSectionName, targetSectionName);
+    if(!isDefined(mergePlan))
     {
-        sectionNames = network.paths[sourceOwners[i]].sections;
-        if(sectionNames[sectionNames.size - 1] != sourceSectionName ||
-           sectionIndex(sectionNames, targetSectionName) >= 0)
-        {
-            return self fail(
-                "Split the existing continuation first; merge from the end of a new approach.");
-        }
+        return false;
     }
-    for(i = 0; i < sourceOwners.size; i++)
-    {
-        if(!hasName(commandArguments, sourceOwners[i]))
-        {
-            return self fail("Include every route on the incoming approach.");
-        }
-    }
-    for(i = 0; i < targetOwners.size; i++)
-    {
-        if(!hasName(commandArguments, targetOwners[i]))
-        {
-            return self fail("Include every route already using the detected landing.");
-        }
-    }
-    incomingNames = [];
-    continuationRouteName = undefined;
-    for(i = 1; i < commandArguments.size; i++)
-    {
-        if(!isDefined(network.paths[commandArguments[i]]))
-        {
-            return self fail("Unknown route " + commandArguments[i]);
-        }
-        sections = network.paths[commandArguments[i]].sections;
-        if(sectionIndex(sections, targetSectionName) >= 0)
-        {
-            if(!isDefined(continuationRouteName))
-            {
-                continuationRouteName = commandArguments[i];
-            }
-            continue;
-        }
-        lastSectionName = sections[sections.size - 1];
-        routeOwners = members(network, lastSectionName);
-        for(j = 0; j < routeOwners.size; j++)
-        {
-            if(!hasName(commandArguments, routeOwners[j]))
-            {
-                return self fail("Include every route sharing an incoming approach.");
-            }
-        }
-        sectionDraft = self readSection(lastSectionName);
-        if(lastSectionName == sourceSectionName)
-        {
-            sectionDraft = self.cpc;
-        }
-        if(!isDefined(sectionDraft) || !sectionDraft.rows.size)
-        {
-            return self fail("Complete the separate approach for " + commandArguments[i] +
-                             " first.");
-        }
-        lastCheckpoint =
-            openCJ\checkpointCreation::_decode(sectionDraft.rows[sectionDraft.rows.size - 1]);
-        if(lastCheckpoint.finish ||
-           (lastSectionName != sourceSectionName && pendingEdit(sectionDraft)))
-        {
-            return self fail("Confirm the approach for " + commandArguments[i] +
-                             " without a Finish before merging.");
-        }
-        incomingNames[incomingNames.size] = commandArguments[i];
-    }
-    if(!isDefined(continuationRouteName) || !incomingNames.size)
-    {
-        return self fail("Choose an incoming route and an existing continuation.");
-    }
-    // The first named existing route supplies the continuation for new arrivals.
-    // Other existing routes keep their own later divergences untouched.
-    continuation = network.paths[continuationRouteName].sections;
-    continuationStartIndex = sectionIndex(continuation, targetSectionName);
-    for(i = 0; i < incomingNames.size; i++)
-    {
-        incomingSections = network.paths[incomingNames[i]].sections;
-        for(j = continuationStartIndex; j < continuation.size; j++)
-        {
-            if(sectionIndex(incomingSections, continuation[j]) >= 0)
-            {
-                return self fail("Merge would create a cycle; draft unchanged.");
-            }
-        }
-    }
+    incomingNames = mergePlan.incomingNames;
+    continuation = mergePlan.continuation;
+    continuationStartIndex = mergePlan.continuationStartIndex;
     targetSection = self readSection(targetSectionName);
     if(!isDefined(targetSection) || pendingEdit(targetSection))
     {
@@ -1164,6 +1119,132 @@ mergeExisting(commandArguments, network, openingDraft)
         "Merged " + labelCommand(commandArguments) +
         " here. Existing checkpoints and Finish are preserved. Select the last shared checkpoint and !cp split <keep existing route> <new branch route> if they separate later.");
     return true;
+}
+
+// Validate the selected source and target owners before inspecting other incoming routes.
+validateMergeOwners(commandArguments, network, sourceSectionName, targetSectionName)
+{
+    sourceOwners = members(network, sourceSectionName);
+    targetOwners = members(network, targetSectionName);
+    for(i = 0; i < sourceOwners.size; i++)
+    {
+        sectionNames = network.paths[sourceOwners[i]].sections;
+        if(sectionNames[sectionNames.size - 1] != sourceSectionName ||
+           sectionIndex(sectionNames, targetSectionName) >= 0)
+        {
+            return self fail(
+                "Split the existing continuation first; merge from the end of a new approach.");
+        }
+    }
+    for(i = 0; i < sourceOwners.size; i++)
+    {
+        if(!hasName(commandArguments, sourceOwners[i]))
+        {
+            return self fail("Include every route on the incoming approach.");
+        }
+    }
+    for(i = 0; i < targetOwners.size; i++)
+    {
+        if(!hasName(commandArguments, targetOwners[i]))
+        {
+            return self fail("Include every route already using the detected landing.");
+        }
+    }
+    return true;
+}
+
+// Select the first existing route's continuation and validate every new incoming approach.
+planExistingMerge(commandArguments, network, sourceSectionName, targetSectionName)
+{
+    if(!self validateMergeOwners(commandArguments, network, sourceSectionName, targetSectionName))
+    {
+        return undefined;
+    }
+    incomingNames = [];
+    continuationRouteName = undefined;
+    for(i = 1; i < commandArguments.size; i++)
+    {
+        if(!isDefined(network.paths[commandArguments[i]]))
+        {
+            self fail("Unknown route " + commandArguments[i]);
+            return undefined;
+        }
+        sections = network.paths[commandArguments[i]].sections;
+        if(sectionIndex(sections, targetSectionName) >= 0)
+        {
+            if(!isDefined(continuationRouteName))
+            {
+                continuationRouteName = commandArguments[i];
+            }
+            continue;
+        }
+        lastSectionName = sections[sections.size - 1];
+        routeOwners = members(network, lastSectionName);
+        for(j = 0; j < routeOwners.size; j++)
+        {
+            if(!hasName(commandArguments, routeOwners[j]))
+            {
+                self fail("Include every route sharing an incoming approach.");
+                return undefined;
+            }
+        }
+        sectionDraft = self readSection(lastSectionName);
+        if(lastSectionName == sourceSectionName)
+        {
+            sectionDraft = self.cpc;
+        }
+        if(!isDefined(sectionDraft) || !sectionDraft.rows.size)
+        {
+            self fail("Complete the separate approach for " + commandArguments[i] +
+                             " first.");
+            return undefined;
+        }
+        lastCheckpoint =
+            openCJ\checkpointCreation::_decode(sectionDraft.rows[sectionDraft.rows.size - 1]);
+        if(lastCheckpoint.finish ||
+           (lastSectionName != sourceSectionName && pendingEdit(sectionDraft)))
+        {
+            self fail("Confirm the approach for " + commandArguments[i] +
+                             " without a Finish before merging.");
+            return undefined;
+        }
+        incomingNames[incomingNames.size] = commandArguments[i];
+    }
+    if(!isDefined(continuationRouteName) || !incomingNames.size)
+    {
+        self fail("Choose an incoming route and an existing continuation.");
+        return undefined;
+    }
+    // The first named existing route supplies the continuation for new arrivals.
+    // Other existing routes keep their own later divergences untouched.
+    continuation = network.paths[continuationRouteName].sections;
+    continuationStartIndex = sectionIndex(continuation, targetSectionName);
+    if(mergeCreatesCycle(network, incomingNames, continuation, continuationStartIndex))
+    {
+        self fail("Merge would create a cycle; draft unchanged.");
+        return undefined;
+    }
+    mergePlan = spawnStruct();
+    mergePlan.incomingNames = incomingNames;
+    mergePlan.continuation = continuation;
+    mergePlan.continuationStartIndex = continuationStartIndex;
+    return mergePlan;
+}
+
+mergeCreatesCycle(network, incomingNames, continuation, continuationStartIndex)
+{
+    for(i = 0; i < incomingNames.size; i++)
+    {
+        incomingSections = network.paths[incomingNames[i]].sections;
+        for(j = continuationStartIndex; j < continuation.size; j++)
+        {
+            if(sectionIndex(incomingSections, continuation[j]) >= 0)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 selectAndTeleport(checkpointIndex)
