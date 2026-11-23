@@ -54,6 +54,25 @@ main()
         time=p openCJ\playTime::getTimePlayed();paused=p.playerRuns_runPaused;
         p openCJ\demos::startDemo(id);
         check(p openCJ\demos::isPlayingDemo(),"entered playback "+pass);
+        if(pass == 1)
+        {
+            p.clipEdit.first = 0;
+            p.clipEdit.last = 7;
+            p.clipEdit.id = id;
+            p.clipEdit.busy = false;
+            p.clipEdit.permanent = false;
+            p openCJ\clips::seek(3);
+            p openCJ\clips::editorResponse("start");
+            check(p.clipEdit.first == 3 && p.clipEdit.last == 7,
+                  "editor start uses the current playback frame");
+            p openCJ\clips::seek(5);
+            p openCJ\clips::editorResponse("end");
+            check(p.clipEdit.first == 3 && p.clipEdit.last == 5,
+                  "editor end preserves the selected start");
+            p openCJ\clips::editorResponse("reset");
+            check(p.clipEdit.first == 0 && p.clipEdit.last == 7,
+                  "editor reset restores the full recording range");
+        }
         check(p.playerRuns_runPaused && isDefined(p.stopTime),"run timer paused "+pass);
         check(!isDefined(p.notificationFlash) && !isDefined(p.notificationResultUntil),"pending feedback cancelled "+pass);
         check(p.statisticsHudString=="" && follower.statisticsHudString=="","statistics hidden for player and spectator "+pass);

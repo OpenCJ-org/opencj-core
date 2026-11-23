@@ -19,8 +19,8 @@ onInit()
             level thread sessionHeartbeat();
         }
     }
-    cmd = openCJ\commands_base::registerCommand("record", "!record", ::_record, 0, 0, 0);
-    openCJ\commands_base::addAlias(cmd, "startrecord");
+    recordCommand = openCJ\commands_base::registerCommand("record", "!record", ::_record, 0, 0, 0);
+    openCJ\commands_base::addAlias(recordCommand, "startrecord");
     openCJ\commands_base::registerCommand("stoprecord", "!stoprecord", ::_stop, 0, 0, 0);
     openCJ\commands_base::registerCommand("clipdemo", "!clipdemo [id]", ::_watch, 0, 1, 0);
     openCJ\commands_base::registerCommand("renameclip", "!renameclip <id> <name>", ::_rename, 2,
@@ -135,14 +135,15 @@ _delete(args)
 }
 _rename(args)
 {
-    name = args[1];
+    description = args[1];
     for(i = 2; i < args.size; i++)
     {
-        name += " " + args[i];
+        description += " " + args[i];
     }
-    self thread rename(int(args[0]), getSubStr(name, 0, 32));
+    self thread rename(int(args[0]), getSubStr(description, 0, 32));
 }
 
+// Start an editable rolling recording only after its storage metadata is available.
 record()
 {
     self endon("disconnect");
@@ -170,24 +171,25 @@ record()
         self sendLocalChatMessage("Could not start the clip recording. Please try again.", true);
         return;
     }
-    id = demoCreateTransient();
-    if(!isDefined(id))
+    nativeDemoID = demoCreateTransient();
+    if(!isDefined(nativeDemoID))
     {
         self sendLocalChatMessage("No recording capacity available.", true);
         return;
     }
-    rec = spawnStruct();
-    rec.id = id;
-    rec.loaded = false;
-    rec.saved = false;
-    rec.lastTick = -1;
-    rec.date = recordedAt;
-    self.clipRecording = rec;
+    recording = spawnStruct();
+    recording.id = nativeDemoID;
+    recording.loaded = false;
+    recording.saved = false;
+    recording.lastTick = -1;
+    recording.date = recordedAt;
+    self.clipRecording = recording;
     self capture();
     self sendLocalChatMessage(
         "Clip recording started. Keeping the last 60 seconds; use !stoprecord to edit.");
 }
 
+// Retain the newest minute of eligible play, including save/load and elevator events.
 capture()
 {
     if(!isDefined(self.clipRecording) || self openCJ\demos::isPlayingDemo() ||
@@ -199,36 +201,38 @@ capture()
     {
         return;
     }
-    rec = self.clipRecording;
+    recording = self.clipRecording;
     // Tutorial play must not end up in a clip, e.g. after loading a tutorial run
     if(self openCJ\tutorial::isTutorialRun())
     {
-        destroyDemo(rec.id);
+        destroyDemo(recording.id);
         self.clipRecording = undefined;
         self sendLocalChatMessage(
             "Clip recording stopped: clips are not available in tutorial mode.", true);
         return;
     }
-    if(rec.lastTick == getTime())
+    if(recording.lastTick == getTime())
     {
         return;
     }
-    fps = self openCJ\fps::getCurrentFPS();
-    if(!isDefined(addFrameToDemo(
-           rec.id, self.origin, self getPlayerAngles(), 1, self openCJ\demoRecording::frameFlags(),
-           int(rec.saved), int(rec.loaded), int(isDefined(self.eventQueue["rpg"])), int(fps), 0,
-           self getEntityNumber(), int(isDefined(rec.elevated) && rec.elevated))))
+    framesPerSecond = self openCJ\fps::getCurrentFPS();
+    if(!isDefined(addFrameToDemo(recording.id, self.origin, self getPlayerAngles(), 1,
+                                 self openCJ\demoRecording::frameFlags(), int(recording.saved),
+                                 int(recording.loaded), int(isDefined(self.eventQueue["rpg"])),
+                                 int(framesPerSecond), 0, self getEntityNumber(),
+                                 int(isDefined(recording.elevated) && recording.elevated))))
     {
-        destroyDemo(rec.id);
+        destroyDemo(recording.id);
         self.clipRecording = undefined;
         self sendLocalChatMessage("Clip recording ran out of memory.", true);
         return;
     }
-    demoKeepLast(rec.id, 1200);
-    rec.loaded = false;
-    rec.saved = false;
-    rec.elevated = false;
-    rec.lastTick = getTime();
+    clipWindowFrames = 1200; // Sixty seconds at the server's 20 Hz sample rate.
+    demoKeepLast(recording.id, clipWindowFrames);
+    recording.loaded = false;
+    recording.saved = false;
+    recording.elevated = false;
+    recording.lastTick = getTime();
 }
 
 onSaved()
@@ -247,8 +251,13 @@ onLoaded()
     }
 }
 
+// Transfer the live recording into a paused preview and build its timeline cells.
 edit()
 {
+    maxTimelineCells = 40; // Matches the fixed cells in opencj_clipedit.menu.
+    timelineLeft = 20;
+    timelineWidth = 600;
+
     self endon("disconnect");
     if(!isDefined(self.clipRecording))
     {
@@ -264,116 +273,124 @@ edit()
     {
         return;
     }
-    rec = self.clipRecording;
-    count = numberOfDemoFrames(rec.id);
-    if(count < 2)
+    recording = self.clipRecording;
+    frameCount = numberOfDemoFrames(recording.id);
+    if(frameCount < 2)
     {
         self sendLocalChatMessage("Record at least two frames first.", true);
         return;
     }
     self.clipRecording = undefined;
-    info = demoClipInfo(rec.id, 0);
-    rec.first = info[2];
-    rec.last = count - 1;
-    rec.permanent = false;
-    rec.busy = false;
-    completeDemo(rec.id);
+    info = demoClipInfo(recording.id, 0);
+    recording.first = info[2];
+    recording.last = frameCount - 1;
+    recording.permanent = false;
+    recording.busy = false;
+    completeDemo(recording.id);
     cache = spawnStruct();
     cache.ready = true;
     cache.loading = false;
     cache.refs = 1;
-    level.demoCache["" + rec.id] = cache;
-    self.clipEdit = rec;
-    cells = count;
-    if(cells > 40)
+    level.demoCache["" + recording.id] = cache;
+    self.clipEdit = recording;
+    cellCount = frameCount;
+    if(cellCount > maxTimelineCells)
     {
-        cells = 40;
+        cellCount = maxTimelineCells;
     }
-    self setClientCvar("opencj_clip_cells", cells);
+    self setClientCvar("opencj_clip_cells", cellCount);
     layout = [];
-    for(i = 0; i < cells; i++)
+    for(i = 0; i < cellCount; i++)
     {
-        first = int((count * i + cells - 1) / cells);
-        next = int((count * (i + 1) + cells - 1) / cells);
-        layout["opencj_clip_cellx" + i] = 20 + first * 600 / count;
-        layout["opencj_clip_cellw" + i] = (next - first) * 600 / count;
+        firstFrame = int((frameCount * i + cellCount - 1) / cellCount);
+        nextFrame = int((frameCount * (i + 1) + cellCount - 1) / cellCount);
+        layout["opencj_clip_cellx" + i] = timelineLeft + firstFrame * timelineWidth / frameCount;
+        layout["opencj_clip_cellw" + i] = (nextFrame - firstFrame) * timelineWidth / frameCount;
     }
-    rec.layoutCommands = self numericCvars(layout);
+    recording.layoutCommands = self numericCvars(layout);
     self openCJ\huds\hudOnScreenKeyboard::_hideKeyboard();
     self openCJ\huds\hudSpeedometer::_hideSpeedometer();
     self.demoStyle = 0;
     self.demoBegin = 0;
-    self.demoEnd = count - 1;
+    self.demoEnd = frameCount - 1;
     self.demoCheckpointed = false;
     waittillframeend;
-    self openCJ\demos::startDemo(rec.id);
+    self openCJ\demos::startDemo(recording.id);
     if(!self openCJ\demos::isPlayingDemo())
     {
         self.clipEdit = undefined;
         return;
     }
     self.playbackPaused = true;
-    self.demoBegin = rec.first;
-    self.demoEnd = rec.last;
-    self seek(rec.first);
+    self.demoBegin = recording.first;
+    self.demoEnd = recording.last;
+    self seek(recording.first);
     self setClientCvar("opencj_clip_hint",
                        "Name clip, choose range, then Submit. Green: save | Red: load.");
     self updateEditor();
 }
 
-seek(frame)
+seek(frameIndex)
 {
     self.demoLoopPending = false;
     current = self skipPlaybackFrames(0);
-    self skipPlaybackFrames(frame - current);
+    self skipPlaybackFrames(frameIndex - current);
     self.demoFirstFrame = true;
     self.demoLastPresentedFrame = undefined;
 }
 
 updateEditor()
 {
+    maxTimelineCells = 40; // Matches the fixed cells in opencj_clipedit.menu.
+    timelineLeft = 20;
+    timelineWidth = 600;
+
     if(!isDefined(self.clipEdit))
     {
         return;
     }
-    rec = self.clipEdit;
-    cells = numberOfDemoFrames(rec.id);
-    if(cells > 40)
+    recording = self.clipEdit;
+    cellCount = numberOfDemoFrames(recording.id);
+    if(cellCount > maxTimelineCells)
     {
-        cells = 40;
+        cellCount = maxTimelineCells;
     }
-    self setClientCvar("opencj_clip_cells", cells);
-    self setClientCvar("opencj_clip_trim", "Start " + seconds(rec.first) + "s   End " +
-                                               seconds(rec.last) + "s   Length " +
-                                               seconds(rec.last - rec.first + 1) + "s");
-    self setClientCvar("opencj_clip_start", int(rec.first * cells / numberOfDemoFrames(rec.id)));
-    self setClientCvar("opencj_clip_end", int(rec.last * cells / numberOfDemoFrames(rec.id)));
-    count = numberOfDemoFrames(rec.id);
-    self setClientCvar("opencj_clip_start_x", 20 + rec.first * 600 / count);
-    self setClientCvar("opencj_clip_end_x", 19 + (rec.last + 1) * 600 / count);
-    info = demoClipInfo(rec.id, rec.first, rec.last);
+    self setClientCvar("opencj_clip_cells", cellCount);
+    self setClientCvar("opencj_clip_trim", "Start " + seconds(recording.first) + "s   End " +
+                                               seconds(recording.last) + "s   Length " +
+                                               seconds(recording.last - recording.first + 1) + "s");
+    self setClientCvar("opencj_clip_start",
+                       int(recording.first * cellCount / numberOfDemoFrames(recording.id)));
+    self setClientCvar("opencj_clip_end",
+                       int(recording.last * cellCount / numberOfDemoFrames(recording.id)));
+    frameCount = numberOfDemoFrames(recording.id);
+    self setClientCvar("opencj_clip_start_x",
+                       timelineLeft + recording.first * timelineWidth / frameCount);
+    self setClientCvar("opencj_clip_end_x",
+                       timelineLeft - 1 + (recording.last + 1) * timelineWidth / frameCount);
+    clipInfo = demoClipInfo(recording.id, recording.first, recording.last);
     events = [];
-    for(i = 0; i < 40; i++)
+    for(i = 0; i < maxTimelineCells; i++)
     {
-        if(!isDefined(rec.eventCells) || rec.eventCells[i] != info[3][i])
+        if(!isDefined(recording.eventCells) || recording.eventCells[i] != clipInfo[3][i])
         {
-            events["opencj_clip_event" + i] = info[3][i];
+            events["opencj_clip_event" + i] = clipInfo[3][i];
         }
     }
-    rec.eventCommands = self numericCvars(events);
-    rec.eventCells = info[3];
+    recording.eventCommands = self numericCvars(events);
+    recording.eventCells = clipInfo[3];
     self openCJ\demos::demoUpdateOverlay();
-    kind = "Until map changes";
-    if(rec.permanent)
+    storageLabel = "Until map changes";
+    if(recording.permanent)
     {
-        kind = "Permanently";
+        storageLabel = "Permanently";
     }
-    self setClientCvar("opencj_clip_storage", kind);
+    self setClientCvar("opencj_clip_storage", storageLabel);
 }
 
-seconds(frames)
+seconds(frameCount)
 {
-    return frames * 0.05;
+    return frameCount * 0.05;
 }
 
 scopeFilter()
@@ -381,6 +398,7 @@ scopeFilter()
     return "(c.sessionID IS NULL OR c.sessionID=" + dbStr(level.clipSession) + ")";
 }
 
+// Hold the editor's source frames through upload, then publish or leave it ready to retry.
 submit(description)
 {
     if(!isDefined(self.clipEdit) || self.clipEdit.busy)
@@ -393,162 +411,183 @@ submit(description)
                            "Your previous clip is still uploading. Try again when it finishes.");
         return;
     }
-    rec = self.clipEdit;
+    recording = self.clipEdit;
     if(!validDescription(description))
     {
         self setClientCvar("opencj_clip_hint", "Use 1-32 letters, numbers and spaces only.");
         return;
     }
-    rec.busy = true;
+    recording.busy = true;
     // Hold the native recording while SQL yields, even if the editor closes.
-    if(!demoPin(rec.id))
+    if(!demoPin(recording.id))
     {
-        rec.busy = false;
+        recording.busy = false;
         return;
     }
-    self.clipUploadNative = rec.id;
-    owner = self openCJ\login::getPlayerID();
-    map = openCJ\mapID::getMapID();
-    scope = level.clipSession;
-    session = dbStr(scope);
-    if(rec.permanent)
-    {
-        scope = "permanent";
-        session = "NULL";
-    }
-    info = demoClipInfo(rec.id, rec.first);
-    stats = demoRangeInfo(rec.id, rec.first, rec.last);
-    if(!isDefined(info) || !isDefined(stats))
+    self.clipUploadNative = recording.id;
+    clipInfo = demoClipInfo(recording.id, recording.first);
+    rangeInfo = demoRangeInfo(recording.id, recording.first, recording.last);
+    if(!isDefined(clipInfo) || !isDefined(rangeInfo))
     {
         self releaseUpload();
-        rec.busy = false;
+        recording.busy = false;
         self setClientCvar("opencj_clip_hint", "The selected recording range is unavailable.");
         return;
     }
-    origin = info[0];
-    token = readDatabaseValue("SELECT UUID()");
-    if(!isDefined(token))
+    metadata = spawnStruct();
+    metadata.origin = clipInfo[0];
+    metadata.rpgShots = rangeInfo[0];
+    fpsMode = rangeInfo[1];
+    usedElevators = rangeInfo[2];
+    uploadToken = readDatabaseValue("SELECT UUID()");
+    if(!isDefined(uploadToken))
     {
         self releaseUpload();
-        rec.busy = false;
+        recording.busy = false;
         self setClientCvar("opencj_clip_hint", "Could not start the upload. Please try again.");
         return;
     }
-    self.clipUploadToken = token;
-    fps = "NULL";
-    if(stats[1] == 0)
+    self.clipUploadToken = uploadToken;
+    metadata.fpsModeSQL = "NULL";
+    if(fpsMode == 0)
     {
-        fps = "'125'";
+        metadata.fpsModeSQL = "'125'";
     }
-    else if(stats[1] == 1)
+    else if(fpsMode == 1)
     {
-        fps = "'mix'";
+        metadata.fpsModeSQL = "'mix'";
     }
-    else if(stats[1] == 2)
+    else if(fpsMode == 2)
     {
-        fps = "'hax'";
+        metadata.fpsModeSQL = "'hax'";
     }
-    ele = "NULL";
-    if(stats[2] >= 0)
+    metadata.elevatorSQL = "NULL";
+    if(usedElevators >= 0)
     {
-        ele = "" + stats[2];
+        metadata.elevatorSQL = "" + usedElevators;
     }
-    id = undefined;
-    for(slot = 1; slot <= 5; slot++)
-    {
-        query =
-            "INSERT IGNORE INTO demoClips(uploadToken,mapID,playerID,description,scopeKey,sessionID,slot,originX,originY,originZ,frameCount,recordedAt,RPGShots,FPSMode,eleUsed) VALUES(" +
-            dbStr(token) + "," + map + "," + owner + "," +
-            dbStr(openCJ\mySQL::escapeString(description)) + "," + dbStr(scope) + "," + session +
-            "," + slot + "," + origin[0] + "," + origin[1] + "," + origin[2] + "," +
-            (rec.last - rec.first + 1) + "," + dbStr(rec.date) + "," + stats[0] + "," + fps + "," +
-            ele + ")";
-        result = self openCJ\mySQL::mysqlAsyncBackground(query, "clip-upload:" + token);
-        if(!isDefined(result))
-        {
-            break;
-        }
-        rows = self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips WHERE uploadToken=" +
-                                                 dbStr(token));
-        if(isDefined(rows) && rows.size)
-        {
-            id = int(rows[0][0]);
-            break;
-        }
-    }
-    if(!isDefined(id))
+    clipID = self reserveClipSlot(recording, metadata, description, uploadToken);
+    if(!isDefined(clipID))
     {
         self releaseUpload();
         self.clipUploadToken = undefined;
-        rec.busy = false;
+        recording.busy = false;
         self setClientCvar("opencj_clip_hint",
                            "No slot available (limit 5 per storage type). Use !deleteclip <id>.");
         return;
     }
-    ok = true;
-    chunk = 0;
-    for(first = rec.first; first <= rec.last; first += 64)
-    {
-        count = rec.last - first + 1;
-        if(count > 64)
-        {
-            count = 64;
-        }
-        result =
-            self openCJ\mySQL::awaitNative(demoUploadChunk(rec.id, id, 1, first, count, chunk));
-        if(!isDefined(result))
-        {
-            ok = false;
-            break;
-        }
-        chunk++;
-    }
+    uploaded = self uploadClipFrames(recording, clipID);
     self releaseUpload();
-    if(ok)
+    if(uploaded)
     {
-        ok = isDefined(self openCJ\mySQL::mysqlAsyncBackground(
-            "UPDATE demoClips SET ready=1 WHERE clipID=" + id, "clip-upload:" + token));
+        uploaded = isDefined(self openCJ\mySQL::mysqlAsyncBackground(
+            "UPDATE demoClips SET ready=1 WHERE clipID=" + clipID, "clip-upload:" + uploadToken));
     }
-    if(!ok)
+    if(!uploaded)
     {
-        self openCJ\mySQL::mysqlAsyncBackground(
-            "DELETE FROM demoClips WHERE clipID=" + id + " AND ready=0", "clip-upload:" + token);
+        self openCJ\mySQL::mysqlAsyncBackground("DELETE FROM demoClips WHERE clipID=" + clipID +
+                                                    " AND ready=0",
+                                                "clip-upload:" + uploadToken);
         self.clipUploadToken = undefined;
-        rec.busy = false;
+        recording.busy = false;
         self setClientCvar("opencj_clip_hint",
                            "Upload failed. Your clip is still open; try again.");
         return;
     }
     self.clipUploadToken = undefined;
     // Publication can outlive the editor. Leave a subsequently opened demo alone.
-    if(self openCJ\demos::isPlayingDemo() && self.demoID == rec.id)
+    if(self openCJ\demos::isPlayingDemo() && self.demoID == recording.id)
     {
         self openCJ\demos::stopDemo();
     }
-    self sendLocalChatMessage("Clip #" + id + " submitted: " + description +
-                              ". Remove it with !deleteclip " + id + ".");
+    self sendLocalChatMessage("Clip #" + clipID + " submitted: " + description +
+                              ". Remove it with !deleteclip " + clipID + ".");
 }
 
-remove(id)
+// Claim one of the player's bounded slots. A UUID resolves INSERT IGNORE retries.
+reserveClipSlot(recording, metadata, description, uploadToken)
+{
+    playerID = self openCJ\login::getPlayerID();
+    mapID = openCJ\mapID::getMapID();
+    scopeKey = level.clipSession;
+    sessionSQL = dbStr(scopeKey);
+    if(recording.permanent)
+    {
+        scopeKey = "permanent";
+        sessionSQL = "NULL";
+    }
+    slotsPerStorageType = 5;
+    for(slot = 1; slot <= slotsPerStorageType; slot++)
+    {
+        query = "INSERT IGNORE INTO demoClips(" +
+                "uploadToken,mapID,playerID,description,scopeKey,sessionID,slot," +
+                "originX,originY,originZ,frameCount,recordedAt,RPGShots,FPSMode,eleUsed)" +
+                " VALUES(" + dbStr(uploadToken) + "," + mapID + "," + playerID + "," +
+                dbStr(openCJ\mySQL::escapeString(description)) + "," + dbStr(scopeKey) + "," +
+                sessionSQL + "," + slot + "," + metadata.origin[0] + "," + metadata.origin[1] +
+                "," + metadata.origin[2] + "," + (recording.last - recording.first + 1) + "," +
+                dbStr(recording.date) + "," + metadata.rpgShots + "," + metadata.fpsModeSQL + "," +
+                metadata.elevatorSQL + ")";
+        result = self openCJ\mySQL::mysqlAsyncBackground(query, "clip-upload:" + uploadToken);
+        if(!isDefined(result))
+        {
+            break;
+        }
+        rows = self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips WHERE uploadToken=" +
+                                                 dbStr(uploadToken));
+        if(isDefined(rows) && rows.size)
+        {
+            return int(rows[0][0]);
+        }
+    }
+    return undefined;
+}
+
+// Each completed query releases its result before the next bounded frame chunk.
+uploadClipFrames(recording, clipID)
+{
+    framesPerChunk = 64;
+    clipStorage = 1; // Native transfer API: runs use 0, clips use 1.
+    chunkIndex = 0;
+    for(firstFrame = recording.first; firstFrame <= recording.last; firstFrame += framesPerChunk)
+    {
+        chunkFrames = recording.last - firstFrame + 1;
+        if(chunkFrames > framesPerChunk)
+        {
+            chunkFrames = framesPerChunk;
+        }
+        result = self openCJ\mySQL::awaitNative(demoUploadChunk(
+            recording.id, clipID, clipStorage, firstFrame, chunkFrames, chunkIndex));
+        if(!isDefined(result))
+        {
+            return false;
+        }
+        chunkIndex++;
+    }
+    return true;
+}
+
+remove(clipID)
 {
     self endon("disconnect");
-    if(!self available() || id < 1)
+    if(!self available() || clipID < 1)
     {
         return;
     }
-    owner = self openCJ\login::getPlayerID();
-    rows = self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips c WHERE clipID=" + id +
-                                             " AND playerID=" + owner + " AND " + scopeFilter());
+    playerID = self openCJ\login::getPlayerID();
+    rows =
+        self openCJ\mySQL::mysqlAsyncRead("SELECT clipID FROM demoClips c WHERE clipID=" + clipID +
+                                          " AND playerID=" + playerID + " AND " + scopeFilter());
     if(!isDefined(rows) || !rows.size)
     {
         self sendLocalChatMessage("No clip with that ID belongs to you.", true);
         return;
     }
-    result = self openCJ\mySQL::mysqlAsyncQuery("DELETE FROM demoClips WHERE clipID=" + id +
-                                                " AND playerID=" + owner);
+    result = self openCJ\mySQL::mysqlAsyncQuery("DELETE FROM demoClips WHERE clipID=" + clipID +
+                                                " AND playerID=" + playerID);
     if(isDefined(result))
     {
-        self sendLocalChatMessage("Deleted clip #" + id + ".");
+        self sendLocalChatMessage("Deleted clip #" + clipID + ".");
     }
 }
 
@@ -559,15 +598,21 @@ nearby(args)
     {
         return;
     }
-    o = self.origin;
+    viewerOrigin = self.origin;
+    maxHorizontalDistanceSquared = 128 * 128; // Map units around the viewer.
+    maxVerticalDistance = 70;
+    displayedClipLimit = 10;
     query = "SELECT c.clipID,c.description FROM demoClips c WHERE c.ready=1 AND c.mapID=" +
-            openCJ\mapID::getMapID() + " AND " + scopeFilter() + " AND POW(c.originX-(" + o[0] +
-            "),2)+POW(c.originY-(" + o[1] + "),2)<=16384 AND ABS(c.originZ-(" + o[2] + "))<=70";
+            openCJ\mapID::getMapID() + " AND " + scopeFilter() + " AND POW(c.originX-(" +
+            viewerOrigin[0] + "),2)+POW(c.originY-(" + viewerOrigin[1] +
+            "),2)<=" + maxHorizontalDistanceSquared + " AND ABS(c.originZ-(" + viewerOrigin[2] +
+            "))<=" + maxVerticalDistance;
     if(args.size)
     {
         query += " AND c.clipID=" + int(args[0]);
     }
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query + " ORDER BY c.clipID LIMIT 11");
+    rows = self openCJ\mySQL::mysqlAsyncQuery(query + " ORDER BY c.clipID LIMIT " +
+                                              (displayedClipLimit + 1));
     if(!isDefined(rows) || !rows.size)
     {
         self sendLocalChatMessage("No matching clip nearby.", true);
@@ -579,16 +624,17 @@ nearby(args)
         return;
     }
     self sendLocalChatMessage("Nearby clips: choose with !clipdemo <id>.");
-    for(i = 0; i < rows.size && i < 10; i++)
+    for(i = 0; i < rows.size && i < displayedClipLimit; i++)
     {
         self sendLocalChatMessage("#" + rows[i][0] + " - " + rows[i][1]);
     }
-    if(rows.size > 10)
+    if(rows.size > displayedClipLimit)
     {
         self sendLocalChatMessage("More clips are available in the Clips menu.");
     }
 }
 
+// Read the selected page and update its menu; stale menu replies are cancelled by SQL.
 browser()
 {
     sqlToken = self openCJ\mySQL::beginMenuRead("clips");
@@ -608,106 +654,145 @@ browser()
     {
         self.clipTab = "permanent";
     }
-    scope = level.clipSession;
+    scopeKey = level.clipSession;
     if(self.clipTab == "permanent")
     {
-        scope = "permanent";
+        scopeKey = "permanent";
     }
+    clipsPerPage = 4;
     rows = self openCJ\mySQL::mysqlAsyncMenuQuery(
-        "SELECT c.clipID,c.description,p.playerName,c.frameCount,DATE_FORMAT(c.recordedAt,'%Y-%m-%d %H:%i:%s'),COUNT(*) OVER(),COALESCE(c.RPGShots,-1),COALESCE(c.FPSMode,'?'),COALESCE(c.eleUsed,-1),c.viewCount FROM demoClips c JOIN playerDisplayNames p ON c.playerID=p.playerID WHERE c.ready=1 AND c.mapID=" +
-            openCJ\mapID::getMapID() + " AND c.scopeKey=" + dbStr(scope) +
-            " ORDER BY c.clipID DESC LIMIT 4 OFFSET " + (self.clipPage * 4),
+        "SELECT c.clipID,c.description,p.playerName,c.frameCount," +
+            "DATE_FORMAT(c.recordedAt,'%Y-%m-%d %H:%i:%s'),COUNT(*) OVER()," +
+            "COALESCE(c.RPGShots,-1),COALESCE(c.FPSMode,'?'),COALESCE(c.eleUsed,-1),c.viewCount" +
+            " FROM demoClips c JOIN playerDisplayNames p ON c.playerID=p.playerID" +
+            " WHERE c.ready=1 AND c.mapID=" + openCJ\mapID::getMapID() +
+            " AND c.scopeKey=" + dbStr(scopeKey) + " ORDER BY c.clipID DESC LIMIT " + clipsPerPage +
+            " OFFSET " + (self.clipPage * clipsPerPage),
         "clips");
     if(!isDefined(rows))
     {
         return;
     }
-    self.clipRows = rows;
-    total = 0;
+    self.clipRows = decodeBrowserRows(rows);
+    totalClips = 0;
     if(isDefined(rows) && rows.size)
     {
-        total = int(rows[0][5]);
+        totalClips = self.clipRows[0].totalClips;
     }
-    if(!total && self.clipPage > 0)
+    if(!totalClips && self.clipPage > 0)
     {
         self.clipPage = 0;
         self thread browser();
         return;
     }
-    self.clipPages = int((total + 3) / 4);
+    self.clipPages = int((totalClips + clipsPerPage - 1) / clipsPerPage);
     if(self.clipPages < 1)
     {
         self.clipPages = 1;
     }
     self setClientCvar("opencj_clips_page", "Page " + (self.clipPage + 1) + " / " + self.clipPages);
-    label = "Show: This map session";
+    tabLabel = "Show: This map session";
     if(self.clipTab == "permanent")
     {
-        label = "Show: Permanent clips";
+        tabLabel = "Show: Permanent clips";
     }
-    self setClientCvar("opencj_clips_tab", label);
+    self setClientCvar("opencj_clips_tab", tabLabel);
     self setClientCvar("opencj_clips_previous", int(self.clipPage > 0));
     self setClientCvar("opencj_clips_next", int(self.clipPage + 1 < self.clipPages));
     self setClientCvar(
         "opencj_clips_hint",
         "Select once to preview the location; select again to play. Delete your clips: !deleteclip <id>");
-    if(!total)
+    if(!totalClips)
     {
         self setClientCvar(
             "opencj_clips_hint",
             "No clips in this category yet. Use !record, then !stoprecord to create one.");
     }
-    for(i = 0; i < 4; i++)
+    for(slot = 0; slot < clipsPerPage; slot++)
     {
-        exists = isDefined(rows) && i < rows.size;
-        self setClientCvar("opencj_clips_exists" + i, int(exists));
-        fields = [];
-        fields[0] = "";
-        fields[1] = "";
-        fields[2] = "";
-        fields[3] = "";
-        fields[4] = "";
-        if(exists)
+        clip = undefined;
+        if(slot < self.clipRows.size)
         {
-            fields[0] = "#" + rows[i][0];
-            fields[1] = rows[i][1];
-            fields[2] = rows[i][2];
-            if(fields[2].size > 16)
-            {
-                fields[2] = getSubStr(fields[2], 0, 16);
-            }
-            fields[3] = "" + seconds(int(rows[i][3])) + "s";
-            fields[4] = rows[i][4];
+            clip = self.clipRows[slot];
         }
-        details = "";
-        if(exists)
-        {
-            shots = rows[i][6];
-            if(int(shots) < 0)
-            {
-                shots = "?";
-            }
-            ele = "Ele unknown";
-            if(int(rows[i][8]) == 0)
-            {
-                ele = "No ele";
-            }
-            else if(int(rows[i][8]) == 1)
-            {
-                ele = "Ele";
-            }
-            details = shots + " RPG shots | " + rows[i][7] + " FPS | " + ele + " | " + rows[i][9] +
-                      " views";
-        }
-        self setClientCvar("opencj_clips_details" + i, details);
-        for(col = 0; col < 5; col++)
-        {
-            self setClientCvar("opencj_clips_cell" + i + "_" + col, fields[col]);
-        }
+        self renderBrowserRow(slot, clip);
     }
 }
 
-play(id, preview)
+// These fields match the SELECT in browser(); menu actions keep the same decoded row.
+decodeBrowserRows(rows)
+{
+    clips = [];
+    for(i = 0; i < rows.size; i++)
+    {
+        row = rows[i];
+        clip = spawnStruct();
+        clip.id = int(row[0]);
+        clip.description = row[1];
+        clip.authorName = row[2];
+        clip.frameCount = int(row[3]);
+        clip.recordedAt = row[4];
+        clip.totalClips = int(row[5]);
+        clip.rpgShots = int(row[6]);
+        clip.fpsMode = row[7];
+        clip.usedElevators = int(row[8]);
+        clip.viewCount = row[9];
+        clips[i] = clip;
+    }
+    return clips;
+}
+
+// Clear unused slots too, so changing pages cannot leave an older clip visible.
+renderBrowserRow(slot, clip)
+{
+    exists = isDefined(clip);
+    self setClientCvar("opencj_clips_exists" + slot, int(exists));
+    fields = [];
+    fields[0] = ""; // ID
+    fields[1] = ""; // Description
+    fields[2] = ""; // Author
+    fields[3] = ""; // Duration
+    fields[4] = ""; // Recording date
+    details = "";
+    if(exists)
+    {
+        fields[0] = "#" + clip.id;
+        fields[1] = clip.description;
+        authorName = clip.authorName;
+        maxAuthorCharacters = 16; // Available width in the Clips menu.
+        if(authorName.size > maxAuthorCharacters)
+        {
+            authorName = getSubStr(authorName, 0, maxAuthorCharacters);
+        }
+        fields[2] = authorName;
+        fields[3] = "" + seconds(clip.frameCount) + "s";
+        fields[4] = clip.recordedAt;
+        shots = "" + clip.rpgShots;
+        if(clip.rpgShots < 0)
+        {
+            shots = "?";
+        }
+        elevatorLabel = "Ele unknown";
+        if(clip.usedElevators == 0)
+        {
+            elevatorLabel = "No ele";
+        }
+        else if(clip.usedElevators == 1)
+        {
+            elevatorLabel = "Ele";
+        }
+        details = shots + " RPG shots | " + clip.fpsMode + " FPS | " + elevatorLabel + " | " +
+                  clip.viewCount + " views";
+    }
+    self setClientCvar("opencj_clips_details" + slot, details);
+    for(column = 0; column < fields.size; column++)
+    {
+        self setClientCvar("opencj_clips_cell" + slot + "_" + column, fields[column]);
+    }
+}
+
+// Load a clip into a private native recording before transferring it to playback.
+play(clipID, preview)
 {
     self endon("disconnect");
     if(isDefined(self.clipRecording) || isDefined(self.clipEdit))
@@ -721,13 +806,13 @@ play(id, preview)
         {
             return;
         }
-        if(self.clipPreview == id)
+        if(self.clipPreview == clipID)
         {
             self.clipPreview = undefined;
             self.playbackPaused = false;
             self.demoFirstFrame = true;
             self setClientCvar("opencj_clips_preview", 0);
-            self.clipViewPending = id;
+            self.clipViewPending = clipID;
             self openCJ\demos::demoMovementHudInMenu(false);
             self closeInGameMenu();
             self closeMenu();
@@ -746,8 +831,10 @@ play(id, preview)
         return;
     }
     rows = self openCJ\mySQL::mysqlAsyncRead(
-        "SELECT c.frameCount,c.description,p.playerName FROM demoClips c JOIN playerDisplayNames p ON p.playerID=c.playerID WHERE c.ready=1 AND c.clipID=" +
-        id + " AND c.mapID=" + openCJ\mapID::getMapID() + " AND " + scopeFilter());
+        "SELECT c.frameCount,c.description,p.playerName" +
+        " FROM demoClips c JOIN playerDisplayNames p ON p.playerID=c.playerID" +
+        " WHERE c.ready=1 AND c.clipID=" + clipID + " AND c.mapID=" + openCJ\mapID::getMapID() +
+        " AND " + scopeFilter());
     if(!isDefined(rows) || !rows.size)
     {
         self sendLocalChatMessage("This clip is no longer available.", true);
@@ -757,52 +844,56 @@ play(id, preview)
     {
         return;
     }
-    native = demoCreateTransient();
-    if(!isDefined(native))
+    nativeDemoID = demoCreateTransient();
+    if(!isDefined(nativeDemoID))
     {
         return;
     }
-    expected = int(rows[0][0]);
-    ok = true;
-    chunk = 0;
+    expectedFrames = int(rows[0][0]);
+    description = rows[0][1];
+    authorName = rows[0][2];
+    clipStorage = 1; // Native chunk source: 0 is a run, 1 is a clip.
+    loaded = true;
+    nextChunk = 0;
     cache = spawnStruct();
     cache.ready = true;
     cache.loading = false;
     cache.refs = 1;
-    level.demoCache["" + native] = cache;
-    self.demoPendingId = native;
+    level.demoCache["" + nativeDemoID] = cache;
+    self.demoPendingId = nativeDemoID;
     self.demoPendingCache = cache;
-    while(ok && numberOfDemoFrames(native) < expected)
+    while(loaded && numberOfDemoFrames(nativeDemoID) < expectedFrames)
     {
-        data = self openCJ\mySQL::awaitNative(demoLoadChunks(native, id, 1, chunk));
-        if(!self openCJ\demos::ownsPendingCache(native, cache))
+        loadedChunks = self openCJ\mySQL::awaitNative(
+            demoLoadChunks(nativeDemoID, clipID, clipStorage, nextChunk));
+        if(!self openCJ\demos::ownsPendingCache(nativeDemoID, cache))
         {
             return;
         }
-        ok = isDefined(data) && data.size > 0 && data[0][0] > chunk;
-        if(ok)
+        loaded = isDefined(loadedChunks) && loadedChunks.size > 0 && loadedChunks[0][0] > nextChunk;
+        if(loaded)
         {
-            chunk = data[0][0];
+            nextChunk = loadedChunks[0][0];
         }
     }
     cache.loading = false;
-    if(!ok || numberOfDemoFrames(native) != expected)
+    if(!loaded || numberOfDemoFrames(nativeDemoID) != expectedFrames)
     {
         self openCJ\demos::releasePending();
         return;
     }
-    completeDemo(native);
+    completeDemo(nativeDemoID);
     if(!self openCJ\demos::canWatch())
     {
         self openCJ\demos::releasePending();
         return;
     }
     self.demoBegin = 0;
-    self.demoEnd = expected - 1;
+    self.demoEnd = expectedFrames - 1;
     self.demoCheckpointed = false;
     self.demoStyle = 0;
     waittillframeend;
-    if(!self openCJ\demos::ownsPendingCache(native, cache))
+    if(!self openCJ\demos::ownsPendingCache(nativeDemoID, cache))
     {
         return;
     }
@@ -810,11 +901,11 @@ play(id, preview)
     self.demoPendingCache = undefined;
     if(preview)
     {
-        self.clipPreview = id;
+        self.clipPreview = clipID;
     }
-    self.clipDescription = rows[0][1];
-    self.demoAuthor = rows[0][2];
-    self openCJ\demos::startDemo(native);
+    self.clipDescription = description;
+    self.demoAuthor = authorName;
+    self openCJ\demos::startDemo(nativeDemoID);
     if(!self openCJ\demos::isPlayingDemo())
     {
         self.clipDescription = undefined;
@@ -826,11 +917,11 @@ play(id, preview)
     self setClientCvar("opencj_clips_preview", int(preview));
     if(!preview)
     {
-        self.clipViewPending = id;
+        self.clipViewPending = clipID;
     }
     if(preview)
     {
-        self.clipPreview = id;
+        self.clipPreview = clipID;
         self.playbackPaused = true;
     }
 }
@@ -856,6 +947,7 @@ onDisconnect()
     self cancelRecording();
 }
 
+// Keep the wait loop small so each menu's actions can be reviewed independently.
 responses()
 {
     self endon("disconnect");
@@ -864,244 +956,258 @@ responses()
         self waittill("menuresponse", menu, response);
         if(menu == "opencj_clips")
         {
-            if(response == "technique")
-            {
-                self openCJ\demos::toggleTechnique();
-                continue;
-            }
-            if(response == "close")
-            {
-                self closeInGameMenu();
-                self closeMenu();
-                if(isDefined(self.clipPreview))
-                {
-                    self.demoExitRequested = true;
-                }
-                continue;
-            }
-            if(response == "open" || response == "toggle" || response == "session" ||
-               response == "permanent" || response == "next" || response == "previous")
-            {
-                if(response == "toggle")
-                {
-                    if(isDefined(self.clipTab) && self.clipTab == "permanent")
-                    {
-                        response = "session";
-                    }
-                    else
-                    {
-                        response = "permanent";
-                    }
-                }
-                if(response == "session" || response == "permanent")
-                {
-                    self.clipTab = response;
-                    self.clipPage = 0;
-                }
-                if(response == "next" && isDefined(self.clipPages) &&
-                   self.clipPage + 1 < self.clipPages)
-                {
-                    self.clipPage++;
-                }
-                if(response == "previous" && isDefined(self.clipPage) && self.clipPage > 0)
-                {
-                    self.clipPage--;
-                }
-                self thread browser();
-            }
-            else if(getSubStr(response, 0, 4) == "row:")
-            {
-                index = int(getSubStr(response, 4));
-                if(isDefined(self.clipRows) && index >= 0 && index < self.clipRows.size)
-                {
-                    self play(int(self.clipRows[index][0]), true);
-                }
-            }
+            self browserResponse(response);
         }
         else if(menu == "opencj_clipedit" && isDefined(self.clipEdit))
         {
-            if(self.clipEdit.busy)
-            {
-                continue;
-            }
-            frame = self skipPlaybackFrames(0);
-            last = numberOfDemoFrames(self.demoID) - 1;
-            if(response == "stop")
-            {
-                self.demoExitRequested = true;
-                continue;
-            }
-            if(response == "submit")
-            {
-                wait 0.1;
-                if(isDefined(self.clipEdit))
-                {
-                    self submit(self getUserinfo("opencj_clip_description"));
-                }
-                continue;
-            }
-            if(response == "storage")
-            {
-                self.clipEdit.permanent = !self.clipEdit.permanent;
-            }
-            if(response == "start")
-            {
-                self.playbackPaused = true;
-                self.clipEdit.first = frame;
-                if(frame > self.clipEdit.last)
-                {
-                    self.clipEdit.last = frame;
-                }
-            }
-            if(response == "end")
-            {
-                self.playbackPaused = true;
-                self.clipEdit.last = frame;
-                if(frame < self.clipEdit.first)
-                {
-                    self.clipEdit.first = frame;
-                }
-            }
-            if(response == "reset")
-            {
-                self.clipEdit.first = 0;
-                self.clipEdit.last = last;
-                self.demoBegin = 0;
-                self.demoEnd = last;
-            }
-            if(response == "preview")
-            {
-                self.demoBegin = self.clipEdit.first;
-                self.demoEnd = self.clipEdit.last;
-                self seek(self.demoBegin);
-                self.playbackPaused = false;
-                self.demoRate = 1;
-            }
-            if(response == "all")
-            {
-                self.demoBegin = 0;
-                self.demoEnd = last;
-            }
-            if(response == "pause")
-            {
-                self.playbackPaused = true;
-            }
-            if(response == "resume")
-            {
-                self.playbackPaused = false;
-            }
-            parts = strTok(response, ":");
-            if(parts.size == 2 && parts[0] == "seek")
-            {
-                cells = last + 1;
-                if(cells > 40)
-                {
-                    cells = 40;
-                }
-                cell = int(parts[1]);
-                if(cell >= 0 && cell < cells)
-                {
-                    self.demoBegin = 0;
-                    self.demoEnd = last;
-                    target = int(((last + 1) * cell + cells - 1) / cells);
-                    if(target > last)
-                    {
-                        target = last;
-                    }
-                    self seek(target);
-                    self.playbackPaused = true;
-                }
-            }
-            if(parts.size == 2 && parts[0] == "step")
-            {
-                step = int(parts[1]);
-                if(step == -1 || step == 1 || step == -20 || step == 20)
-                {
-                    self.demoBegin = 0;
-                    self.demoEnd = last;
-                    target = frame + step;
-                    if(target < 0)
-                    {
-                        target = 0;
-                    }
-                    if(target > last)
-                    {
-                        target = last;
-                    }
-                    self seek(target);
-                    self.playbackPaused = true;
-                }
-            }
-            if(parts.size == 2 && parts[0] == "speed")
-            {
-                rate = int(parts[1]);
-                if(rate == 1 || rate == 2 || rate == 4 || rate == -1 || rate == -2 || rate == -4)
-                {
-                    self.demoRate = rate;
-                    self.playbackPaused = false;
-                }
-            }
-            self updateEditor();
+            self editorResponse(response);
         }
     }
 }
 
-validDescription(name)
+browserResponse(response)
 {
-    if(!isDefined(name) || name.size < 1 || name.size > 32)
+    if(response == "technique")
     {
-        return false;
+        self openCJ\demos::toggleTechnique();
+        return;
     }
-    nonSpace = false;
-    for(i = 0; i < name.size; i++)
+    if(response == "close")
     {
-        c = getSubStr(name, i, i + 1);
-        if(c != " ")
+        self closeInGameMenu();
+        self closeMenu();
+        if(isDefined(self.clipPreview))
         {
-            if(!isAlphaNumeric(c))
+            self.demoExitRequested = true;
+        }
+        return;
+    }
+    if(response == "open" || response == "toggle" || response == "session" ||
+       response == "permanent" || response == "next" || response == "previous")
+    {
+        if(response == "toggle")
+        {
+            if(isDefined(self.clipTab) && self.clipTab == "permanent")
             {
-                return false;
+                response = "session";
             }
-            nonSpace = true;
+            else
+            {
+                response = "permanent";
+            }
+        }
+        if(response == "session" || response == "permanent")
+        {
+            self.clipTab = response;
+            self.clipPage = 0;
+        }
+        if(response == "next" && isDefined(self.clipPages) && self.clipPage + 1 < self.clipPages)
+        {
+            self.clipPage++;
+        }
+        if(response == "previous" && isDefined(self.clipPage) && self.clipPage > 0)
+        {
+            self.clipPage--;
+        }
+        self thread browser();
+    }
+    else if(getSubStr(response, 0, 4) == "row:")
+    {
+        rowIndex = int(getSubStr(response, 4));
+        if(isDefined(self.clipRows) && rowIndex >= 0 && rowIndex < self.clipRows.size)
+        {
+            self play(self.clipRows[rowIndex].id, true);
         }
     }
-    return nonSpace;
 }
 
-rename(id, name)
+// Editing stays on the selected recording; submission owns its busy state across SQL waits.
+editorResponse(response)
 {
-    self endon("disconnect");
-    if(!self available() || id < 1)
+    if(self.clipEdit.busy)
     {
         return;
     }
-    if(!validDescription(name))
+    currentFrame = self skipPlaybackFrames(0);
+    lastFrame = numberOfDemoFrames(self.demoID) - 1;
+    if(response == "stop")
+    {
+        self.demoExitRequested = true;
+        return;
+    }
+    if(response == "submit")
+    {
+        wait 0.1;
+        if(isDefined(self.clipEdit))
+        {
+            self submit(self getUserinfo("opencj_clip_description"));
+        }
+        return;
+    }
+    if(response == "storage")
+    {
+        self.clipEdit.permanent = !self.clipEdit.permanent;
+    }
+    if(response == "start")
+    {
+        self.playbackPaused = true;
+        self.clipEdit.first = currentFrame;
+        if(currentFrame > self.clipEdit.last)
+        {
+            self.clipEdit.last = currentFrame;
+        }
+    }
+    if(response == "end")
+    {
+        self.playbackPaused = true;
+        self.clipEdit.last = currentFrame;
+        if(currentFrame < self.clipEdit.first)
+        {
+            self.clipEdit.first = currentFrame;
+        }
+    }
+    if(response == "reset")
+    {
+        self.clipEdit.first = 0;
+        self.clipEdit.last = lastFrame;
+        self.demoBegin = 0;
+        self.demoEnd = lastFrame;
+    }
+    if(response == "preview")
+    {
+        self.demoBegin = self.clipEdit.first;
+        self.demoEnd = self.clipEdit.last;
+        self seek(self.demoBegin);
+        self.playbackPaused = false;
+        self.demoRate = 1;
+    }
+    if(response == "all")
+    {
+        self.demoBegin = 0;
+        self.demoEnd = lastFrame;
+    }
+    if(response == "pause")
+    {
+        self.playbackPaused = true;
+    }
+    if(response == "resume")
+    {
+        self.playbackPaused = false;
+    }
+    parts = strTok(response, ":");
+    maxTimelineCells = 40; // Same fixed cells as edit() and updateEditor().
+    if(parts.size == 2 && parts[0] == "seek")
+    {
+        cellCount = lastFrame + 1;
+        if(cellCount > maxTimelineCells)
+        {
+            cellCount = maxTimelineCells;
+        }
+        cellIndex = int(parts[1]);
+        if(cellIndex >= 0 && cellIndex < cellCount)
+        {
+            self.demoBegin = 0;
+            self.demoEnd = lastFrame;
+            targetFrame = int(((lastFrame + 1) * cellIndex + cellCount - 1) / cellCount);
+            if(targetFrame > lastFrame)
+            {
+                targetFrame = lastFrame;
+            }
+            self seek(targetFrame);
+            self.playbackPaused = true;
+        }
+    }
+    if(parts.size == 2 && parts[0] == "step")
+    {
+        frameStep = int(parts[1]);
+        if(frameStep == -1 || frameStep == 1 || frameStep == -20 || frameStep == 20)
+        {
+            self.demoBegin = 0;
+            self.demoEnd = lastFrame;
+            targetFrame = currentFrame + frameStep;
+            if(targetFrame < 0)
+            {
+                targetFrame = 0;
+            }
+            if(targetFrame > lastFrame)
+            {
+                targetFrame = lastFrame;
+            }
+            self seek(targetFrame);
+            self.playbackPaused = true;
+        }
+    }
+    if(parts.size == 2 && parts[0] == "speed")
+    {
+        playbackRate = int(parts[1]);
+        if(playbackRate == 1 || playbackRate == 2 || playbackRate == 4 || playbackRate == -1 ||
+           playbackRate == -2 || playbackRate == -4)
+        {
+            self.demoRate = playbackRate;
+            self.playbackPaused = false;
+        }
+    }
+    self updateEditor();
+}
+
+validDescription(description)
+{
+    maxDescriptionLength = 32;
+    if(!isDefined(description) || description.size < 1 || description.size > maxDescriptionLength)
+    {
+        return false;
+    }
+    hasNonSpace = false;
+    for(i = 0; i < description.size; i++)
+    {
+        character = getSubStr(description, i, i + 1);
+        if(character != " ")
+        {
+            if(!isAlphaNumeric(character))
+            {
+                return false;
+            }
+            hasNonSpace = true;
+        }
+    }
+    return hasNonSpace;
+}
+
+rename(clipID, description)
+{
+    self endon("disconnect");
+    if(!self available() || clipID < 1)
+    {
+        return;
+    }
+    if(!validDescription(description))
     {
         self sendLocalChatMessage("Use 1-32 letters, numbers and spaces only.", true);
         return;
     }
-    if(isDefined(self.clipRenameAt) && getTime() - self.clipRenameAt < 10000)
+    renameCooldownMs = 10000;
+    if(isDefined(self.clipRenameAt) && getTime() - self.clipRenameAt < renameCooldownMs)
     {
         self sendLocalChatMessage("Wait 10 seconds between clip rename requests.", true);
         return;
     }
     // Reserve the cooldown before yielding, including unsuccessful requests.
     self.clipRenameAt = getTime();
-    owner = self openCJ\login::getPlayerID();
+    playerID = self openCJ\login::getPlayerID();
     rows = self openCJ\mySQL::mysqlAsyncRead(
-        "SELECT clipID FROM demoClips c WHERE ready=1 AND clipID=" + id + " AND playerID=" + owner +
-        " AND " + scopeFilter());
+        "SELECT clipID FROM demoClips c WHERE ready=1 AND clipID=" + clipID +
+        " AND playerID=" + playerID + " AND " + scopeFilter());
     if(!isDefined(rows) || !rows.size)
     {
         self sendLocalChatMessage("No available clip with that ID belongs to you.", true);
         return;
     }
     result = self openCJ\mySQL::mysqlAsyncQuery(
-        "UPDATE demoClips SET description=" + dbStr(openCJ\mySQL::escapeString(name)) +
-        " WHERE clipID=" + id + " AND playerID=" + owner);
+        "UPDATE demoClips SET description=" + dbStr(openCJ\mySQL::escapeString(description)) +
+        " WHERE clipID=" + clipID + " AND playerID=" + playerID);
     if(isDefined(result))
     {
-        self sendLocalChatMessage("Renamed clip #" + id + " to " + name + ".");
+        self sendLocalChatMessage("Renamed clip #" + clipID + " to " + description + ".");
     }
 }
 
@@ -1130,26 +1236,27 @@ onSpawnSpectator()
 // Callers supply only fixed UI dvar names and numeric values.
 numericCvars(values)
 {
-    keys = getArrayKeys(values);
+    cvarNames = getArrayKeys(values);
+    maxCommandBytes = 800; // Reserve space below the engine command limit.
     command = "v";
-    sent = 0;
-    for(i = 0; i < keys.size; i++)
+    commandsSent = 0;
+    for(i = 0; i < cvarNames.size; i++)
     {
-        pair = " " + keys[i] + " \"" + values[keys[i]] + "\"";
-        if(command.size + pair.size > 800)
+        cvarAssignment = " " + cvarNames[i] + " \"" + values[cvarNames[i]] + "\"";
+        if(command.size + cvarAssignment.size > maxCommandBytes)
         {
             self SV_GameSendServerCommand(command, true);
-            sent++;
+            commandsSent++;
             command = "v";
         }
-        command += pair;
+        command += cvarAssignment;
     }
     if(command != "v")
     {
         self SV_GameSendServerCommand(command, true);
-        sent++;
+        commandsSent++;
     }
-    return sent;
+    return commandsSent;
 }
 
 releaseUpload()
@@ -1170,14 +1277,14 @@ onPresented()
     {
         return;
     }
-    id = self.clipViewPending;
+    clipID = self.clipViewPending;
     self.clipViewPending = undefined;
-    viewer = self openCJ\login::getPlayerID();
-    if(!isDefined(viewer))
+    viewerID = self openCJ\login::getPlayerID();
+    if(!isDefined(viewerID))
     {
         return;
     }
-    session = level.clipViewSession;
-    level thread openCJ\mySQL::mysqlAsyncQuery("CALL countClipView(" + dbStr(session) + "," + id +
-                                               "," + viewer + ")");
+    viewSession = level.clipViewSession;
+    level thread openCJ\mySQL::mysqlAsyncQuery("CALL countClipView(" + dbStr(viewSession) + "," +
+                                               clipID + "," + viewerID + ")");
 }

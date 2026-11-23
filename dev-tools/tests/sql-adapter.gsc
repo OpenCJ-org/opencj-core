@@ -44,6 +44,7 @@ run(player, otherPlayer)
           "GSC receives successful rowset and outcome");
     longQueryBuilderChecks();
     clipSessionChecks();
+    clipPublicationChecks(player);
     demoTransferChecks();
     stats = mysql_async_stats();
     check(stats[0] == 4 && stats[4] == 0, "four workers and no uncollected GSC jobs");
@@ -282,4 +283,55 @@ clipSessionChecks()
         "DELETE FROM demoClipSessions WHERE sessionID IN ('"
         + level.clipSession + "','" + level.clipViewSession + "')");
     setCvar("opencj_clip_view_session", previousViewSession);
+}
+
+
+// Exercise production slot reservation, chunk upload, publication, and browser decoding together.
+clipPublicationChecks(player)
+{
+    nativeID = demoCreateTransient();
+    for(frameIndex = 0; frameIndex < 65; frameIndex++)
+    {
+        addFrameToDemo(nativeID, (frameIndex, 0, 100), (0, 90, 0), 1, 8192, 0, 0, 0, 333);
+    }
+    completeDemo(nativeID);
+    recording = spawnStruct();
+    recording.id = nativeID;
+    recording.first = 0;
+    recording.last = 64;
+    recording.busy = false;
+    recording.permanent = true;
+    recording.date = openCJ\clips::readDatabaseValue("SELECT NOW()");
+    player.clipEdit = recording;
+    player.playingDemo = false;
+    level.mapid_mapID = 1;
+    player openCJ\clips::submit("Publication fixture");
+    check(!isDefined(player.clipUploadNative) && !isDefined(player.clipUploadToken),
+          "successful clip publication releases upload ownership");
+    rows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT clipID,frameCount FROM demoClips"
+        + " WHERE playerID=1 AND description='Publication fixture' AND ready=1");
+    published = isDefined(rows) && rows.size == 1;
+    check(published, "complete clip is visible after publication");
+    if(published)
+    {
+        clipID = int(rows[0][0]);
+        check(int(rows[0][1]) == 65, "published clip retains the selected frame count");
+        chunks = openCJ\mySQL::mysqlSyncQuery(
+            "SELECT COUNT(*) FROM demoClipChunks WHERE clipID=" + clipID);
+        check(isDefined(chunks) && int(chunks[0][0]) == 2,
+              "65-frame clip uploads two bounded chunks");
+        level.clipStorageReady = true;
+        player.clipPage = 0;
+        player.clipTab = "permanent";
+        player openCJ\clips::browser();
+        check(isDefined(player.clipRows) && player.clipRows.size == 1
+              && player.clipRows[0].id == clipID && player.clipRows[0].frameCount == 65,
+              "clip browser exposes the published recording and decoded metadata");
+        openCJ\mySQL::mysqlSyncQuery("DELETE FROM demoClips WHERE clipID=" + clipID);
+    }
+    player.clipEdit = undefined;
+    destroyDemo(nativeID);
+    check(!isDefined(numberOfDemoFrames(nativeID)),
+          "published clip leaves no native upload pin behind");
 }
