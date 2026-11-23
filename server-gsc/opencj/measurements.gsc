@@ -2,22 +2,23 @@
 
 onInit()
 {
-    cmd = openCJ\commands_base::registerCommand(
+    openCJ\commands_base::registerCommand(
         "measure",
         "Shoot two points to measure X, Y and Z distances. Use !measure again to cancel.",
         ::onCommandMeasure, 0, 0, 0);
-    cmd = openCJ\commands_base::registerCommand("height", "Set a height goal",
-                                                ::onCommandMeasureHeight, 0, 0, 0);
-    openCJ\commands_base::addAlias(cmd, "mb");
 
-    cmd = openCJ\commands_base::registerCommand("gap", "Measure a gap", ::onCommandMeasureGap, 0, 0,
-                                                0);
-    openCJ\commands_base::addAlias(cmd, "mg");
+    heightCommand = openCJ\commands_base::registerCommand(
+        "height", "Set a height goal", ::onCommandMeasureHeight, 0, 0, 0);
+    openCJ\commands_base::addAlias(heightCommand, "mb");
 
-    underlyingCmd =
-        openCJ\settings::addSettingBool("rpgtiming", true, "Enable RPG timing prints", undefined);
-    underlyingCmd = openCJ\settings::addSettingBool("rpgangle", false, "Enable RPG angle prints",
-                                                    ::onCommandRPGAngle);
+    gapCommand = openCJ\commands_base::registerCommand(
+        "gap", "Measure a gap", ::onCommandMeasureGap, 0, 0, 0);
+    openCJ\commands_base::addAlias(gapCommand, "mg");
+
+    openCJ\settings::addSettingBool(
+        "rpgtiming", true, "Enable RPG timing prints", undefined);
+    openCJ\settings::addSettingBool(
+        "rpgangle", false, "Enable RPG angle prints", ::onCommandRPGAngle);
 }
 
 onCommandRPGAngle(val)
@@ -156,10 +157,11 @@ onWeaponFired() // Call from thread. Firing weapon is used to measure gaps
         return;
     }
 
-    eyePos = self getEyePos();
-    trace =
-        bulletTrace(eyePos, (eyePos + vectorScale(anglesToForward(self getPlayerAngles()), 10000)),
-                    false, self);
+    maxTraceDistanceUnits = 10000;
+    eyePosition = self getEyePos();
+    aimDirection = anglesToForward(self getPlayerAngles());
+    traceEnd = eyePosition + vectorScale(aimDirection, maxTraceDistanceUnits);
+    trace = bulletTrace(eyePosition, traceEnd, false, self);
     if (isDefined(self.measureHud))
     {
         self acceptMeasureTrace(trace);
@@ -261,10 +263,11 @@ onCommandMeasure(args)
     self thread stopMeasureOn("spawned_spectator");
 }
 
-stopMeasureOn(event)
+// Finishing one measurement also stops its other lifecycle listeners.
+stopMeasureOn(eventName)
 {
     self endon("measure_finished");
-    self waittill(event);
+    self waittill(eventName);
     self stopMeasure();
 }
 
@@ -279,6 +282,7 @@ stopMeasure()
     self notify("measure_finished");
 }
 
+// A missed shot keeps the current point; a second hit reports and releases the HUD.
 acceptMeasureTrace(trace)
 {
     if (!isDefined(trace) || !isDefined(trace["position"]) || !isDefined(trace["fraction"]) ||
@@ -300,17 +304,17 @@ acceptMeasureTrace(trace)
     self iprintlnbold(result);
 }
 
-measureResult(first, second)
+measureResult(firstPoint, secondPoint)
 {
-    return "Distance (units): X: " + measureDecimal(abs(second[0] - first[0])) +
-           "  Y: " + measureDecimal(abs(second[1] - first[1])) +
-           "  Z: " + measureDecimal(abs(second[2] - first[2]));
+    return "Distance (units): X: " + measureDecimal(abs(secondPoint[0] - firstPoint[0])) +
+           "  Y: " + measureDecimal(abs(secondPoint[1] - firstPoint[1])) +
+           "  Z: " + measureDecimal(abs(secondPoint[2] - firstPoint[2]));
 }
 
-measureDecimal(value)
+measureDecimal(distanceUnits)
 {
-    // The util formatter truncates. Round here and retain a trailing .0.
-    tenths = int(value * 10 + 0.5);
-    whole = int(tenths / 10);
-    return "" + whole + "." + (tenths - whole * 10);
+    // Axis distances are nonnegative. Round instead of truncating, retaining a trailing .0.
+    roundedTenths = int(distanceUnits * 10 + 0.5);
+    wholeUnits = int(roundedTenths / 10);
+    return "" + wholeUnits + "." + (roundedTenths - wholeUnits * 10);
 }

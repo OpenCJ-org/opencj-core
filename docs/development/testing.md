@@ -369,5 +369,6 @@ configstrings; client rendering still requires an in-game check.
 The measurement runner uses the shared engine/source selection and defaults to
 mp_killhouse. It places a synthetic player above an actual multiplayer spawn,
 then checks a real weapon trace, axis distances, rounding, misses, cancellation
-and lifecycle cleanup. No historical experimental binary is needed. The check
-covers server calculations and HUD state, not rendered text placement.
+and lifecycle cleanup through synthetic death, spawn and disconnect notifications.
+No historical experimental binary is needed. The check covers server calculations
+and HUD state, not rendered text placement or a physical network disconnect.
