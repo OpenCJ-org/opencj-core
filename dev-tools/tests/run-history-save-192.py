@@ -280,18 +280,33 @@ _request(query, policy, key, scope, queueWaitMs, retainRows)
 """
         sql_script.write_text(sql_source)
         test_source = fixture.read_text()
-        assert "    a extraSaveChecks();" in test_source
-        test_source = test_source.replace(
-            "    a extraSaveChecks();",
-            "    a extraSaveChecks();\n"
-            '    check(openCJ\\publicationCapacity::run(), "publication retry and receipt recovery");\n'
-            "    openCJ\\sqlAdapterTest::run(a,b);\n"
-            "    openCJ\\sqlAdapterTest::queueForMapChange();",
+        extra_suites = r"""
+additionalSuites(firstPlayer, secondPlayer)
+{
+    check(openCJ\publicationCapacity::run(), "publication retry and receipt recovery");
+    openCJ\sqlAdapterTest::run(firstPlayer, secondPlayer);
+    openCJ\sqlAdapterTest::queueForMapChange();
+}
+""".strip()
+        test_source, replacements = re.subn(
+            r"(?ms)^additionalSuites\s*\([^)]*\)\s*\{.*?^\}",
+            lambda match: extra_suites,
+            test_source,
         )
-        test_source = test_source.replace(
-            "main()\n{",
-            'main()\n{\n    if(getCvarInt("sql_adapter_stage")==1){openCJ\\sqlAdapterTest::afterMap();return;}',
+        assert replacements == 1, "Expected one additional-suite entry point"
+        map_resume = r"""
+    if(getCvarInt("sql_adapter_stage") == 1)
+    {
+        openCJ\sqlAdapterTest::afterMap();
+        return;
+    }
+"""
+        test_source, replacements = re.subn(
+            r"(?m)^(main\s*\(\s*\)\s*\{)",
+            lambda match: match.group(0) + map_resume,
+            test_source,
         )
+        assert replacements == 1, "Expected one fixture main function"
         fixture.write_text(test_source)
         values = {}
         for line in lines:

@@ -1,183 +1,255 @@
-// #192 verification only. Runner supplies a disposable schema and observes warnings.
+// Isolated persistence regression. The runner supplies a disposable schema and observes warnings.
 main()
 {
     level.history192Checks = 0;
     level.history192Failures = 0;
-    expected = getCvar("history192_database");
-    if(getSubStr(expected, 0, 18) != "opencj_verify_192_")
+    if(!initializeDatabase())
     {
         return;
     }
+
+    firstPlayer = addTestClient();
+    secondPlayer = addTestClient();
+    wait 0.2;
+    check(isDefined(firstPlayer) && isDefined(secondPlayer),
+          "two isolated test clients connected");
+    if(!isDefined(firstPlayer) || !isDefined(secondPlayer))
+    {
+        finish();
+        return;
+    }
+    firstPlayer initialize();
+    secondPlayer initialize();
+
+    verifySaveOwnership(firstPlayer, secondPlayer);
+    publishedRunID = firstPlayer verifyLatePositionReply();
+    firstPlayer verifySuccessfulPublication(publishedRunID);
+    failedRunID = firstPlayer verifyFailedPublication(publishedRunID);
+    incompleteDemoChecks(failedRunID, publishedRunID);
+    firstPlayer verifyDelayedRunReplies();
+    firstPlayer extraSaveChecks();
+    additionalSuites(firstPlayer, secondPlayer);
+    finish();
+}
+
+// The SQL-adapter runner replaces this hook in its private copy to run extra suites
+// and the final map-change scenario. The standalone history suite ends normally.
+additionalSuites(firstPlayer, secondPlayer)
+{
+}
+
+// Reject any schema outside the disposable namespace before submitting test writes.
+initializeDatabase()
+{
+    databaseName = getCvar("history192_database");
+    databasePrefix = "opencj_verify_192_";
+    if(getSubStr(databaseName, 0, databasePrefix.size) != databasePrefix)
+    {
+        return false;
+    }
     // A refused connection must leave a clean, retryable pool.
+    unavailablePort = 1;
+    workerCount = 4;
     failedPool = mysql_async_initializer(getCvar("db_host"), getCvar("db_user"), getCvar("db_pass"),
-                                         expected, 1, 4);
+                                         databaseName, unavailablePort, workerCount);
     check(!isDefined(failedPool), "failed pool initialization returns undefined without crashing");
     check(!isDefined(mysql_async_create_query("SELECT 1")),
           "query without an initialized pool fails immediately");
     openCJ\mySQL::onInit();
     rows = openCJ\mySQL::mysqlSyncQuery("SELECT DATABASE()");
-    check(isDefined(rows) && rows[0][0] == expected,
+    check(isDefined(rows) && rows[0][0] == databaseName,
           "connected only to disposable verification database");
     openCJ\statistics::onInit();
     openCJ\demoRecording::onInit();
     wait 1;
-    wrapperChecks();
+    verifyQueryResults();
+    verifyConnectionRecovery();
+    verifyQuerySizeBounds();
+    verifyParallelReplies();
 
-    a = addTestClient();
-    b = addTestClient();
-    wait 0.2;
-    check(isDefined(a) && isDefined(b), "two isolated test clients connected");
-    if(!isDefined(a) || !isDefined(b))
-    {
-        finish();
-        return;
-    }
-    a initialize();
-    b initialize();
-    run = newRun();
-    instance = scalar("SELECT createRunInstance(" + run + ")");
-    a selectRun(run, instance);
-    a save(1, 1000);
-    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 1 &&
-              a.history192Warnings == 0,
+    return true;
+}
+
+// Exercise ordinary saves, account/map rejection, takeover, and replayed writes.
+verifySaveOwnership(firstPlayer, secondPlayer)
+{
+    runID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + runID + ")");
+    firstPlayer selectRun(runID, originalInstance);
+    firstPlayer save(1, 1000);
+    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 1 &&
+              firstPlayer.history192Warnings == 0,
           "normal save persists without ownership warning");
-    a save(2, 2000);
-    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 2 &&
-              a.history192Warnings == 0,
+    firstPlayer save(2, 2000);
+    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 2 &&
+              firstPlayer.history192Warnings == 0,
           "second normal save persists");
-    resumed = scalar("SELECT historyLoad(1,1," + run + ")");
-    check(resumed == instance + 1, "resume advances ownership generation");
-    a selectRun(run, resumed);
-    a save(3, 3000);
-    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 3 &&
-              a.history192Warnings == 0,
+    resumedInstance = scalar("SELECT historyLoad(1,1," + runID + ")");
+    check(resumedInstance == originalInstance + 1, "resume advances ownership generation");
+    firstPlayer selectRun(runID, resumedInstance);
+    firstPlayer save(3, 3000);
+    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 3 &&
+              firstPlayer.history192Warnings == 0,
           "resumed session saves normally");
-    check(!isDefined(scalar("SELECT historyLoad(1,2," + run + ")")),
+    check(!isDefined(scalar("SELECT historyLoad(1,2," + runID + ")")),
           "different account cannot claim run");
-    check(!isDefined(scalar("SELECT historyLoad(2,1," + run + ")")),
+    check(!isDefined(scalar("SELECT historyLoad(2,1," + runID + ")")),
           "different map cannot claim run");
 
-    taken = scalar("SELECT historyLoad(1,1," + run + ")");
-    b selectRun(run, taken);
-    a save(4, 4000);
-    check(a.history192Warnings == 1 &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 3,
+    currentInstance = scalar("SELECT historyLoad(1,1," + runID + ")");
+    secondPlayer selectRun(runID, currentInstance);
+    firstPlayer save(4, 4000);
+    check(firstPlayer.history192Warnings == 1 &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 3,
           "stale session write blocked after real takeover");
-    b save(4, 4000);
-    check(b.history192Warnings == 0 &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 4,
+    secondPlayer save(4, 4000);
+    check(secondPlayer.history192Warnings == 0 &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 4,
           "new owner remains able to save");
-    check(scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + run) == taken,
+    check(scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + runID) == currentInstance,
           "rejected stale write does not change current ownership");
 
     // A repeated identical request is not another session, but SQL ROW_COUNT is zero.
-    b save(4, 4000);
-    check(b.history192Warnings == 0 &&
-              scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + run) == taken &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 4,
+    secondPlayer save(4, 4000);
+    check(secondPlayer.history192Warnings == 0 &&
+              scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + runID) == currentInstance &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 4,
           "replayed save succeeds without duplicate or false ownership warning");
 
+    secondPlayer verifyStorageFailure(runID, currentInstance);
+}
+
+// A real insert error must not be mistaken for another session taking ownership.
+verifyStorageFailure(runID, instanceNumber)
+{
     // Force an actual storage error, without any ownership change.
-    sql("CREATE TRIGGER history192_fail BEFORE INSERT ON playerSaves FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='history192 injected failure'");
-    b.history192Warnings = 0;
-    b save(5, 5000);
-    check(b.history192Warnings == 1 && isSubStr(b.history192WarningMessage, "Database error") &&
-              scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + run) == taken,
+    sql("CREATE TRIGGER history192_fail"
+        + " BEFORE INSERT ON playerSaves FOR EACH ROW"
+        + " SIGNAL SQLSTATE '45000'"
+        + " SET MESSAGE_TEXT = 'history192 injected failure'");
+    self.history192Warnings = 0;
+    self save(5, 5000);
+    check(self.history192Warnings == 1 && isSubStr(self.history192WarningMessage, "Database error") &&
+              scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + runID) == instanceNumber,
           "storage failure is reported as database error, not ownership conflict");
-    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 4,
+    check(scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 4,
           "failed storage write adds no save");
     sql("DROP TRIGGER history192_fail");
-    b.history192Warnings = 0;
-    b save(5, 5000);
-    check(b.history192Warnings == 0 &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 5,
+    self.history192Warnings = 0;
+    self save(5, 5000);
+    check(self.history192Warnings == 0 &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 5,
           "same owner can save after storage failure clears");
+}
 
+// Continue from the stale owner above, then switch to a new run before its reply arrives.
+verifyLatePositionReply()
+{
     // Delay only result delivery in the test copy; the SQL operation is real.
-    fresh = newRun();
-    freshInstance = scalar("SELECT createRunInstance(" + fresh + ")");
-    a.history192Warnings = 0;
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self.history192Warnings = 0;
     level.history192DelayedQuery = "SELECT savePosition(";
-    a thread delayedSave();
-    a waittill("history192_result_ready");
-    a selectRun(fresh, freshInstance);
-    a waittill("history192_save_done");
+    self thread delayedSave();
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self waittill("history192_save_done");
     level.history192DelayedQuery = undefined;
-    check(a.history192Warnings == 0 &&
-              scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + fresh) == freshInstance,
+    check(self.history192Warnings == 0 &&
+              scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + replacementRunID) == replacementInstance,
           "old run response is ignored after switching runs");
-    a.history192Warnings = 0;
-    a save(1, 1000);
-    check(a.history192Warnings == 0 &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + fresh) == 1,
+    self.history192Warnings = 0;
+    self save(1, 1000);
+    check(self.history192Warnings == 0 &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + replacementRunID) == 1,
           "new run remains savable after delayed response");
 
+    return replacementRunID;
+}
+
+// Publish a real native recording and verify its stored chunks and category references.
+verifySuccessfulPublication(runID)
+{
     // Finish/publish an actual native demo through the current production path.
-    cp = spawnStruct();
-    cp.id = 1;
-    a.history192Warnings = 0;
-    sql("INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives,FPSMode,ele,anyPct,hardTAS) VALUES(" +
-        fresh + ",1,1000,1,0,0,0,0,'125',0,0,0)");
-    finished = a openCJ\playerRuns::onRunFinished(cp, "'125',0,0,0,0");
-    check(finished && scalar("SELECT COUNT(*) FROM playerRuns WHERE runID=" + fresh +
+    checkpoint = spawnStruct();
+    checkpoint.id = 1;
+    self.history192Warnings = 0;
+    sql("INSERT INTO checkpointStatistics("
+        + "runID, cpID, timePlayed, saveCount, loadCount, explosiveJumps, "
+        + "explosiveLaunches, doubleExplosives, FPSMode, ele, anyPct, hardTAS)"
+        + " VALUES(" +
+        runID + ",1,1000,1,0,0,0,0,'125',0,0,0)");
+    finished = self openCJ\playerRuns::onRunFinished(checkpoint, "'125',0,0,0,0");
+    check(finished && scalar("SELECT COUNT(*) FROM playerRuns WHERE runID=" + runID +
                              " AND finishTimeStamp IS NOT NULL") == 1,
           "normal finish stored by current owner");
-    a makeDemo(fresh);
-    a openCJ\demoRecording::onRunFinished();
-    for(i = 0; i < 200; i++)
-    {
-        if(isDefined(level.demoPersisting) && level.demoPersisting == 0)
-        {
-            break;
-        }
-        wait 0.05;
-    }
-    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + fresh + " AND ready=1") == 1,
+    self makeDemo(runID);
+    self openCJ\demoRecording::onRunFinished();
+    waitForDemoPublication();
+    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + runID + " AND ready=1") == 1,
           "finished demo published successfully");
-    check(scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + fresh) == 2,
+    check(scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + runID) == 2,
           "all native demo chunks persisted");
-    check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + fresh) == 3,
+    check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + runID) == 3,
           "published demo receives category references");
-    check(a.history192Warnings == 0,
+    check(self.history192Warnings == 0,
           "normal demo publication does not produce profile-conflict warning");
+}
 
+// A failed candidate must leave both its finish record and the previous winner intact.
+verifyFailedPublication(winnerRunID)
+{
+    checkpoint = spawnStruct();
+    checkpoint.id = 1;
     // Failed publication must preserve the already-recorded finish.
-    failedDemo = newRun();
-    failedInstance = scalar("SELECT createRunInstance(" + failedDemo + ")");
-    a selectRun(failedDemo, failedInstance);
-    sql("INSERT INTO checkpointStatistics(runID,cpID,timePlayed,saveCount,loadCount,explosiveJumps,explosiveLaunches,doubleExplosives,FPSMode,ele,anyPct,hardTAS) VALUES(" +
-        failedDemo + ",1,900,1,0,0,0,0,'125',0,0,0)");
-    check(a openCJ\playerRuns::onRunFinished(cp, "'125',0,0,0,0"),
+    candidateRunID = newRun();
+    candidateInstance = scalar("SELECT createRunInstance(" + candidateRunID + ")");
+    self selectRun(candidateRunID, candidateInstance);
+    sql("INSERT INTO checkpointStatistics("
+        + "runID, cpID, timePlayed, saveCount, loadCount, explosiveJumps, "
+        + "explosiveLaunches, doubleExplosives, FPSMode, ele, anyPct, hardTAS)"
+        + " VALUES(" +
+        candidateRunID + ",1,900,1,0,0,0,0,'125',0,0,0)");
+    check(self openCJ\playerRuns::onRunFinished(checkpoint, "'125',0,0,0,0"),
           "second demo fixture finish stored");
-    sql("CREATE TRIGGER history192_demo_fail BEFORE INSERT ON demoChunks FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='history192 injected demo failure'");
-    a makeDemo(failedDemo);
-    a openCJ\demoRecording::onRunFinished();
-    for(i = 0; i < 200; i++)
-    {
-        if(isDefined(level.demoPersisting) && level.demoPersisting == 0)
-        {
-            break;
-        }
-        wait 0.05;
-    }
-    check(scalar("SELECT COUNT(*) FROM playerRuns WHERE runID=" + failedDemo +
+    sql("CREATE TRIGGER history192_demo_fail"
+        + " BEFORE INSERT ON demoChunks FOR EACH ROW"
+        + " SIGNAL SQLSTATE '45000'"
+        + " SET MESSAGE_TEXT = 'history192 injected demo failure'");
+    self makeDemo(candidateRunID);
+    self openCJ\demoRecording::onRunFinished();
+    waitForDemoPublication();
+    check(scalar("SELECT COUNT(*) FROM playerRuns WHERE runID=" + candidateRunID +
                  " AND finishTimeStamp IS NOT NULL") == 1,
           "failed demo publication retains leaderboard finish");
-    check(a.history192Warnings == 0, "failed demo publication does not blame another profile");
-    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + failedDemo) == 0 &&
-              scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + failedDemo) == 0,
+    check(self.history192Warnings == 0, "failed demo publication does not blame another profile");
+    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + candidateRunID) == 0 &&
+              scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + candidateRunID) == 0,
           "failed candidate is removed instead of published");
-    check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + failedDemo) == 0,
+    check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + candidateRunID) == 0,
           "failed candidate receives no winner references");
-    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + fresh + " AND ready=1") == 1 &&
-              scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + fresh) == 2 &&
-              scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + fresh) == 3,
+    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + winnerRunID + " AND ready=1") == 1 &&
+              scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + winnerRunID) == 2 &&
+              scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + winnerRunID) == 3,
           "working demo and category references survive failed upload");
     sql("DROP TRIGGER history192_demo_fail");
-    incompleteDemoChecks(failedDemo, fresh);
-    a verifyDelayedRunReplies();
-    a extraSaveChecks();
-    finish();
+    return candidateRunID;
+}
+
+// Publication normally completes quickly; ten seconds bounds a failed regression.
+waitForDemoPublication()
+{
+    maxPolls = 200;
+    pollIntervalSeconds = 0.05;
+    for(attempt = 0; attempt < maxPolls; attempt++)
+    {
+        if(isDefined(level.demoPersisting) && level.demoPersisting == 0)
+        {
+            return;
+        }
+        wait pollIntervalSeconds;
+    }
+    check(false, "demo publication completes within ten seconds");
 }
 
 initialize()
@@ -190,19 +262,19 @@ initialize()
     self openCJ\statistics::onPlayerConnect();
 }
 
-selectRun(run, instance)
+selectRun(runID, instanceNumber)
 {
-    self openCJ\playerRuns::setRunIDAndInstanceNumber(run, instance);
+    self openCJ\playerRuns::setRunIDAndInstanceNumber(runID, instanceNumber);
     self.playerRuns_runFinished = false;
 }
 
-save(count, played)
+save(saveCount, timePlayedMs)
 {
-    self openCJ\statistics::setSaveCount(count);
+    self openCJ\statistics::setSaveCount(saveCount);
     self openCJ\statistics::setLoadCount(0);
     self openCJ\statistics::setExplosiveLaunches(0);
     self.startTime = 0;
-    self.stopTime = played;
+    self.stopTime = timePlayedMs;
     self openCJ\historySave::saveToDatabase((10, 20, 30), (0, 90, 0), undefined, undefined, 0, 0, 1,
                                             "125", 0);
 }
@@ -238,30 +310,32 @@ scalar(query)
     return int(rows[0][0]);
 }
 
-makeDemo(id)
+makeDemo(runID)
 {
-    check(createDemo(id) == id, "native demo buffer created");
-    for(i = 0; i < 70; i++)
+    check(createDemo(runID) == runID, "native demo buffer created");
+    // Cross the native 64-frame chunk boundary with a short second chunk.
+    frameCount = 70;
+    for(i = 0; i < frameCount; i++)
     {
-        addFrameToDemo(id, (i * 1.0, 20, 30), (0, 90, 0), 1, 8192, 0, 0, 0, 125, 1,
+        addFrameToDemo(runID, (i * 1.0, 20, 30), (0, 90, 0), 1, level.demoFlags.onGround, 0, 0, 0, 125, 1,
                        self getEntityNumber());
     }
     self.demoRecordings = [];
-    rec = spawnStruct();
-    rec.id = id;
-    rec.failed = false;
-    rec.finishing = false;
-    self.demoRecordings["" + id] = rec;
+    recording = spawnStruct();
+    recording.id = runID;
+    recording.failed = false;
+    recording.finishing = false;
+    self.demoRecordings["" + runID] = recording;
 }
 
-check(ok, label)
+check(passed, label)
 {
     level.history192Checks++;
-    if(!ok)
+    if(!passed)
     {
         level.history192Failures++;
     }
-    printf("HISTORY192 CHECK " + ok + ": " + label + "\n");
+    printf("HISTORY192 CHECK " + passed + ": " + label + "\n");
 }
 observation(label, reproduced)
 {
@@ -273,10 +347,10 @@ finish()
            " checks=" + level.history192Checks + "\n");
 }
 
-wrapperChecks()
+verifyQueryResults()
 {
-    ok = sql("CREATE TABLE history192_probe(id INT PRIMARY KEY) ENGINE=InnoDB");
-    check(isDefined(ok) && ok.size == 0, "successful async DDL returns empty success");
+    resultRows = sql("CREATE TABLE history192_probe(id INT PRIMARY KEY) ENGINE=InnoDB");
+    check(isDefined(resultRows) && resultRows.size == 0, "successful async DDL returns empty success");
     rows = sql("SELECT id FROM history192_probe");
     check(isDefined(rows) && rows.size == 0, "empty SELECT remains a successful result");
     check(!isDefined(sql("SELECT id FROM history192_missing")), "SQL error returns undefined");
@@ -284,11 +358,20 @@ wrapperChecks()
     check(isDefined(rows) && rows.size == 0, "no-result wrapper reports successful write");
     check(!isDefined(openCJ\mySQL::mysqlAsyncQueryNosave("INSERT INTO history192_probe VALUES(1)")),
           "no-result wrapper propagates duplicate-key error");
-    sql("CREATE PROCEDURE history192_multi() BEGIN SELECT 17; SELECT 18; END");
+    sql("CREATE PROCEDURE history192_multi()"
+        + " BEGIN"
+        + " SELECT 17;"
+        + " SELECT 18;"
+        + " END");
     rows = sql("CALL history192_multi()");
     check(isDefined(rows) && rows.size == 1 && int(rows[0][0]) == 17,
           "CALL retains first rowset and drains following results");
-    sql("CREATE PROCEDURE history192_late_error() BEGIN SELECT 19; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected trailing failure'; END");
+    sql("CREATE PROCEDURE history192_late_error()"
+        + " BEGIN"
+        + " SELECT 19;"
+        + " SIGNAL SQLSTATE '45000'"
+        + " SET MESSAGE_TEXT = 'injected trailing failure';"
+        + " END");
     check(!isDefined(sql("CALL history192_late_error()")),
           "error after first CALL rowset is not accepted as success");
     check(scalar("SELECT 20") == 20, "worker remains usable after trailing CALL failure");
@@ -297,15 +380,18 @@ wrapperChecks()
     rows = openCJ\mySQL::mysqlSyncQuery("SELECT 21");
     check(isDefined(rows) && int(rows[0][0]) == 21,
           "sync connection remains usable after trailing CALL failure");
+}
 
-    id = scalar("SELECT CONNECTION_ID()");
-    openCJ\mySQL::mysqlSyncQuery("KILL " + id);
+verifyConnectionRecovery()
+{
+    connectionID = scalar("SELECT CONNECTION_ID()");
+    openCJ\mySQL::mysqlSyncQuery("KILL " + connectionID);
     check(scalar("SELECT 22") == 22, "worker reconnects before the next new statement");
 
     openCJ\mySQL::mysqlSyncQuery("START TRANSACTION");
     openCJ\mySQL::mysqlSyncQuery("INSERT INTO history192_probe VALUES(3)");
-    syncId = openCJ\mySQL::mysqlSyncQuery("SELECT CONNECTION_ID()");
-    sql("KILL " + syncId[0][0]);
+    connectionRows = openCJ\mySQL::mysqlSyncQuery("SELECT CONNECTION_ID()");
+    sql("KILL " + connectionRows[0][0]);
     check(!isDefined(openCJ\mySQL::mysqlSyncQuery("INSERT INTO history192_probe VALUES(4)")),
           "lost transaction connection cannot reconnect and continue writing");
     check(!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")),
@@ -314,46 +400,62 @@ wrapperChecks()
     rows = openCJ\mySQL::mysqlSyncQuery("SELECT COUNT(*) FROM history192_probe WHERE id IN (3,4)");
     check(isDefined(rows) && int(rows[0][0]) == 0,
           "next sync operation reconnects with both transaction writes absent");
+}
 
-    handle = openCJ\mySQL::mysqlAsyncLongQuerySetup();
-    openCJ\mySQL::mysqlAsyncLongQueryAppend(handle, "SELECT 7");
-    pad = "";
-    for(i = 0; i < 250; i++)
+verifyQuerySizeBounds()
+{
+    maxQueryBytes = 10 * 1024;
+    paddingChunkBytes = 250;
+    completePaddingChunks = 40;
+    queryPrefix = "SELECT 7";
+    trailingPaddingBytes = maxQueryBytes - queryPrefix.size -
+                           completePaddingChunks * paddingChunkBytes;
+    queryBuilder = openCJ\mySQL::mysqlAsyncLongQuerySetup();
+    openCJ\mySQL::mysqlAsyncLongQueryAppend(queryBuilder, queryPrefix);
+    paddingChunk = "";
+    for(i = 0; i < paddingChunkBytes; i++)
     {
-        pad += " ";
+        paddingChunk += " ";
     }
-    for(i = 0; i < 40; i++)
+    for(i = 0; i < completePaddingChunks; i++)
     {
-        openCJ\mySQL::mysqlAsyncLongQueryAppend(handle, pad);
+        openCJ\mySQL::mysqlAsyncLongQueryAppend(queryBuilder, paddingChunk);
     }
-    openCJ\mySQL::mysqlAsyncLongQueryAppend(handle, getSubStr(pad, 0, 232));
-    rows = openCJ\mySQL::mysqlAsyncLongQueryExecuteSave(handle);
+    openCJ\mySQL::mysqlAsyncLongQueryAppend(queryBuilder, getSubStr(paddingChunk, 0, trailingPaddingBytes));
+    rows = openCJ\mySQL::mysqlAsyncLongQueryExecuteSave(queryBuilder);
     check(isDefined(rows) && int(rows[0][0]) == 7, "query at exact 10 KiB boundary succeeds");
 
-    handle = openCJ\mySQL::mysqlAsyncLongQuerySetup();
-    openCJ\mySQL::mysqlAsyncLongQueryAppend(handle, "INSERT INTO history192_probe VALUES(2)");
-    accepted = true;
-    for(i = 0; i < 41; i++)
+    queryBuilder = openCJ\mySQL::mysqlAsyncLongQuerySetup();
+    openCJ\mySQL::mysqlAsyncLongQueryAppend(queryBuilder, "INSERT INTO history192_probe VALUES(2)");
+    appendAccepted = true;
+    for(i = 0; i <= completePaddingChunks; i++)
     {
-        accepted = openCJ\mySQL::mysqlAsyncLongQueryAppend(handle, pad);
+        appendAccepted = openCJ\mySQL::mysqlAsyncLongQueryAppend(queryBuilder, paddingChunk);
     }
-    check(!accepted, "oversized append is rejected");
-    check(!isDefined(openCJ\mySQL::mysqlAsyncLongQueryExecuteSave(handle)),
+    check(!appendAccepted, "oversized append is rejected");
+    check(!isDefined(openCJ\mySQL::mysqlAsyncLongQueryExecuteSave(queryBuilder)),
           "overflowed query returns immediately without executing its prefix");
     check(scalar("SELECT COUNT(*) FROM history192_probe WHERE id=2") == 0,
           "rejected long query has no write side effect");
+}
 
+verifyParallelReplies()
+{
+    queryCount = 40;
+    maxPolls = 200;
+    pollIntervalSeconds = 0.05;
     level.history192Parallel = 0;
-    for(i = 0; i < 40; i++)
+    for(i = 0; i < queryCount; i++)
     {
         thread parallelQuery(i);
     }
-    for(i = 0; i < 200 && level.history192Parallel < 40; i++)
+    for(i = 0; i < maxPolls && level.history192Parallel < queryCount; i++)
     {
-        wait 0.05;
+        wait pollIntervalSeconds;
     }
-    check(level.history192Parallel == 40, "all concurrent query waiters completed");
+    check(level.history192Parallel == queryCount, "all concurrent query waiters completed");
 }
+
 parallelQuery(value)
 {
     rows = sql("SELECT " + value + ",SLEEP(0.01)");
@@ -362,76 +464,81 @@ parallelQuery(value)
 }
 extraSaveChecks()
 {
-    run = newRun();
-    instance = scalar("SELECT createRunInstance(" + run + ")");
-    query = "SELECT savePosition(" + run + "," + instance +
+    runID = newRun();
+    instanceNumber = scalar("SELECT createRunInstance(" + runID + ")");
+    query = "SELECT savePosition(" + runID + "," + instanceNumber +
             ",1,2,3,0,90,0,1000,1,0,0,0,0,NULL,'125',0,NULL,NULL)";
+    requestCount = 8;
+    maxPolls = 200;
+    pollIntervalSeconds = 0.05;
     level.history192DuplicateDone = 0;
-    for(i = 0; i < 8; i++)
+    for(i = 0; i < requestCount; i++)
     {
-        thread duplicateSave(query, instance);
+        thread duplicateSave(query, instanceNumber);
     }
-    for(i = 0; i < 200 && level.history192DuplicateDone < 8; i++)
+    for(i = 0; i < maxPolls && level.history192DuplicateDone < requestCount; i++)
     {
-        wait 0.05;
+        wait pollIntervalSeconds;
     }
-    check(level.history192DuplicateDone == 8 &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 1,
+    check(level.history192DuplicateDone == requestCount &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 1,
           "concurrent identical saves store exactly one position");
-    changed = "SELECT savePosition(" + run + "," + instance +
+    changedPositionQuery = "SELECT savePosition(" + runID + "," + instanceNumber +
               ",99,2,3,0,90,0,1000,1,0,0,0,0,NULL,'125',0,NULL,NULL)";
-    check(scalar(changed) == instance &&
-              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + run) == 2,
+    check(scalar(changedPositionQuery) == instanceNumber &&
+              scalar("SELECT COUNT(*) FROM playerSaves WHERE runID=" + runID) == 2,
           "equal run counters do not discard a different position");
     messageRows = [];
     messageRows[0] = [];
     messageRows[0][0] = undefined;
-    client = self;
-    client selectRun(run, instance);
-    msg =
-        client openCJ\runStorage::resultMessage(run, instance, messageRows, "Checkpoint progress");
-    check(isSubStr(msg, "Database error"),
+    self selectRun(runID, instanceNumber);
+    message =
+        self openCJ\runStorage::resultMessage(runID, instanceNumber, messageRows, "Checkpoint progress");
+    check(isSubStr(message, "Database error"),
           "NULL checkpoint result with unchanged owner is a storage error");
-    sql("SELECT createRunInstance(" + run + ")");
-    msg =
-        client openCJ\runStorage::resultMessage(run, instance, messageRows, "Checkpoint progress");
-    check(isSubStr(msg, "another session"),
+    sql("SELECT createRunInstance(" + runID + ")");
+    message =
+        self openCJ\runStorage::resultMessage(runID, instanceNumber, messageRows, "Checkpoint progress");
+    check(isSubStr(message, "another session"),
           "checkpoint warning requires confirmed ownership change");
-    client selectRun(run, instance + 1);
-    msg =
-        client openCJ\runStorage::resultMessage(run, instance, messageRows, "Checkpoint progress");
-    check(msg == "", "checkpoint response from previous instance is ignored");
+    self selectRun(runID, instanceNumber + 1);
+    message =
+        self openCJ\runStorage::resultMessage(runID, instanceNumber, messageRows, "Checkpoint progress");
+    check(message == "", "checkpoint response from previous instance is ignored");
 }
-duplicateSave(query, instance)
+duplicateSave(query, instanceNumber)
 {
     rows = sql(query);
-    check(isDefined(rows) && isDefined(rows[0][0]) && int(rows[0][0]) == instance,
+    check(isDefined(rows) && isDefined(rows[0][0]) && int(rows[0][0]) == instanceNumber,
           "concurrent duplicate confirms current ownership");
     level.history192DuplicateDone++;
 }
 
-incompleteDemoChecks(candidate, winner)
+incompleteDemoChecks(candidateRunID, winnerRunID)
 {
     // Recreate only a disposable candidate; exercise the promotion gate directly.
-    sql("INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount,ready,createdAt) SELECT " +
-        candidate +
+    sql("INSERT INTO demoRuns("
+        + "runID, mapID, routeID, FPSMode, modeMask, timePlayed, "
+        + "explosiveJumps, frameCount, ready, createdAt)"
+        + " SELECT " +
+        candidateRunID +
         ",mapID,routeID,FPSMode,modeMask,900,explosiveJumps,70,0,createdAt FROM demoRuns WHERE runID=" +
-        winner);
-    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + candidate + " AND ready=0") == 1,
+        winnerRunID);
+    check(scalar("SELECT COUNT(*) FROM demoRuns WHERE runID=" + candidateRunID + " AND ready=0") == 1,
           "incomplete demo candidate fixture exists");
-    check(!openCJ\demoRecording::promote(candidate),
+    check(!openCJ\demoRecording::promote(candidateRunID),
           "promotion rejects a candidate with no chunks");
-    sql("INSERT INTO demoChunks VALUES(" + candidate + ",0,'a')");
-    check(!openCJ\demoRecording::promote(candidate), "promotion rejects a missing final chunk");
-    sql("INSERT INTO demoChunks VALUES(" + candidate + ",2,'b')");
-    check(!openCJ\demoRecording::promote(candidate),
+    sql("INSERT INTO demoChunks VALUES(" + candidateRunID + ",0,'a')");
+    check(!openCJ\demoRecording::promote(candidateRunID), "promotion rejects a missing final chunk");
+    sql("INSERT INTO demoChunks VALUES(" + candidateRunID + ",2,'b')");
+    check(!openCJ\demoRecording::promote(candidateRunID),
           "promotion rejects a gap despite matching chunk count");
-    sql("UPDATE demoChunks SET chunkNum=1,payload='' WHERE runID=" + candidate + " AND chunkNum=2");
-    check(!openCJ\demoRecording::promote(candidate), "promotion rejects an empty chunk");
-    check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + winner) == 3 &&
-              scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + winner) == 2,
+    sql("UPDATE demoChunks SET chunkNum=1,payload='' WHERE runID=" + candidateRunID + " AND chunkNum=2");
+    check(!openCJ\demoRecording::promote(candidateRunID), "promotion rejects an empty chunk");
+    check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + winnerRunID) == 3 &&
+              scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + winnerRunID) == 2,
           "all incomplete candidates preserve the current demo");
-    sql("DELETE FROM demoRuns WHERE runID=" + candidate);
+    sql("DELETE FROM demoRuns WHERE runID=" + candidateRunID);
 }
 
 // Let real writes finish, then switch the player's run before delivering their replies.
