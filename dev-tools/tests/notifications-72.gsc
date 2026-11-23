@@ -6,6 +6,7 @@ main()
     level.n72PlayerCount = 32;
     level.n72Public = [];
     level.n72Private = [];
+    level.n72Sounds = [];
     databaseName = getCvar("notify72_database");
     if(getSubStr(databaseName, 0, 17) != "opencj_verify_72_")
     {
@@ -34,6 +35,12 @@ main()
     verifyCheckpointQueueLifecycle(player, "stop");
     verifyCheckpointQueueLifecycle(player, "disconnect");
     verifyFinishQueueLifecycle(player);
+    verifyFinishSoundDelivery(player);
+    verifyFinishSoundQueue(player, "load");
+    verifyFinishSoundQueue(player, "run");
+    verifyFinishSoundQueue(player, "disconnect");
+    verifyLateFinishSound(player, "demo");
+    verifyLateFinishSound(player, "cleared");
     printf("N72 COMPLETE failures=" + level.n72Failures + " checks=" + level.n72Checks + "\n");
 }
 
@@ -442,6 +449,13 @@ waitForCheckpoint()
 // Hold delivery after the real query completes, so stale-result checks remain real.
 observeSQLResult(query)
 {
+    if(isDefined(level.n72DelaySound) && level.n72DelaySound &&
+       isSubStr(query, "timeAhead AS"))
+    {
+        level.n72SoundWaiting = true;
+        wait .20;
+        return;
+    }
     if(!isDefined(level.n72DelayCheckpoint) || !level.n72DelayCheckpoint)
     {
         return;
@@ -592,4 +606,91 @@ verifyFinishQueueLifecycle(player)
     waitForSQLWorkers(workerCount);
     check(level.n72Public.size == publicMessageCount && level.n72Private.size == privateMessageCount,
           "disconnected finish read cannot publish a late announcement");
+}
+
+captureFinishSound(soundAlias)
+{
+    level.n72Sounds[level.n72Sounds.size] = soundAlias;
+    self playLocalSound(soundAlias);
+}
+
+prepareFinishedRun(player)
+{
+    player.playerRuns_runID = 1002;
+    player.runInstanceNumber = 1;
+    player.playerRuns_runFinished = true;
+    player.finishSoundRun = undefined;
+    player.playingDemo = false;
+}
+
+verifyFinishSoundDelivery(player)
+{
+    prepareFinishedRun(player);
+    soundCount = level.n72Sounds.size;
+    player openCJ\finishSounds::onRunFinished(1002);
+    check(level.n72Sounds.size == soundCount + 1 &&
+          level.n72Sounds[soundCount] == "opencj_route_record",
+          "saved podium finish selects the record sound");
+    player openCJ\finishSounds::onRunFinished(1002);
+    check(level.n72Sounds.size == soundCount + 1,
+          "duplicate finish callback cannot repeat the sound");
+    check(openCJ\finishSounds::soundForResult(undefined) == "opencj_route_complete",
+          "unavailable ranking keeps ordinary completion feedback");
+}
+
+verifyFinishSoundQueue(player, cancellation)
+{
+    prepareFinishedRun(player);
+    soundCount = level.n72Sounds.size;
+    workerCount = occupySQLWorkers();
+    player thread openCJ\finishSounds::onRunFinished(1002);
+    wait .05;
+    stats = mysql_async_stats();
+    check(stats[1] == 1, cancellation + " finish sound waits in queue");
+    if(cancellation == "load")
+    {
+        player openCJ\notifications::action("load");
+    }
+    else if(cancellation == "run")
+    {
+        player openCJ\playerRuns::setRunIDAndInstanceNumber(9999, 1);
+    }
+    else
+    {
+        player openCJ\notifications::onDisconnect();
+    }
+    wait .10;
+    stats = mysql_async_stats();
+    check(stats[1] == 0 && stats[2] == workerCount,
+          cancellation + " removes obsolete sound query before a worker is free");
+    waitForSQLWorkers(workerCount);
+    check(level.n72Sounds.size == soundCount, cancellation + " cannot play an obsolete finish sound");
+}
+
+verifyLateFinishSound(player, changedState)
+{
+    prepareFinishedRun(player);
+    soundCount = level.n72Sounds.size;
+    level.n72DelaySound = true;
+    level.n72SoundWaiting = false;
+    player thread openCJ\finishSounds::onRunFinished(1002);
+    for(attempt = 0; attempt < 100 && !level.n72SoundWaiting; attempt++)
+    {
+        wait .05;
+    }
+    check(level.n72SoundWaiting, "finish sound reached delayed result delivery");
+    // Bypass cancellation so the current-run/demo guard must reject the late reply itself.
+    if(changedState == "demo")
+    {
+        player.playingDemo = true;
+    }
+    else
+    {
+        player.playerRuns_runID = undefined;
+        player.runInstanceNumber = undefined;
+    }
+    wait .30;
+    check(level.n72Sounds.size == soundCount, changedState + " state rejects a late finish sound");
+    level.n72DelaySound = false;
+    player.playingDemo = false;
 }

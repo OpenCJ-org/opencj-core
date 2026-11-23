@@ -351,7 +351,7 @@
     {
       "id": "notifications-engine",
       "category": "integration",
-      "description": "Notification HUD lifetime, saved preferences, exact-category records and late replies.",
+      "description": "Notification HUD lifetime, saved preferences, exact-category records, completion sounds and late replies.",
       "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets.",
       "effects": "Copies schema only into a disposable database container; 32 synthetic players and HUD plugin. Removes engine, database and temporary credentials; retains private logs.",
       "files": [

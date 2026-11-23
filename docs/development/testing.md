@@ -182,8 +182,8 @@ The notification engine group uses the shared GSC runner's `--binary` and
 `--scripts` inputs and requires `mp_killhouse`. It copies only schema and routines
 from the selected Compose database into a separate disposable MySQL container.
 Its synthetic runs exercise exact record categories, preference persistence,
-late replies and HUD cleanup for 32 players. Set `OPENCJ_TEST_ASSET_DIR` to a
+late replies, completion-sound delivery and HUD cleanup for 32 players. Set `OPENCJ_TEST_ASSET_DIR` to a
 directory inside the checkout to select an explicit `mod.ff` and `z_opencj.iwd`;
 otherwise it uses the installation's compiled assets. Temporary credentials and
 containers are removed after success or failure. This engine check does not
-establish how the effect looks in a human game client.
+establish how the effect looks or sounds in a human game client.

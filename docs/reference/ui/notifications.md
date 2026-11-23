@@ -99,6 +99,14 @@ A running SQL read retains its connection until completion within the pool's
 read deadline. Late replies still check the run, instance and checkpoint layout;
 a cleared run identity is rejected safely.
 
+## Finish sounds
+
+The saved finish's podium ranking selects ordinary completion audio or the record
+fanfare. An unavailable ranking result still uses ordinary completion audio.
+A duplicate callback cannot repeat that sound. Loading, changing runs, entering
+demo playback or disconnecting cancels obsolete sound work; late replies still
+check the current run and player before playing anything.
+
 ## Implementation
 
 - server-gsc/opencj/notifications.gsc: preferences, command, edge/result HUDs,

@@ -1,15 +1,67 @@
+// Play one completion sound while this saved finish still owns the player's session.
 onRunFinished(runID)
 {
     self endon("disconnect");
-    rows = self openCJ\mySQL::mysqlAsyncRead(recordQuery(runID));
+    if(isDefined(self.finishSoundRun) && self.finishSoundRun == runID)
+    {
+        return;
+    }
+    runInstance = self openCJ\playerRuns::getRunInstanceNumber();
+    ownerPlayerID = self openCJ\login::getPlayerID();
+    if(!isDefined(runInstance) || !self finishStillCurrent(runID, runInstance, ownerPlayerID))
+    {
+        return;
+    }
+
+    self cancelPending();
+    self endon("finishSoundStop");
+    self.finishSoundRun = runID;
+    self.finishSoundScope = "finish-sound:" + self getEntityNumber();
+    result = self openCJ\mySQL::_request(
+        recordQuery(runID), level.sqlConstants.policyMenu, "", self.finishSoundScope,
+        level.sqlConstants.defaultQueueWaitMs, true);
+    self.finishSoundScope = undefined;
+    if(!self finishStillCurrent(runID, runInstance, ownerPlayerID))
+    {
+        return;
+    }
+
+    rows = undefined;
+    if(isDefined(result))
+    {
+        rows = result.rows;
+    }
     self playLocalSound(soundForResult(rows));
+}
+
+finishStillCurrent(runID, runInstance, ownerPlayerID)
+{
+    return self openCJ\runStorage::isCurrent(runID, runInstance) &&
+           self openCJ\playerRuns::isRunFinished() &&
+           self openCJ\login::getPlayerID() == ownerPlayerID &&
+           self.sessionState == "playing" && !self openCJ\demos::isPlayingDemo();
+}
+
+// Remove queued work and stop its waiter. An already-running read keeps its
+// connection until completion within the pool's deadline; never free it early.
+cancelPending()
+{
+    self notify("finishSoundStop");
+    if(isDefined(self.finishSoundScope))
+    {
+        mysql_async_cancel(self.finishSoundScope, level.sqlConstants.scopeExact,
+                           level.sqlConstants.retainCompletion);
+        self.finishSoundScope = undefined;
+    }
 }
 
 soundForResult(rows)
 {
     // A failed ranking lookup still gets the ordinary completion sound.
-    if (isDefined(rows) && rows.size && isDefined(rows[0][0]) && int(rows[0][0]))
+    if(isDefined(rows) && rows.size && isDefined(rows[0][0]) && int(rows[0][0]))
+    {
         return "opencj_route_record";
+    }
     return "opencj_route_complete";
 }
 

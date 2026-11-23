@@ -209,7 +209,18 @@ class NotificationVerification:
                     raise RuntimeError("Expected one public record announcement")
             path.write_text(source)
 
-    def delay_checkpoint_replies(self):
+    def observe_finish_sounds(self):
+        path = self.mod / "opencj/finishsounds.gsc"
+        source, count = re.subn(
+            r"\bself\s+playLocalSound\s*\(",
+            lambda match: r"self openCJ\platformTest::captureFinishSound(",
+            path.read_text(),
+        )
+        if count != 1:
+            raise RuntimeError("Expected one finish sound output boundary")
+        path.write_text(source)
+
+    def observe_sql_replies(self):
         path = self.mod / "opencj/mysql.gsc"
         source = path.read_text()
         function = re.search(r"(?ms)^_request\s*\([^)]*\)\s*\{.*?^\}", source)
@@ -239,7 +250,8 @@ class NotificationVerification:
         # Account login is outside this fixture; preference loading remains real.
         (self.mod / "opencj/events/playerlogin.gsc").write_text("main()\n{\n}\n")
         self.observe_messages()
-        self.delay_checkpoint_replies()
+        self.observe_finish_sounds()
+        self.observe_sql_replies()
         settings = {
             "db_host": self.database_container,
             "db_user": "notification_fixture",

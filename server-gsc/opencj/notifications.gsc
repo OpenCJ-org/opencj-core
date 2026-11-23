@@ -223,6 +223,7 @@ action(event, text)
     if(event == "load")
     {
         self cancelCheckpoint();
+        self openCJ\finishSounds::cancelPending();
     }
     if(isDefined(text) && self wantsText(event))
     {
@@ -490,4 +491,5 @@ cancelAll()
     self cancelFlash();
     self cancelCheckpoint();
     self cancelResults();
+    self openCJ\finishSounds::cancelPending();
 }
