@@ -10,3 +10,9 @@ map diagram. Both are replaced. The loading image is maintained separately in
 `client-mod/assets/map-previews/mp_bouncer_training-start.png`.
 
 These files change artwork only; map fastfiles, geometry and gameplay stay intact.
+
+The builder verifies both picture layouts before writing generated picture files.
+It writes the replacement archive to a temporary file, verifies its membership,
+checksums and exact changed entries, then replaces the previous output. A failed
+archive verification preserves the previous archive. The output must not resolve
+to the original archive, including through a symbolic link.

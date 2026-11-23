@@ -288,3 +288,12 @@ a synthetic decoder boundary. It does not require libsndfile or source audio.
 For an actual MP3 conversion, run the converter with libsndfile and an explicit
 `--output-dir` as described in the [audio source guide](../../client-mod/audio-source/README.md).
 Compare both resulting WAVs and retain their Pixabay notice when packaging them.
+
+### Bouncer artwork builder
+
+Install `dev-tools/requirements-art.txt` on the Linux build host, then run the
+catalogue's `bouncer-art-unit` command. Synthetic DXT1 images and ZIP archives
+exercise header/length preservation, selected-entry replacement, failed-build
+preservation and source/output aliases. This group does not load game assets or
+replace deployed map files. A real rebuild additionally requires the original
+IWD and the [artwork procedure](../../client-mod/assets/map-previews/README.md).

@@ -685,6 +685,19 @@
       ],
       "commands": [],
       "mode": "unit"
+    },
+    {
+      "id": "bouncer-art-unit",
+      "category": "manual",
+      "description": "Bouncer texture layout and validated archive replacement, including failure preservation and path aliases.",
+      "requires": "Linux host with dev-tools/requirements-art.txt installed; synthetic inputs, no game archive.",
+      "effects": "Temporary images, archives and symlinks only.",
+      "files": [
+        "dev-tools/tests/test_bouncer_art.py"
+      ],
+      "commands": [
+        "python3 -B -m unittest discover -s dev-tools/tests -p test_bouncer_art.py -v"
+      ]
     }
   ]
 }
