@@ -105,6 +105,8 @@ main()
     check(a.testScale==12 && isDefined(a.mapBoostOwned),"cancelled cooldown cannot clear new owner");
     a openCJ\mapBoost::cancel();
 
+    a verifyFailedRunRestore();
+    a verifyRestoreDoesNotArchiveItself();
     a editorBoostTest();
 
     // Compare real engine movement using the original loop and production loop.
@@ -240,4 +242,44 @@ editorBoostTest()
     check(self.testScale==1 && !isDefined(self.mapBoostOwned),"editor restore-origin travel cancels boost");
     check(distance(self.origin,self.testSaves[0].origin)<4,"editor restore-origin reaches destination");
     self.cpc=undefined;
+}
+
+// A failed history read must not move the player or turn the old run into a fresh one.
+verifyFailedRunRestore()
+{
+    self place((-1000, -2200, 1669));
+    self.playerRuns_runID = 321;
+    self.runInstanceNumber = 7;
+    self.playerRuns_runStarted = false;
+    self.playerRuns_runPaused = true;
+    self.playerRuns_runFinished = true;
+    self.testNoSaves = true;
+    self.testHistoryFailure = true;
+    previousOrigin = self.origin;
+
+    self openCJ\playerRuns::restoreRun(999);
+
+    check(distance(self.origin, previousOrigin) < 4,
+          "failed history load preserves the player's position");
+    check(!self.playerRuns_runStarted && self.playerRuns_runPaused && self.playerRuns_runFinished,
+          "failed history load preserves the existing run flags");
+    check(self.playerRuns_runID == 321 && self.runInstanceNumber == 7,
+          "failed history load preserves the existing run identity");
+    self.testHistoryFailure = undefined;
+    self.testNoSaves = false;
+}
+
+// Restoring the current run must not archive the same run after its load succeeds.
+verifyRestoreDoesNotArchiveItself()
+{
+    self.playerRuns_runID = 999;
+    self.runInstanceNumber = 7;
+    self.playerRuns_runFinishing = true;
+    self.testArchivedRunID = undefined;
+
+    self openCJ\playerRuns::restoreRun(999);
+    wait .1;
+
+    check(!isDefined(self.testArchivedRunID), "restoring a run never archives that same run");
+    check(!self.playerRuns_runFinishing, "successful restoration clears the old finishing state");
 }

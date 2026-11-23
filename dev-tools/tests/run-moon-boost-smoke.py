@@ -45,6 +45,7 @@ keep = {
     'historysave': None,
 }
 custom = {
+    ('playerruns', 'archiveRun'): 'self.testArchivedRunID = runID; return;',
     ('login', 'isLoggedIn'): 'return true;',
     ('settings', 'areSettingsLoaded'): 'return true;',
     ('settings', 'getSetting'): 'return false;',
@@ -65,6 +66,10 @@ custom = {
 # Match the current read/write wrapper contract: a SELECT returns rows, never a
 # scalar status. Keep the real bounded history loader for empty-run relocation.
 history_rows = """
+    if(isDefined(self) && isDefined(self.testHistoryFailure) && self.testHistoryFailure)
+    {
+        return undefined;
+    }
     rows = [];
     if(isSubStr(query, "SELECT s.saveNumber"))
     {

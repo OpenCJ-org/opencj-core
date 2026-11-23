@@ -304,11 +304,12 @@ restoreRun(runID) // Call this function as a thread
     }
     if(self openCJ\historySave::historyLoad(runID)) // Sets runID and runInstanceNumber
     {
+        self.playerRuns_runFinishing = false;
         self.playerRuns_runStarted = true;
         self.playerRuns_runPaused = false;
         self.playerRuns_runFinished = false;
         error = self openCJ\savePosition::canLoadError(0);
-        if(isDefined(oldRunID))
+        if(isDefined(oldRunID) && oldRunID != runID)
         {
             self thread archiveRun(oldRunID);
         }
@@ -326,13 +327,9 @@ restoreRun(runID) // Call this function as a thread
     }
     else
     {
-        //todo: prevent loading of runs without saves
-        self.playerRuns_runStarted = true;
-        self.playerRuns_runPaused = false;
-        self.playerRuns_runFinished = false;
-        self iprintlnbold("Run has no save. Starting at spawn.");
-        self openCJ\checkpoints::resetPlayerCheckpointsToStart();
-        self openCJ\events\spawnPlayer::main(false);
+        // The history loader handles valid empty runs itself. False means the
+        // restore failed or became stale; do not change the old run or report success.
+        return;
     }
 
     self openCJ\events\onRunRestored::main();
