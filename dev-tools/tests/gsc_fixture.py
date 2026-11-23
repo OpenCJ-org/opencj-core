@@ -180,6 +180,15 @@ def install_observation_hooks(mod, fixture_name):
                 ),
             ),
         ),
+        "map-menu.gsc": (
+            "opencj/menus/maplist.gsc",
+            (
+                (
+                    r"\bself\s+setClientCvar\s*\(",
+                    r"self openCJ\platformTest::recordMapCvar(",
+                ),
+            ),
+        ),
         "graphics-menu.gsc": (
             "opencj/graphics.gsc",
             (

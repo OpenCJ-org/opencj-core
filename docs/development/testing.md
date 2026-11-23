@@ -395,5 +395,5 @@ The map-menu fixture exercises the real browser with three installed stock maps,
 including page boundaries, case-insensitive search, clearing selection, route
 overview state, and obsolete listeners after disconnect or map end. A two-row
 fixture page exercises pagination; the normal twenty-row setting is checked
-before that override. Notifications are synthetic and client rendering is not
-observed.
+before that override. A forwarding hook records requested client cvar values.
+Notifications are synthetic and client rendering is not observed.

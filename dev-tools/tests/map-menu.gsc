@@ -61,6 +61,8 @@ verifyPagesAndSelection()
     check(self.mapList["curPage"] == 1 && self.mapList["maxPage"] == 2,
           "three maps span two small pages");
     check(self.displayedMaps.size == 2, "first page respects row limit");
+    check(self mapCvar("map0") == "mp_killhouse" && self mapCvar("map1") == "mp_crossfire",
+          "client receives the displayed map names");
 
     self openCJ\menus\mapList::_handleSelectionChange("1junk");
     check(self.mapList["selected"] == -1, "numeric-prefix selection is rejected");
@@ -69,11 +71,16 @@ verifyPagesAndSelection()
     self openCJ\menus\mapList::_handleSelectionChange("1");
     check(self.mapListRouteMap == "mp_crossfire", "selection uses displayed map index");
     check(self.mapListRouteView.rows.size == 1, "selection includes its route overview");
+    check(self mapCvar("route0") == "Fixture route" && self mapCvar("route9") == "",
+          "client route rows include the selection and clear unused slots");
 
     self openCJ\menus\mapList::_handlePageChange("page_next");
     check(self.mapList["curPage"] == 2 && self.displayedMaps.size == 1,
           "last page contains the remaining map");
     check(self.displayedMaps[0]["name"] == "mp_crash", "paging keeps catalogue order");
+    check(self mapCvar("map0") == "mp_crash" && self mapCvar("map1") == "",
+          "short final page clears old client rows");
+    check(self mapCvar("pagetxt") == "2/2", "client receives current pagination");
     check(self.mapList["selected"] == -1 && !isDefined(self.mapListRouteMap),
           "page change clears selection and route overview");
 }
@@ -103,6 +110,8 @@ verifySearch()
     check(self.mapList["maxEntries"] == 0 && self.displayedMaps.size == 0 &&
               self.mapList["maxPage"] == 1,
           "empty search remains a valid empty page");
+    check(self mapCvar("selectedname") == "" && self mapCvar("route0") == "",
+          "empty search clears client selection and route text");
 }
 
 // A synthetic disconnect leaves the entity observable while exercising listener ownership.
@@ -143,4 +152,20 @@ check(condition, message)
         level.failures++;
     }
     printf("MAP MENU CHECK " + int(condition) + ": " + message + "\n");
+}
+
+// Installed only in the fixture copy; retain the real engine call.
+recordMapCvar(name, value)
+{
+    if(!isDefined(self.mapMenuTestCvars))
+    {
+        self.mapMenuTestCvars = [];
+    }
+    self.mapMenuTestCvars[name] = value;
+    self setClientCvar(name, value);
+}
+
+mapCvar(suffix)
+{
+    return self.mapMenuTestCvars[level.mapListDvarPrefix + suffix];
 }
