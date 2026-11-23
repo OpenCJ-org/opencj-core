@@ -220,7 +220,7 @@
     {
       "id": "tutorial-mode",
       "category": "integration",
-      "description": "Tutorial mode: auto-FPS rule on synthetic player states, tutorial save flag and auto-FPS script API.",
+      "description": "Tutorial mode: auto-FPS choices and shot timing on synthetic player states, checkpoint landing targets, tutorial save flag and auto-FPS script API.",
       "requires": "Initialized Compose, an engine built with server-ext/opencj_autofps.cpp, licensed game/compiled mod and mp_killhouse.",
       "effects": "Isolated servers, a compiled test plugin and a test client; private logs, no gameplay database. Does not prove a real client applies com_maxfps.",
       "files": [

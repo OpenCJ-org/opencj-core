@@ -58,6 +58,7 @@ checkAutoFPSOnTestClient()
     check(player notifyAutoFPSRPGFired(), "RPG shot notification accepted");
     check(player setAutoFPSEnabled(false), "disabling auto FPS succeeds");
     check(player getAutoFPS() == 0, "disabled auto FPS reports 0");
+    checkCheckpointProjection(player);
 }
 
 check(passed, label)
@@ -70,4 +71,51 @@ check(passed, label)
     }
     level.tutorialFailures++;
     printf("TUTORIAL MODE FAIL: " + label + "\n");
+}
+
+// Check the landing target through the production checkpoint selection helper.
+checkCheckpointProjection(player)
+{
+    checkpoint = spawnStruct();
+    checkpoint.origin = (10, 20, 30);
+    point = player openCJ\tutorial::_nearestCheckpointPoint(checkpoint);
+    check(point == checkpoint.origin, "checkpoint without an area uses its origin");
+
+    checkpoint.area = [];
+    checkpoint.area[0] = (0, 0, 50);
+    checkpoint.area[1] = (100, 0, 50);
+    checkpoint.area[2] = (100, 100, 50);
+    checkpoint.area[3] = (0, 100, 50);
+    player setOrigin((-20, 30, 200));
+    point = player openCJ\tutorial::_nearestCheckpointPoint(checkpoint);
+    check(distanceSquared(point, (0, 30, 50)) < 0.001,
+          "outside player aims at the nearest edge");
+
+    reversedArea = [];
+    for(i = 0; i < checkpoint.area.size; i++)
+    {
+        reversedArea[i] = checkpoint.area[checkpoint.area.size - 1 - i];
+    }
+    checkpoint.area = reversedArea;
+    point = player openCJ\tutorial::_nearestCheckpointPoint(checkpoint);
+    check(distanceSquared(point, (0, 30, 50)) < 0.001,
+          "reversed polygon keeps the same landing target");
+
+    player setOrigin((40, 60, 200));
+    point = player openCJ\tutorial::_nearestCheckpointPoint(checkpoint);
+    check(distanceSquared(point, (40, 60, 50)) < 0.001,
+          "player above the area keeps its horizontal position");
+
+    checkpoint.area[0] = (0, 0, 0);
+    checkpoint.area[1] = (100, 0, 100);
+    checkpoint.area[2] = (100, 100, 100);
+    checkpoint.area[3] = (0, 100, 0);
+    player setOrigin((50, -20, 200));
+    point = player openCJ\tutorial::_nearestCheckpointPoint(checkpoint);
+    check(distanceSquared(point, (50, 0, 50)) < 0.001,
+          "sloped edge interpolates the landing height");
+
+    point = openCJ\tutorial::_nearestPointOnCheckpointEdge(
+        (20, 30, 100), (1, 2, 3), (1, 2, 3));
+    check(point == (1, 2, 3), "zero-length edge avoids division");
 }

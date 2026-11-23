@@ -54,6 +54,7 @@ to their listed harnesses, not standalone commands.
 | Platform or movement code | `platform-engine`, `movement-engine`, `sticky-walls`, `native-unit` |
 | Menus or notification artwork | `compiled-menus`, `demo-menu-source`, `notification-assets` |
 | Query growth or capacity | `capacity` |
+| Tutorial mode, automatic FPS or landing targets | `tutorial-mode` |
 | Discord listener | `discord-socket` |
 
 ## Integration prerequisites and isolation
@@ -87,6 +88,12 @@ chunks without running the capacity benchmark.
 The platform support runner accepts the same `--engine PATH` option. Choose one
 fixture variant per run; conflicting variant flags are rejected before creating
 a fixture server.
+
+The tutorial auto-FPS runner accepts a candidate engine path inside the checkout,
+either as a host path or its `/workspace/...` container path. It checks movement
+choices and shot timing through a native plugin. The paired GSC fixture checks
+mode flags, the native script API and checkpoint landing targets; neither proves
+that a real client applies the requested `com_maxfps` value.
 
 The `camera-engine` runner builds its probe from tracked source by default.
 The `native-unit` command requires g++ with C++17 and 32-bit development libraries,
