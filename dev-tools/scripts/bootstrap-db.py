@@ -29,12 +29,21 @@ def check(db):
 
 def bootstrap(db):
     """Refuse existing data; a partial failure requires deliberate recovery."""
-    occupied = db.query(
-        "SELECT (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE())"
-        "+(SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema=DATABASE())"
-        "+(SELECT COUNT(*) FROM information_schema.events WHERE event_schema=DATABASE());"
+    existing_object_count = db.query(
+        """
+        SELECT
+            (SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE())
+          + (SELECT COUNT(*)
+             FROM information_schema.routines
+             WHERE routine_schema = DATABASE())
+          + (SELECT COUNT(*)
+             FROM information_schema.events
+             WHERE event_schema = DATABASE());
+        """
     )
-    if occupied != "0":
+    if existing_object_count != "0":
         raise RuntimeError("Bootstrap requires an empty database; existing data was preserved.")
     if db.query("SELECT COUNT(*) FROM mysql.user WHERE User='opencj' AND Host='%';") != "1":
         raise RuntimeError(
@@ -90,16 +99,16 @@ def main():
     parser.add_argument(
         "--check", action="store_true", help="Only validate the existing migration ledger"
     )
-    args = parser.parse_args()
-    if not args.check and not args.confirm_empty:
+    options = parser.parse_args()
+    if not options.check and not options.confirm_empty:
         parser.error(
             "Creation requires --confirm-empty; this command never replaces an existing schema."
         )
-    container = args.container or compose_database_container()
+    container = options.container or compose_database_container()
     with MySQL(container, DATABASE) as db:
         migrate.lock_database(db, DATABASE)
-        count = check(db) if args.check else bootstrap(db)
-    print(f"Database verified: {count} recorded migrations.")
+        migration_count = check(db) if options.check else bootstrap(db)
+    print(f"Database verified: {migration_count} recorded migrations.")
 
 
 if __name__ == "__main__":

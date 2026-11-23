@@ -36,10 +36,10 @@ def test_files(root):
 
 
 def load_catalogue(root=ROOT):
-    data = json.loads((root / CATALOGUE).read_text())
-    if data.get("version") != 1 or not isinstance(data.get("groups"), list):
+    catalogue = json.loads((root / CATALOGUE).read_text())
+    if catalogue.get("version") != 1 or not isinstance(catalogue.get("groups"), list):
         raise ValueError("Unsupported test catalogue format")
-    groups = data["groups"]
+    groups = catalogue["groups"]
     identifiers = set()
     listed_files = set()
     for group in groups:
@@ -162,10 +162,11 @@ def main():
                 for group in groups:
                     print(group["id"] + " [" + group["category"] + "] " + group["description"])
         elif options.command == "_unit":
-            allowed = {
-                name for group in groups if group.get("mode") == "unit" for name in group["files"]
-            }
-            if options.file not in allowed:
+            allowed_unit_files = set()
+            for group in groups:
+                if group.get("mode") == "unit":
+                    allowed_unit_files.update(group["files"])
+            if options.file not in allowed_unit_files:
                 raise ValueError("Not a reviewed unit-test entry point: " + options.file)
             return run_unit(ROOT / options.file)
         else:
