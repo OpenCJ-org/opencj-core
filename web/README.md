@@ -143,3 +143,5 @@ The Discord button uses Discord's brand color `#5865f2`.
   Discord server, as Discord's brand guidelines allow.
 - Fonts (Chakra Petch, Barlow, JetBrains Mono) are loaded from Google Fonts
   under the SIL Open Font License and are not bundled.
+- The logo's letters are outlines of Chakra Petch Bold (SIL Open Font License
+  1.1); see [brand/README.md](brand/README.md) for the files and how to rebuild them.
