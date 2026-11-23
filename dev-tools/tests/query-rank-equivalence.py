@@ -1,127 +1,143 @@
-"""Frozen-before versus current finish-query comparisons, including exact ties."""
+"""Check current finish expectations and historical equivalence on competitive runs."""
 
-from pathlib import Path
-import runpy
-import ast
-import random
+import argparse
 import json
-import sys
-import importlib.util
-import re
-from query_sql import ROOT, MySQL, query
+import random
+import runpy
+
+from query_sql import MySQL
+from query_sql import ROOT
+from query_sql import query
+from sql_run_fixture import RUN_COLUMNS
+from sql_run_fixture import RunFixture
+from sql_run_fixture import fixture_cte
+from sql_run_fixture import prepend_fixture_tables
+
+RANDOM_SEED = 160626
+RANDOM_SCENARIOS = 300
+RUNS_PER_SCENARIO = 40
+CURRENT_PLAYER_ID = 10
 
 
-def verify(db):
+def verify_current_expectations(database):
+    """Include tutorial exclusions in independent current-behavior expectations."""
     checks = 0
-    # Existing hand-authored sound expectations, updated only for stable route IDs.
-    # Loading the module builds cases without running its database entry point.
-    namespace = runpy.run_path(str(ROOT / "dev-tools/tests/finish-sounds.py"))
-    for name, sql, expected in namespace['cases']:
-        actual = db.query(sql)
-        assert actual == str(expected), (name, actual, expected)
-        prefix = sql[: sql.index(',finished AS')]
-        old = prefix + ',' + query('sound', True, current=100)[5:] + ';'
-        assert db.query(old) == actual, (name, 'old versus new')
-        checks += 1
-    spec = importlib.util.spec_from_file_location(
-        'records72', ROOT / 'dev-tools/tests/record-notices-72.py'
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    checks += module.verify(db.query)
-    for name, sql, *_ in module.cases():
-        prefix = sql[: sql.index(',finished AS')]
-        assert db.query(prefix + ',' + query('notice', True, current=100)[5:] + ';') == db.query(
-            sql
-        ), (name, 'notice old/new')
-        checks += 1
-    rng = random.Random(160626)
-    cols = [
-        'runID',
-        'playerID',
-        'mapID',
-        'finishcpID',
-        'finishTimeStamp',
-        'FPSMode',
-        'ele',
-        'anyPct',
-        'hb',
-        'hardTAS',
+    for filename in ("finish-sounds.py", "record-notices-72.py"):
+        scenarios = runpy.run_path(str(ROOT / "dev-tools/tests" / filename))
+        checks += scenarios["verify"](database.query)
+    return checks
+
+
+def randomized_runs(randomizer, scenario_index):
+    """Use repeatable ties, missing finishes/statistics, modes and rival owners."""
+    runs = []
+    for run_id in range(1, RUNS_PER_SCENARIO + 1):
+        is_current_run = run_id == RUNS_PER_SCENARIO
+        player_id = CURRENT_PLAYER_ID if is_current_run else randomizer.randrange(1, 13)
+        map_id = 1 if is_current_run or randomizer.random() < 0.9 else 2
+        checkpoint_id = randomizer.choice((1, 1, 1, 2, 3, 4))
+        finished = is_current_run or randomizer.random() < 0.9
+        fps_mode = randomizer.choice(("125", "mix", "hax"))
+        modes = [randomizer.randrange(2) for _ in range(4)]
+        if scenario_index % 3 == 0:
+            modes = [1] * 4 if is_current_run else [0] * 4
+            fps_mode = "hax" if is_current_run else "mix"
+            checkpoint_id = 1
+        with_statistics = randomizer.random() < 0.97
+        time_ms = 0
+        rpg_count = 0
+        if with_statistics:
+            time_ms = randomizer.choice((100, 100, 200, 300))
+            rpg_count = randomizer.randrange(3)
+        used_elevators, any_percent, halfbeat, hard_tas = modes
+        runs.append(
+            RunFixture(
+                run_id,
+                player_id=player_id,
+                map_id=map_id,
+                checkpoint_id=checkpoint_id,
+                finished=finished,
+                fps_mode=fps_mode,
+                used_elevators=used_elevators,
+                any_percent=any_percent,
+                halfbeat=halfbeat,
+                hard_tas=hard_tas,
+                time_ms=time_ms,
+                rpg_count=rpg_count,
+                with_statistics=with_statistics,
+                tutorial=0,  # Frozen queries predate tutorial eligibility.
+            )
+        )
+    return runs
+
+
+def ranking_tables(runs):
+    statistics = [run.statistics_row() for run in runs if run.with_statistics]
+    return [
+        fixture_cte(
+            "playerRuns",
+            RUN_COLUMNS,
+            [run.player_run_row("2026-01-01 00:00:00") for run in runs],
+        ),
+        fixture_cte(
+            "checkpoints",
+            ["cpID", "finishRouteID", "retired"],
+            [[1, 1, 0], [2, 1, 0], [3, 2, 0], [4, 1, 1]],
+        ),
+        fixture_cte("routes", ["routeID", "routeName"], [[1, "easy"], [2, "hard"]]),
+        fixture_cte(
+            "checkpointStatistics",
+            ["runID", "cpID", "timePlayed", "explosiveJumps"],
+            statistics,
+        ),
+        fixture_cte(
+            "playerDisplayNames",
+            ["playerID", "playerName"],
+            [[player_id, "Synthetic " + str(player_id)] for player_id in range(1, 13)],
+        ),
     ]
 
-    def lit(v):
-        if v is None:
-            return 'NULL'
-        return str(v) if isinstance(v, int) else "'" + v.replace("'", "''") + "'"
 
-    def cte(name, columns, rows):
-        return (
-            name
-            + ' AS ('
-            + ' UNION ALL '.join(
-                'SELECT '
-                + ','.join(lit(v) + (' AS ' + c if n == 0 else '') for c, v in zip(columns, row))
-                for n, row in enumerate(rows)
+def verify(database):
+    checks = verify_current_expectations(database)
+    randomizer = random.Random(RANDOM_SEED)
+    for scenario_index in range(RANDOM_SCENARIOS):
+        tables = ranking_tables(randomized_runs(randomizer, scenario_index))
+        for kind in ("sound", "notice"):
+            historical_query = prepend_fixture_tables(
+                query(kind, before=True, current=RUNS_PER_SCENARIO), tables
             )
-            + ')'
-        )
-
-    for iteration in range(300):
-        runs = []
-        stats = []
-        for id in range(1, 41):
-            current = id == 40
-            pid = 10 if current else rng.randrange(1, 13)
-            mapid = 1 if current or rng.random() < 0.9 else 2
-            cp = rng.choice([1, 1, 1, 2, 3, 4])
-            timestamp = '2026-01-01 00:00:00' if current or rng.random() < 0.9 else None
-            fps = rng.choice(['125', 'mix', 'hax'])
-            modes = [rng.randrange(2) for _ in range(4)]
-            if iteration % 3 == 0:
-                modes = [1] * 4 if current else [0] * 4
-                fps = 'hax' if current else 'mix'
-                cp = 1
-            runs.append([id, pid, mapid, cp, timestamp, fps, *modes])
-            if rng.random() < 0.97:
-                stats.append([id, cp, rng.choice([100, 100, 200, 300]), rng.randrange(3)])
-        fixtures = [
-            cte('playerRuns', cols, runs),
-            cte(
-                'checkpoints',
-                ['cpID', 'finishRouteID', 'retired'],
-                [[1, 1, 0], [2, 1, 0], [3, 2, 0], [4, 1, 1]],
-            ),
-            cte('routes', ['routeID', 'routeName'], [[1, 'easy'], [2, 'hard']]),
-            cte('checkpointStatistics', ['runID', 'cpID', 'timePlayed', 'explosiveJumps'], stats),
-            cte(
-                'playerDisplayNames',
-                ['playerID', 'playerName'],
-                [[i, 'Synthetic ' + str(i)] for i in range(1, 13)],
-            ),
-        ]
-        prefix = 'WITH ' + ','.join(fixtures) + ','
-        for kind in ('sound', 'notice'):
-            old = db.query(prefix + query(kind, True, current=40)[5:] + ';')
-            new = db.query(prefix + query(kind, False, current=40)[5:] + ';')
-            assert old == new, (kind, iteration, old, new)
+            current_query = prepend_fixture_tables(
+                query(kind, before=False, current=RUNS_PER_SCENARIO), tables
+            )
+            historical = database.query(historical_query)
+            current = database.query(current_query)
+            assert historical == current, (kind, scenario_index, historical, current)
             checks += 1
     return {
-        'checks': checks,
-        'passed': True,
-        'randomSeed': 160626,
-        'coverage': 'existing expected categories plus randomized exact ties, own repeats, distinct-opponent podium ranks, multiple/retired finishes, missing statistics, incomplete runs, FPS/mode inclusion versus exact categories',
+        "checks": checks,
+        "passed": True,
+        "randomSeed": RANDOM_SEED,
+        "coverage": (
+            "current expected categories including tutorials; 300 repeatable competitive corpora; "
+            "exact ties, own repeats, opponent ranks, retired finishes, missing statistics, "
+            "incomplete runs and mode/FPS eligibility"
+        ),
     }
 
 
-if __name__ == '__main__':
-    import argparse
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--container", required=True)
+    parser.add_argument("--database", required=True)
+    options = parser.parse_args()
+    if not options.container.startswith(("opencj-capacity-db-", "opencj-query-")):
+        parser.error("Select the capacity runner's disposable query container.")
+    if not options.database.startswith(("opencj_verify_190_", "opencj_query_")):
+        parser.error("Select the capacity runner's disposable query schema.")
+    with MySQL(options.container, options.database) as database:
+        print(json.dumps(verify(database)), flush=True)
 
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--container', required=True)
-    p.add_argument('--database', required=True)
-    a = p.parse_args()
-    assert a.container.startswith(
-        ('opencj-capacity-db-', 'opencj-query-')
-    ) and a.database.startswith(('opencj_verify_190_', 'opencj_query_'))
-    with MySQL(a.container, a.database) as db:
-        print(json.dumps(verify(db)), flush=True)
+
+if __name__ == "__main__":
+    main()

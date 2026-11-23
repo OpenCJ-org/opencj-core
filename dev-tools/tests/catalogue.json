@@ -52,6 +52,18 @@
       "mode": "unit"
     },
     {
+      "id": "query-extraction-unit",
+      "category": "portable",
+      "description": "SQL extraction across GSC layout changes, comments, split literals and invalid bindings.",
+      "requires": "Python 3 standard library; no database, engine or Docker daemon.",
+      "effects": "In-memory source fixtures only; no application services or file changes.",
+      "files": [
+        "dev-tools/tests/test_query_sql.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
       "id": "name-policy-unit",
       "category": "portable",
       "description": "Private name-policy normalization, dry runs, failure reporting and receipt permissions.",

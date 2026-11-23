@@ -7,7 +7,7 @@ python3 -B dev-tools/scripts/test.py portable
 ```
 
 This validates the test catalogue, then runs the explicitly reviewed setup,
-discovery, SQL-client, name-policy, client-build, console transport, GeoIP and Discord unit tests plus source/asset checks. It requires
+discovery, SQL-client, SQL-extraction, name-policy, client-build, console transport, GeoIP and Discord unit tests plus source/asset checks. It requires
 Python 3 and Git, but no Docker, initialized installation, database credentials,
 game assets or network access. SQL-client tests use short-lived Python child processes;
 Discord uses a temporary Unix socket. Failures,
@@ -415,3 +415,18 @@ empty versus failed reads, FPS labels, client column values and selected demo ID
 boundaries supply SQL rows and record playback requests; no database or demo
 playback starts. Query-equivalence tests separately execute generated SQL.
 Client rendering and physical disconnects are not observed.
+
+### Query comparison fixtures
+
+The query helper reads literal SQL assignments/returns with explicit fixture
+bindings. It ignores comments and harmless GSC spacing or string wrapping, and
+rejects missing or ambiguous queries and unbound expressions. It is not a GSC
+interpreter; engine fixtures separately exercise the real builders.
+
+Board/checkpoint comparisons retain the historical competitive corpus, including
+tie ordering and latest-save filtering. Finish-ranking checks run the maintained
+current expectations, including tutorial exclusions, then compare historical and
+current queries on 300 repeatable competitive corpora. Tutorial rows are excluded
+from historical equivalence because the frozen queries predate that feature.
+The runners require the capacity suite's disposable database/schema; their
+fixture tables and output must never be directed at gameplay data.
