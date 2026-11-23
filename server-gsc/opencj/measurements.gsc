@@ -2,15 +2,22 @@
 
 onInit()
 {
-    cmd = openCJ\commands_base::registerCommand("measure", "Shoot two points to measure X, Y and Z distances. Use !measure again to cancel.", ::onCommandMeasure, 0, 0, 0);
-    cmd = openCJ\commands_base::registerCommand("height", "Set a height goal", ::onCommandMeasureHeight, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand(
+        "measure",
+        "Shoot two points to measure X, Y and Z distances. Use !measure again to cancel.",
+        ::onCommandMeasure, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("height", "Set a height goal",
+                                                ::onCommandMeasureHeight, 0, 0, 0);
     openCJ\commands_base::addAlias(cmd, "mb");
 
-    cmd = openCJ\commands_base::registerCommand("gap", "Measure a gap", ::onCommandMeasureGap, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("gap", "Measure a gap", ::onCommandMeasureGap, 0, 0,
+                                                0);
     openCJ\commands_base::addAlias(cmd, "mg");
 
-    underlyingCmd = openCJ\settings::addSettingBool("rpgtiming", true, "Enable RPG timing prints", undefined);
-    underlyingCmd = openCJ\settings::addSettingBool("rpgangle", false, "Enable RPG angle prints", ::onCommandRPGAngle);
+    underlyingCmd =
+        openCJ\settings::addSettingBool("rpgtiming", true, "Enable RPG timing prints", undefined);
+    underlyingCmd = openCJ\settings::addSettingBool("rpgangle", false, "Enable RPG angle prints",
+                                                    ::onCommandRPGAngle);
 }
 
 onCommandRPGAngle(val)
@@ -150,9 +157,17 @@ onWeaponFired() // Call from thread. Firing weapon is used to measure gaps
     }
 
     eyePos = self getEyePos();
-    trace = bulletTrace(eyePos, (eyePos + vectorScale(anglesToForward(self getPlayerAngles()), 10000)), false, self);
-    if (isDefined(self.measureHud)) self acceptMeasureTrace(trace);
-    if (!isDefined(self.isMeasuringGap)) return;
+    trace =
+        bulletTrace(eyePos, (eyePos + vectorScale(anglesToForward(self getPlayerAngles()), 10000)),
+                    false, self);
+    if (isDefined(self.measureHud))
+    {
+        self acceptMeasureTrace(trace);
+    }
+    if (!isDefined(self.isMeasuringGap))
+    {
+        return;
+    }
     if (isDefined(trace) && isDefined(trace["position"]))
     {
         self notify("measured", trace["position"]);
@@ -255,7 +270,10 @@ stopMeasureOn(event)
 
 stopMeasure()
 {
-    if (isDefined(self.measureHud)) self.measureHud destroy();
+    if (isDefined(self.measureHud))
+    {
+        self.measureHud destroy();
+    }
     self.measureHud = undefined;
     self.measureFirst = undefined;
     self notify("measure_finished");
@@ -263,7 +281,8 @@ stopMeasure()
 
 acceptMeasureTrace(trace)
 {
-    if (!isDefined(trace) || !isDefined(trace["position"]) || !isDefined(trace["fraction"]) || trace["fraction"] >= 1)
+    if (!isDefined(trace) || !isDefined(trace["position"]) || !isDefined(trace["fraction"]) ||
+        trace["fraction"] >= 1)
     {
         self sendLocalChatMessage("No surface hit. Aim at a surface and shoot again.", true);
         return;
@@ -283,9 +302,9 @@ acceptMeasureTrace(trace)
 
 measureResult(first, second)
 {
-    return "Distance (units): X: " + measureDecimal(abs(second[0] - first[0]))
-        + "  Y: " + measureDecimal(abs(second[1] - first[1]))
-        + "  Z: " + measureDecimal(abs(second[2] - first[2]));
+    return "Distance (units): X: " + measureDecimal(abs(second[0] - first[0])) +
+           "  Y: " + measureDecimal(abs(second[1] - first[1])) +
+           "  Z: " + measureDecimal(abs(second[2] - first[2]));
 }
 
 measureDecimal(value)
