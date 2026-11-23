@@ -285,9 +285,9 @@
     {
       "id": "map-finishes",
       "category": "integration",
-      "description": "Blue2 and Descent finish handlers.",
-      "requires": "Initialized Compose, matching engine/compiled mod and the named map assets.",
-      "effects": "Isolated fixture servers; no human clients or database writes.",
+      "description": "Blue2 and Descent finish flags with real synthetic clients: first/repeated triggers, rejected non-player actors and Descent spectators. Blue2's 13 former weapon pickups remain inert.",
+      "requires": "Initialized Compose, matching engine/compiled mod and named map assets. Shared --binary/--scripts selection; each runner requires its named map.",
+      "effects": "Isolated fixture servers and synthetic clients; gameplay database callbacks disabled; private source/engine hash evidence.",
       "files": [
         "dev-tools/tests/run-blue2-finish-smoke.py",
         "dev-tools/tests/blue2-finish.gsc",

@@ -307,6 +307,16 @@ preservation and source/output aliases. This group does not load game assets or
 replace deployed map files. A real rebuild additionally requires the original
 IWD and the [artwork procedure](../../client-mod/assets/map-previews/README.md).
 
+### Map finish handlers
+
+The Blue2 and Descent runners use the shared isolated-server harness and require
+their named map assets. Real synthetic clients exercise first and repeated
+finish flags; non-player entities are rejected, as are Descent spectators.
+Blue2 also triggers all 13 former weapon pickups with a non-player actor to
+detect residual player-weapon calls. These checks cover handler state and script
+errors, not client presentation or database records. Descent's map script no
+longer owns a separate start timer; OpenCJ owns run timing.
+
 ### Command browser
 
 The command-menu runner exercises registration, alias ranking, live permissions,
