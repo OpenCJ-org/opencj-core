@@ -183,7 +183,7 @@
     {
       "id": "checkpoint-engine",
       "category": "integration",
-      "description": "Checkpoint click orders, elevator modes, draft status, replacement and synthetic large-route reset/backup fixtures.",
+      "description": "Checkpoint click orders, elevator modes, draft-list messages/throttling, replacement and synthetic large-route reset/backup fixtures.",
       "requires": "Initialized Compose, matching built engine and licensed game/compiled mod; launchers accept --binary and --scripts for the exact artifacts under review.",
       "effects": "Runs isolated fixture servers with gameplay database callbacks disabled; retains private source/binary hashes and logs; removes owned containers on completion or failure.",
       "files": [

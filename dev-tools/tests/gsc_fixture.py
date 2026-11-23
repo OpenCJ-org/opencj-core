@@ -142,6 +142,15 @@ def copy_scripts(options, mod):
 def install_observation_hooks(mod, fixture_name):
     """Observe selected side effects only in the isolated script copy."""
     hooks = {
+        "checkpoint-list.gsc": (
+            "opencj/checkpointlist.gsc",
+            (
+                (
+                    r"\bsendLocalChatMessage\s*\(",
+                    r"openCJ\platformTest::recordRouteMessage(",
+                ),
+            ),
+        ),
         "demo-viewing-24.gsc": (
             "opencj/demos.gsc",
             (

@@ -185,6 +185,9 @@ Checkpoint editor and migration launchers use the shared isolated GSC runner.
 They accept `--binary` and `--scripts` to select the artifacts under review,
 validate prerequisites before launch, and retain their actual hashes in private
 evidence. Gameplay database callbacks remain disabled in these fixtures.
+The route-list fixture records chat messages only in its source copy; it checks
+pending/completed labels, throttling and an unavailable database without connecting
+to a gameplay database.
 
 Compiled menu checks require actual Unlinker output from the build being reviewed.
 They inspect command controls and route geometry, and replay startup commands with
