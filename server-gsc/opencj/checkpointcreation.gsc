@@ -1516,26 +1516,39 @@ _drawCommand(command)
     self.cpc.drawCommands++;
 }
 
+// Invalid drafts still show their edges, but have no support plane for height labels.
 _outline(points, color, above)
 {
-    if(!isDefined(above))above=0;
-    height = 6+above;
-    if (openCJ\checkpointArea::validate(points) == "")
-        height += openCJ\checkpointArea::supportOffset(points);
-    if(points.size>=3 && (above>0 || isDefined(self.cpc.heightTarget)))
+    if (!isDefined(above))
     {
-        center=_center(points)-(0,0,12);
-        self _drawCommand("M t "+_vec(center+(0,0,4+openCJ\checkpointArea::supportOffset(points)+above))+";0 1 1 1;0.6;400;Upper +"+above);
-        self _drawCommand("M t "+_vec(center-(0,0,2))+";1 0.7 0 1;0.6;400;Base");
+        above = 0;
     }
+
+    hasValidPlane = openCJ\checkpointArea::validate(points) == "";
+    supportOffset = 0;
+    if (hasValidPlane)
+    {
+        supportOffset = openCJ\checkpointArea::supportOffset(points);
+    }
+
+    height = 6 + above + supportOffset;
+    if (hasValidPlane && (above > 0 || isDefined(self.cpc.heightTarget)))
+    {
+        center = _center(points) - (0, 0, 12);
+        upperLabel = center + (0, 0, 4 + supportOffset + above);
+        baseLabel = center - (0, 0, 2);
+        self _drawCommand("M t " + _vec(upperLabel) + ";0 1 1 1;0.6;400;Upper +" + above);
+        self _drawCommand("M t " + _vec(baseLabel) + ";1 0.7 0 1;0.6;400;Base");
+    }
+
     for (i = 0; i < points.size; i++)
     {
-        a = points[i] - (0, 0, 2);
-        b = points[(i + 1) % points.size] - (0, 0, 2);
-        self _line(a, b, color);
-        self _line(a + (0, 0, height), b + (0, 0, height), color);
-        self _line(a, a + (0, 0, height), color);
-        self _drawCommand("M t " + _vec(a + (0, 0, 10)) + ";1 1 1 1;0.6;400;" + (i + 1));
+        edgeStart = points[i] - (0, 0, 2);
+        edgeEnd = points[(i + 1) % points.size] - (0, 0, 2);
+        self _line(edgeStart, edgeEnd, color);
+        self _line(edgeStart + (0, 0, height), edgeEnd + (0, 0, height), color);
+        self _line(edgeStart, edgeStart + (0, 0, height), color);
+        self _drawCommand("M t " + _vec(edgeStart + (0, 0, 10)) + ";1 1 1 1;0.6;400;" + (i + 1));
     }
 }
 

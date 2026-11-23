@@ -134,6 +134,7 @@ main()
     origin = openCJ\checkpointCreation::restoreOrigin(saved);
     check(origin[2] == 70,
           "volume draft resumes above upper boundary instead of inside curved platform");
+    checkInvalidHeightPreviews();
     printf("BRUSH SELFTEST COMPLETE failures=" + level.brushFailures + "\n");
 }
 area(x1, y1, x2, y2, z)
@@ -156,4 +157,37 @@ check(value, name)
     {
         printf("BRUSH SELFTEST PASS " + name + "\n");
     }
+}
+
+// A corner edit can temporarily stop forming a plane while height editing remains active.
+checkInvalidHeightPreviews()
+{
+    editor = addtestclient();
+    check(isDefined(editor), "preview fixture has a client");
+    if(!isDefined(editor))
+    {
+        return;
+    }
+    wait 0.1;
+    editor.cpc = spawnStruct();
+    editor.cpc.drawCommands = 0;
+    editor.cpc.heightTarget = "upper";
+
+    collinear = [];
+    collinear[0] = (0, 0, 0);
+    collinear[1] = (100, 0, 0);
+    collinear[2] = (200, 0, 0);
+    editor openCJ\checkpointCreation::_outline(collinear, "1 1 1 1", 0);
+    check(editor.cpc.heightTarget == "upper",
+          "collinear preview returns without losing active height editing");
+
+    editor.cpc.heightTarget = undefined;
+    vertical = [];
+    vertical[0] = (0, 0, 0);
+    vertical[1] = (0, 100, 0);
+    vertical[2] = (0, 100, 100);
+    vertical[3] = (0, 0, 100);
+    editor openCJ\checkpointCreation::_outline(vertical, "1 1 1 1", 64);
+    check(!isDefined(editor.cpc.heightTarget),
+          "vertical preview with a saved height returns without enabling height editing");
 }
