@@ -108,9 +108,27 @@ static void checkVisibility()
     check(!shouldHidePlayer(0, 1), "above the hide cylinder remains visible");
 
     g_entities[1].r.currentOrigin[2] = 0;
+    g_entities[1].r.currentOrigin[0] = 50000;
+    check(!shouldHidePlayer(0, 1), "distant players cannot overflow into the hide cylinder");
+    g_entities[1].r.currentOrigin[0] = 0;
     Gsc_Vis_UpdatePlayerVisibility();
     check((g_entities[1].r.clientMask[0] & 1u) != 0, "update hides the subject from its viewer");
     check((g_entities[1].r.clientMask[0] & 2u) == 0, "update leaves the subject visible to itself");
+}
+
+static void checkVisibilityMaskBits()
+{
+    gentity_t viewer = {};
+    gentity_t subject = {};
+    viewer.s.number = 31;
+    setEntityVisibilityForPlayer(&subject, &viewer, true);
+    check(subject.r.clientMask[0] == 0x80000000u, "last bit of first client mask is set");
+    viewer.s.number = 63;
+    setEntityVisibilityForPlayer(&subject, &viewer, true);
+    check(subject.r.clientMask[1] == 0x80000000u, "last bit of second client mask is set");
+    setEntityVisibilityForPlayer(&subject, &viewer, false);
+    check(subject.r.clientMask[1] == 0 && subject.r.clientMask[0] == 0x80000000u,
+          "showing one viewer preserves the other mask word");
 }
 
 static void checkPingVariation()
@@ -145,6 +163,7 @@ static void checkPingVariation()
 int main()
 {
     checkVisibility();
+    checkVisibilityMaskBits();
     checkPingVariation();
     std::printf("NATIVE PLAYER COMPLETE checks=%d\n", checks);
 }

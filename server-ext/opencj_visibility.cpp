@@ -76,14 +76,16 @@ static int getFirstParamEntityNum()
 static void setEntityVisibilityForPlayer(gentity_t *ent, gentity_t *player, bool shouldHide)
 {
     ent->flags &= (~ENTFLAG_INVISIBLE);
-    int clientMaskIdx = player->s.number / (sizeof(uint32_t) * 8);
+    const int bitsPerMaskWord = sizeof(uint32_t) * 8;
+    const int maskWordIndex = player->s.number / bitsPerMaskWord;
+    const uint32_t playerBit = uint32_t(1) << (player->s.number % bitsPerMaskWord);
     if (shouldHide)
     {
-        ent->r.clientMask[clientMaskIdx] |=  (1L << ((uint8_t)player->s.number & 0x1f));
+        ent->r.clientMask[maskWordIndex] |= playerBit;
     }
     else
     {
-        ent->r.clientMask[clientMaskIdx] &= ~(1L << ((uint8_t)player->s.number & 0x1f));
+        ent->r.clientMask[maskWordIndex] &= ~playerBit;
     }
 }
 
@@ -230,7 +232,8 @@ static bool shouldHidePlayer(int viewerNum, int subjectNum)
     {
         return false;
     }
-    int distanceSquared = offsetX * offsetX + offsetY * offsetY;
+    // Map-wide distances can exceed signed 32-bit squares even though the radius is small.
+    long long distanceSquared = (long long)offsetX * offsetX + (long long)offsetY * offsetY;
     return distanceSquared <= opencj_hideCylinder[viewerNum].radiusSquared;
 }
 
