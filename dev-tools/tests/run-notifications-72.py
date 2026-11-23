@@ -220,6 +220,29 @@ class NotificationVerification:
             raise RuntimeError("Expected one finish sound output boundary")
         path.write_text(source)
 
+    def observe_challenge_boundaries(self):
+        path = self.mod / "opencj/challenges.gsc"
+        source, count = re.subn(
+            r"\bself\s+setClientCvar\s*\(",
+            lambda match: r"self openCJ\platformTest::recordChallengeCvar(",
+            path.read_text(),
+        )
+        if not count:
+            raise RuntimeError("Challenge client-output boundary was not found")
+        path.write_text(source)
+
+        path = self.mod / "opencj/mysql.gsc"
+        source, count = re.subn(
+            r"(?m)^mysqlSyncQuery(?=\s*\()", "_n72RealSyncQuery", path.read_text()
+        )
+        if count != 1:
+            raise RuntimeError("Expected one synchronous SQL entry point")
+        source += (
+            "\nmysqlSyncQuery(query)\n{\n"
+            "    return openCJ\\platformTest::observeSyncQuery(query);\n}\n"
+        )
+        path.write_text(source)
+
     def observe_sql_replies(self):
         path = self.mod / "opencj/mysql.gsc"
         source = path.read_text()
@@ -251,6 +274,7 @@ class NotificationVerification:
         (self.mod / "opencj/events/playerlogin.gsc").write_text("main()\n{\n}\n")
         self.observe_messages()
         self.observe_finish_sounds()
+        self.observe_challenge_boundaries()
         self.observe_sql_replies()
         settings = {
             "db_host": self.database_container,

@@ -108,7 +108,10 @@ initialize()
 {
     keys = getArrayKeys(level.challenges);
     // An atomic catalogue refresh changes thresholds without touching earned awards.
-    openCJ\mySQL::mysqlSyncQuery("START TRANSACTION");
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION")))
+    {
+        return;
+    }
     ok = isDefined(openCJ\mySQL::mysqlSyncQuery("UPDATE challenges SET active=0"));
     for(i = 0; ok && i < keys.size; i++)
     {
@@ -140,7 +143,12 @@ initialize()
         openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
         return;
     }
-    openCJ\mySQL::mysqlSyncQuery("COMMIT");
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")))
+    {
+        // A failed commit cannot make the new catalogue safe to use.
+        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        return;
+    }
     level.challengeTierPoints = [];
     for(t = 1; t <= 10; t++)
     {
@@ -264,7 +272,11 @@ refresh(menu)
     {
         rows = self openCJ\mySQL::mysqlAsyncRead(query);
     }
-    if(!isDefined(rows) || !rows.size)
+    if(!isDefined(rows) || !rows.size || !isDefined(rows[0][0]))
+    {
+        return;
+    }
+    if(id != self openCJ\login::getPlayerID())
     {
         return;
     }
@@ -272,6 +284,7 @@ refresh(menu)
     self.challengeRank = rankForPoints(self.challengePoints);
     self setClientCvar("ocj_ch_rank", self.challengeRank);
     self publishProgress();
+    return true;
 }
 publishProgress()
 {
@@ -284,6 +297,7 @@ publishProgress()
     self setClientCvar("ocj_ch_progress_ready", 1);
 }
 
+// Keep accepted award writes alive, but let only one callback report a run's reward.
 awardRun(runID)
 {
     self endon("disconnect");
@@ -291,17 +305,36 @@ awardRun(runID)
     {
         return;
     }
-    before = self.challengePoints;
-    result = self openCJ\mySQL::mysqlAsyncBackground(awardSQL("AND r.runID=" + int(runID)),
-                                                     "run:" + runID);
-    if(!isDefined(result))
+    if(!isDefined(self.challengeAwardPending))
+    {
+        self.challengeAwardPending = [];
+    }
+    runKey = "" + runID;
+    if(isDefined(self.challengeAwardPending[runKey]))
     {
         return;
     }
-    self refresh();
-    if(self.challengePoints > before)
+    self.challengeAwardPending[runKey] = true;
+    playerID = self openCJ\login::getPlayerID();
+    pointsBefore = self.challengePoints;
+
+    // INSERT IGNORE also makes a later retry safe if the earlier write outcome was unknown.
+    result = self openCJ\mySQL::mysqlAsyncBackground(
+        awardSQL("AND r.runID=" + int(runID)), "run:" + runID);
+    if(!isDefined(result) || playerID != self openCJ\login::getPlayerID())
     {
-        self iprintln("Challenge complete! +" + (self.challengePoints - before) +
+        self.challengeAwardPending[runKey] = undefined;
+        return;
+    }
+    progressRefreshed = self refresh();
+    self.challengeAwardPending[runKey] = undefined;
+    if(!isDefined(progressRefreshed))
+    {
+        return;
+    }
+    if(self.challengePoints > pointsBefore)
+    {
+        self iprintln("Challenge complete! +" + (self.challengePoints - pointsBefore) +
                       " points. Total: " + self.challengePoints + " | Level " + self.challengeRank);
         self openCJ\notifications::result("challenge", runID);
     }
@@ -377,6 +410,7 @@ show(refreshProgress)
     if(!level.challengesReady || !self openCJ\login::isLoggedIn())
     {
         self setClientCvar("ocj_ch_summary", "Challenges are loading. Reopen in a moment.");
+        self setClientCvar("ocj_ch_busy", 0);
         return;
     }
     // Tab/page navigation refreshes only the list; retain the published player stats.

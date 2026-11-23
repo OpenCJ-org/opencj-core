@@ -42,6 +42,12 @@ main()
     verifyLateFinishSound(player, "demo");
     verifyLateFinishSound(player, "owner");
     verifyLateFinishSound(player, "cleared");
+    verifyChallengeUnavailableMenu(player);
+    verifyConcurrentChallengeAwards(player);
+    verifyChallengeAccountChange(player);
+    verifyChallengeTransactionFailure("START TRANSACTION");
+    verifyChallengeTransactionFailure("COMMIT");
+    verifyChallengeTransactionSuccess();
     printf("N72 COMPLETE failures=" + level.n72Failures + " checks=" + level.n72Checks + "\n");
 }
 
@@ -450,6 +456,13 @@ waitForCheckpoint()
 // Hold delivery after the real query completes, so stale-result checks remain real.
 observeSQLResult(query)
 {
+    if(isDefined(level.n72DelayChallenge) && level.n72DelayChallenge &&
+       isSubStr(query, "SUM(c.points)") && isSubStr(query, "challengeCompletions"))
+    {
+        level.n72ChallengeWaiting = true;
+        wait .20;
+        return;
+    }
     if(isDefined(level.n72DelaySound) && level.n72DelaySound &&
        isSubStr(query, "timeAhead AS"))
     {
@@ -699,4 +712,152 @@ verifyLateFinishSound(player, changedState)
     check(level.n72Sounds.size == soundCount, changedState + " state rejects a late finish sound");
     level.n72DelaySound = false;
     player.playingDemo = false;
+}
+
+recordChallengeCvar(name, value)
+{
+    if(!isDefined(self.n72ChallengeCvars))
+    {
+        self.n72ChallengeCvars = [];
+    }
+    self.n72ChallengeCvars[name] = value;
+    self setClientCvar(name, value);
+}
+
+// Only transaction-boundary failures are injected; other statements still use the real database.
+observeSyncQuery(query)
+{
+    if(isDefined(level.n72FailTransactionStage) && query == level.n72FailTransactionStage)
+    {
+        if(query == "COMMIT")
+        {
+            openCJ\mySQL::_n72RealSyncQuery("ROLLBACK");
+        }
+        return undefined;
+    }
+    return openCJ\mySQL::_n72RealSyncQuery(query);
+}
+
+verifyChallengeUnavailableMenu(player)
+{
+    player.login_playerID = 1;
+    level.challengesReady = false;
+    player openCJ\challenges::show(true);
+    check(player.n72ChallengeCvars["ocj_ch_busy"] == 0,
+          "unavailable challenges stop the menu loading indicator");
+    level.challengesReady = true;
+}
+
+verifyConcurrentChallengeAwards(player)
+{
+    player.login_playerID = 1;
+    player.challengePoints = 0;
+    player.challengeRank = 1;
+    openCJ\mySQL::mysqlAsyncWrite("DELETE FROM challengeCompletions WHERE playerID=1", "player:1");
+    privateMessageCount = level.n72Private.size;
+    level.n72AwardCallbacksDone = 0;
+    stats = mysql_async_stats();
+    acceptedBefore = stats[8];
+    player thread runAwardCallback();
+    player thread runAwardCallback();
+    for(attempt = 0; attempt < 100 && level.n72AwardCallbacksDone < 2; attempt++)
+    {
+        wait .05;
+    }
+    check(level.n72AwardCallbacksDone == 2, "both duplicate award callbacks settle");
+    stats = mysql_async_stats();
+    check(stats[8] - acceptedBefore == 2, "duplicate award skips a second write and progress read");
+    check(player.challengePoints == 10, "duplicate award retains one reward");
+    check(level.n72Private.size == privateMessageCount + 1,
+          "overlapping callbacks announce the challenge once");
+    rows = openCJ\mySQL::mysqlAsyncRead(
+        "SELECT COUNT(*) FROM challengeCompletions WHERE playerID=1 AND challengeKey='notify-fixture'");
+    check(isDefined(rows) && int(rows[0][0]) == 1, "overlapping awards retain one durable completion");
+
+    player openCJ\challenges::awardRun(1002);
+    check(player.challengePoints == 10, "settled award can be retried without adding points");
+    check(level.n72Private.size == privateMessageCount + 1,
+          "settled award retry does not repeat the announcement");
+}
+
+runAwardCallback()
+{
+    self openCJ\challenges::awardRun(1002);
+    level.n72AwardCallbacksDone++;
+}
+
+verifyChallengeTransactionFailure(stage)
+{
+    level.challenges = [];
+    openCJ\challenges::add("transaction.fixture", 1, "mp_killhouse", "Easy");
+    level.challengesReady = false;
+    level.n72FailTransactionStage = stage;
+    openCJ\challenges::initialize();
+    level.n72FailTransactionStage = undefined;
+    check(!level.challengesReady, stage + " failure cannot publish catalogue readiness");
+    rows = openCJ\mySQL::mysqlAsyncRead(
+        "SELECT COUNT(*) FROM challenges WHERE challengeKey='transaction.fixture'");
+    check(isDefined(rows) && int(rows[0][0]) == 0, stage + " failure leaves no partial definition");
+    rows = openCJ\mySQL::mysqlAsyncRead(
+        "SELECT active FROM challenges WHERE challengeKey='notify-fixture'");
+    check(isDefined(rows) && int(rows[0][0]) == 1, stage + " failure preserves the previous catalogue");
+
+    // Each failure scenario starts from the same synthetic catalogue.
+    openCJ\mySQL::mysqlAsyncWrite(
+        "DELETE FROM challengeCompletions WHERE challengeKey='transaction.fixture'", "challenge-fixture");
+    openCJ\mySQL::mysqlAsyncWrite(
+        "DELETE FROM challenges WHERE challengeKey='transaction.fixture'", "challenge-fixture");
+    openCJ\mySQL::mysqlAsyncWrite(
+        "UPDATE challenges SET active=1 WHERE challengeKey='notify-fixture'", "challenge-fixture");
+}
+
+
+// The success case exercises the same transaction path after both injected failures.
+verifyChallengeTransactionSuccess()
+{
+    level.challenges = [];
+    openCJ\challenges::add("transaction.fixture", 1, "mp_killhouse", "Easy");
+    level.challengesReady = false;
+    openCJ\challenges::initialize();
+    check(level.challengesReady, "committed catalogue becomes ready after route and award setup");
+    rows = openCJ\mySQL::mysqlAsyncRead(
+        "SELECT active,points FROM challenges WHERE challengeKey='transaction.fixture'");
+    check(isDefined(rows) && rows.size == 1 && int(rows[0][0]) == 1 && int(rows[0][1]) == 10,
+          "successful transaction stores the active challenge and its reward");
+    rows = openCJ\mySQL::mysqlAsyncRead(
+        "SELECT active FROM challenges WHERE challengeKey='notify-fixture'");
+    check(isDefined(rows) && int(rows[0][0]) == 0,
+          "successful catalogue refresh retires the old definition");
+}
+
+
+// Hold a real reply until the account changes, then verify that it cannot replace current progress.
+verifyChallengeAccountChange(player)
+{
+    player.login_playerID = 1;
+    player.challengePoints = 777;
+    level.n72ChallengeWaiting = false;
+    level.n72ChallengeRefreshDone = false;
+    level.n72DelayChallenge = true;
+    player thread refreshChallengeProgress();
+    for(attempt = 0; attempt < 100 && !level.n72ChallengeWaiting; attempt++)
+    {
+        wait .05;
+    }
+    check(level.n72ChallengeWaiting, "challenge progress reply is held at the delivery boundary");
+    player.login_playerID = 2;
+    for(attempt = 0; attempt < 100 && !level.n72ChallengeRefreshDone; attempt++)
+    {
+        wait .05;
+    }
+    check(level.n72ChallengeRefreshDone, "old-account progress request settles");
+    check(player.challengePoints == 777, "old-account progress cannot overwrite the new account");
+    level.n72DelayChallenge = false;
+    player.login_playerID = 1;
+}
+
+refreshChallengeProgress()
+{
+    self openCJ\challenges::refresh();
+    level.n72ChallengeRefreshDone = true;
 }
