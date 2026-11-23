@@ -121,6 +121,19 @@ class ReleasePreviewTests(unittest.TestCase):
         self.assertNotEqual(blocks[-1].kind, "heading")
 
 
+class CurrentVersionNoteTests(unittest.TestCase):
+    """The version in VERSION must have a release note (see the release notes rule)."""
+
+    def test_current_version_has_a_release_note(self):
+        core_root = WEB_DIR.parent
+        version = (core_root / "VERSION").read_text().strip()
+        release_list, problems = releases.read_releases(core_root / "docs" / "releases")
+        self.assertEqual(problems, [], "Unreadable release notes")
+        versions = [release.version for release in release_list]
+        self.assertIn(version, versions,
+                      "Add docs/releases/" + version + ".md with 'Version: " + version + "'")
+
+
 class SharedPositionTests(unittest.TestCase):
     def test_equal_scores_share_and_next_skips(self):
         scores = [50, 40, 40, 30]

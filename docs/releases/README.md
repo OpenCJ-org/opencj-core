@@ -1,6 +1,7 @@
 # Release notes
 
-Each published OpenCJ version gets one Markdown file in this folder. The
+Each published OpenCJ version gets one Markdown file in this folder; agents
+follow the [release notes rule](../../.github/instructions/release-notes.instructions.md). The
 website shows the newest release on its homepage and all of them on its
 releases page. Add the file in the same change that prepares the release.
 
