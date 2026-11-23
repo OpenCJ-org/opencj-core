@@ -2,6 +2,7 @@
 
 main()
 {
+    self openCJ\events\spawnPlayer::cancelPendingSpawn();
     self openCJ\halfBeat::disableCorrection();
     self openCJ\mapBoost::cancel();
     self openCJ\shop::stopInspect();

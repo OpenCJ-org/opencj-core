@@ -267,7 +267,7 @@ _renderCatalogue(totalPoints, spentPoints)
 
 // Load before spawning so a default model is never shown while SQL is pending.
 // A newer load owns the cache; an older reply cannot replace its selection.
-loadEquipment()
+loadEquipment(forSpawn)
 {
     if(getCodVersion() != 4)
     {
@@ -286,6 +286,7 @@ loadEquipment()
     }
 
     self cancelEquipmentRead();
+    self.shopEquipmentForSpawn = isDefined(forSpawn) && forSpawn;
     requestVersion = self.shopEquipmentVersion;
     scope = "equipment:" + self getEntityNumber();
     // The pool's menu policy provides cancellable reads. A separate scope lets
@@ -295,8 +296,12 @@ loadEquipment()
             " JOIN shopPurchases p ON p.playerID=e.playerID AND p.itemKey=e.itemKey" +
             " WHERE e.playerID=" + accountID,
         level.sqlConstants.policyMenu, "", scope, level.sqlConstants.defaultQueueWaitMs, true);
-    if(requestVersion != self.shopEquipmentVersion || !self openCJ\login::isLoggedIn() ||
-       self openCJ\login::getPlayerID() != accountID)
+    if(requestVersion != self.shopEquipmentVersion)
+    {
+        return false;
+    }
+    self.shopEquipmentForSpawn = false;
+    if(!self openCJ\login::isLoggedIn() || self openCJ\login::getPlayerID() != accountID)
     {
         return false;
     }
@@ -334,6 +339,7 @@ cancelEquipmentRead()
         self.shopEquipmentVersion = 0;
     }
     self.shopEquipmentVersion++;
+    self.shopEquipmentForSpawn = false;
     mysql_async_cancel("equipment:" + self getEntityNumber(), level.sqlConstants.scopeExact,
                        level.sqlConstants.retainCompletion);
 }

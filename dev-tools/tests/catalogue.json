@@ -208,7 +208,7 @@
     {
       "id": "movement-engine",
       "category": "integration",
-      "description": "Aim teleport, measurement, moon boost and FPS history.",
+      "description": "Aim teleport, measurement, moon boost and FPS history. Delayed equipment replies cannot undo a later spectator request or supersede a newer spawn.",
       "requires": "Initialized Compose, matching engine, game/compiled mod and relevant maps; FPS history compiles a plugin. Aim-teleport coordinates require mp_dark.",
       "effects": "Isolated fixture servers, synthetic players and private logs; no gameplay database.",
       "files": [

@@ -105,6 +105,7 @@ main()
     check(a.testScale==12 && isDefined(a.mapBoostOwned),"cancelled cooldown cannot clear new owner");
     a openCJ\mapBoost::cancel();
 
+    a verifySupersededSpawn();
     a verifyFailedRunRestore();
     a verifyRestoreDoesNotArchiveItself();
     a editorBoostTest();
@@ -282,4 +283,57 @@ verifyRestoreDoesNotArchiveItself()
 
     check(!isDefined(self.testArchivedRunID), "restoring a run never archives that same run");
     check(!self.playerRuns_runFinishing, "successful restoration clears the old finishing state");
+}
+
+// Pause only the equipment dependency; the actual spawn/spectator handlers remain intact.
+loadEquipmentForTest()
+{
+    if(isDefined(self.testHoldEquipment) && self.testHoldEquipment)
+    {
+        // Real SQL yields before completion; let the caller observe this barrier too.
+        wait 0.05;
+        self notify("test_equipment_waiting");
+        self waittill("test_equipment_release");
+    }
+    return true;
+}
+
+verifySupersededSpawn()
+{
+    self openCJ\events\spawnSpectator::main();
+    self.testHoldEquipment = true;
+    self thread openCJ\events\spawnPlayer::main(false);
+    self waittill("test_equipment_waiting");
+    self openCJ\events\spawnSpectator::main();
+    self.testHoldEquipment = false;
+    self notify("test_equipment_release");
+    wait 0.1;
+    check(self.sessionState == "spectator",
+          "late equipment reply cannot undo a spectator request");
+
+    self.testSpawnCount = 0;
+    self thread observeSpawns();
+    self.testHoldEquipment = true;
+    self thread openCJ\events\spawnPlayer::main(false);
+    self waittill("test_equipment_waiting");
+    self.testHoldEquipment = false;
+    self openCJ\events\spawnPlayer::main(true);
+    latestSpawnOrigin = self.origin;
+    self notify("test_equipment_release");
+    wait 0.1;
+    check(self.testSpawnCount == 1, "a superseded spawn cannot run after the newer spawn");
+    check(distance(self.origin, latestSpawnOrigin) < 4,
+          "late spawn cannot replace the latest saved-position destination");
+    self notify("test_stop_spawn_observer");
+}
+
+observeSpawns()
+{
+    self endon("disconnect");
+    self endon("test_stop_spawn_observer");
+    for(;;)
+    {
+        self waittill("spawned");
+        self.testSpawnCount++;
+    }
 }

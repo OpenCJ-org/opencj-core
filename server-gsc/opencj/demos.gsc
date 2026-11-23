@@ -687,6 +687,7 @@ startDemo(demoID)
         self sendLocalChatMessage("Could not prepare demo playback", true);
         return;
     }
+    self openCJ\events\spawnPlayer::cancelPendingSpawn();
     state = self captureDemoReturnState();
     self.demoReturn = state;
     self.checkpointContact = undefined;

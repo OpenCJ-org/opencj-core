@@ -2,6 +2,9 @@
 
 main(atLastSavedPosition)
 {
+    self endon("disconnect");
+    self cancelPendingSpawn();
+    requestVersion = self.spawnRequestVersion;
     self openCJ\mapBoost::cancel();
     if(!self openCJ\login::isLoggedIn())
     {
@@ -18,7 +21,15 @@ main(atLastSavedPosition)
     }
 
     self openCJ\shop::stopInspect();
-    if(!self openCJ\shop::loadEquipment())return;
+    loadForSpawn = true;
+    if(!self openCJ\shop::loadEquipment(loadForSpawn))
+    {
+        return;
+    }
+    if(requestVersion != self.spawnRequestVersion)
+    {
+        return;
+    }
 
     self openCJ\demos::cancelRequest();
     if(self openCJ\demos::isPlayingDemo())self openCJ\demos::stopDemo();
@@ -81,6 +92,20 @@ main(atLastSavedPosition)
 
     // Keep this as last
     self.isFirstSpawn = false;
+}
+
+// A later spectator, demo, spawn, or disconnect request owns the player's next state.
+cancelPendingSpawn()
+{
+    if(!isDefined(self.spawnRequestVersion))
+    {
+        self.spawnRequestVersion = 0;
+    }
+    self.spawnRequestVersion++;
+    if(isDefined(self.shopEquipmentForSpawn) && self.shopEquipmentForSpawn)
+    {
+        self openCJ\shop::cancelEquipmentRead();
+    }
 }
 
 setSharedSpawnVars(giveRPG, isSpawn)

@@ -488,9 +488,9 @@ shopEquipmentChecks(player)
         "DELETE FROM shopCatalog WHERE itemKey='pistol.equipment-fixture'");
 }
 
-readEquipmentForTest()
+readEquipmentForTest(forSpawn)
 {
-    self.shopTestLoadResult = self openCJ\shop::loadEquipment();
+    self.shopTestLoadResult = self openCJ\shop::loadEquipment(forSpawn);
 }
 
 // Occupy the four pool workers so the equipment request is still queued at cancellation.
@@ -508,12 +508,13 @@ verifyQueuedEquipmentCancellation()
     wait 0.05;
     self.shopLoaded = false;
     self.shopTestLoadResult = undefined;
-    self thread readEquipmentForTest();
+    self thread readEquipmentForTest(true);
     wait 0.05;
-    self openCJ\shop::cancelEquipmentRead();
+    self openCJ\events\spawnPlayer::cancelPendingSpawn();
     wait 0.1;
-    check(isDefined(self.shopTestLoadResult) && !self.shopTestLoadResult,
-          "queued equipment cancellation wakes its caller before workers become available");
+    check(isDefined(self.shopTestLoadResult) && !self.shopTestLoadResult &&
+          !self.shopEquipmentForSpawn,
+          "cancelled spawn releases queued equipment before workers become available");
 
     for(attempt = 0; attempt < 30 && level.shopEquipmentBlockersDone < workerCount; attempt++)
     {
