@@ -14,6 +14,18 @@ static const int COMPLETION_TIMEOUT_MS = 15000;
 static const int WORKER_START_TIMEOUT_MS = 1000;
 static const int POLL_INTERVAL_US = 1000;
 
+// Fixed admission contracts: derive neither the limits nor the expected worker count
+// from the implementation being tested, or an accidental limit change would pass.
+static const int WORKER_COUNT = 4;
+static const int MENU_WORKER_COUNT = 3;
+static const int MENU_CAPACITY = 64;
+static const int NON_PROGRESS_CAPACITY = 384;
+static const int NON_PROGRESS_QUERY_BYTES = 1536 * 1024;
+static const int DEFAULT_REQUEST_DEADLINE_MS = 10000;
+static const int PROGRESS_BURST_BUDGET_MS = 300;
+static const int QUERY_FINISH_BUDGET_MS = 8000;
+static const int LARGE_QUERY_PADDING_BYTES = 10000;
+
 static long long nowMs()
 {
     return chrono::duration_cast<chrono::milliseconds>(
@@ -32,7 +44,7 @@ static void check(bool value, const char *label)
 }
 
 static int submitQuery(const string &query, int policy = SQL_READ, const string &key = "",
-                       const string &scope = "", int deadlineMs = 10000)
+                       const string &scope = "", int deadlineMs = DEFAULT_REQUEST_DEADLINE_MS)
 {
     return sqlPoolSubmit(query.c_str(), true, policy, key.c_str(), scope.c_str(), deadlineMs);
 }
@@ -44,17 +56,17 @@ struct Reply
 };
 
 // Wait for the actual completion, copy its rows, and release the native result.
-static Reply takeReply(int id)
+static Reply takeReply(int requestID)
 {
-    check(id > 0, "request admitted");
+    check(requestID > 0, "request admitted");
     long long deadlineMs = nowMs() + COMPLETION_TIMEOUT_MS;
     SqlCompletion completion;
     MYSQL_RES *result = NULL;
-    while(!sqlPoolStatus(id, &completion) && nowMs() < deadlineMs)
+    while(!sqlPoolStatus(requestID, &completion) && nowMs() < deadlineMs)
     {
         usleep(POLL_INTERVAL_US);
     }
-    if(!sqlPoolTake(id, &result, &completion))
+    if(!sqlPoolTake(requestID, &result, &completion))
     {
         throw runtime_error("completion deadline");
     }
@@ -85,20 +97,20 @@ static Reply runQuery(const string &query, int policy = SQL_READ, const string &
 static int queryScalar(const string &query)
 {
     auto reply = runQuery(query);
-    if(reply.completion.outcome != SQL_OK || reply.rows.empty())
+    if(reply.completion.outcome != SQL_OK || reply.rows.empty() || reply.rows.front().empty())
     {
         throw runtime_error("scalar failed");
     }
     return stoi(reply.rows[0][0]);
 }
 
-static void drainReplies(const vector<int> &ids)
+static void drainReplies(const vector<int> &requestIDs)
 {
-    for(int id : ids)
+    for(int requestID : requestIDs)
     {
-        if(id > 0)
+        if(requestID > 0)
         {
-            takeReply(id);
+            takeReply(requestID);
         }
     }
 }
@@ -151,12 +163,12 @@ static void verifyPerRunOrdering()
 static void verifyMenuCapacity()
 {
     vector<int> blockers;
-    for(int i = 0; i < 3; i++)
+    for(int i = 0; i < MENU_WORKER_COUNT; i++)
     {
         blockers.push_back(
             submitQuery("SELECT SLEEP(0.6),1", SQL_MENU, "", "block:" + to_string(i)));
     }
-    waitForRunningJobs(3);
+    waitForRunningJobs(MENU_WORKER_COUNT);
     // Exceed the 64-menu contract while three workers are occupied.
     vector<int> storm;
     for(int i = 0; i < 100; i++)
@@ -164,21 +176,21 @@ static void verifyMenuCapacity()
         storm.push_back(submitQuery("SELECT SLEEP(0.02),1", SQL_MENU, "", "storm:" + to_string(i)));
     }
     auto saturation = sqlPoolStats();
-    check(saturation.outstanding <= 64 && saturation.rejected > 0,
+    check(saturation.outstanding <= MENU_CAPACITY && saturation.rejected > 0,
           "menu admission is bounded at 64 outstanding jobs");
-    long long begin = nowMs();
+    long long startedAtMs = nowMs();
     auto progress =
         runQuery("INSERT INTO adapter_probe(value) VALUES(20)", SQL_PROGRESS, "run:priority");
-    long long latency = nowMs() - begin;
-    check(progress.completion.outcome == SQL_OK && latency < 300,
+    long long latencyMs = nowMs() - startedAtMs;
+    check(progress.completion.outcome == SQL_OK && latencyMs < PROGRESS_BURST_BUDGET_MS,
           "progress completes while all three menu workers are busy");
-    cout << "SQLPOOL METRIC progress_during_menu_burst_ms=" << latency << endl;
+    cout << "SQLPOOL METRIC progress_during_menu_burst_ms=" << latencyMs << endl;
     sqlPoolCancel("storm:", SqlScopeMatch::Prefix, SqlCompletionHandling::Retain);
-    for(int id : storm)
+    for(int requestID : storm)
     {
-        if(id > 0)
+        if(requestID > 0)
         {
-            check(takeReply(id).completion.outcome == SQL_CANCELLED,
+            check(takeReply(requestID).completion.outcome == SQL_CANCELLED,
                   "queued obsolete menu returns cancellation");
         }
     }
@@ -193,13 +205,14 @@ static void verifyCompletionCapacity()
     vector<int> buffered;
     for(int i = 0; i < 700; i++)
     {
-        int id = submitQuery("SELECT 1", SQL_READ);
-        if(id > 0)
+        int requestID = submitQuery("SELECT 1", SQL_READ);
+        if(requestID > 0)
         {
-            buffered.push_back(id);
+            buffered.push_back(requestID);
         }
     }
-    check(sqlPoolStats().outstanding <= 384 && buffered.size() <= 384,
+    check(sqlPoolStats().outstanding <= NON_PROGRESS_CAPACITY &&
+              buffered.size() <= NON_PROGRESS_CAPACITY,
           "uncollected results count against non-progress capacity");
     check(runQuery("INSERT INTO adapter_probe(value) VALUES(21)", SQL_PROGRESS, "run:reserved")
                   .completion.outcome == SQL_OK,
@@ -210,18 +223,19 @@ static void verifyCompletionCapacity()
 static void verifyQueryByteCapacity()
 {
     // Query bytes are a second independent admission bound.
-    string large = "DO SLEEP(0.02) /*" + string(10000, 'x') + "*/";
+    string largeQuery = "DO SLEEP(0.02) /*" + string(LARGE_QUERY_PADDING_BYTES, 'x') + "*/";
     vector<int> largeJobs;
     for(int i = 0; i < 400; i++)
     {
-        int id = submitQuery(large, SQL_BACKGROUND, "bulk");
-        if(id > 0)
+        int requestID = submitQuery(largeQuery, SQL_BACKGROUND, "bulk");
+        if(requestID > 0)
         {
-            largeJobs.push_back(id);
+            largeJobs.push_back(requestID);
         }
     }
-    auto bytes = sqlPoolStats();
-    check(bytes.queryBytes <= 1536 * 1024 && largeJobs.size() < 384,
+    auto saturatedPool = sqlPoolStats();
+    check(saturatedPool.queryBytes <= NON_PROGRESS_QUERY_BYTES &&
+              largeJobs.size() < NON_PROGRESS_CAPACITY,
           "byte limit rejects before job-count limit");
     check(runQuery("INSERT INTO adapter_probe(value) VALUES(22)", SQL_PROGRESS, "run:bytes")
                   .completion.outcome == SQL_OK,
@@ -246,13 +260,15 @@ static void verifyMapCancellation()
         submitQuery("INSERT INTO adapter_probe(value) SELECT 30 FROM (SELECT SLEEP(0.2)) a",
                     SQL_PROGRESS, "run:map");
     int oldMenu = submitQuery("SELECT SLEEP(0.4),1", SQL_MENU, "", "p:1:board");
+    check(oldMenu > 0, "map-scoped menu request admitted");
     sqlPoolNewMap();
     check(takeReply(persistence).completion.outcome == SQL_OK,
           "accepted write survives map lifecycle cancellation");
+    // The old menu query sleeps 400 ms; leave time for its worker to discard the reply.
     usleep(450000);
     SqlCompletion unused;
     check(!sqlPoolStatus(oldMenu, &unused), "old-map menu result discarded");
-    check(sqlPoolStats().outstanding == 0 && sqlPoolStats().workers == 4,
+    check(sqlPoolStats().outstanding == 0 && sqlPoolStats().workers == WORKER_COUNT,
           "map transition retains workers without leaking completed tasks");
 }
 
@@ -298,7 +314,9 @@ static void verifyOwnedReadCancellation()
 static void verifyDisconnectCancellation()
 {
     int disconnected = submitQuery("SELECT SLEEP(0.2),1", SQL_MENU, "", "p:8:board");
+    check(disconnected > 0, "disconnect-scoped menu request admitted");
     sqlPoolCancel("p:8:", SqlScopeMatch::Prefix, SqlCompletionHandling::Discard);
+    // This query sleeps 200 ms; observe disposal after the worker has settled.
     usleep(250000);
     check(sqlPoolStats().outstanding == 0, "disconnect cancels scoped reads without leaking jobs");
 }
@@ -324,8 +342,9 @@ static void verifyReadDeadline()
     cout << "SQLPOOL METRIC slow_outcome=" << timed.completion.outcome
          << " error=" << timed.completion.error << " execution_ms=" << timed.completion.executionMs
          << endl;
-    check(timed.completion.executionMs < 8000 && (timed.completion.outcome != SQL_OK ||
-                                                  (!timed.rows.empty() && timed.rows[0][0] == "1")),
+    check(timed.completion.executionMs < QUERY_FINISH_BUDGET_MS &&
+              (timed.completion.outcome != SQL_OK ||
+               (!timed.rows.empty() && timed.rows[0][0] == "1")),
           "slow read is interrupted within the configured budget");
     check(queryScalar("SELECT 1") == 1, "pool recovers after slow read");
 }
@@ -337,7 +356,8 @@ static void verifyUncertainWrites()
              "VALUES(50); DO SLEEP(10); END",
              SQL_PROGRESS);
     auto uncertain = runQuery("CALL adapter_uncertain()", SQL_PROGRESS, "run:uncertain");
-    check(uncertain.completion.outcome == SQL_UNKNOWN && uncertain.completion.executionMs < 8000,
+    check(uncertain.completion.outcome == SQL_UNKNOWN &&
+              uncertain.completion.executionMs < QUERY_FINISH_BUDGET_MS,
           "lost write reply is explicitly uncertain");
     check(queryScalar("SELECT COUNT(*) FROM adapter_probe WHERE value=50") <= 1,
           "uncertain write is never automatically replayed");
@@ -367,11 +387,11 @@ int main(int argc, char **argv)
             throw runtime_error("unsafe test schema");
         }
         check(sqlPoolInit(host.c_str(), user.c_str(), password.c_str(), database.c_str(),
-                          stoi(port), 4),
+                          stoi(port), WORKER_COUNT),
               "four permanent workers connected");
-        check(sqlPoolStats().workers == 4, "pool size remains four");
-        int threads = threadCount();
-        check(threads == 5, "exactly four native worker threads");
+        check(sqlPoolStats().workers == WORKER_COUNT, "pool size remains four");
+        int initialThreadCount = threadCount();
+        check(initialThreadCount == WORKER_COUNT + 1, "exactly four native worker threads");
         runQuery("CREATE TABLE adapter_probe(seq INT AUTO_INCREMENT PRIMARY KEY,value INT) "
                  "ENGINE=InnoDB",
                  SQL_PROGRESS);
@@ -400,14 +420,16 @@ int main(int argc, char **argv)
 
         verifyUncertainWrites();
 
-        auto final = sqlPoolStats();
-        check(final.outstanding == 0 && final.queryBytes == 0,
+        auto finalStats = sqlPoolStats();
+        check(finalStats.outstanding == 0 && finalStats.queryBytes == 0,
               "all query allocations and completions released");
-        cout << "SQLPOOL METRIC accepted=" << final.accepted << " rejected=" << final.rejected
-             << " peak_jobs=" << final.peakJobs << " peak_query_bytes=" << final.peakBytes
-             << " max_wait_ms=" << final.maxWaitMs << " max_execution_ms=" << final.maxExecutionMs
-             << endl;
-        check(threadCount() == threads, "query volume does not create additional worker threads");
+        cout << "SQLPOOL METRIC accepted=" << finalStats.accepted
+             << " rejected=" << finalStats.rejected << " peak_jobs=" << finalStats.peakJobs
+             << " peak_query_bytes=" << finalStats.peakBytes
+             << " max_wait_ms=" << finalStats.maxWaitMs
+             << " max_execution_ms=" << finalStats.maxExecutionMs << endl;
+        check(threadCount() == initialThreadCount,
+              "query volume does not create additional worker threads");
         sqlPoolShutdown();
         cout << "SQLPOOL COMPLETE checks=" << checks << endl;
         return 0;
