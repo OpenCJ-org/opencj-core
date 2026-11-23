@@ -9,6 +9,37 @@ extern "C" {
 #include <vector>
 
 namespace {
+
+// Geometry and work budgets are separate: a large simple floor may be cheap,
+// while a small fragmented floor can exhaust the clipping/search budgets.
+constexpr int maxPolygonVertices = 64;
+constexpr int maxCheckpointVertices = 8;
+constexpr int maxTraversalDepth = 64;
+constexpr int maxRegionSearchVisits = 4096;
+constexpr int maxBrushSidePlanes = 128;
+constexpr int maxWallPolygons = 2048;
+constexpr int maxLandingSurfaces = 4096;
+constexpr int maxUncoveredPieces = 512;
+constexpr int maxCollisionTriangles = 16384;
+constexpr int maxModelSurfaces = 4096;
+constexpr unsigned maxModelTriangles = 65536;
+constexpr int maxSupportQueryLeaves = 1024;
+constexpr unsigned axialBrushPlaneCount = 6;
+constexpr int supportContentsMask = 0x11; // Solid brushes and player-solid glass.
+
+// Match the checkpoint contact rules and keep wall slices just above the floor.
+constexpr double minimumSupportNormalZ = 0.7;
+constexpr double parallelPlaneDotThreshold = 0.99999;
+constexpr double coplanarHeightTolerance = 0.01;
+constexpr double wallSliceHeight = 0.5;
+constexpr double wallConnectionMargin = 0.25;
+constexpr double checkpointWallClearance = 0.125;
+constexpr double playerContactRadius = 15;
+constexpr double playerQueryHalfHeight = 11;
+constexpr double pointQueryReach = 0.5;
+constexpr double regionAreaTolerance = 0.001;
+constexpr double mapCoordinateLimit = 131072;
+
 // Double precision avoids losing the landing plane on distant, thin slopes.
 // Use one tolerance for joining floor faces and verifying their coverage.
 // Otherwise a seam accepted during collection becomes a false gap afterward.
@@ -17,8 +48,8 @@ struct Point {
     double x[3];
 };
 struct Plane {
-    Point n;
-    double d;
+    Point normal;
+    double distance;
 };
 double dot(const Point &a, const Point &b) {
     return a.x[0] * b.x[0] + a.x[1] * b.x[1] + a.x[2] * b.x[2];
@@ -33,69 +64,72 @@ Point cross(const Point &a, const Point &b) {
              a.x[0] * b.x[1] - a.x[1] * b.x[0]}};
 }
 
-Plane plane(const cbrush_t &b, unsigned i) {
-    Plane p = {};
-    if (i < 6) {
-        const unsigned axis = i / 2;
-        const bool upper = i % 2;
-        p.n.x[axis] = upper ? 1 : -1;
-        p.d = upper ? b.maxs[axis] : -b.mins[axis];
+Plane plane(const cbrush_t &brush, unsigned planeIndex) {
+    Plane result = {};
+    if (planeIndex < axialBrushPlaneCount) {
+        const unsigned axis = planeIndex / 2;
+        const bool upper = planeIndex % 2;
+        result.normal.x[axis] = upper ? 1 : -1;
+        result.distance = upper ? brush.maxs[axis] : -brush.mins[axis];
     } else {
-        const cplane_t &s = *b.sides[i - 6].plane;
+        const cplane_t &side = *brush.sides[planeIndex - axialBrushPlaneCount].plane;
         for (int j = 0; j < 3; j++) {
-            p.n.x[j] = s.normal[j];
+            result.normal.x[j] = side.normal[j];
         }
-        p.d = s.dist;
+        result.distance = side.dist;
     }
-    return p;
+    return result;
 }
 
-// Sutherland-Hodgman clipping against the brush's own half-spaces.
-int clip(Point *points, int count, const Plane &p) {
-    Point out[64];
-    int used = 0;
+// Clip against one brush half-space. Return the remaining vertex count;
+// zero means empty geometry or an exhausted vertex buffer.
+int clip(Point *points, int count, const Plane &boundary) {
+    Point clippedVertices[maxPolygonVertices];
+    int clippedCount = 0;
     for (int i = 0; i < count; i++) {
         const Point a = points[i];
         const Point b = points[(i + 1) % count];
-        const double da = dot(a, p.n) - p.d;
-        const double db = dot(b, p.n) - p.d;
-        if (da <= 0) {
-            if (used == 64) {
+        const double startDistance = dot(a, boundary.normal) - boundary.distance;
+        const double endDistance = dot(b, boundary.normal) - boundary.distance;
+        if (startDistance <= 0) {
+            if (clippedCount == maxPolygonVertices) {
                 return 0;
             }
-            out[used++] = a;
+            clippedVertices[clippedCount++] = a;
         }
-        if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
-            if (used == 64) {
+        if ((startDistance < 0 && endDistance > 0) || (startDistance > 0 && endDistance < 0)) {
+            if (clippedCount == maxPolygonVertices) {
                 return 0;
             }
-            out[used++] = add(a, add(b, a, -1), da / (da - db));
+            clippedVertices[clippedCount++] =
+                add(a, add(b, a, -1), startDistance / (startDistance - endDistance));
         }
     }
-    std::copy(out, out + used, points);
-    return used;
+    std::copy(clippedVertices, clippedVertices + clippedCount, points);
+    return clippedCount;
 }
 
 // Geometry utilities shared by brush tops and wall footprints.
-int simplify(Point *pts, int n, double minEdgeSquared = 0.0001) {
+int simplify(Point *points, int vertexCount, double minimumEdgeLengthSquared = 0.0001) {
     bool changed = true;
-    while (changed && n >= 3) {
+    while (changed && vertexCount >= 3) {
         changed = false;
-        for (int i = 0; i < n; i++) {
-            const Point a = add(pts[i], pts[(i + n - 1) % n], -1);
-            const Point b = add(pts[(i + 1) % n], pts[i], -1);
+        for (int i = 0; i < vertexCount; i++) {
+            const Point a = add(points[i], points[(i + vertexCount - 1) % vertexCount], -1);
+            const Point b = add(points[(i + 1) % vertexCount], points[i], -1);
             const Point c = cross(a, b);
-            if (dot(a, a) < minEdgeSquared || dot(c, c) < 0.000001 * dot(a, a) * dot(b, b)) {
-                for (int j = i; j < n - 1; j++) {
-                    pts[j] = pts[j + 1];
+            if (dot(a, a) < minimumEdgeLengthSquared ||
+                dot(c, c) < 0.000001 * dot(a, a) * dot(b, b)) {
+                for (int j = i; j < vertexCount - 1; j++) {
+                    points[j] = points[j + 1];
                 }
-                --n;
+                --vertexCount;
                 changed = true;
                 break;
             }
         }
     }
-    return n;
+    return vertexCount;
 }
 
 // Start with the brush bounds projected onto the face plane, so the temporary
@@ -127,7 +161,7 @@ int brushFace(const cbrush_t &brush, unsigned face, const Point &center, const P
     points[2] = add(add(center, u, hiU + 1), v, hiV + 1);
     points[3] = add(add(center, u, loU - 1), v, hiV + 1);
     int count = 4;
-    for (unsigned i = 0; i < brush.numsides + 6 && count >= 3; i++) {
+    for (unsigned i = 0; i < brush.numsides + axialBrushPlaneCount && count >= 3; i++) {
         if (i != face) {
             count = clip(points, count, plane(brush, i));
         }
@@ -135,10 +169,10 @@ int brushFace(const cbrush_t &brush, unsigned face, const Point &center, const P
     return simplify(points, count);
 }
 
-double area(const Point *pts, int n, const Point &normal) {
+double area(const Point *points, int vertexCount, const Point &normal) {
     double sum = 0;
-    for (int i = 1; i < n - 1; i++) {
-        sum += dot(cross(add(pts[i], pts[0], -1), add(pts[i + 1], pts[0], -1)), normal);
+    for (int i = 1; i < vertexCount - 1; i++) {
+        sum += dot(cross(add(points[i], points[0], -1), add(points[i + 1], points[0], -1)), normal);
     }
     return std::abs(sum) * 0.5;
 }
@@ -160,7 +194,7 @@ Plane edgePlane(const Point &a, const Point &b, const Point &normal) {
 }
 
 struct Obstacle {
-    Point points[64];
+    Point points[maxPolygonVertices];
     int count;
     bool wall;
     double clearance = 0;
@@ -174,22 +208,23 @@ int intersection(Point *points, int count, const Obstacle &obstacle, const Point
     return count;
 }
 
-void worldBrushes(int node, std::vector<unsigned> &indices, int depth = 0) {
-    if (node <= 0 || unsigned(node) >= cm.leafbrushNodesCount || depth > 64) {
+void worldBrushes(int nodeIndex, std::vector<unsigned> &brushIndices, int depth = 0) {
+    if (nodeIndex <= 0 || unsigned(nodeIndex) >= cm.leafbrushNodesCount ||
+        depth > maxTraversalDepth) {
         return;
     }
-    const cLeafBrushNode_t &n = cm.leafbrushNodes[node];
-    if (n.leafBrushCount > 0) {
-        for (int i = 0; i < n.leafBrushCount; i++) {
-            indices.push_back(n.data.leaf.brushes[i]);
+    const cLeafBrushNode_t &node = cm.leafbrushNodes[nodeIndex];
+    if (node.leafBrushCount > 0) {
+        for (int i = 0; i < node.leafBrushCount; i++) {
+            brushIndices.push_back(node.data.leaf.brushes[i]);
         }
         return;
     }
-    if (n.leafBrushCount < 0) {
-        worldBrushes(node + 1, indices, depth + 1);
+    if (node.leafBrushCount < 0) {
+        worldBrushes(nodeIndex + 1, brushIndices, depth + 1);
     }
-    worldBrushes(node + n.data.children.childOffset[0], indices, depth + 1);
-    worldBrushes(node + n.data.children.childOffset[1], indices, depth + 1);
+    worldBrushes(nodeIndex + node.data.children.childOffset[0], brushIndices, depth + 1);
+    worldBrushes(nodeIndex + node.data.children.childOffset[1], brushIndices, depth + 1);
 }
 
 // Canonical geometry ordering gives equal-area solutions and budget handling a
@@ -235,8 +270,57 @@ struct SupportedRegion {
     int visits = 0;
     double margin = 0.01;
     bool exhausted = false;
+    // The gap vector outlives this search, so the returned pointer stays valid.
+    const Obstacle *largestObstruction(const Obstacle &region) const {
+        const Obstacle *obstruction = nullptr;
+        double largest = 0;
+        for (const auto &gap : gaps) {
+            Point overlap[maxPolygonVertices];
+            std::copy(region.points, region.points + region.count, overlap);
+            const int overlapCount = intersection(overlap, region.count, gap, normal);
+            const double overlapArea = overlapCount >= 3 ? area(overlap, overlapCount, normal) : 0;
+            if (overlapArea > largest + regionAreaTolerance) {
+                largest = overlapArea;
+                obstruction = &gap;
+            }
+        }
+        return obstruction;
+    }
+
+    // Keep candidates on the seed's side and visit the largest promising areas first.
+    std::vector<Obstacle> separatingRegions(const Obstacle &region, const Obstacle &obstruction) {
+        std::vector<Obstacle> choices;
+        for (int i = 0; i < obstruction.count; i++) {
+            const Plane edge = edgePlane(obstruction.points[i],
+                                         obstruction.points[(i + 1) % obstruction.count], normal);
+            if (dot(seed, edge.normal) < edge.distance + std::max(margin, obstruction.clearance)) {
+                continue;
+            }
+            const double clearance = std::max(margin, obstruction.clearance);
+            const Plane keep = {add(Point{}, edge.normal, -1), -edge.distance - clearance};
+            Obstacle candidate = region;
+            candidate.count = clip(candidate.points, candidate.count, keep);
+            candidate.count = simplify(candidate.points, candidate.count);
+            if (candidate.count >= 3 &&
+                area(candidate.points, candidate.count, normal) > bestArea + regionAreaTolerance) {
+                canonicalize(candidate);
+                choices.push_back(candidate);
+            }
+        }
+        std::sort(choices.begin(), choices.end(), [this](const Obstacle &a, const Obstacle &b) {
+            const double areaA = area(a.points, a.count, normal);
+            const double areaB = area(b.points, b.count, normal);
+            if (areaA != areaB) {
+                return areaA > areaB;
+            }
+            return polygonLess(a, b);
+        });
+        return choices;
+    }
+
+    // Stop at the shared visit/depth budgets; callers reject an exhausted search.
     void search(Obstacle region, int depth = 0) {
-        if (++visits > 4096 || depth > 64) {
+        if (++visits > maxRegionSearchVisits || depth > maxTraversalDepth) {
             exhausted = true;
             return;
         }
@@ -244,56 +328,20 @@ struct SupportedRegion {
             return;
         }
         const double size = area(region.points, region.count, normal);
-        if (size <= bestArea + 0.001) {
+        if (size <= bestArea + regionAreaTolerance) {
             return;
         }
-        const Obstacle *obstruction = nullptr;
-        double largest = 0;
-        for (const auto &gap : gaps) {
-            Point overlap[64];
-            std::copy(region.points, region.points + region.count, overlap);
-            const int n = intersection(overlap, region.count, gap, normal);
-            const double a = n >= 3 ? area(overlap, n, normal) : 0;
-            if (a > largest + 0.001) {
-                largest = a;
-                obstruction = &gap;
-            }
-        }
+        const Obstacle *obstruction = largestObstruction(region);
         if (!obstruction) {
             // Small supported ledges are valid; discard only numerical duplicates.
             region.count = simplify(region.points, region.count);
-            if (region.count >= 3 && region.count <= 8) {
+            if (region.count >= 3 && region.count <= maxCheckpointVertices) {
                 best = region;
                 bestArea = area(region.points, region.count, normal);
             }
             return;
         }
-        std::vector<Obstacle> choices;
-        for (int i = 0; i < obstruction->count; i++) {
-            const Plane edge = edgePlane(obstruction->points[i],
-                                         obstruction->points[(i + 1) % obstruction->count], normal);
-            if (dot(seed, edge.n) < edge.d + std::max(margin, obstruction->clearance)) {
-                continue;
-            }
-            const double clearance = std::max(margin, obstruction->clearance);
-            const Plane keep = {add(Point{}, edge.n, -1), -edge.d - clearance};
-            Obstacle candidate = region;
-            candidate.count = clip(candidate.points, candidate.count, keep);
-            candidate.count = simplify(candidate.points, candidate.count);
-            if (candidate.count >= 3 &&
-                area(candidate.points, candidate.count, normal) > bestArea + 0.001) {
-                canonicalize(candidate);
-                choices.push_back(candidate);
-            }
-        }
-        std::sort(choices.begin(), choices.end(), [this](const Obstacle &a, const Obstacle &b) {
-            const double aa = area(a.points, a.count, normal);
-            const double bb = area(b.points, b.count, normal);
-            if (aa != bb) {
-                return aa > bb;
-            }
-            return polygonLess(a, b);
-        });
+        const std::vector<Obstacle> choices = separatingRegions(region, *obstruction);
         for (const auto &candidate : choices) {
             search(candidate, depth + 1);
             if (exhausted) {
@@ -303,31 +351,33 @@ struct SupportedRegion {
     }
 };
 
+// Propagate boundary connectivity across complete footprints and touching seams.
 void connectWalls(std::vector<Obstacle> &obstacles, const Point &normal) {
-    // Brushes can form a wall together. Propagate boundary connectivity through
-    // their complete planar footprints, including touching brush seams.
     bool changed = true;
     while (changed) {
         changed = false;
         for (auto &candidate : obstacles) {
-            if (!candidate.wall) {
-                for (const auto &wall : obstacles) {
-                    if (wall.wall) {
-                        Point section[64];
-                        std::copy(candidate.points, candidate.points + candidate.count, section);
-                        int n = candidate.count;
-                        for (int i = 0; i < wall.count && n >= 3; i++) {
-                            Plane p = edgePlane(wall.points[i], wall.points[(i + 1) % wall.count],
-                                                normal);
-                            p.d += 0.25;
-                            n = clip(section, n, p);
-                        }
-                        if (n >= 3 && area(section, n, normal) > 0.001) {
-                            candidate.wall = true;
-                            changed = true;
-                            break;
-                        }
-                    }
+            if (candidate.wall) {
+                continue;
+            }
+            for (const auto &wall : obstacles) {
+                if (!wall.wall) {
+                    continue;
+                }
+                Point section[maxPolygonVertices];
+                std::copy(candidate.points, candidate.points + candidate.count, section);
+                int sectionCount = candidate.count;
+                for (int i = 0; i < wall.count && sectionCount >= 3; i++) {
+                    Plane boundary =
+                        edgePlane(wall.points[i], wall.points[(i + 1) % wall.count], normal);
+                    boundary.distance += wallConnectionMargin;
+                    sectionCount = clip(section, sectionCount, boundary);
+                }
+                if (sectionCount >= 3 &&
+                    area(section, sectionCount, normal) > regionAreaTolerance) {
+                    candidate.wall = true;
+                    changed = true;
+                    break;
                 }
             }
         }
@@ -343,8 +393,8 @@ bool triangleSection(const Point *triangle, const Plane &slice, const Point &nor
     for (int i = 0; i < 3; i++) {
         const Point a = triangle[i];
         const Point b = triangle[(i + 1) % 3];
-        const double da = dot(a, slice.n) - slice.d;
-        const double db = dot(b, slice.n) - slice.d;
+        const double da = dot(a, slice.normal) - slice.distance;
+        const double db = dot(b, slice.normal) - slice.distance;
         if ((da <= 0 && db > 0) || (db <= 0 && da > 0)) {
             hits[n++] = add(a, add(b, a, -1), da / (da - db));
         }
@@ -353,8 +403,8 @@ bool triangleSection(const Point *triangle, const Plane &slice, const Point &nor
         return false; // Coplanar floors and triangles outside the slice.
     }
     // Project the slice back down onto the landing plane.
-    hits[0].x[2] -= 0.5;
-    hits[1].x[2] -= 0.5;
+    hits[0].x[2] -= wallSliceHeight;
+    hits[1].x[2] -= wallSliceHeight;
     const Point edge = add(hits[1], hits[0], -1);
     const double length = std::sqrt(dot(edge, edge));
     if (length < 0.001) {
@@ -370,12 +420,12 @@ bool triangleSection(const Point *triangle, const Plane &slice, const Point &nor
     return true;
 }
 
-bool terrainTriangles(unsigned index, const vec3_t mins, const vec3_t maxs,
-                      std::vector<int> &triangles, int depth = 0) {
-    if (index >= unsigned(cm.aabbTreeCount) || depth > 64) {
+bool terrainTriangles(unsigned treeIndex, const vec3_t mins, const vec3_t maxs,
+                      std::vector<int> &triangleIndices, int depth = 0) {
+    if (treeIndex >= unsigned(cm.aabbTreeCount) || depth > maxTraversalDepth) {
         return false;
     }
-    const auto &tree = cm.aabbTrees[index];
+    const auto &tree = cm.aabbTrees[treeIndex];
     for (int axis = 0; axis < 3; axis++) {
         if (tree.origin[axis] + tree.halfSize[axis] < mins[axis] ||
             tree.origin[axis] - tree.halfSize[axis] > maxs[axis]) {
@@ -385,12 +435,13 @@ bool terrainTriangles(unsigned index, const vec3_t mins, const vec3_t maxs,
     if (tree.materialIndex >= cm.numMaterials) {
         return false;
     }
-    if (!(cm.materials[tree.materialIndex].contentFlags & 0x11)) {
+    if (!(cm.materials[tree.materialIndex].contentFlags & supportContentsMask)) {
         return true;
     }
     if (tree.childCount) {
         for (unsigned i = 0; i < tree.childCount; i++) {
-            if (!terrainTriangles(tree.u.firstChildIndex + i, mins, maxs, triangles, depth + 1)) {
+            if (!terrainTriangles(tree.u.firstChildIndex + i, mins, maxs, triangleIndices,
+                                  depth + 1)) {
                 return false;
             }
         }
@@ -400,11 +451,12 @@ bool terrainTriangles(unsigned index, const vec3_t mins, const vec3_t maxs,
         }
         const auto &partition = cm.partitions[tree.u.partitionIndex];
         for (unsigned i = 0; i < unsigned(static_cast<unsigned char>(partition.triCount)); i++) {
-            const int tri = partition.firstTri + i;
-            if (tri < 0 || tri >= cm.triCount || triangles.size() >= 16384) {
+            const int triangleIndex = partition.firstTri + i;
+            if (triangleIndex < 0 || triangleIndex >= cm.triCount ||
+                triangleIndices.size() >= maxCollisionTriangles) {
                 return false;
             }
-            triangles.push_back(tri);
+            triangleIndices.push_back(triangleIndex);
         }
     }
     return true;
@@ -425,14 +477,14 @@ static_assert(sizeof(ModelCollisionSurface) == 44, "CoD4 model collision surface
 static_assert(offsetof(XModel, collSurfs) == 0x98 && offsetof(XModel, collLod) == 0xc6,
               "CoD4 model collision ABI");
 bool planeIntersection(const Plane *p, Point &result) {
-    const Point a = cross(p[1].n, p[2].n);
-    const Point b = cross(p[2].n, p[0].n);
-    const Point c = cross(p[0].n, p[1].n);
-    const double determinant = dot(p[0].n, a);
+    const Point a = cross(p[1].normal, p[2].normal);
+    const Point b = cross(p[2].normal, p[0].normal);
+    const Point c = cross(p[0].normal, p[1].normal);
+    const double determinant = dot(p[0].normal, a);
     if (std::abs(determinant) < 1e-15) {
         return false;
     }
-    result = add(add(add(Point{}, a, p[0].d), b, p[1].d), c, p[2].d);
+    result = add(add(add(Point{}, a, p[0].distance), b, p[1].distance), c, p[2].distance);
     result = add(Point{}, result, 1 / determinant);
     for (double v : result.x) {
         if (!std::isfinite(v)) {
@@ -446,16 +498,16 @@ bool modelTriangle(const float encoded[3][4], const cStaticModel_t &model, Obsta
     Plane local[3];
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            local[i].n.x[j] = encoded[i][j];
+            local[i].normal.x[j] = encoded[i][j];
         }
-        local[i].d = encoded[i][3];
+        local[i].distance = encoded[i][3];
     }
     triangle = {};
     triangle.count = 3;
     for (int i = 0; i < 3; i++) {
         Plane planes[3] = {local[0], local[1], local[2]};
         if (i) {
-            planes[i].d += 1; // Barycentric coordinates (0,0), (1,0), (0,1).
+            planes[i].distance += 1; // Barycentric coordinates (0,0), (1,0), (0,1).
         }
         Point vertex;
         if (!planeIntersection(planes, vertex)) {
@@ -464,9 +516,9 @@ bool modelTriangle(const float encoded[3][4], const cStaticModel_t &model, Obsta
         Plane transform[3];
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < 3; k++) {
-                transform[j].n.x[k] = model.invScaledAxis[k][j];
+                transform[j].normal.x[k] = model.invScaledAxis[k][j];
             }
-            transform[j].d = vertex.x[j];
+            transform[j].distance = vertex.x[j];
         }
         if (!planeIntersection(transform, triangle.points[i])) {
             return false;
@@ -500,7 +552,7 @@ bool appendTriangle(const Obstacle &triangle, const vec3_t mins, const vec3_t ma
             return true;
         }
     }
-    if (out.size() >= 16384) {
+    if (out.size() >= maxCollisionTriangles) {
         return false;
     }
     out.push_back(triangle);
@@ -509,37 +561,46 @@ bool appendTriangle(const Obstacle &triangle, const vec3_t mins, const vec3_t ma
 
 // One bounded source of exact triangles for both wall slices and landing unions.
 // Static models use collision surfaces, never their render geometry or bounds as floors.
-bool collisionTriangles(const vec3_t mins, const vec3_t maxs, std::vector<Obstacle> &out) {
+// Decode terrain collision triangles touching the query; reject invalid indices or budget overflow.
+bool collectTerrainCollisionTriangles(const vec3_t mins, const vec3_t maxs,
+                                      std::vector<Obstacle> &outputTriangles) {
     std::vector<uint16_t> leaves(cm.numLeafs);
-    int last;
-    const int count = CM_BoxLeafnums(mins, maxs, leaves.data(), leaves.size(), &last);
-    std::vector<int> triangles;
-    for (int i = 0; i < count; i++) {
+    int lastLeaf;
+    const int leafCount = CM_BoxLeafnums(mins, maxs, leaves.data(), leaves.size(), &lastLeaf);
+    std::vector<int> triangleIndices;
+    for (int i = 0; i < leafCount; i++) {
         const auto &leaf = cm.leafs[leaves[i]];
         for (unsigned j = 0; j < leaf.collAabbCount; j++) {
-            if (!terrainTriangles(leaf.firstCollAabbIndex + j, mins, maxs, triangles)) {
+            if (!terrainTriangles(leaf.firstCollAabbIndex + j, mins, maxs, triangleIndices)) {
                 return false;
             }
         }
     }
-    std::sort(triangles.begin(), triangles.end());
-    triangles.erase(std::unique(triangles.begin(), triangles.end()), triangles.end());
-    for (int index : triangles) {
+    std::sort(triangleIndices.begin(), triangleIndices.end());
+    triangleIndices.erase(std::unique(triangleIndices.begin(), triangleIndices.end()),
+                          triangleIndices.end());
+    for (int triangleIndex : triangleIndices) {
         Obstacle triangle = {};
         triangle.count = 3;
         for (int i = 0; i < 3; i++) {
-            const unsigned vertex = cm.triIndices[index * 3 + i];
-            if (vertex >= cm.vertCount) {
+            const unsigned vertexIndex = cm.triIndices[triangleIndex * 3 + i];
+            if (vertexIndex >= cm.vertCount) {
                 return false;
             }
             for (int axis = 0; axis < 3; axis++) {
-                triangle.points[i].x[axis] = cm.verts[vertex][axis];
+                triangle.points[i].x[axis] = cm.verts[vertexIndex][axis];
             }
         }
-        if (!appendTriangle(triangle, mins, maxs, out)) {
+        if (!appendTriangle(triangle, mins, maxs, outputTriangles)) {
             return false;
         }
     }
+    return true;
+}
+
+// Read the collision mesh of each overlapping static model, including its scale and rotation.
+bool collectModelCollisionTriangles(const vec3_t mins, const vec3_t maxs,
+                                    std::vector<Obstacle> &outputTriangles) {
     for (unsigned i = 0; i < cm.numStaticModels; i++) {
         const auto &model = cm.staticModelList[i];
         if (!boundsOverlap(model.absmin, model.absmax, mins, maxs) || !model.xmodel ||
@@ -551,34 +612,43 @@ bool collisionTriangles(const vec3_t mins, const vec3_t maxs, std::vector<Obstac
         if (!surfaces) {
             continue;
         }
-        if (model.xmodel->numCollSurfs < 0 || model.xmodel->numCollSurfs > 4096) {
+        if (model.xmodel->numCollSurfs < 0 || model.xmodel->numCollSurfs > maxModelSurfaces) {
             return false;
         }
-        unsigned visited = 0;
+        unsigned visitedTriangles = 0;
         for (int j = 0; j < model.xmodel->numCollSurfs; j++) {
             const auto &surface = surfaces[j];
-            if (!(surface.contents & 0x11)) {
+            if (!(surface.contents & supportContentsMask)) {
                 continue;
             }
-            if (surface.triangleCount < 0 || unsigned(surface.triangleCount) > 65536 ||
+            if (surface.triangleCount < 0 || unsigned(surface.triangleCount) > maxModelTriangles ||
                 (surface.triangleCount && !surface.triangles)) {
                 return false;
             }
             for (int k = 0; k < surface.triangleCount; k++) {
-                if (++visited > 65536) {
+                if (++visitedTriangles > maxModelTriangles) {
                     return false;
                 }
                 Obstacle triangle;
                 if (!modelTriangle(surface.triangles[k], model, triangle)) {
                     return false;
                 }
-                if (!appendTriangle(triangle, mins, maxs, out)) {
+                if (!appendTriangle(triangle, mins, maxs, outputTriangles)) {
                     return false;
                 }
             }
         }
     }
     return true;
+}
+
+// Append terrain first, then model triangles. A false result means the caller
+// must discard the partial output; it must never publish incomplete support.
+bool collisionTriangles(const vec3_t mins, const vec3_t maxs, std::vector<Obstacle> &out) {
+    if (!collectTerrainCollisionTriangles(mins, maxs, out)) {
+        return false;
+    }
+    return collectModelCollisionTriangles(mins, maxs, out);
 }
 
 // Work from player-solid brush intersections, never sampled rays. Freestanding objects
@@ -595,7 +665,7 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
             maxs[axis] = std::max(double(maxs[axis]), points[i].x[axis]);
         }
     }
-    maxs[2] += 0.5;
+    maxs[2] += wallSliceHeight;
     std::vector<uint16_t> leaves(cm.numLeafs);
     int last;
     const int leafCount = CM_BoxLeafnums(mins, maxs, leaves.data(), leaves.size(), &last);
@@ -610,7 +680,7 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
             continue;
         }
         const cbrush_t &brush = cm.brushes[index];
-        if (!(brush.contents & 0x11) || brush.numsides > 128) {
+        if (!(brush.contents & supportContentsMask) || brush.numsides > maxBrushSidePlanes) {
             continue; // Solid and player-solid glass walls.
         }
         bool overlaps = true;
@@ -627,9 +697,10 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
         std::copy(points, points + count, obstacle.points);
         // Intersect just above the landing plane. Connectivity, not arbitrary
         // wall height, distinguishes an enclosing obstruction from a loose prop.
-        for (unsigned i = 0; i < brush.numsides + 6 && obstacle.count >= 3; i++) {
+        for (unsigned i = 0; i < brush.numsides + axialBrushPlaneCount && obstacle.count >= 3;
+             i++) {
             Plane p = plane(brush, i);
-            p.d -= p.n.x[2] * 0.5;
+            p.distance -= p.normal.x[2] * wallSliceHeight;
             obstacle.count = clip(obstacle.points, obstacle.count, p);
         }
         obstacle.count = simplify(obstacle.points, obstacle.count);
@@ -637,7 +708,7 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
             continue;
         }
         obstacles.push_back(obstacle);
-        if (obstacles.size() > 2048) {
+        if (obstacles.size() > maxWallPolygons) {
             return false;
         }
     }
@@ -645,7 +716,7 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
     if (!collisionTriangles(mins, maxs, triangles)) {
         return false;
     }
-    const Plane slice = {normal, dot(points[0], normal) + normal.x[2] * 0.5};
+    const Plane slice = {normal, dot(points[0], normal) + normal.x[2] * wallSliceHeight};
     for (const auto &triangle : triangles) {
         Obstacle obstacle;
         if (!triangleSection(triangle.points, slice, normal, obstacle)) {
@@ -660,7 +731,7 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
             continue;
         }
         obstacles.push_back(obstacle);
-        if (obstacles.size() > 2048) {
+        if (obstacles.size() > maxWallPolygons) {
             return false;
         }
     }
@@ -670,6 +741,8 @@ bool collectWalls(const Point *points, int count, std::vector<Obstacle> &obstacl
 // A landing can be built from several coplanar brushes (e.g. a solid rim
 // around player-solid glass). Merge only when their union covers the hull.
 // Convex hull alone would incorrectly fill holes and concave cutouts.
+// With an empty gaps output, false plus nonempty gaps means uncovered floor;
+// false plus empty gaps means the fragmentation budget was exhausted.
 bool coveredHull(const Obstacle &hull, const std::vector<Obstacle> &surfaces, const Point &normal,
                  std::vector<Obstacle> *gaps = nullptr) {
     std::vector<Obstacle> remaining(1, hull);
@@ -680,15 +753,16 @@ bool coveredHull(const Obstacle &hull, const std::vector<Obstacle> &surfaces, co
             for (int e = 0; e < surface.count && inside.count >= 3; e++) {
                 Plane boundary =
                     edgePlane(surface.points[e], surface.points[(e + 1) % surface.count], normal);
-                boundary.d += surfaceSeamTolerance; // Same BSP seam tolerance as face connectivity.
+                boundary.distance +=
+                    surfaceSeamTolerance; // Same BSP seam tolerance as face connectivity.
                 Obstacle outside = inside;
-                Plane reverse = {add(Point{}, boundary.n, -1), -boundary.d};
+                Plane reverse = {add(Point{}, boundary.normal, -1), -boundary.distance};
                 outside.count = clip(outside.points, outside.count, reverse);
                 if (outside.count >= 3 && area(outside.points, outside.count, normal) > 0.0001) {
                     next.push_back(outside);
                 }
                 inside.count = clip(inside.points, inside.count, boundary);
-                if (next.size() > 512) {
+                if (next.size() > maxUncoveredPieces) {
                     return false;
                 }
             }
@@ -743,7 +817,7 @@ bool convexHull(const std::vector<Obstacle> &surfaces, Obstacle &hull) {
         }
         out[k++] = points[i];
     }
-    if (--k < 3 || k > 64) {
+    if (--k < 3 || k > maxPolygonVertices) {
         return false;
     }
     std::copy(out.begin(), out.begin() + k, hull.points);
@@ -759,11 +833,11 @@ bool triangleFace(Obstacle &face, const Point &normal, double height) {
         return false;
     }
     n = add(Point{}, n, 1 / length);
-    if (std::abs(dot(n, normal)) < 0.99999) {
+    if (std::abs(dot(n, normal)) < parallelPlaneDotThreshold) {
         return false;
     }
     for (int i = 0; i < face.count; i++) {
-        if (std::abs(dot(face.points[i], normal) - height) > 0.01) {
+        if (std::abs(dot(face.points[i], normal) - height) > coplanarHeightTolerance) {
             return false;
         }
     }
@@ -778,12 +852,100 @@ bool connectedSurface(const Obstacle &source, const Obstacle &candidate, const P
     Obstacle contact = candidate;
     for (int i = 0; i < source.count && contact.count >= 3; i++) {
         Plane edge = edgePlane(source.points[i], source.points[(i + 1) % source.count], normal);
-        edge.d += surfaceSeamTolerance;
+        edge.distance += surfaceSeamTolerance;
         contact.count = clip(contact.points, contact.count, edge);
     }
     return contact.count >= 3 && area(contact.points, contact.count, normal) > 0.0001;
 }
 
+// Add each coplanar brush once. Keep the original contact comparison so
+// touching seams and tiny bevels retain the existing acceptance threshold.
+bool appendConnectedBrushFaces(const Obstacle &source, const vec3_t mins, const vec3_t maxs,
+                               const Point &anchorPoint, const Point &unit, double height,
+                               std::vector<unsigned> &visited, std::vector<Obstacle> &surfaces) {
+    std::vector<uint16_t> leaves(cm.numLeafs);
+    int last;
+    const int leafCount = CM_BoxLeafnums(mins, maxs, leaves.data(), leaves.size(), &last);
+    std::vector<unsigned> indices;
+    for (int i = 0; i < leafCount; i++) {
+        worldBrushes(cm.leafs[leaves[i]].leafBrushNode, indices);
+    }
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+    for (unsigned index : indices) {
+        if (index >= cm.numBrushes ||
+            std::find(visited.begin(), visited.end(), index) != visited.end()) {
+            continue;
+        }
+        const cbrush_t &brush = cm.brushes[index];
+        if (!(brush.contents & supportContentsMask) || brush.numsides > maxBrushSidePlanes) {
+            continue; // Solid and player-solid glass.
+        }
+        for (unsigned face = 0; face < brush.numsides + axialBrushPlaneCount; face++) {
+            const Plane top = plane(brush, face);
+            if (dot(top.normal, unit) < parallelPlaneDotThreshold ||
+                std::abs(top.distance - height) > coplanarHeightTolerance) {
+                continue;
+            }
+            Obstacle candidate = {};
+            candidate.count = brushFace(brush, face, anchorPoint, unit, candidate.points);
+            if (candidate.count < 3) {
+                continue;
+            }
+            Obstacle contact = candidate;
+            for (int j = 0; j < source.count && contact.count >= 3; j++) {
+                Plane edge =
+                    edgePlane(source.points[j], source.points[(j + 1) % source.count], unit);
+                edge.distance += surfaceSeamTolerance;
+                contact.count = clip(contact.points, contact.count, edge);
+            }
+            if (contact.count < 3 || area(contact.points, contact.count, unit) < 0.0001) {
+                continue;
+            }
+            visited.push_back(index);
+            surfaces.push_back(candidate);
+            if (surfaces.size() > maxLandingSurfaces) {
+                return false; // Bound editor work; never silently return a partial component.
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+// Add only connected, coplanar collision triangles not already in the component.
+bool appendConnectedTriangleFaces(const Obstacle &source, const vec3_t mins, const vec3_t maxs,
+                                  const Point &unit, double height,
+                                  std::vector<Obstacle> &surfaces) {
+    std::vector<Obstacle> triangles;
+    if (!collisionTriangles(mins, maxs, triangles)) {
+        return false;
+    }
+    for (auto candidate : triangles) {
+        if (!triangleFace(candidate, unit, height) || !connectedSurface(source, candidate, unit)) {
+            continue;
+        }
+        bool duplicate = false;
+        for (auto existing : surfaces) {
+            canonicalize(existing);
+            if (!polygonLess(candidate, existing) && !polygonLess(existing, candidate)) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (duplicate) {
+            continue;
+        }
+        surfaces.push_back(candidate);
+        if (surfaces.size() > maxLandingSurfaces) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Grow the connected coplanar floor component, then put it in a stable order.
+// On failure the partial component must be discarded.
 bool collectLanding(const Point *points, int count, std::vector<Obstacle> &surfaces) {
     const Point normal = polygonNormal(points, count);
     const Point unit = add(Point{}, normal, 1 / std::sqrt(dot(normal, normal)));
@@ -808,76 +970,12 @@ bool collectLanding(const Point *points, int count, std::vector<Obstacle> &surfa
             mins[axis] = low - 0.05;
             maxs[axis] = high + 0.05;
         }
-        std::vector<uint16_t> leaves(cm.numLeafs);
-        int last;
-        const int leafCount = CM_BoxLeafnums(mins, maxs, leaves.data(), leaves.size(), &last);
-        std::vector<unsigned> indices;
-        for (int i = 0; i < leafCount; i++) {
-            worldBrushes(cm.leafs[leaves[i]].leafBrushNode, indices);
-        }
-        std::sort(indices.begin(), indices.end());
-        indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
-        for (unsigned index : indices) {
-            if (index >= cm.numBrushes ||
-                std::find(visited.begin(), visited.end(), index) != visited.end()) {
-                continue;
-            }
-            const cbrush_t &b = cm.brushes[index];
-            if (!(b.contents & 0x11) || b.numsides > 128) {
-                continue; // Solid and player-solid glass.
-            }
-            for (unsigned face = 0; face < b.numsides + 6; face++) {
-                const Plane top = plane(b, face);
-                if (dot(top.n, unit) < 0.99999 || std::abs(top.d - height) > 0.01) {
-                    continue;
-                }
-                Obstacle candidate = {};
-                candidate.count = brushFace(b, face, points[0], unit, candidate.points);
-                if (candidate.count < 3) {
-                    continue;
-                }
-                Obstacle contact = candidate;
-                for (int j = 0; j < source.count && contact.count >= 3; j++) {
-                    Plane edge =
-                        edgePlane(source.points[j], source.points[(j + 1) % source.count], unit);
-                    edge.d += surfaceSeamTolerance;
-                    contact.count = clip(contact.points, contact.count, edge);
-                }
-                if (contact.count < 3 || area(contact.points, contact.count, unit) < 0.0001) {
-                    continue;
-                }
-                visited.push_back(index);
-                surfaces.push_back(candidate);
-                if (surfaces.size() > 4096) {
-                    return false; // Bound editor work; never silently return a partial component.
-                }
-                break;
-            }
-        }
-        std::vector<Obstacle> triangles;
-        if (!collisionTriangles(mins, maxs, triangles)) {
+        if (!appendConnectedBrushFaces(source, mins, maxs, points[0], unit, height, visited,
+                                       surfaces)) {
             return false;
         }
-        for (auto candidate : triangles) {
-            if (!triangleFace(candidate, unit, height) ||
-                !connectedSurface(source, candidate, unit)) {
-                continue;
-            }
-            bool duplicate = false;
-            for (auto existing : surfaces) {
-                canonicalize(existing);
-                if (!polygonLess(candidate, existing) && !polygonLess(existing, candidate)) {
-                    duplicate = true;
-                    break;
-                }
-            }
-            if (duplicate) {
-                continue;
-            }
-            surfaces.push_back(candidate);
-            if (surfaces.size() > 4096) {
-                return false;
-            }
+        if (!appendConnectedTriangleFaces(source, mins, maxs, unit, height, surfaces)) {
+            return false;
         }
     }
     for (auto &surface : surfaces) {
@@ -895,10 +993,10 @@ bool collectLanding(const Point *points, int count, std::vector<Obstacle> &surfa
 // Same circular edge contact and slope-height allowance as checkpointArea::touchesPlayer.
 // The bounding box used to collect candidates is only a broad-phase query.
 bool playerContact(const Point *points, int count, const Point &origin, Point &seed,
-                   double &distance) {
+                   double &contactDistanceSquared) {
     Point normal = polygonNormal(points, count);
     normal = add(Point{}, normal, 1 / std::sqrt(dot(normal, normal)));
-    if (normal.x[2] < 0.7) {
+    if (normal.x[2] < minimumSupportNormalZ) {
         return false;
     }
     bool inside = true;
@@ -914,9 +1012,9 @@ bool playerContact(const Point *points, int count, const Point &origin, Point &s
     candidate.x[2] =
         (dot(points[0], normal) - normal.x[0] * origin.x[0] - normal.x[1] * origin.x[1]) /
         normal.x[2];
-    double nearest = 0;
+    double nearestDistanceSquared = 0;
     if (!inside) {
-        nearest = 1e30;
+        nearestDistanceSquared = 1e30;
         for (int i = 0; i < count; i++) {
             const Point a = points[i];
             const Point d = add(points[(i + 1) % count], a, -1);
@@ -924,24 +1022,27 @@ bool playerContact(const Point *points, int count, const Point &origin, Point &s
             if (length < 1e-12) {
                 continue;
             }
-            const double t = std::max(0.0, std::min(1.0, ((origin.x[0] - a.x[0]) * d.x[0] +
-                                                          (origin.x[1] - a.x[1]) * d.x[1]) /
-                                                             length));
-            const Point p = add(a, d, t);
+            const double interpolationFactor = std::max(
+                0.0,
+                std::min(1.0, ((origin.x[0] - a.x[0]) * d.x[0] + (origin.x[1] - a.x[1]) * d.x[1]) /
+                                  length));
+            const Point p = add(a, d, interpolationFactor);
             const double dx = p.x[0] - origin.x[0];
             const double dy = p.x[1] - origin.x[1];
-            if (dx * dx + dy * dy < nearest) {
-                nearest = dx * dx + dy * dy;
+            if (dx * dx + dy * dy < nearestDistanceSquared) {
+                nearestDistanceSquared = dx * dx + dy * dy;
                 candidate = p;
             }
         }
     }
-    const double height = origin.x[2] - candidate.x[2];
-    if (nearest > 225 || height < -2 || height > 4 + 15 * (1 / normal.x[2] - 1)) {
+    const double heightAboveContact = origin.x[2] - candidate.x[2];
+    if (nearestDistanceSquared > playerContactRadius * playerContactRadius ||
+        heightAboveContact < -2 ||
+        heightAboveContact > 4 + playerContactRadius * (1 / normal.x[2] - 1)) {
         return false;
     }
     seed = candidate;
-    distance = nearest + height * height;
+    contactDistanceSquared = nearestDistanceSquared + heightAboveContact * heightAboveContact;
     return true;
 }
 
@@ -982,6 +1083,8 @@ bool classifyWalls(std::vector<Obstacle> &obstacles, const std::vector<Obstacle>
     return true;
 }
 
+// Select a supported convex region, then validate its final float coordinates
+// against gaps, walls and player contact before publishing the checkpoint.
 bool finalizeLanding(Obstacle &hull, const std::vector<Obstacle> &surfaces,
                      std::vector<Obstacle> obstacles, const Point &origin, const Point &seed) {
     Point normal = polygonNormal(hull.points, hull.count);
@@ -995,7 +1098,7 @@ bool finalizeLanding(Obstacle &hull, const std::vector<Obstacle> &surfaces,
     }
     for (auto wall : obstacles) {
         if (wall.wall) {
-            wall.clearance = 0.125;
+            wall.clearance = checkpointWallClearance;
             constraints.push_back(wall);
         }
     }
@@ -1016,7 +1119,7 @@ bool finalizeLanding(Obstacle &hull, const std::vector<Obstacle> &surfaces,
             coordinate = float(coordinate);
         }
     }
-    if (hull.count > 8 || !coveredHull(hull, surfaces, normal)) {
+    if (hull.count > maxCheckpointVertices || !coveredHull(hull, surfaces, normal)) {
         return false;
     }
     for (int i = 0; i < hull.count; i++) {
@@ -1038,7 +1141,7 @@ bool finalizeLanding(Obstacle &hull, const std::vector<Obstacle> &surfaces,
     }
     for (const auto &wall : obstacles) {
         if (wall.wall) {
-            Point overlap[64];
+            Point overlap[maxPolygonVertices];
             std::copy(hull.points, hull.points + hull.count, overlap);
             const int n = intersection(overlap, hull.count, wall, normal);
             if (n >= 3 && area(overlap, n, normal) > 0.01) {
@@ -1076,7 +1179,7 @@ bool detectLanding(Point *points, int &count, const Point &origin) {
     for (int i = 0; i < boundary.count && hull.count >= 3; i++) {
         Plane edge =
             edgePlane(boundary.points[i], boundary.points[(i + 1) % boundary.count], normal);
-        edge.d -= surfaceSeamTolerance;
+        edge.distance -= surfaceSeamTolerance;
         hull.count = clip(hull.points, hull.count, edge);
     }
     if (hull.count < 3 || !finalizeLanding(hull, surfaces, walls, origin, seed)) {
@@ -1087,11 +1190,11 @@ bool detectLanding(Point *points, int &count, const Point &origin) {
     return true;
 }
 
-struct Search {
+struct SupportFaceSearch {
     Point origin;
     Point normal;
     Point inside;
-    Point best[64];
+    Point best[maxPolygonVertices];
     int count = 0;
     double bestArea = 0;
     double bestDistance = 1e30;
@@ -1101,30 +1204,35 @@ struct Search {
             return;
         }
         const cbrush_t &b = cm.brushes[index];
-        if (!(b.contents & 0x11) || b.numsides > 128) {
+        if (!(b.contents & supportContentsMask) || b.numsides > maxBrushSidePlanes) {
             return; // solid world brushes only
         }
-        for (unsigned i = 0; i < b.numsides + 6; i++) {
+        for (unsigned i = 0; i < b.numsides + axialBrushPlaneCount; i++) {
             const Plane p = plane(b, i);
             const double reach =
-                footprint ? 15 * (std::abs(p.n.x[0]) + std::abs(p.n.x[1])) + 11 * std::abs(p.n.x[2])
-                          : 0.5;
-            if (dot(origin, p.n) - p.d > reach) {
+                footprint
+                    ? playerContactRadius * (std::abs(p.normal.x[0]) + std::abs(p.normal.x[1])) +
+                          playerQueryHalfHeight * std::abs(p.normal.x[2])
+                    : 0.5;
+            if (dot(origin, p.normal) - p.distance > reach) {
                 return;
             }
         }
-        for (unsigned face = 0; face < b.numsides + 6; face++) {
+        for (unsigned face = 0; face < b.numsides + axialBrushPlaneCount; face++) {
             const Plane top = plane(b, face);
             if (footprint) {
-                if (top.n.x[2] < 0.7) {
+                if (top.normal.x[2] < minimumSupportNormalZ) {
                     continue;
                 }
-            } else if (dot(top.n, normal) < 0.99999 || std::abs(dot(origin, top.n) - top.d) > 0.5) {
+            } else if (dot(top.normal, normal) < parallelPlaneDotThreshold ||
+                       std::abs(dot(origin, top.normal) - top.distance) > 0.5) {
                 continue;
             }
-            Point center = add(origin, top.n, (top.d - dot(origin, top.n)) / dot(top.n, top.n));
-            Point pts[64];
-            int n = brushFace(b, face, center, top.n, pts);
+            Point center =
+                add(origin, top.normal,
+                    (top.distance - dot(origin, top.normal)) / dot(top.normal, top.normal));
+            Point pts[maxPolygonVertices];
+            int n = brushFace(b, face, center, top.normal, pts);
             if (n < 3) {
                 continue;
             }
@@ -1132,7 +1240,7 @@ struct Search {
             for (int i = 0; i < n; i++) {
                 const Point a = add(pts[i], center, -1);
                 const Point z = add(pts[(i + 1) % n], center, -1);
-                area += dot(cross(a, z), top.n);
+                area += dot(cross(a, z), top.normal);
             }
             area = std::abs(area);
             double supportDistance = 0;
@@ -1152,7 +1260,7 @@ struct Search {
     }
     // Follow the world leaf tree, not inline/moving brush models.
     void node(int index, int depth = 0) {
-        if (index <= 0 || unsigned(index) >= cm.leafbrushNodesCount || depth > 64) {
+        if (index <= 0 || unsigned(index) >= cm.leafbrushNodesCount || depth > maxTraversalDepth) {
             return;
         }
         const cLeafBrushNode_t &n = cm.leafbrushNodes[index];
@@ -1169,7 +1277,9 @@ struct Search {
             return;
         }
         double d = inside.x[n.axis] - n.data.children.dist;
-        const double reach = footprint ? (n.axis < 2 ? 15.5 : 11.0) : 0.5;
+        const double footprintReach =
+            n.axis < 2 ? playerContactRadius + 0.5 : playerQueryHalfHeight;
+        const double reach = footprint ? footprintReach : pointQueryReach;
         if (d >= -reach) {
             node(index + n.data.children.childOffset[0], depth + 1);
         }
@@ -1181,7 +1291,8 @@ struct Search {
         vec3_t mins;
         vec3_t maxs;
         for (int axis = 0; axis < 3; axis++) {
-            const double reach = axis == 2 ? (footprint ? 11.0 : 0.5) : (footprint ? 15.0 : 0.5);
+            const double footprintReach = axis == 2 ? playerQueryHalfHeight : playerContactRadius;
+            const double reach = footprint ? footprintReach : pointQueryReach;
             mins[axis] = origin.x[axis] - reach;
             maxs[axis] = origin.x[axis] + reach;
         }
@@ -1200,7 +1311,8 @@ struct Search {
             if (up.x[2] < 0) {
                 up = add(Point{}, up, -1);
             }
-            if (up.x[2] < 0.7 || (!footprint && dot(up, normal) < 0.99999)) {
+            if (up.x[2] < minimumSupportNormalZ ||
+                (!footprint && dot(up, normal) < parallelPlaneDotThreshold)) {
                 continue;
             }
             const double height = dot(face.points[0], up);
@@ -1227,6 +1339,8 @@ struct Search {
 } // namespace
 #endif
 
+// Script getters reject missing/wrongly typed arguments before geometry is read.
+// Undefined means no supported face or the search could not complete within its limits.
 extern "C" void Gsc_Platform_Face()
 {
 #ifdef COD4
@@ -1234,14 +1348,14 @@ extern "C" void Gsc_Platform_Face()
     vec3_t normal;
     stackGetParamVector(0, origin);
     stackGetParamVector(1, normal);
-    Search search;
+    SupportFaceSearch search;
     int footprint = 0;
     if (Scr_GetNumParam() > 2) {
         stackGetParamInt(2, &footprint);
     }
     search.footprint = footprint != 0;
     for (int i = 0; i < 3; i++) {
-        if (!std::isfinite(origin[i]) || std::abs(origin[i]) > 131072 ||
+        if (!std::isfinite(origin[i]) || std::abs(origin[i]) > mapCoordinateLimit ||
             !std::isfinite(normal[i])) {
             stackPushUndefined();
             return;
@@ -1249,7 +1363,8 @@ extern "C" void Gsc_Platform_Face()
         search.origin.x[i] = origin[i];
         search.normal.x[i] = normal[i];
     }
-    if (normal[2] < 0.7 || std::abs(dot(search.normal, search.normal) - 1) > 0.01) {
+    if (normal[2] < minimumSupportNormalZ ||
+        std::abs(dot(search.normal, search.normal) - 1) > 0.01) {
         stackPushUndefined();
         return;
     }
@@ -1262,13 +1377,13 @@ extern "C" void Gsc_Platform_Face()
         vec3_t mins;
         vec3_t maxs;
         for (int axis = 0; axis < 3; axis++) {
-            const float extent = axis == 2 ? 11.0f : 15.0f;
+            const float extent = axis == 2 ? playerQueryHalfHeight : playerContactRadius;
             mins[axis] = origin[axis] - extent;
             maxs[axis] = origin[axis] + extent;
         }
-        uint16_t leaves[1024];
+        uint16_t leaves[maxSupportQueryLeaves];
         int lastLeaf;
-        const int count = CM_BoxLeafnums(mins, maxs, leaves, 1024, &lastLeaf);
+        const int count = CM_BoxLeafnums(mins, maxs, leaves, maxSupportQueryLeaves, &lastLeaf);
         for (int i = 0; i < count; i++) {
             search.node(cm.leafs[leaves[i]].leafBrushNode);
         }
@@ -1307,22 +1422,23 @@ extern "C" void Gsc_Platform_Face()
 }
 
 // Read once when binding an editor checkpoint. Gameplay uses getGroundEntity().
+// Result fields: inline model index, local minimum bounds, local maximum bounds.
 extern "C" void Gsc_Platform_EntityInfo()
 {
 #ifdef COD4
-    int number;
-    if (!stackGetParams("i", &number) || number < 0 || number >= ENTITYNUM_WORLD ||
-        !g_entities[number].r.inuse) {
+    int entityNum;
+    if (!stackGetParams("i", &entityNum) || entityNum < 0 || entityNum >= ENTITYNUM_WORLD ||
+        !g_entities[entityNum].r.inuse) {
         stackPushUndefined();
         return;
     }
-    const gentity_t &ent = g_entities[number];
+    const gentity_t &entity = g_entities[entityNum];
     stackMakeArray();
-    stackPushInt(ent.r.bmodel ? ent.s.index : 0);
+    stackPushInt(entity.r.bmodel ? entity.s.index : 0);
     stackPushArrayNext();
-    stackPushVector(ent.r.mins);
+    stackPushVector(entity.r.mins);
     stackPushArrayNext();
-    stackPushVector(ent.r.maxs);
+    stackPushVector(entity.r.maxs);
     stackPushArrayNext();
 #else
     stackPushUndefined();
