@@ -98,3 +98,6 @@ f342d9cf6db2744260d82b876ffaa1ea180fe9b6
 
 # Notification and HUD probe layout; token and engine checks passed.
 30a44ae01205038b38deef62f236dac4ee17ec2c
+
+# Challenge layout; token, route SQL and VM checks passed.
+6eee8ddbc269e2ca94883d456475825c753866f8
