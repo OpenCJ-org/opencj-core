@@ -370,60 +370,85 @@ _onCmdTelePos(args)
     self thread _teleportToPlayer(args, false);
 }
 
-_teleportToPlayer(args, teleToSave)
+// Resolve command text before starting the player's teleport operation.
+_teleportToPlayer(args, teleportToSave)
 {
-    self endon("disconnect");
+    if (args.size != 1)
+    {
+        return;
+    }
+    targetPlayer = findPlayerByArg(args[0]);
+    if (!isDefined(targetPlayer))
+    {
+        self sendLocalChatMessage("Target player could not be found", true);
+        return;
+    }
+    if (targetPlayer == self)
+    {
+        self sendLocalChatMessage("You're already at your own location..", true);
+        return;
+    }
+    self teleportToPlayer(targetPlayer, teleportToSave);
+}
 
-    if ((self.sessionState != "playing") && (self.sessionState != "spectator"))
+// Move to a resolved target only after this operation's spawn has succeeded.
+teleportToPlayer(targetPlayer, teleportToSave)
+{
+    self notify("command_teleport_changed");
+    self endon("command_teleport_changed");
+    self endon("disconnect");
+    self endon("cpc_started");
+    if (self.sessionState != "playing" && self.sessionState != "spectator")
     {
         return;
     }
 
-    if (args.size == 1)
+    // Mark assistance before spawning so no intervening save can look competitive.
+    self openCJ\cheating::setCheating(true);
+    if (self isSpectator())
     {
-        player = findPlayerByArg(args[0]);
-        if (!isDefined(player))
+        waittillframeend;
+        expectedSpawnVersion = 1;
+        if (isDefined(self.spawnRequestVersion))
         {
-            self sendLocalChatMessage("Target player could not be found", true);
+            expectedSpawnVersion = self.spawnRequestVersion + 1;
         }
-        else if(player != self)
+        // The spawn routine has bounded SQL waits and can return without spawning.
+        self openCJ\events\spawnPlayer::main();
+        waittillframeend;
+        if (self.sessionState != "playing" || self.spawnRequestVersion != expectedSpawnVersion)
         {
-            self openCJ\cheating::setCheating(true); // Set cheating flag before spawning just to have no timing gap for saving without cheated flag
-            if (self isSpectator())
-            {
-                self thread doNextFrame(openCJ\events\spawnPlayer::main);
-                self waittill("spawned_player"); // not "spawned" because that occurs before actually having spawned
-            }
-            shouldTeleToPos = !teleToSave;
-            if (teleToSave)
-            {
-                playerSave = player openCJ\savePosition::getSavedPosition(player openCJ\savePosition::getBackwardsCount());
-                if (isDefined(playerSave))
-                {
-                    
-                    self sendLocalChatMessage("Teleported you to target player's save");
+            return;
+        }
+    }
+    if (!isDefined(targetPlayer))
+    {
+        self sendLocalChatMessage("Target player disconnected before teleporting", true);
+        return;
+    }
 
-                    self openCJ\mapBoost::cancel();
-                    self setOrigin(playerSave.origin);
-                    self setPlayerAngles(playerSave.angles);
-                }
-                else
-                {
-                    self sendLocalChatMessage("Target player save not available, teleporting to position", true);
-                    shouldTeleToPos = true;
-                }
-            }
-            
-            if (shouldTeleToPos)
-            {
-                self openCJ\mapBoost::cancel();
-                self setOrigin(player getOrigin());
-                self setPlayerAngles(player getPlayerAngles());
-            }
+    useCurrentPosition = !teleportToSave;
+    if (teleportToSave)
+    {
+        savedPositionIndex = targetPlayer openCJ\savePosition::getBackwardsCount();
+        savedPosition = targetPlayer openCJ\savePosition::getSavedPosition(savedPositionIndex);
+        if (isDefined(savedPosition))
+        {
+            self sendLocalChatMessage("Teleported you to target player's save");
+            self openCJ\mapBoost::cancel();
+            self setOrigin(savedPosition.origin);
+            self setPlayerAngles(savedPosition.angles);
         }
         else
         {
-            self sendLocalChatMessage("You're already at your own location..", true);
+            self sendLocalChatMessage("Target player save not available, teleporting to position", true);
+            useCurrentPosition = true;
         }
+    }
+    if (useCurrentPosition)
+    {
+        self openCJ\mapBoost::cancel();
+        self setOrigin(targetPlayer getOrigin());
+        self setPlayerAngles(targetPlayer getPlayerAngles());
     }
 }

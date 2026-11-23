@@ -29,6 +29,7 @@ main()
     checkHelpPages(player);
     checkExactAliasSelection(player);
     checkTeleportInputs(player);
+    checkPlayerTeleport(player);
     checkChatNotifications(player);
     finish();
 }
@@ -349,4 +350,52 @@ checkTeleportInputs(player)
     player setOrigin(previousOrigin - teleportLift);
     player.sessionState = previousSessionState;
     player.cheating = false;
+}
+
+// Rejected spawns return unchanged; an already playing client can still teleport.
+checkPlayerTeleport(player)
+{
+    targetPlayer = addTestClient();
+    wait 0.2;
+    check(isDefined(targetPlayer), "second isolated teleport target connected");
+    if (!isDefined(targetPlayer))
+    {
+        return;
+    }
+    previousOrigin = player getOrigin();
+    player.sessionState = "spectator";
+    player.login_playerID = undefined;
+    previousSpawnVersion = 0;
+    if (isDefined(player.spawnRequestVersion))
+    {
+        previousSpawnVersion = player.spawnRequestVersion;
+    }
+    player.commandTeleportDone = false;
+    player thread attemptBlockedTeleport(targetPlayer);
+    deadlineMs = getTime() + 1000;
+    while (!player.commandTeleportDone && getTime() < deadlineMs)
+    {
+        wait .05;
+    }
+    check(player.commandTeleportDone, "rejected spawn finishes the teleport command");
+    check(player.spawnRequestVersion == previousSpawnVersion + 1,
+          "rejected-spawn scenario reached the real spawn routine");
+    check(player getOrigin() == previousOrigin && player.sessionState == "spectator",
+          "rejected spawn preserves the spectator's position and state");
+    player notify("command_teleport_changed");
+
+    player.sessionState = "playing";
+    player.cheating = false;
+    player openCJ\commands::teleportToPlayer(targetPlayer, false);
+    teleportLift = (0, 0, 1);
+    check(player getOrigin() == targetPlayer getOrigin() + teleportLift && player.cheating,
+          "playing client teleports to the target and marks assistance");
+    player setOrigin(previousOrigin - teleportLift);
+    player.sessionState = "spectator";
+}
+
+attemptBlockedTeleport(targetPlayer)
+{
+    self openCJ\commands::teleportToPlayer(targetPlayer, false);
+    self.commandTeleportDone = true;
 }

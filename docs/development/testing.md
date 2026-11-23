@@ -315,6 +315,9 @@ cases exercise real handlers: malformed and overflowing coordinates and invalid
 entity indices preserve state, while valid movement marks the run assisted.
 These commands require ordinary signed decimal integers, without leading zeros
 or a plus sign; this rejects numeric prefixes and overflow before conversion is
-used for movement. The fixture
+used for movement.
+The player-teleport cases pass an explicit synthetic target to the production
+operation. They verify rejected-spawn completion and ordinary movement, not
+fuzzy player-name matching or a full successful login/spawn lifecycle. The fixture
 uses the shared runner's engine/source selection, bounded wait and owned-container
 cleanup; it does not inspect the client's rendered menu.

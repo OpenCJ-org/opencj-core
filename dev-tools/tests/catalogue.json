@@ -302,7 +302,7 @@
     {
       "id": "client-state-engine",
       "category": "integration",
-      "description": "Command menu, download cvars, finish aliases, FPS registration, connecting scoreboard and specular settings. FPS and scoreboard connection scenarios use the shared isolated-server harness. Command debug teleports reject malformed/overflowing input and invalid entity indices; valid movement marks assistance.",
+      "description": "Command menu, download cvars, finish aliases, FPS registration, connecting scoreboard and specular settings. FPS and scoreboard connection scenarios use the shared isolated-server harness. Command debug teleports reject malformed/overflowing input and invalid entity indices; valid movement marks assistance. Player teleports finish after rejected spawns and still move already playing clients; targets are explicit synthetic clients.",
       "requires": "Initialized Compose, matching engine and licensed game/compiled assets; specular checks also use mp_crash.",
       "effects": "Isolated servers and synthetic clients; private outputs. Command-menu tests initialize cancellation constants without opening a database.",
       "files": [
