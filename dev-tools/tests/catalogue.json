@@ -40,6 +40,18 @@
       "mode": "unit"
     },
     {
+      "id": "database-client-unit",
+      "category": "portable",
+      "description": "Persistent SQL client deadlines, partial writes, diagnostics and resource cleanup.",
+      "requires": "Python 3 standard library on Linux; no database or Docker daemon.",
+      "effects": "Short-lived Python child processes and local pipes; no files or application services.",
+      "files": [
+        "dev-tools/tests/test_mysql_session.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
       "id": "geoip-unit",
       "category": "portable",
       "description": "GeoIP input parsing, overlaps, gzip integrity and country mapping.",

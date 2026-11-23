@@ -8,6 +8,10 @@ import time
 import uuid
 
 
+OUTPUT_CHUNK_BYTES = 64 * 1024
+CLIENT_EXIT_TIMEOUT_SECONDS = 5
+
+
 class MySQL:
     def __init__(self, container, database, runtime=False):
         for value in (container, database):
@@ -36,43 +40,81 @@ class MySQL:
             bufsize=0,
         )
         self.pending = b""
-        self.selector = selectors.DefaultSelector()
-        self.selector.register(self.process.stdout, selectors.EVENT_READ)
+        self.closed = False
+        self.selector = None
+        try:
+            # Read replies while sending large scripts: either pipe can otherwise block the other.
+            os.set_blocking(self.process.stdin.fileno(), False)
+            self.selector = selectors.DefaultSelector()
+            self.selector.register(self.process.stdout, selectors.EVENT_READ, "output")
+        except BaseException:
+            self.close()
+            raise
 
     def query(self, sql, timeout=180):
+        """Return complete rows up to this query's marker; any failure closes the session."""
+        if self.closed:
+            raise RuntimeError("MySQL session is closed")
         marker = "OCJ_SQL_END_" + uuid.uuid4().hex
-        self.process.stdin.write(
-            ("DELIMITER ;\n" + sql + "\nDELIMITER ;\nSELECT '" + marker + "';\n").encode()
-        )
+        payload = ("DELIMITER ;\n" + sql + "\nDELIMITER ;\nSELECT '" + marker + "';\n").encode()
+        unsent = memoryview(payload)
         lines = []
         deadline = time.monotonic() + timeout
-        while True:
-            while b"\n" in self.pending:
-                line, self.pending = self.pending.split(b"\n", 1)
-                line = line.decode().rstrip("\r")
-                if line == marker:
-                    return "\n".join(lines)
-                lines.append(line)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0 or not self.selector.select(remaining):
-                self.close()
-                raise TimeoutError("MySQL query timed out")
-            block = os.read(self.process.stdout.fileno(), 65536)
-            if not block:
-                error = "\n".join(lines)
-                self.close()
-                raise RuntimeError(error or "MySQL connection closed")
-            self.pending += block
+        try:
+            self.selector.register(self.process.stdin, selectors.EVENT_WRITE, "input")
+            while True:
+                while b"\n" in self.pending:
+                    line, self.pending = self.pending.split(b"\n", 1)
+                    line = line.decode().rstrip("\r")
+                    if line == marker:
+                        return "\n".join(lines)
+                    lines.append(line)
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("MySQL query timed out")
+                events = self.selector.select(remaining)
+                if not events:
+                    raise TimeoutError("MySQL query timed out")
+                for event, _ in events:
+                    if event.data == "input":
+                        written = self.process.stdin.write(unsent)
+                        if written is None:
+                            continue
+                        if written == 0:
+                            raise BrokenPipeError("MySQL input closed")
+                        unsent = unsent[written:]
+                        if not unsent:
+                            self.selector.unregister(self.process.stdin)
+                    else:
+                        block = os.read(self.process.stdout.fileno(), OUTPUT_CHUNK_BYTES)
+                        if not block:
+                            # A client can exit halfway through an error line; keep that diagnostic.
+                            if self.pending:
+                                lines.append(self.pending.decode(errors="replace"))
+                            raise RuntimeError("\n".join(lines) or "MySQL connection closed")
+                        self.pending += block
+        except BaseException:
+            self.close()
+            raise
 
     def close(self):
-        if self.process.poll() is None:
+        """Release both pipes and the selector, and reap the client even after failed setup."""
+        if self.closed:
+            return
+        self.closed = True
+        try:
             self.process.stdin.close()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait()
-        self.selector.close()
+            if self.process.poll() is None:
+                try:
+                    self.process.wait(timeout=CLIENT_EXIT_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait()
+        finally:
+            self.process.stdout.close()
+            if self.selector is not None:
+                self.selector.close()
 
     def __enter__(self):
         return self
