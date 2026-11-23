@@ -2,21 +2,28 @@
 
 onInit()
 {
-    underlyingCmd = openCJ\settings::addSettingBool("poshud", false, "Turn on/off position hud. Usage: !poshud [on/off]", undefined);
+    underlyingCmd = openCJ\settings::addSettingBool(
+        "poshud", false, "Turn on/off position hud. Usage: !poshud [on/off]", undefined);
 }
 
-onPlayerConnect(){}
+onPlayerConnect()
+{
+}
 
 _createPositionHud()
 {
-    if (!isDefined(self.hudPos))
+    if(!isDefined(self.hudPos))
     {
         self.hudPos = [];
 
         rgb = (0.8, 0.8, 0.8);
         spaceBetween = 20;
         startY = 6;
-        if (getCodVersion() == 4) { spaceBetween = 16; startY = 8; }
+        if(getCodVersion() == 4)
+        {
+            spaceBetween = 16;
+            startY = 8;
+        }
         self _initPosHud("x", rgb, startY);
         self _initPosHud("y", rgb, startY + spaceBetween);
         self _initPosHud("z", rgb, startY + (2 * spaceBetween));
@@ -27,7 +34,10 @@ _createPositionHud()
 onSpawnPlayer()
 {
     if(self openCJ\settings::getSetting("poshud"))
-    {self _createPositionHud();self _setPosHudAlpha(1);}
+    {
+        self _createPositionHud();
+        self _setPosHudAlpha(1);
+    }
 }
 
 onSpawnSpectator()
@@ -37,7 +47,7 @@ onSpawnSpectator()
 
 whileAlive()
 {
-    if (self openCJ\settings::getSetting("poshud"))
+    if(self openCJ\settings::getSetting("poshud"))
     {
         self _createPositionHud();
         self _updatePosHudValues();
@@ -52,7 +62,7 @@ whileAlive()
 _updatePosHudValues()
 {
     org = self getOrigin();
-    if (getCodVersion() == 4) // For CoD4 elevators we want a more accurate position
+    if(getCodVersion() == 4) // For CoD4 elevators we want a more accurate position
     {
         // Remove the actual coordinates, for elevating just need the decimals
         // If we don't do this, then the decimals don't always show up when calling setValue
@@ -70,7 +80,10 @@ _updatePosHudValues()
 
 _setPosHudAlpha(val)
 {
-    if(!isDefined(self.hudPos))return;
+    if(!isDefined(self.hudPos))
+    {
+        return;
+    }
     self.hudPos["x"].alpha = val;
     self.hudPos["y"].alpha = val;
     self.hudPos["z"].alpha = val;
@@ -79,7 +92,7 @@ _setPosHudAlpha(val)
 
 _initPosHud(name, colors, yOffset)
 {
-    if (!isDefined(self.hudPos[name]))
+    if(!isDefined(self.hudPos[name]))
     {
         self.hudPos[name] = newClientHudElem(self);
         self.hudPos[name].alpha = 0;
@@ -92,7 +105,7 @@ _initPosHud(name, colors, yOffset)
         self.hudPos[name].vertalign = "top";
         self.hudPos[name].color = colors;
         self.hudPos[name].fontscale = 1.4;
-        if (getCodVersion() == 4)
+        if(getCodVersion() == 4)
         {
             // Minimap occupies x=5..73.3 and y=5..73.3 in the same HUD space.
             self.hudPos[name].x = 80;
@@ -106,8 +119,14 @@ _initPosHud(name, colors, yOffset)
 
 _destroyPositionHud()
 {
-    if(!isDefined(self.hudPos))return;
-    keys=getArrayKeys(self.hudPos);
-    for(i=0;i<keys.size;i++)self.hudPos[keys[i]] destroy();
-    self.hudPos=undefined;
+    if(!isDefined(self.hudPos))
+    {
+        return;
+    }
+    keys = getArrayKeys(self.hudPos);
+    for(i = 0; i < keys.size; i++)
+    {
+        self.hudPos[keys[i]] destroy();
+    }
+    self.hudPos = undefined;
 }
