@@ -29,6 +29,7 @@ main()
     player verifyCooldownOwnership();
 
     player verifySupersededSpawn();
+    player verifyFPSRegistrationCancellation();
     player verifyFailedRunRestore();
     player verifyRestoreDoesNotArchiveItself();
     player verifyEditorTravelCancelsBoost();
@@ -506,4 +507,28 @@ observeSpawns()
         self waittill("spawned");
         self.testSpawnCount++;
     }
+}
+
+// Registration may finish after the player changes their mind about joining.
+verifyFPSRegistrationCancellation()
+{
+    self.testRegistrationBlocked = true;
+    self openCJ\events\spawnPlayer::main(false);
+    check(self.sessionState == "spectator" && self.fpsRegistrationSpawnPending,
+          "registration holds an initial spawn while temporarily spectating");
+
+    self openCJ\events\spawnSpectator::main();
+    check(!self.fpsRegistrationSpawnPending,
+          "explicit spectator request clears the registration-held spawn");
+    self.testRegistrationBlocked = false;
+    self openCJ\fpsRegistration::finish();
+    check(self.sessionState == "spectator",
+          "registration completion cannot undo the explicit spectator request");
+
+    self.testRegistrationBlocked = true;
+    self openCJ\events\spawnPlayer::main(false);
+    self.testRegistrationBlocked = false;
+    self openCJ\fpsRegistration::finish();
+    check(self.sessionState == "playing" && !self.fpsRegistrationSpawnPending,
+          "an uncancelled registration-held spawn still resumes");
 }

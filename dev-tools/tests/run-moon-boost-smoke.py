@@ -43,6 +43,7 @@ RETAINED_FUNCTIONS = {
         "_invalidatePendingCreation",
     },
     "historysave": None,
+    "fpsregistration": {"finish"},
 }
 SERVICE_RESULTS = {
     ("login", "isLoggedIn"): "return true;",
@@ -52,7 +53,9 @@ SERVICE_RESULTS = {
         "shop",
         "loadEquipment",
     ): r"return self openCJ\platformTest::loadEquipmentForTest();",
-    ("fpsregistration", "canStart"): "return true;",
+    ("fpsregistration", "canStart"): (
+        "return !isDefined(self.testRegistrationBlocked) || !self.testRegistrationBlocked;"
+    ),
     ("mapid", "hasMapID"): "return true;",
     ("util", "isPlayerReady"): "return true;",
     ("noclip", "hasNoclip"): "return self.noclip;",

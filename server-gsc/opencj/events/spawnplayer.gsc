@@ -14,10 +14,11 @@ main(atLastSavedPosition)
 
     if(!self openCJ\fpsRegistration::canStart())
     {
+        self openCJ\events\spawnSpectator::main();
+        // Arm after the temporary spectator transition, which cancels older spawn requests.
         self.fpsRegistrationSpawnPending = true;
         self.fpsRegistrationSpawnAtSave = atLastSavedPosition;
         self openCJ\fpsRegistration::explainBlocked();
-        self openCJ\events\spawnSpectator::main();
         return;
     }
 
@@ -103,6 +104,7 @@ main(atLastSavedPosition)
 // A later spectator, demo, spawn, or disconnect request owns the player's next state.
 cancelPendingSpawn()
 {
+    self.fpsRegistrationSpawnPending = false;
     if(!isDefined(self.spawnRequestVersion))
     {
         self.spawnRequestVersion = 0;
