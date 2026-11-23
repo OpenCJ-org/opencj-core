@@ -1,35 +1,43 @@
 """Run collision regression fixtures on isolated servers; no database or live players."""
 
+from compose_environment import workspace_file, workspace_path
 from pathlib import Path
+import argparse
 import shutil
 import subprocess
 import time
 import uuid
-import sys
 
 root = Path(__file__).resolve().parents[2]
-moving = '--moving' in sys.argv
-fixture = 'platform-moving.gsc' if moving else 'platform-brushes.gsc'
-alternatives = '--alternatives' in sys.argv
-if alternatives:
-    fixture = 'checkpoint-alternatives.gsc'
-height = '--height' in sys.argv
-if height:
-    fixture = 'checkpoint-height.gsc'
-insertion = '--insert' in sys.argv
-if insertion:
-    fixture = 'checkpoint-insert.gsc'
-maps = [
-    arg for arg in sys.argv[1:] if arg not in ['--moving', '--alternatives', '--height', '--insert']
-]
-if insertion and not maps:
-    maps = ['mp_dark']
-if height and not maps:
-    maps = ['mp_dark']
-if alternatives and not maps:
-    maps = ['mp_dark']
-if moving and not maps:
-    maps = ['mp_qube']
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("maps", nargs="*")
+variants = parser.add_mutually_exclusive_group()
+variants.add_argument("--moving", action="store_true")
+variants.add_argument("--alternatives", action="store_true")
+variants.add_argument("--height", action="store_true")
+variants.add_argument("--insert", action="store_true")
+parser.add_argument(
+    "--engine",
+    type=workspace_file,
+    default=str(root / "cod4x-server/bin/cod4x18_dedrun"),
+    help="Built engine inside the core checkout; defaults to the deployed engine",
+)
+options = parser.parse_args()
+engine_container_path = workspace_path(options.engine)
+fixture = "platform-brushes.gsc"
+maps = options.maps
+if options.moving:
+    fixture = "platform-moving.gsc"
+    maps = maps or ["mp_qube"]
+elif options.alternatives:
+    fixture = "checkpoint-alternatives.gsc"
+    maps = maps or ["mp_dark"]
+elif options.height:
+    fixture = "checkpoint-height.gsc"
+    maps = maps or ["mp_dark"]
+elif options.insert:
+    fixture = "checkpoint-insert.gsc"
+    maps = maps or ["mp_dark"]
 for mapname in maps or [
     'mp_to_the_moon',
     'mp_mystic_v3',
@@ -55,13 +63,17 @@ for mapname in maps or [
     init = mod / 'opencj/events/init.gsc'
     s = init.read_text()
     init.write_text(
-        s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;', 1)
+        s.replace(
+            '    level.playerCount = 0;', '    return;\n    level.playerCount = 0;', 1
+        )
     )
     game = mod / 'maps/mp/gametypes/cj.gsc'
     s = game.read_text()
     game.write_text(
         s.replace(
-            'main()\n{', 'main()\n{\n    thread openCJ' + chr(92) + 'platformTest::main();', 1
+            'main()\n{',
+            'main()\n{\n    thread openCJ' + chr(92) + 'platformTest::main();',
+            1,
         )
     )
     name = 'opencj-' + tag
@@ -76,7 +88,7 @@ for mapname in maps or [
         "--workdir",
         "/workspace/" + str(home.relative_to(root)),
         'server',
-        '/workspace/cod4x-server/bin/cod4x18_dedrun',
+        engine_container_path,
     ]
     for k, v in [
         ('fs_basepath', '/game'),

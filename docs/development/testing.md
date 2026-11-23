@@ -79,6 +79,10 @@ a separate candidate without replacing the deployed executable. The candidate mu
 core checkout so the Compose container can read it. A missing or external path
 is rejected before any fixture resources are created.
 
+The platform support runner accepts the same `--engine PATH` option. Choose one
+fixture variant per run; conflicting variant flags are rejected before creating
+a fixture server.
+
 The `camera-engine` runner builds its probe from tracked source by default.
 The `native-unit` command requires g++ with C++17 and 32-bit development libraries,
 but no game assets. Focused GSC commands name their fixture and completion marker;
