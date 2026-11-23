@@ -16,7 +16,12 @@ onPlayerConnected()
 
     maps = openCJ\maps::voteMaps(self.adminLevel);
     self.mapList["curPage"] = 1;
-    self.mapList["maxPage"] = max(1, ceil(maps.size / level.mapListMaxEntriesPerPage)); // Isn't a level variable because maps.size might not be ready in time for onInit()
+    self.mapList["maxPage"] = max(
+        1,
+        ceil(
+            maps.size /
+            level
+                .mapListMaxEntriesPerPage)); // Isn't a level variable because maps.size might not be ready in time for onInit()
     self.mapList["maxEntries"] = maps.size;
 
     self thread _updateMapList(false);
@@ -121,7 +126,8 @@ _handleVote(typeStr)
     }
     else if (typeStr == "map")
     {
-        if (!isDefined(self.mapList["selected"]) || self.mapList["selected"] < 0 || self.mapList["selected"] >= self.displayedMaps.size)
+        if (!isDefined(self.mapList["selected"]) || self.mapList["selected"] < 0 ||
+            self.mapList["selected"] >= self.displayedMaps.size)
         {
             return;
         }
@@ -237,7 +243,8 @@ _updateMapList(searchChanged)
     self _calcMaxPage(nrEntriesThisPage, totalEntries);
 
     // Update page text dvars
-    self setClientCvar(level.mapListDvarPrefix + "pagetxt", self.mapList["curPage"] + "/" + self.mapList["maxPage"]);
+    self setClientCvar(level.mapListDvarPrefix + "pagetxt",
+                       self.mapList["curPage"] + "/" + self.mapList["maxPage"]);
     self setClientCvar(level.mapListDvarPrefix + "page", self.mapList["curPage"]);
     self setClientCvar(level.mapListDvarPrefix + "pagemax", self.mapList["maxPage"]);
 
@@ -266,7 +273,7 @@ _updateMapList(searchChanged)
         }
         else
         {
-            self setClientCvar(dvarName, ""); 
+            self setClientCvar(dvarName, "");
         }
     }
     self.searchMatchedIndices = undefined;
@@ -292,7 +299,8 @@ _updateSelectionDvars(map)
         self setClientCvar(level.mapListDvarPrefix + "date", map["date"]);
         self setClientCvar(level.mapListDvarPrefix + "author", map["author"]);
         self _updateRouteDvars(map["name"]);
-        self setClientCvar(level.mapListDvarPrefix + "loadimage", openCJ\maps::previewImage(map["name"]));
+        self setClientCvar(level.mapListDvarPrefix + "loadimage",
+                           openCJ\maps::previewImage(map["name"]));
     }
     else
     {
@@ -307,18 +315,23 @@ _updateSelectionDvars(map)
 
 _updateRouteDvars(mapName)
 {
-    self.mapListRouteMap=mapName;
-    view=openCJ\mapRoutes::overview(mapName);
-    self.mapListRouteView=view;
-    prefix=level.mapListDvarPrefix;
-    self setClientCvar(prefix+"routetitle",view.title);
-    self setClientCvar(prefix+"routemessage",view.message);
-    self setClientCvar(prefix+"routecount",view.rows.size);
-    for(i=0;i<10;i++)
+    self.mapListRouteMap = mapName;
+    view = openCJ\mapRoutes::overview(mapName);
+    self.mapListRouteView = view;
+    prefix = level.mapListDvarPrefix;
+    self setClientCvar(prefix + "routetitle", view.title);
+    self setClientCvar(prefix + "routemessage", view.message);
+    self setClientCvar(prefix + "routecount", view.rows.size);
+    for(i = 0; i < 10; i++)
     {
-        text="";palette=0;
-        if(i<view.rows.size){text=view.rows[i].label;palette=view.rows[i].palette;}
-        self setClientCvar(prefix+"route"+i,text);
-        self setClientCvar(prefix+"route"+i+"_color",palette);
+        text = "";
+        palette = 0;
+        if(i < view.rows.size)
+        {
+            text = view.rows[i].label;
+            palette = view.rows[i].palette;
+        }
+        self setClientCvar(prefix + "route" + i, text);
+        self setClientCvar(prefix + "route" + i + "_color", palette);
     }
 }
