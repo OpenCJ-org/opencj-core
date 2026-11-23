@@ -1,6 +1,6 @@
 // Temporary ramp boosts. Cancellation must precede any relocation/state reset.
 // Only registered boost owners are affected; other maps' movement is untouched.
-start(scale)
+start(boostScale)
 {
     self endon("disconnect");
     self endon("opencj_map_boost_cancelled");
@@ -20,15 +20,17 @@ start(scale)
     }
 
     self.mapBoostOwned = true;
+    updateIntervalSeconds = 0.05;
+    cooldownSeconds = 2;
     // Preserve the original ramp's sampling and takeoff behavior exactly.
     // Do not test trigger membership here: some launch platforms extend outside it.
     while(isAlive(self) && self.sessionstate == "playing" && self isOnGround())
     {
-        self SetMoveSpeedScale(scale);
-        wait 0.05;
+        self SetMoveSpeedScale(boostScale);
+        wait updateIntervalSeconds;
     }
     self SetMoveSpeedScale(1);
-    wait 2;
+    wait cooldownSeconds;
     self.mapBoostOwned = undefined;
 }
 

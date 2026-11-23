@@ -135,9 +135,9 @@ processFragTeleport()
     {
         return;
     }
-    destination = aimTeleportDestination(
-        request.eye, request.eye + vectorScale(anglesToForward(request.angles), 100000),
-        self getEntityNumber());
+    traceDistanceUnits = 100000;
+    traceEnd = request.eye + vectorScale(anglesToForward(request.angles), traceDistanceUnits);
+    destination = aimTeleportDestination(request.eye, traceEnd, self getEntityNumber());
     if(!isDefined(destination))
     {
         self sendLocalChatMessage("No clear teleport destination at that surface", true);
@@ -150,12 +150,13 @@ processFragTeleport()
     self setOriginAndAngles(destination, self getPlayerAngles());
 }
 
-registerFragTap(now)
+registerFragTap(nowMs)
 {
-    if(!isDefined(self.buttons_lastFrag) || now < self.buttons_lastFrag ||
-       now - self.buttons_lastFrag > 300)
+    doubleTapWindowMs = 300;
+    if(!isDefined(self.buttons_lastFrag) || nowMs < self.buttons_lastFrag ||
+       nowMs - self.buttons_lastFrag > doubleTapWindowMs)
     {
-        self.buttons_lastFrag = now;
+        self.buttons_lastFrag = nowMs;
         return false;
     }
     self.buttons_lastFrag = undefined;

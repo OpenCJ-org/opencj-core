@@ -5,21 +5,25 @@ onInit()
     {
         return;
     }
-    cmd = openCJ\settings::addSettingBool(
+    settingCommand = openCJ\settings::addSettingBool(
         "thirdperson", false,
         "Toggle third-person for playing and watching. Usage: !thirdperson [on/off]",
         ::_onThirdPerson);
-    openCJ\commands_base::addAlias(cmd, "3p");
+    openCJ\commands_base::addAlias(settingCommand, "3p");
     // Reset on each connection; ignore older saved enablement without deleting it.
     level.settings["thirdperson"].sessionOnly = true;
-    cmd = openCJ\settings::addSettingInt(
-        "thirdpersondistance", 40, 300, 120,
+    minimumDistanceUnits = 40;
+    maximumDistanceUnits = 300;
+    defaultDistanceUnits = 120;
+    settingCommand = openCJ\settings::addSettingInt(
+        "thirdpersondistance", minimumDistanceUnits, maximumDistanceUnits, defaultDistanceUnits,
         "Camera distance in game units. Usage: !thirdpersondistance <40-300>", ::_onDistance);
-    openCJ\commands_base::addAlias(cmd, "3pdist");
-    cmd = openCJ\settings::addSettingInt(
-        "thirdpersonangle", 0, 359, 0,
+    openCJ\commands_base::addAlias(settingCommand, "3pdist");
+    maximumOrbitDegrees = 359;
+    settingCommand = openCJ\settings::addSettingInt(
+        "thirdpersonangle", 0, maximumOrbitDegrees, 0,
         "Camera orbit angle: 0 behind, 180 in front. Usage: !thirdpersonangle <0-359>", ::_onAngle);
-    openCJ\commands_base::addAlias(cmd, "3pangle");
+    openCJ\commands_base::addAlias(settingCommand, "3pangle");
 }
 
 onPlayerConnected()

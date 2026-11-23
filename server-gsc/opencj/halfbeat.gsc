@@ -81,25 +81,33 @@ resetTracking()
 {
     self.hbMessagePrinted = false;
     self resetStrafeTracking();
-    stats = self getHalfbeatStats();
-    self.hbLastCorrection = stats[0];
+    self.hbLastCorrection = self correctionCount();
     self syncPolicy();
 }
 
 _detectHalfBeat()
 {
     self endon("disconnect");
+    policyIntervalSeconds = 0.05;
     while(true)
     {
         self syncPolicy();
-        stats = self getHalfbeatStats();
-        if(isDefined(self.hbLastCorrection) && stats[0] > self.hbLastCorrection &&
+        currentCorrectionCount = self correctionCount();
+        if(isDefined(self.hbLastCorrection) && currentCorrectionCount > self.hbLastCorrection &&
            !self.hbMessagePrinted)
         {
             self iprintln("Limited halfbeat acceleration (^5!allowhalfbeat^7)");
             self.hbMessagePrinted = true;
         }
-        self.hbLastCorrection = stats[0];
-        wait .05;
+        self.hbLastCorrection = currentCorrectionCount;
+        wait policyIntervalSeconds;
     }
+}
+
+// The native result also contains removed speed and phase direction; this loop needs only the count.
+correctionCount()
+{
+    correctionCountIndex = 0;
+    stats = self getHalfbeatStats();
+    return stats[correctionCountIndex];
 }
