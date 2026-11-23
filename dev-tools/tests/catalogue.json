@@ -184,8 +184,8 @@
       "id": "checkpoint-engine",
       "category": "integration",
       "description": "Checkpoint corners, elevators, list, replacement and reset fixtures.",
-      "requires": "Initialized Compose, matching built engine, licensed game/compiled mod and selected maps.",
-      "effects": "Starts isolated fixture servers and writes private logs; no live players or database.",
+      "requires": "Initialized Compose, matching built engine and licensed game/compiled mod; launchers accept --binary and --scripts for the exact artifacts under review.",
+      "effects": "Runs isolated fixture servers with gameplay database callbacks disabled; retains private source/binary hashes and logs; removes owned containers on completion or failure.",
       "files": [
         "dev-tools/tests/run-checkpoint-corners-smoke.py",
         "dev-tools/tests/checkpoint-corners.gsc",
@@ -210,8 +210,8 @@
       "id": "checkpoint-matching",
       "category": "integration",
       "description": "Checkpoint migration matching without a database.",
-      "requires": "Initialized Compose, matching current engine and licensed game/compiled mod.",
-      "effects": "Isolated fixture server and private logs.",
+      "requires": "Initialized Compose, matching built engine and licensed game/compiled mod; launchers accept --binary and --scripts for the exact artifacts under review.",
+      "effects": "Runs isolated fixture servers with gameplay database callbacks disabled; retains private source/binary hashes and logs; removes owned containers on completion or failure.",
       "files": [
         "dev-tools/tests/run-checkpoint-migration-smoke.py",
         "dev-tools/tests/checkpoint-migration.gsc"

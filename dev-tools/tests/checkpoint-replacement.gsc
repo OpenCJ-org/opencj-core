@@ -33,7 +33,9 @@ main()
     p openCJ\checkpointCreation::_action("confirm");
     cp=openCJ\checkpointCreation::_decode(p.cpc.rows[1]);
     check(p.cpc.rows.size==3 && p.cpc.rows[0]==before && p.cpc.rows[2]==after,"Apply preserves predecessor successor and route count");
-    check(cp.alternatives.size==0 && distanceSquared(cp.points[0],(800,0,0))==0,"Apply replaces middle checkpoint with single new area");
+    // Confirm may rotate the perimeter order; every selected corner must survive.
+    check(cp.alternatives.size == 0 && sameCorners(area(800).points, cp.points),
+          "Apply replaces middle checkpoint with single new area");
     check(cp.double&&cp.allowEle&&!cp.allowSave&&!cp.onGround,"requirements preserved");
     p openCJ\checkpointCreation::_action("undo");
     check(p.cpc.rows[1]==original && p.cpc.selected==1,"Undo Apply restores original linked checkpoint");
@@ -66,4 +68,29 @@ check(ok,label)
 {
     if(!ok){level.replacementFailures++;printf("REPLACEMENT SELFTEST FAIL "+label+"\n");}
     else printf("REPLACEMENT SELFTEST PASS "+label+"\n");
+}
+
+sameCorners(expected, actual)
+{
+    if(expected.size != actual.size)
+    {
+        return false;
+    }
+    for(pointIndex = 0; pointIndex < expected.size; pointIndex++)
+    {
+        found = false;
+        for(candidateIndex = 0; candidateIndex < actual.size; candidateIndex++)
+        {
+            if(expected[pointIndex] == actual[candidateIndex])
+            {
+                found = true;
+                break;
+            }
+        }
+        if(!found)
+        {
+            return false;
+        }
+    }
+    return true;
 }
