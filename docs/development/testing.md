@@ -372,3 +372,11 @@ then checks a real weapon trace, axis distances, rounding, misses, cancellation
 and lifecycle cleanup through synthetic death, spawn and disconnect notifications.
 No historical experimental binary is needed. The check covers server calculations
 and HUD state, not rendered text placement or a physical network disconnect.
+
+### Map and route catalogues
+
+The focused map-catalogue fixture checks route deduplication, color decoding,
+menu palette selection, labels, bounded overview rows, and failed/empty reads.
+Synthetic metadata is combined with real installed-map discovery to verify
+ordinary and uber-admin map-pool access. It uses no database and does not test
+SQL execution or client menu rendering.
