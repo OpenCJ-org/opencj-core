@@ -223,9 +223,9 @@
     {
       "id": "platform-engine",
       "category": "integration",
-      "description": "Brush/moving support, checkpoint alternatives, height and insertion.",
-      "requires": "Initialized Compose, matching engine, compiled mod and map assets; variants select different fixtures.",
-      "effects": "Isolated fixture servers and private logs.",
+      "description": "Brush and moving-platform support, checkpoint alternatives, height and insertion; includes invalid preview planes.",
+      "requires": "Initialized Compose, matching engine, compiled mod and map assets; variants retain their map defaults. Use --binary (or --engine) and --scripts to select exact artifacts.",
+      "effects": "Runs isolated fixture servers with gameplay database callbacks disabled; keeps private source/binary hashes and logs; removes owned containers on completion or failure.",
       "files": [
         "dev-tools/tests/run-platform-support-smoke.py",
         "dev-tools/tests/platform-brushes.gsc",

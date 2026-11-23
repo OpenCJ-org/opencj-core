@@ -25,17 +25,17 @@ SCRIPT_ERRORS = (
 COMPLETION_TIMEOUT_SECONDS = 45
 
 
-def parse_options(
+def create_parser(
     *,
     default_fixture=None,
     completion_marker="DEMO VIEWING COMPLETE",
     default_maps=("mp_killhouse",)
 ):
-    """Reject invalid inputs before creating a fixture home or container."""
+    """Build shared engine, source and fixture options for isolated runners."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("maps", nargs="*", default=list(default_maps))
     parser.add_argument(
-        "--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun"
+        "--binary", "--engine", default="/workspace/cod4x-server/bin/cod4x18_dedrun"
     )
     parser.add_argument(
         "--fixture",
@@ -54,7 +54,11 @@ def parse_options(
         action="store_true",
         help="Use the current HEAD's tracked GSC scripts in the isolated copy",
     )
-    options = parser.parse_args()
+    return parser
+
+
+def validate_options(parser, options):
+    """Reject invalid inputs before creating a fixture home or container."""
     binary_input = options.binary
     if binary_input.startswith("/workspace/"):
         binary_input = ROOT / binary_input.removeprefix("/workspace/")
@@ -78,6 +82,20 @@ def parse_options(
                 "Map names must contain only letters, numbers, underscores or hyphens"
             )
     return options
+
+
+def parse_options(
+    *,
+    default_fixture=None,
+    completion_marker="DEMO VIEWING COMPLETE",
+    default_maps=("mp_killhouse",)
+):
+    parser = create_parser(
+        default_fixture=default_fixture,
+        completion_marker=completion_marker,
+        default_maps=default_maps,
+    )
+    return validate_options(parser, parser.parse_args())
 
 
 def script_hashes(mod):

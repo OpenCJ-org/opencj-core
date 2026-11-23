@@ -92,9 +92,11 @@ The SQL adapter fixture also uploads and downloads a small synthetic clip. It
 checks destroyed/reused native IDs, map teardown, malformed payloads and missing
 chunks without running the capacity benchmark.
 
-The platform support runner accepts the same `--engine PATH` option. Choose one
-fixture variant per run; conflicting variant flags are rejected before creating
-a fixture server.
+The platform support runner uses the shared isolated GSC runner and accepts
+`--binary PATH` (also `--engine PATH`) and `--scripts PATH`. Choose one fixture
+variant per run; conflicting flags and invalid prerequisites are rejected before
+creating a fixture server. Each run records source and engine hashes privately;
+gameplay database callbacks remain disabled.
 
 The aim-teleport runner uses the measured `mp_dark` fixture. Its optional
 `--engine PATH` selects an existing candidate inside the checkout; another map
