@@ -524,7 +524,7 @@
     {
       "id": "focused-gsc",
       "category": "integration",
-      "description": "Focused checkpoint, client startup, HUD, native-helper, save-history and map-hint regressions.",
+      "description": "Focused checkpoint, client startup, HUD, native-helper, save-history and map-hint regressions. Native helper fixture includes map lookup, directory enumeration, precise floats and unavailable ping samples.",
       "requires": "Initialized Compose, current engine, licensed game/compiled mod; each command selects its fixture and completion marker. Checkpoint contact requires mp_futile_fixed; other listed fixtures use mp_killhouse.",
       "effects": "Isolated servers and synthetic clients; private logs/drafts, no gameplay database.",
       "files": [
