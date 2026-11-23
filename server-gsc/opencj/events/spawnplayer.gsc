@@ -1,5 +1,6 @@
 #include openCJ\util;
 
+// Load equipment before spawning, then initialize the run and its displays in order.
 main(atLastSavedPosition)
 {
     self endon("disconnect");
@@ -55,10 +56,10 @@ main(atLastSavedPosition)
     self.archiveTime = 0;
     self.psOffsetTime = 0;
     self.pers["team"] = "allies";
-    spawnpoint = self openCJ\spawnpoints::getPlayerSpawnpoint();
+    spawnPoint = self openCJ\spawnpoints::getPlayerSpawnpoint();
     self unlink(); // Player may be attached to something
     self openCJ\mapBoost::cancel();
-    self spawn(spawnpoint.origin, spawnpoint.angles);
+    self spawn(spawnPoint.origin, spawnPoint.angles);
 
     self openCJ\savePosition::onSpawnPlayer();
     self openCJ\playerRuns::onSpawnPlayer();
@@ -84,7 +85,7 @@ main(atLastSavedPosition)
 
     self setSharedSpawnVars(false, true);
     self thread openCJ\events\whileAlive::main();
-    self thread _dummy();
+    self thread _notifySpawnedAfterFrame();
 
     self openCJ\checkpointCreation::onSpawnPlayer();
 
@@ -138,7 +139,8 @@ setSharedSpawnVars(giveRPG, isSpawn)
     self openCJ\huds\hudFpsHistory::hideAndClearFPSHistory();
 }
 
-_dummy()
+// Send the deferred spawn event only while the player still exists.
+_notifySpawnedAfterFrame()
 {
     waittillframeend;
     if(isDefined(self))
