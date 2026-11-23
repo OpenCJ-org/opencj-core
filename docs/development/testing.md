@@ -120,6 +120,13 @@ focused fixtures. The save-history native fixture checks invalid inputs, non-pla
 calls and stale selections without a database. HUD observation wrappers are
 installed only in the fixture copy.
 
+The scoreboard connection runner exercises the production connection hook in
+an otherwise isolated engine callback, then verifies the connecting, joined
+and disconnected snapshots. Its shared harness accepts `--binary` and
+`--scripts`. The focused `scoreboard-points.gsc` fixture separately checks
+stable point ordering and every team split across the supported scroll range.
+These VM tests do not verify human-client rendering.
+
 The GeoIP engine fixture exercises atlas selectors, login announcements and
 country fallback behavior without a database. It defaults to the complete
 working script tree; `--scripts` can select a complete prepared release

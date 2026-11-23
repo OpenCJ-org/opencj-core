@@ -1,52 +1,79 @@
 main()
 {
-    a = spawnStruct();
-    a.challengePoints = 40;
-    b = spawnStruct();
-    b.challengePoints = 100;
-    c = spawnStruct();
-    c.challengePoints = 40;
-    d = spawnStruct();
-    list = [];
-    list[0] = a;
-    list[1] = b;
-    list[2] = c;
-    list[3] = d;
-    list = openCJ\scoreboard::sortByPoints(list);
-    if(list[0] == b && list[1] == a && list[2] == c && list[3] == d &&
-       openCJ\scoreboard::points(d) == 0)
-    {
-        printf("SCOREBOARD POINTS PASS descending stable order and uninitialized player\n");
-    }
-    else
-    {
-        printf("SCOREBOARD POINTS FAIL\n");
-        return;
-    }
+    level.scoreboardPointFailures = 0;
+    level.scoreboardPointChecks = 0;
+    stablePointOrderChecks();
+    fullScoreboardViewportChecks();
+    shrinkingViewportChecks();
+    printf("SCOREBOARD POINTS COMPLETE failures=" + level.scoreboardPointFailures +
+           " checks=" + level.scoreboardPointChecks + "\n");
+}
 
-    for(j = 0; j <= 32; j++)
+stablePointOrderChecks()
+{
+    firstTiedPlayer = spawnStruct();
+    firstTiedPlayer.challengePoints = 40;
+    highScorePlayer = spawnStruct();
+    highScorePlayer.challengePoints = 100;
+    secondTiedPlayer = spawnStruct();
+    secondTiedPlayer.challengePoints = 40;
+    uninitializedPlayer = spawnStruct();
+    players = [];
+    players[0] = firstTiedPlayer;
+    players[1] = highScorePlayer;
+    players[2] = secondTiedPlayer;
+    players[3] = uninitializedPlayer;
+
+    players = openCJ\scoreboard::sortByPoints(players);
+    check(players[0] == highScorePlayer && players[1] == firstTiedPlayer &&
+              players[2] == secondTiedPlayer && players[3] == uninitializedPlayer,
+          "descending points preserve the order of tied players");
+    check(openCJ\scoreboard::points(uninitializedPlayer) == 0,
+          "uninitialized player has no earned points");
+}
+
+// Cover every team split and offsets beyond both ends of the 32-player list.
+fullScoreboardViewportChecks()
+{
+    playerCount = 32;
+    visibleRows = 15;
+    lastOffset = playerCount - visibleRows;
+    for(jumperCount = 0; jumperCount <= playerCount; jumperCount++)
     {
         for(offset = -3; offset <= 35; offset++)
         {
-            v = openCJ\scoreboard::viewLayout(offset, 32, j);
-            if(v.count != 15 || v.first < 0 || v.first > 17 || v.first + v.count > 32 ||
-               v.top + v.height > 480)
-            {
-                printf("SCOREBOARD SCROLL FAIL bounds\n");
-                return;
-            }
-            if(v.split != (j > v.first && j < v.first + v.count))
-            {
-                printf("SCOREBOARD SCROLL FAIL section boundary\n");
-                return;
-            }
+            viewport = openCJ\scoreboard::viewLayout(offset, playerCount, jumperCount);
+            context = " jumpers=" + jumperCount + " offset=" + offset;
+            check(viewport.count == visibleRows,
+                  "full list keeps 15 visible rows; actual=" + viewport.count + context);
+            validRange = viewport.first >= 0 && viewport.first <= lastOffset &&
+                         viewport.first + viewport.count <= playerCount;
+            check(validRange,
+                  "visible rows stay inside the list; first=" + viewport.first + context);
+            check(viewport.top + viewport.height <= 480,
+                  "scoreboard stays inside the 480-unit screen; bottom=" +
+                      (viewport.top + viewport.height) + context);
+            expectedSplit =
+                jumperCount > viewport.first && jumperCount < viewport.first + viewport.count;
+            check(viewport.split == expectedSplit,
+                  "section divider appears only between visible teams" + context);
         }
     }
-    v = openCJ\scoreboard::viewLayout(17, 2, 1);
-    if(v.first != 0 || v.count != 2 || !v.split)
+}
+
+shrinkingViewportChecks()
+{
+    viewport = openCJ\scoreboard::viewLayout(17, 2, 1);
+    check(viewport.first == 0 && viewport.count == 2 && viewport.split,
+          "shrinking list resets scroll and retains the team divider");
+}
+
+check(passed, label)
+{
+    level.scoreboardPointChecks++;
+    if(!passed)
     {
-        printf("SCOREBOARD SCROLL FAIL shrinking list\n");
-        return;
+        level.scoreboardPointFailures++;
+        printf("SCOREBOARD POINTS FAIL " + label + "\n");
     }
-    printf("SCOREBOARD POINTS COMPLETE failures=0\n");
 }

@@ -2,52 +2,69 @@ main()
 {
     wait 2;
     level.connectionFailures = 0;
-    p = spawnStruct();
-    p.name = "Loading player";
-    check(openCJ\scoreboard::connecting(p), "pre-initialization client recognized");
-    check(openCJ\scoreboard::spectatorRow(p), "connecting client grouped with spectators");
-    r = openCJ\scoreboard::row(p);
-    check(r["name"] == p.name && r["route"] == "^3Connecting...",
-          "loading name and status available without initialization");
-    check(r["rank"] == "" && r["flag"] == "default" && r["flagSelector"] == 0 &&
-              r["pingText"] == "-" && r["progress"] == -1,
-          "no invented rank country ping or progress");
-    check(r["fps"] == 0 && r["ele"] == 0 && r["hb"] == 0 && r["tas"] == 0 && r["any"] == 0,
-          "all mode fields reset");
-    p.isFullyConnected = false;
-    check(openCJ\scoreboard::connecting(p), "explicit connecting state recognized");
-    p.isFullyConnected = true;
-    p.sessionState = "playing";
-    check(!openCJ\scoreboard::connecting(p) && !openCJ\scoreboard::spectatorRow(p),
-          "joined player transitions to jumpers");
-    check(openCJ\scoreboard::status(p) == "Ready", "joined status restored");
-    bot = addTestClient();
-    wait 0.5;
-    check(isDefined(bot), "engine client created");
-    if(isDefined(bot))
-    {
-        bot.isFullyConnected = false;
-        openCJ\scoreboard::buildSnapshot();
-        check(level.scoreboardPlayers.size == 1 && level.scoreboardPlayers[0] == bot,
-              "engine client retained in snapshot while connecting");
-        check(level.scoreboardRows.size > 0 &&
-                  level.scoreboardRows[0]["route"] == "^3Connecting..." &&
-                  level.scoreboardJumperCount == 0,
-              "connecting snapshot row displayed");
-        bot.isFullyConnected = true;
-        openCJ\scoreboard::buildSnapshot();
-        check(level.scoreboardPlayers.size == 1 &&
-                  level.scoreboardRows[0]["route"] != "^3Connecting...",
-              "transition updates existing row without duplication");
-        bot openCJ\scoreboard::onPlayerDisconnected();
-        openCJ\scoreboard::buildSnapshot();
-        check(level.scoreboardPlayers.size == 0, "disconnect removes connecting or joined client");
-    }
-    printf("CONNECTING SELFTEST COMPLETE failures=" + level.connectionFailures + "\n");
+    level.connectionChecks = 0;
+    uninitializedPlayerChecks();
+    engineConnectionChecks();
+    printf("CONNECTING SELFTEST COMPLETE failures=" + level.connectionFailures +
+           " checks=" + level.connectionChecks + "\n");
 }
-check(ok, label)
+
+// No login, run or ping fields exist while the client is still connecting.
+uninitializedPlayerChecks()
 {
-    if(!ok)
+    player = spawnStruct();
+    player.name = "Loading player";
+    check(openCJ\scoreboard::connecting(player), "pre-initialization client recognized");
+    check(openCJ\scoreboard::spectatorRow(player), "connecting client grouped with spectators");
+    values = openCJ\scoreboard::row(player);
+    check(values["name"] == player.name && values["route"] == "^3Connecting...",
+          "loading name and status available without initialization");
+    check(values["rank"] == "" && values["flag"] == "default" && values["flagSelector"] == 0 &&
+              values["pingText"] == "-" && values["progress"] == -1,
+          "no invented rank country ping or progress");
+    check(values["fps"] == 0 && values["ele"] == 0 && values["hb"] == 0 && values["tas"] == 0 &&
+              values["any"] == 0,
+          "all mode fields reset");
+    player.isFullyConnected = false;
+    check(openCJ\scoreboard::connecting(player), "explicit connecting state recognized");
+    player.isFullyConnected = true;
+    player.sessionState = "playing";
+    check(!openCJ\scoreboard::connecting(player) && !openCJ\scoreboard::spectatorRow(player),
+          "joined player transitions to jumpers");
+    check(openCJ\scoreboard::status(player) == "Ready", "joined status restored");
+}
+
+// The runner keeps the production scoreboard hook in the real engine connect callback.
+engineConnectionChecks()
+{
+    player = addTestClient();
+    wait 0.5;
+    check(isDefined(player), "engine client created");
+    if(!isDefined(player))
+    {
+        return;
+    }
+    player.isFullyConnected = false;
+    openCJ\scoreboard::buildSnapshot();
+    check(level.scoreboardPlayers.size == 1 && level.scoreboardPlayers[0] == player,
+          "engine client retained in snapshot while connecting");
+    check(level.scoreboardRows.size > 0 && level.scoreboardRows[0]["route"] == "^3Connecting..." &&
+              level.scoreboardJumperCount == 0,
+          "connecting snapshot row displayed");
+    player.isFullyConnected = true;
+    openCJ\scoreboard::buildSnapshot();
+    check(level.scoreboardPlayers.size == 1 &&
+              level.scoreboardRows[0]["route"] != "^3Connecting...",
+          "transition updates existing row without duplication");
+    player openCJ\scoreboard::onPlayerDisconnected();
+    openCJ\scoreboard::buildSnapshot();
+    check(level.scoreboardPlayers.size == 0, "disconnect removes connecting or joined client");
+}
+
+check(passed, label)
+{
+    level.connectionChecks++;
+    if(!passed)
     {
         level.connectionFailures++;
         printf("CONNECTING SELFTEST FAIL " + label + "\n");

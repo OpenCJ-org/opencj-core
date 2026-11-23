@@ -265,7 +265,7 @@
     {
       "id": "client-state-engine",
       "category": "integration",
-      "description": "Command menu, download cvars, finish aliases, FPS registration, connecting scoreboard and specular settings. FPS registration runs named handshake scenarios through the shared isolated-server harness.",
+      "description": "Command menu, download cvars, finish aliases, FPS registration, connecting scoreboard and specular settings. FPS and scoreboard connection scenarios use the shared isolated-server harness.",
       "requires": "Initialized Compose, matching engine and licensed game/compiled assets; specular checks also use mp_crash.",
       "effects": "Isolated servers, mocked client IO and private evidence. Does not verify a human client's rendering.",
       "files": [
