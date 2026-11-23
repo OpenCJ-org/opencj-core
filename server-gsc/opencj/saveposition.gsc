@@ -14,7 +14,8 @@ onInit()
 
     level.saveFlags = [];
 
-    // Flags are present in database as well as hardcoded in database function(s) right now, so do NOT modify existing ones.
+    // Flags are present in database as well as hardcoded in database function(s) right now, so do
+    // NOT modify existing ones.
     level.saveFlags[level.saveFlagName_cheating] = 1;
     level.saveFlags[level.saveFlagName_speedModeNow] = 2;
     level.saveFlags[level.saveFlagName_speedModeEver] = 4;
@@ -121,14 +122,17 @@ onRunCreated()
     self openCJ\notifications::cancelFlash();
     self openCJ\notifications::cancelResults();
     self openCJ\historySave::cancelPendingPage();
-    self.historySaves=undefined;
+    self.historySaves = undefined;
     self savePosition_initClient();
     self resetBackwardsCount();
 }
 
 canSaveError()
 {
-    if(self openCJ\historySave::isLoadingInitial())return 4;
+    if(self openCJ\historySave::isLoadingInitial())
+    {
+        return 4;
+    }
     if(self.sessionState != "playing")
     {
         return 1;
@@ -141,7 +145,8 @@ canSaveError()
 
     // Tutorial runs follow their route: no saving where a skip was triggered
     isTutorialRun = self openCJ\tutorial::isTutorialRun();
-    if(isTutorialRun && (self openCJ\tutorial::isSkipLoadPending() || self openCJ\checkpoints::touchesRouteSkippingCheckpoint()))
+    if(isTutorialRun && (self openCJ\tutorial::isSkipLoadPending() ||
+                         self openCJ\checkpoints::touchesRouteSkippingCheckpoint()))
     {
         return 5;
     }
@@ -160,37 +165,37 @@ printCanSaveError(error)
 {
     switch(error)
     {
-        case 4:
-        {
-            self iprintln("Wait until your run has loaded.");
-            break;
-        }
-        case 2:
-        {
-            self iprintln("^1Cannot save in air");
-            break;
-        }
-        case 3:
-        {
-            self iprintln("^1Cannot save on this object");
-            break;
-        }
-        case 5:
-        {
-            self iprintln("^1Cannot save here: tutorial runs follow the route");
-            break;
-        }
+    case 4:
+    {
+        self iprintln("Wait until your run has loaded.");
+        break;
+    }
+    case 2:
+    {
+        self iprintln("^1Cannot save in air");
+        break;
+    }
+    case 3:
+    {
+        self iprintln("^1Cannot save on this object");
+        break;
+    }
+    case 5:
+    {
+        self iprintln("^1Cannot save here: tutorial runs follow the route");
+        break;
+    }
     }
 }
 
 printSaveSuccess()
 {
-    self openCJ\notifications::action("save","^2Saved");
+    self openCJ\notifications::action("save", "^2Saved");
 }
 
 printLoadSuccess()
 {
-    self openCJ\notifications::action("load","^2Loaded");
+    self openCJ\notifications::action("load", "^2Loaded");
 }
 
 onSpawnPlayer()
@@ -213,15 +218,18 @@ canLoadError(backwardsCount)
     {
         error = 3;
     }
-    else if (isDefined(backwardsCount)) // Sometimes we don't want to select any save
+    else if(isDefined(backwardsCount)) // Sometimes we don't want to select any save
     {
         error = self savePosition_selectSave(backwardsCount);
-        if(self openCJ\historySave::maybePrefetch(backwardsCount) && error!=0)error=3;
+        if(self openCJ\historySave::maybePrefetch(backwardsCount) && error != 0)
+        {
+            error = 3;
+        }
     }
 
-    if (error != 0) // Useful for debugging
+    if(error != 0) // Useful for debugging
     {
-        //self iprintln("canLoadError: " + error);
+        // self iprintln("canLoadError: " + error);
     }
     return error;
 }
@@ -230,30 +238,42 @@ printCanLoadError(error)
 {
     switch(error)
     {
-        case 1:
+    case 1:
+    {
+        self iprintln("^1No save available");
+        break;
+    }
+    case 3:
+    {
+        self iprintln("Loading older saves...");
+        info = self savePosition_historyInfo();
+        if(info[0] > 0 && self.savePosition_backwardsCount >= info[0])
         {
-            self iprintln("^1No save available");
-            break;
+            self.savePosition_backwardsCount = info[0] - 1;
         }
-        case 3:
+        break;
+    }
+    case 2:
+    {
+        info = self savePosition_historyInfo();
+        if(info[0] >= info[3])
         {
-            self iprintln("Loading older saves...");
-            info=self savePosition_historyInfo();
-            if(info[0]>0 && self.savePosition_backwardsCount>=info[0])
-                self.savePosition_backwardsCount=info[0]-1;
-            break;
+            self iprintln("Only the " + info[3] + " most recent saves are available.");
         }
-        case 2:
+        else if(isDefined(self.historySaves) && self.historySaves.failed)
         {
-            info=self savePosition_historyInfo();
-            if(info[0]>=info[3])self iprintln("Only the "+info[3]+" most recent saves are available.");
-            else if(isDefined(self.historySaves) && self.historySaves.failed)
-                self iprintln("^1Could not read older saves. Try again.");
-            else self iprintln("No older saved position available.");
-            if(self.savePosition_backwardsCount>=info[0] && info[0]>0)
-                self.savePosition_backwardsCount=info[0]-1;
-            break;
+            self iprintln("^1Could not read older saves. Try again.");
         }
+        else
+        {
+            self iprintln("No older saved position available.");
+        }
+        if(self.savePosition_backwardsCount >= info[0] && info[0] > 0)
+        {
+            self.savePosition_backwardsCount = info[0] - 1;
+        }
+        break;
+    }
     }
 }
 
@@ -301,19 +321,19 @@ setSavedPosition()
 
     // Native validation can reject a position. Publish it only after local storage
     // accepts it, so a failed save cannot advance progress or add a demo marker.
-    saved = self savePosition_save(origin, angles, entNum,
-        self openCJ\statistics::getExplosiveJumps(),
+    saved = self savePosition_save(
+        origin, angles, entNum, self openCJ\statistics::getExplosiveJumps(),
         self openCJ\statistics::getDoubleExplosives(),
         self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeNum, flags, saveNum);
-    if (!isDefined(saved))
+    if(!isDefined(saved))
     {
         self openCJ\statistics::setSaveCount(previousSaveCount);
         self iprintln("^1Could not save this position.");
         return undefined;
     }
 
-    self thread openCJ\historySave::saveToDatabase(origin, angles, entTargetName, numOfEnt,
-        self openCJ\statistics::getExplosiveJumps(),
+    self thread openCJ\historySave::saveToDatabase(
+        origin, angles, entTargetName, numOfEnt, self openCJ\statistics::getExplosiveJumps(),
         self openCJ\statistics::getDoubleExplosives(),
         self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeStr, flags);
     self openCJ\demoRecording::onSaved(saveNum);
@@ -324,7 +344,7 @@ getSavedPosition(backwardsCount)
 {
     error = self savePosition_selectSave(backwardsCount);
     self openCJ\historySave::maybePrefetch(backwardsCount);
-    if (error == 0) // No error
+    if(error == 0) // No error
     {
         save = spawnStruct();
         save.origin = self savePosition_getOrigin();
@@ -362,9 +382,15 @@ incrementBackwardsCount(amount)
     else
     {
         self.savePosition_backwardsCount += amount;
-        info=self savePosition_historyInfo();
-        if(self.savePosition_backwardsCount>info[3])self.savePosition_backwardsCount=info[3];
-        if(self.savePosition_backwardsCount<0)self.savePosition_backwardsCount=0;
+        info = self savePosition_historyInfo();
+        if(self.savePosition_backwardsCount > info[3])
+        {
+            self.savePosition_backwardsCount = info[3];
+        }
+        if(self.savePosition_backwardsCount < 0)
+        {
+            self.savePosition_backwardsCount = 0;
+        }
     }
     return self.savePosition_backwardsCount;
 }
@@ -384,42 +410,42 @@ onPlayerCommand(args)
 {
     switch(args[0])
     {
-        case "save":
+    case "save":
+    {
+        self openCJ\events\eventHandler::onSavePositionRequest();
+        return true;
+    }
+    case "load":
+    {
+        self openCJ\events\eventHandler::onLoadPositionRequest(0);
+        return true;
+    }
+    case "loadsecondary":
+    {
+        self openCJ\events\eventHandler::onLoadPositionRequest(1);
+        return true;
+    }
+    case "mr":
+    {
+        if(isDefined(args[3]))
         {
-            self openCJ\events\eventHandler::onSavePositionRequest();
-            return true;
-        }
-        case "load":
-        {
-            self openCJ\events\eventHandler::onLoadPositionRequest(0);
-            return true;
-        }
-        case "loadsecondary":
-        {
-            self openCJ\events\eventHandler::onLoadPositionRequest(1);
-            return true;
-        }
-        case "mr":
-        {
-            if(isDefined(args[3]))
+            if(args[3] == "load")
             {
-                if(args[3] == "load")
-                {
-                    self openCJ\events\eventHandler::onLoadPositionRequest(0);
-                    return true;
-                }
-                else if(args[3] == "save")
-                {
-                    self openCJ\events\eventHandler::onSavePositionRequest();
-                    return true;
-                }
-                else if(args[3] == "loadsecondary")
-                {
-                    self openCJ\events\eventHandler::onLoadPositionRequest(1);
-                    return true;
-                }
+                self openCJ\events\eventHandler::onLoadPositionRequest(0);
+                return true;
+            }
+            else if(args[3] == "save")
+            {
+                self openCJ\events\eventHandler::onSavePositionRequest();
+                return true;
+            }
+            else if(args[3] == "loadsecondary")
+            {
+                self openCJ\events\eventHandler::onLoadPositionRequest(1);
+                return true;
             }
         }
+    }
     }
     return false;
 }
