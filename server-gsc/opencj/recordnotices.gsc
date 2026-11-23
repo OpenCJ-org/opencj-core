@@ -4,124 +4,235 @@
 // must never turn an any% result into an improvement over a checkpoint run.
 finishQuery(runID)
 {
-    // Reuse eligible rows; only each scope/metric winner is needed.
+    // Reuse eligible rows. Keep each server/personal time/RPG winner separate.
     return "WITH finished AS ( " +
-           "SELECT r.runID,r.playerID,r.mapID,r.FPSMode,r.ele,r.anyPct,r.hb,r.hardTAS,c.finishRouteID AS routeID,route.routeName,s.timePlayed,s.explosiveJumps,p.playerName  " +
-           "FROM playerRuns r  " + "JOIN checkpoints c ON c.cpID=r.finishcpID  " +
-           "AND c.retired=0  " + "JOIN routes route ON route.routeID=c.finishRouteID  " +
-           "JOIN checkpointStatistics s ON s.runID=r.runID  " + "AND s.cpID=r.finishcpID  " +
-           "JOIN playerDisplayNames p ON p.playerID=r.playerID  " + "WHERE r.runID=" + runID +
-           "  " + "AND r.tutorial=0  " + "AND r.finishTimeStamp IS NOT NULL), eligible AS ( " +
-           "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps  " + "FROM finished f  " +
-           "JOIN playerRuns r ON r.mapID=f.mapID  " + "AND r.FPSMode=f.FPSMode  " +
-           "AND r.ele=f.ele  " + "AND r.anyPct=f.anyPct  " + "AND r.hb=f.hb  " +
-           "AND r.hardTAS=f.hardTAS  " + "JOIN checkpoints c ON c.cpID=r.finishcpID  " +
-           "AND c.finishRouteID=f.routeID  " + "AND c.retired=0  " +
-           "JOIN checkpointStatistics s ON s.runID=r.runID  " + "AND s.cpID=r.finishcpID  " +
-           "WHERE r.finishTimeStamp IS NOT NULL  " + "AND r.tutorial=0  " +
-           "AND r.runID<>f.runID) " + ", " + "prior AS ( " +
-           "(SELECT /*+ NO_MERGE(e) */ 0 AS scope,0 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e ORDER BY e.timePlayed,e.explosiveJumps,e.runID LIMIT 1) " +
-           "UNION ALL " +
-           "(SELECT /*+ NO_MERGE(e) */ 0 AS scope,1 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e ORDER BY e.explosiveJumps,e.timePlayed,e.runID LIMIT 1) " +
-           "UNION ALL " +
-           "(SELECT /*+ NO_MERGE(e) */ 1 AS scope,0 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e JOIN finished f ON e.playerID=f.playerID ORDER BY e.timePlayed,e.explosiveJumps,e.runID LIMIT 1) " +
-           "UNION ALL " +
-           "(SELECT /*+ NO_MERGE(e) */ 1 AS scope,1 AS metric,e.timePlayed,e.explosiveJumps FROM eligible e JOIN finished f ON e.playerID=f.playerID ORDER BY e.explosiveJumps,e.timePlayed,e.runID LIMIT 1) " +
-           ") " +
-           ", boards AS (SELECT 0 AS scope,0 AS metric UNION ALL SELECT 0,1 UNION ALL SELECT 1,0 UNION ALL SELECT 1,1) " +
-           "SELECT b.scope,b.metric,f.routeName,f.FPSMode,f.ele,f.anyPct,f.hb,f.hardTAS,f.timePlayed,f.explosiveJumps, " +
-           "old.timePlayed,old.explosiveJumps,f.playerName,f.playerID,f.runID FROM finished f CROSS JOIN boards b " +
-           "LEFT JOIN prior old ON old.scope=b.scope AND old.metric=b.metric ORDER BY b.scope,b.metric ";
+        "SELECT r.runID,r.playerID,r.mapID,r.FPSMode,r.ele,r.anyPct,r.hb,r.hardTAS, " +
+        "c.finishRouteID AS routeID,route.routeName,s.timePlayed,s.explosiveJumps,p.playerName " +
+        "FROM playerRuns r " +
+        "JOIN checkpoints c ON c.cpID=r.finishcpID " +
+        "AND c.retired=0 " +
+        "JOIN routes route ON route.routeID=c.finishRouteID " +
+        "JOIN checkpointStatistics s ON s.runID=r.runID " +
+        "AND s.cpID=r.finishcpID " +
+        "JOIN playerDisplayNames p ON p.playerID=r.playerID " +
+        "WHERE r.runID=" + runID + " " +
+        "AND r.tutorial=0 " +
+        "AND r.finishTimeStamp IS NOT NULL), " +
+        "eligible AS ( " +
+        "SELECT r.runID,r.playerID,s.timePlayed,s.explosiveJumps " +
+        "FROM finished f " +
+        "JOIN playerRuns r ON r.mapID=f.mapID " +
+        "AND r.FPSMode=f.FPSMode " +
+        "AND r.ele=f.ele " +
+        "AND r.anyPct=f.anyPct " +
+        "AND r.hb=f.hb " +
+        "AND r.hardTAS=f.hardTAS " +
+        "JOIN checkpoints c ON c.cpID=r.finishcpID " +
+        "AND c.finishRouteID=f.routeID " +
+        "AND c.retired=0 " +
+        "JOIN checkpointStatistics s ON s.runID=r.runID " +
+        "AND s.cpID=r.finishcpID " +
+        "WHERE r.finishTimeStamp IS NOT NULL " +
+        "AND r.tutorial=0 " +
+        "AND r.runID<>f.runID) , " +
+        "prior AS ( ( " +
+        "SELECT /*+ NO_MERGE(e) */ 0 AS scope,0 AS metric,e.timePlayed,e.explosiveJumps " +
+        "FROM eligible e " +
+        "ORDER BY e.timePlayed,e.explosiveJumps,e.runID " +
+        "LIMIT 1) " +
+        "UNION ALL ( " +
+        "SELECT /*+ NO_MERGE(e) */ 0 AS scope,1 AS metric,e.timePlayed,e.explosiveJumps " +
+        "FROM eligible e " +
+        "ORDER BY e.explosiveJumps,e.timePlayed,e.runID " +
+        "LIMIT 1) " +
+        "UNION ALL ( " +
+        "SELECT /*+ NO_MERGE(e) */ 1 AS scope,0 AS metric,e.timePlayed,e.explosiveJumps " +
+        "FROM eligible e " +
+        "JOIN finished f ON e.playerID=f.playerID " +
+        "ORDER BY e.timePlayed,e.explosiveJumps,e.runID " +
+        "LIMIT 1) " +
+        "UNION ALL ( " +
+        "SELECT /*+ NO_MERGE(e) */ 1 AS scope,1 AS metric,e.timePlayed,e.explosiveJumps " +
+        "FROM eligible e " +
+        "JOIN finished f ON e.playerID=f.playerID " +
+        "ORDER BY e.explosiveJumps,e.timePlayed,e.runID " +
+        "LIMIT 1) ) , " +
+        "boards AS ( " +
+        "SELECT 0 AS scope,0 AS metric " +
+        "UNION ALL " +
+        "SELECT 0,1 " +
+        "UNION ALL " +
+        "SELECT 1,0 " +
+        "UNION ALL " +
+        "SELECT 1,1) " +
+        "SELECT b.scope,b.metric,f.routeName,f.FPSMode,f.ele,f.anyPct,f.hb,f.hardTAS,f.timePlayed, " +
+        "f.explosiveJumps, " +
+        "old.timePlayed,old.explosiveJumps,f.playerName,f.playerID,f.runID " +
+        "FROM finished f " +
+        "CROSS " +
+        "JOIN boards b " +
+        "LEFT " +
+        "JOIN prior old ON old.scope=b.scope " +
+        "AND old.metric=b.metric " +
+        "ORDER BY b.scope,b.metric ";
 }
-category(fps, ele, any, hb, tas)
+
+category(fpsMode, usedElevators, anyPercent, halfbeat, hardTAS)
 {
-    label = "Standard FPS";
-    if(fps == "125")
+    categoryLabel = "Standard FPS";
+    if(fpsMode == "125")
     {
-        label = "125 FPS";
+        categoryLabel = "125 FPS";
     }
-    if(fps == "hax")
+    if(fpsMode == "hax")
     {
-        label = "Any FPS";
+        categoryLabel = "Any FPS";
     }
-    if(any)
+    if(anyPercent)
     {
-        label += ", any%";
+        categoryLabel += ", any%";
     }
     else
     {
-        label += ", checkpoints";
+        categoryLabel += ", checkpoints";
     }
-    if(ele)
+    if(usedElevators)
     {
-        label += ", elevators";
+        categoryLabel += ", elevators";
     }
-    if(hb)
+    if(halfbeat)
     {
-        label += ", halfbeat";
+        categoryLabel += ", halfbeat";
     }
-    if(tas)
+    if(hardTAS)
     {
-        label += ", TAS";
+        categoryLabel += ", TAS";
     }
-    return label;
+    return categoryLabel;
 }
+// Decode the fixed query result once; absent prior values mean a first finish.
+decodeRecord(row)
+{
+    recordColumnCount = 15;
+    if(!isDefined(row) || row.size != recordColumnCount)
+    {
+        return undefined;
+    }
+    record = spawnStruct();
+    record.scope = "server";
+    if(int(row[0]) == 1)
+    {
+        record.scope = "personal";
+    }
+    record.metric = "time";
+    if(int(row[1]) != 0)
+    {
+        record.metric = "rpgs";
+    }
+    record.routeName = row[2];
+    record.fpsMode = row[3];
+    record.usedElevators = int(row[4]);
+    record.anyPercent = int(row[5]);
+    record.halfbeat = int(row[6]);
+    record.hardTAS = int(row[7]);
+    record.timeMs = int(row[8]);
+    record.rpgCount = int(row[9]);
+    record.priorTimeMs = row[10];
+    record.priorRpgCount = row[11];
+    record.playerName = row[12];
+    record.playerID = int(row[13]);
+    record.runID = int(row[14]);
+    return record;
+}
+
 improvement(row)
 {
-    if(!isDefined(row[10]) || !isDefined(row[11]))
+    record = decodeRecord(row);
+    if(!isDefined(record))
     {
         return "";
-    } // First finish is not a beaten record.
-    time = int(row[8]);
-    rpg = int(row[9]);
-    oldTime = int(row[10]);
-    oldRpg = int(row[11]);
-    if(int(row[1]) == 0)
+    }
+    return describeImprovement(record);
+}
+
+describeImprovement(record)
+{
+    // A first finish establishes a record; it has not beaten a previous one.
+    if(!isDefined(record.priorTimeMs) || !isDefined(record.priorRpgCount))
     {
-        if(time < oldTime)
+        return "";
+    }
+    priorTimeMs = int(record.priorTimeMs);
+    priorRpgCount = int(record.priorRpgCount);
+    if(record.metric == "time")
+    {
+        if(record.timeMs < priorTimeMs)
         {
-            return "time: " + formatTimeString(oldTime - time, false) + " faster";
+            return "time: " + formatTimeString(priorTimeMs - record.timeMs, false) + " faster";
         }
-        if(time == oldTime && rpg < oldRpg)
+        if(record.timeMs == priorTimeMs && record.rpgCount < priorRpgCount)
         {
-            return "time: tied, " + (oldRpg - rpg) + " fewer RPGs";
+            return "time: tied, " + (priorRpgCount - record.rpgCount) + " fewer RPGs";
         }
     }
     else
     {
-        if(rpg < oldRpg)
+        if(record.rpgCount < priorRpgCount)
         {
-            return "RPGs: " + (oldRpg - rpg) + " fewer";
+            return "RPGs: " + (priorRpgCount - record.rpgCount) + " fewer";
         }
-        if(rpg == oldRpg && time < oldTime)
+        if(record.rpgCount == priorRpgCount && record.timeMs < priorTimeMs)
         {
-            return "RPGs: tied, " + formatTimeString(oldTime - time, false) + " faster";
+            return "RPGs: tied, " + formatTimeString(priorTimeMs - record.timeMs, false) + " faster";
         }
     }
     return "";
 }
-details(rows, scope)
+
+details(records, scope)
 {
-    result = "";
+    description = "";
+    for(i = 0; i < records.size; i++)
+    {
+        if(records[i].scope != scope)
+        {
+            continue;
+        }
+        improvementText = describeImprovement(records[i]);
+        if(improvementText == "")
+        {
+            continue;
+        }
+        if(description != "")
+        {
+            description += "; ";
+        }
+        description += improvementText;
+    }
+    return description;
+}
+
+// Validate every row before printing any part of the announcement.
+decodeRecords(rows)
+{
+    expectedBoardCount = 4; // Server and personal boards, each ranked by time and RPGs.
+    if(!isDefined(rows) || rows.size != expectedBoardCount)
+    {
+        return undefined;
+    }
+    records = [];
     for(i = 0; i < rows.size; i++)
     {
-        if(int(rows[i][0]) != scope)
+        record = decodeRecord(rows[i]);
+        if(!isDefined(record))
         {
-            continue;
+            return undefined;
         }
-        part = improvement(rows[i]);
-        if(part == "")
-        {
-            continue;
-        }
-        if(result != "")
-        {
-            result += "; ";
-        }
-        result += part;
+        records[i] = record;
     }
-    return result;
+    return records;
 }
+// A saved record can still be announced after a new run starts; its overlay cannot.
 onRunFinished(runID)
 {
     self endon("disconnect");
@@ -130,34 +241,38 @@ onRunFinished(runID)
         return;
     }
     self.notificationFinishedRun = runID;
-    owner = self openCJ\login::getPlayerID();
+    ownerPlayerID = self openCJ\login::getPlayerID();
     rows = self openCJ\mySQL::mysqlAsyncRead(finishQuery(runID));
-    if(!isDefined(rows) || rows.size != 4 || rows[0].size != 15)
+    records = decodeRecords(rows);
+    if(!isDefined(records))
     {
         return;
     }
-    if(int(rows[0][13]) != owner || int(rows[0][14]) != runID)
+    finishedRun = records[0];
+    if(finishedRun.playerID != ownerPlayerID || finishedRun.runID != runID)
     {
         return;
     }
-    label =
-        category(rows[0][3], int(rows[0][4]), int(rows[0][5]), int(rows[0][6]), int(rows[0][7]));
-    route = rows[0][2] + " [" + label + "]";
-    server = details(rows, 0);
-    personal = details(rows, 1);
-    if(server != "" || personal != "")
+    categoryLabel = category(finishedRun.fpsMode, finishedRun.usedElevators,
+                             finishedRun.anyPercent, finishedRun.halfbeat, finishedRun.hardTAS);
+    routeLabel = finishedRun.routeName + " [" + categoryLabel + "]";
+    serverImprovement = details(records, "server");
+    personalImprovement = details(records, "personal");
+    if(serverImprovement != "" || personalImprovement != "")
     {
         self openCJ\notifications::result("record", runID);
     }
-    if(server != "")
+    if(serverImprovement != "")
     {
-        iprintln(rows[0][12] + "^7 | " + route + " | ^2Server record: ^7" + server);
+        iprintln(finishedRun.playerName + "^7 | " + routeLabel +
+                 " | ^2Server record: ^7" + serverImprovement);
     }
-    if(personal != "" && self openCJ\login::getPlayerID() == owner)
+    if(personalImprovement != "" && self openCJ\login::getPlayerID() == ownerPlayerID)
     {
-        self iprintln(route + " | ^2Personal best: ^7" + personal);
+        self iprintln(routeLabel + " | ^2Personal best: ^7" + personalImprovement);
     }
 }
+
 checkpointQuery(runID, cpID, fps, ele, any, hb, tas, metric)
 {
     sort = "cs.timePlayed,cs.explosiveJumps";
@@ -165,12 +280,21 @@ checkpointQuery(runID, cpID, fps, ele, any, hb, tas, metric)
     {
         sort = "cs.explosiveJumps,cs.timePlayed";
     }
-    return "SELECT cs.timePlayed,cs.explosiveJumps FROM checkpointStatistics cs STRAIGHT_JOIN playerRuns r ON r.runID=cs.runID " +
-           "WHERE cs.cpID=" + cpID + " AND r.runID<>" + runID +
-           " AND r.finishTimeStamp IS NOT NULL AND r.tutorial=0 " + "AND r.FPSMode=" + dbStr(fps) +
-           " AND r.ele=" + int(ele) + " AND r.anyPct=" + int(any) + " AND r.hb=" + int(hb) +
-           " AND r.hardTAS=" + int(tas) + " ORDER BY " + sort + ",cs.runID LIMIT 1";
+    return "SELECT cs.timePlayed,cs.explosiveJumps " +
+           "FROM checkpointStatistics cs " +
+           "STRAIGHT_JOIN playerRuns r ON r.runID=cs.runID " +
+           "WHERE cs.cpID=" + cpID +
+           " AND r.runID<>" + runID +
+           " AND r.finishTimeStamp IS NOT NULL " +
+           "AND r.tutorial=0 " +
+           "AND r.FPSMode=" + dbStr(fps) +
+           " AND r.ele=" + int(ele) +
+           " AND r.anyPct=" + int(any) +
+           " AND r.hb=" + int(hb) +
+           " AND r.hardTAS=" + int(tas) +
+           " ORDER BY " + sort + ",cs.runID LIMIT 1";
 }
+
 checkpoint(runID, cpID, timePlayed)
 {
     self endon("disconnect");
@@ -181,46 +305,53 @@ checkpoint(runID, cpID, timePlayed)
     {
         return;
     }
-    instance = self openCJ\playerRuns::getRunInstanceNumber();
-    epoch = level.checkpointLayoutEpoch;
-    fps = self openCJ\fps::getCurrentFPSMode();
-    ele = self openCJ\elevate::hasUsedEle();
-    any = self openCJ\anyPct::hasAnyPct();
-    hb = self openCJ\halfBeat::isHalfBeatAllowed();
-    tas = self openCJ\tas::hasHardTAS();
-    rpg = self openCJ\statistics::getExplosiveJumps();
-    sort = self openCJ\settings::getSetting("lbsort");
+    runInstance = self openCJ\playerRuns::getRunInstanceNumber();
+    layoutEpoch = level.checkpointLayoutEpoch;
+    fpsMode = self openCJ\fps::getCurrentFPSMode();
+    usedElevators = self openCJ\elevate::hasUsedEle();
+    anyPercent = self openCJ\anyPct::hasAnyPct();
+    halfbeat = self openCJ\halfBeat::isHalfBeatAllowed();
+    hardTAS = self openCJ\tas::hasHardTAS();
+    rpgCount = self openCJ\statistics::getExplosiveJumps();
+    leaderboardSort = self openCJ\settings::getSetting("lbsort");
     metric = "time";
-    if(isDefined(sort))
+    if(isDefined(leaderboardSort))
     {
-        parts = strTok(sort, ":");
-        if(parts[0] == "rpgs")
+        sortParts = strTok(leaderboardSort, ":");
+        if(sortParts[0] == "rpgs")
         {
             metric = "rpgs";
         }
     }
     rows = self openCJ\mySQL::mysqlAsyncRead(
-        checkpointQuery(runID, cpID, fps, ele, any, hb, tas, metric));
+        checkpointQuery(runID, cpID, fpsMode, usedElevators, anyPercent, halfbeat, hardTAS, metric));
     if(self openCJ\playerRuns::getRunID() != runID ||
-       self openCJ\playerRuns::getRunInstanceNumber() != instance ||
-       level.checkpointLayoutEpoch != epoch || self openCJ\demos::isPlayingDemo() ||
+       self openCJ\playerRuns::getRunInstanceNumber() != runInstance ||
+       level.checkpointLayoutEpoch != layoutEpoch || self openCJ\demos::isPlayingDemo() ||
        !self openCJ\notifications::wantsText("checkpoint"))
     {
         return;
     }
+    message = checkpointMessage(rows, metric, timePlayed, rpgCount);
+    self iprintln(message);
+}
+
+// An unavailable comparison still reports the checkpoint itself.
+checkpointMessage(rows, metric, timePlayed, rpgCount)
+{
     message = "Checkpoint passed";
     if(isDefined(rows) && rows.size && rows[0].size == 2)
     {
         if(metric == "rpgs")
         {
-            diff = rpg - int(rows[0][1]);
-            if(diff < 0)
+            difference = rpgCount - int(rows[0][1]);
+            if(difference < 0)
             {
-                message += " | ^2" + (0 - diff) + " fewer RPGs";
+                message += " | ^2" + (0 - difference) + " fewer RPGs";
             }
-            else if(diff > 0)
+            else if(difference > 0)
             {
-                message += " | ^1" + diff + " more RPGs";
+                message += " | ^1" + difference + " more RPGs";
             }
             else
             {
@@ -229,14 +360,14 @@ checkpoint(runID, cpID, timePlayed)
         }
         else
         {
-            diff = timePlayed - int(rows[0][0]);
-            if(diff < 0)
+            difference = timePlayed - int(rows[0][0]);
+            if(difference < 0)
             {
-                message += " | ^2" + formatTimeString(0 - diff, false) + " ahead";
+                message += " | ^2" + formatTimeString(0 - difference, false) + " ahead";
             }
-            else if(diff > 0)
+            else if(difference > 0)
             {
-                message += " | ^1" + formatTimeString(diff, false) + " behind";
+                message += " | ^1" + formatTimeString(difference, false) + " behind";
             }
             else
             {
@@ -244,5 +375,5 @@ checkpoint(runID, cpID, timePlayed)
             }
         }
     }
-    self iprintln(message);
+    return message;
 }

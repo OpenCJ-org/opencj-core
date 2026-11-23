@@ -240,6 +240,17 @@ main()
     check(openCJ\recordNotices::improvement(row) == "", "exact ties do not announce");
     row[10] = undefined;
     check(openCJ\recordNotices::improvement(row) == "", "first finish is not a beaten record");
+    malformedRows = [];
+    for(i = 0; i < 4; i++)
+    {
+        malformedRows[i] = row;
+    }
+    malformedRows[3] = [];
+    check(!isDefined(openCJ\recordNotices::decodeRecords(malformedRows)),
+          "malformed later record row rejects the complete result");
+    check(openCJ\recordNotices::improvement([]) == "",
+          "short record row cannot produce an improvement");
+
     p openCJ\notifications::beginResults(1002);
     p openCJ\recordNotices::onRunFinished(1002);
     check(p.notificationResultPriority == 3, "actual matching record selects record emphasis");
