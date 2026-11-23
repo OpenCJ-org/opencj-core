@@ -21,10 +21,13 @@ onMenuResponse()
 {
     self endon("disconnect");
     level endon("game_ended");
-    for (;;)
+    for(;;)
     {
         self waittill("menuresponse", menu, response);
-        if (menu == "opencj_commands") self handleResponse(response);
+        if(menu == "opencj_commands")
+        {
+            self handleResponse(response);
+        }
     }
 }
 
@@ -32,56 +35,83 @@ onSearchText()
 {
     self endon("disconnect");
     level endon("game_ended");
-    for (;;)
+    for(;;)
     {
         self waittill("search_changed");
-        if (self.currentMenu == "opencj_commands") self refresh(true);
+        if(self.currentMenu == "opencj_commands")
+        {
+            self refresh(true);
+        }
     }
 }
 
 handleResponse(response)
 {
-    if (response == "open_commands")
+    if(response == "open_commands")
     {
         self.currentMenu = "opencj_commands";
         self.searchText = "";
         self refresh(true);
         return;
     }
-    if (self.currentMenu != "opencj_commands") return;
-    if (response == "close_commands")
+    if(self.currentMenu != "opencj_commands")
+    {
+        return;
+    }
+    if(response == "close_commands")
     {
         self.currentMenu = "";
         return;
     }
-    if (response == "clear")
+    if(response == "clear")
     {
         self.searchText = "";
         self refresh(true);
         return;
     }
-    if (response == "prev" || response == "next")
+    if(response == "prev" || response == "next")
     {
-        if (response == "prev") self.commandMenu.page--;
-        else self.commandMenu.page++;
+        if(response == "prev")
+        {
+            self.commandMenu.page--;
+        }
+        else
+        {
+            self.commandMenu.page++;
+        }
         self.commandMenu.selectedName = undefined;
         self.commandMenu.detailPage = 1;
     }
-    else if (response == "detail_prev" || response == "detail_next")
+    else if(response == "detail_prev" || response == "detail_next")
     {
-        if (response == "detail_prev") self.commandMenu.detailPage--;
-        else self.commandMenu.detailPage++;
+        if(response == "detail_prev")
+        {
+            self.commandMenu.detailPage--;
+        }
+        else
+        {
+            self.commandMenu.detailPage++;
+        }
     }
-    else if (getSubStr(response, 0, 7) == "select_")
+    else if(getSubStr(response, 0, 7) == "select_")
     {
         idx = getSubStr(response, 7);
-        if (!isValidInt(idx)) return;
+        if(!isValidInt(idx))
+        {
+            return;
+        }
         idx = int(idx);
-        if (idx < 0 || idx >= self.commandMenu.displayed.size) return;
+        if(idx < 0 || idx >= self.commandMenu.displayed.size)
+        {
+            return;
+        }
         self.commandMenu.selectedName = self.commandMenu.displayed[idx].name;
         self.commandMenu.detailPage = 1;
     }
-    else return;
+    else
+    {
+        return;
+    }
     // Re-read the registry and current permissions even for old menu responses.
     self refresh(false);
 }
@@ -89,7 +119,7 @@ handleResponse(response)
 refresh(reset)
 {
     state = self.commandMenu;
-    if (reset)
+    if(reset)
     {
         state.page = 1;
         state.detailPage = 1;
@@ -103,15 +133,15 @@ refresh(reset)
     state.displayed = [];
     selected = undefined;
     selectedRow = -1;
-    for (i = 0; i < level.commandMenuRows; i++)
+    for(i = 0; i < level.commandMenuRows; i++)
     {
         name = "";
-        if (offset + i < entries.size)
+        if(offset + i < entries.size)
         {
             entry = entries[offset + i];
             state.displayed[i] = entry;
             name = "!" + entry.name;
-            if (isDefined(state.selectedName) && state.selectedName == entry.name)
+            if(isDefined(state.selectedName) && state.selectedName == entry.name)
             {
                 selected = entry;
                 selectedRow = i;
@@ -119,7 +149,7 @@ refresh(reset)
         }
         self publish("row" + i, name);
     }
-    if (!isDefined(selected) && state.displayed.size > 0)
+    if(!isDefined(selected) && state.displayed.size > 0)
     {
         selected = state.displayed[0];
         selectedRow = 0;
@@ -128,22 +158,28 @@ refresh(reset)
     state.selectedName = undefined;
     lines = [];
     title = "No matching commands";
-    if (isDefined(selected))
+    if(isDefined(selected))
     {
         state.selectedName = selected.name;
         title = "!" + selected.name;
         aliases = selected.aliasText;
-        if (aliases == "") aliases = "None";
+        if(aliases == "")
+        {
+            aliases = "None";
+        }
         lines = wrapText("Aliases: " + aliases + "\n\n" + selected.help, 56);
     }
     state.lines = lines;
     state.maxDetailPage = int(max(1, ceil(lines.size / float(level.commandDetailRows))));
     state.detailPage = int(max(1, min(state.detailPage, state.maxDetailPage)));
-    for (i = 0; i < level.commandDetailRows; i++)
+    for(i = 0; i < level.commandDetailRows; i++)
     {
         text = "";
         idx = (state.detailPage - 1) * level.commandDetailRows + i;
-        if (idx < lines.size) text = lines[idx];
+        if(idx < lines.size)
+        {
+            text = lines[idx];
+        }
         self publish("line" + i, text);
     }
     self publish("title", title);
@@ -161,7 +197,10 @@ publish(name, value)
 {
     // Typing normally changes only a few fields; avoid flooding reliable commands.
     value = "" + value;
-    if (isDefined(self.commandMenu.values[name]) && self.commandMenu.values[name] == value) return;
+    if(isDefined(self.commandMenu.values[name]) && self.commandMenu.values[name] == value)
+    {
+        return;
+    }
     self.commandMenu.values[name] = value;
     self setClientCvar("opencj_ui_commands_" + name, value);
 }
@@ -170,14 +209,14 @@ publish(name, value)
 wrapText(text, width)
 {
     lines = [];
-    while (text.size > 0)
+    while(text.size > 0)
     {
         cut = int(min(width, text.size));
         consume = cut;
         newline = false;
-        for (i = 0; i < cut; i++)
+        for(i = 0; i < cut; i++)
         {
-            if (text[i] == "\n")
+            if(text[i] == "\n")
             {
                 cut = i;
                 consume = i + 1;
@@ -185,11 +224,11 @@ wrapText(text, width)
                 break;
             }
         }
-        if (!newline && cut < text.size && text[cut] != " ")
+        if(!newline && cut < text.size && text[cut] != " ")
         {
-            for (i = cut - 1; i > 0; i--)
+            for(i = cut - 1; i > 0; i--)
             {
-                if (text[i] == " ")
+                if(text[i] == " ")
                 {
                     cut = i;
                     consume = i + 1;
@@ -199,8 +238,13 @@ wrapText(text, width)
         }
         lines[lines.size] = getSubStr(text, 0, cut);
         text = getSubStr(text, consume);
-        if (!newline)
-            while (text.size > 0 && text[0] == " ") text = getSubStr(text, 1);
+        if(!newline)
+        {
+            while(text.size > 0 && text[0] == " ")
+            {
+                text = getSubStr(text, 1);
+            }
+        }
     }
     return lines;
 }
