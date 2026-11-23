@@ -14,19 +14,26 @@ from compose_environment import workspace_file, workspace_path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_FOLDERS = ("opencj", "maps")
-SCRIPT_ERRORS = ("script compile error", "script runtime error")
+SCRIPT_ERRORS = (
+    "script compile error",
+    "script runtime error",
+    "MAX_PRECACHE_ENTRIES exceeded",
+    "Reliable command is too long",
+    "MSG_WriteString: MAX_STRING_CHARS",
+    "EXE_SERVERCOMMANDOVERFLOW",
+)
 COMPLETION_TIMEOUT_SECONDS = 45
 
 
-def parse_options():
+def parse_options(*, default_fixture=None, completion_marker="DEMO VIEWING COMPLETE"):
     """Reject invalid inputs before creating a fixture home or container."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("maps", nargs="*", default=["mp_killhouse"])
+    parser.add_argument("--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun")
     parser.add_argument(
-        "--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun"
-    )
-    parser.add_argument(
-        "--fixture", type=Path, default=ROOT / "dev-tools/tests/demo-viewing-24.gsc"
+        "--fixture",
+        type=Path,
+        default=default_fixture or ROOT / "dev-tools/tests/demo-viewing-24.gsc",
     )
     parser.add_argument(
         "--scripts",
@@ -34,7 +41,7 @@ def parse_options():
         default=ROOT / "server-gsc",
         help="Exact deployed-script artifact to exercise",
     )
-    parser.add_argument("--completion-marker", default="DEMO VIEWING COMPLETE")
+    parser.add_argument("--completion-marker", default=completion_marker)
     parser.add_argument(
         "--baseline",
         action="store_true",
@@ -60,9 +67,7 @@ def parse_options():
         parser.error("--completion-marker must be one nonempty line")
     for map_name in options.maps:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", map_name):
-            parser.error(
-                "Map names must contain only letters, numbers, underscores or hyphens"
-            )
+            parser.error("Map names must contain only letters, numbers, underscores or hyphens")
     return options
 
 
@@ -139,27 +144,23 @@ def install_observation_hooks(mod, fixture_name):
     path.write_text(source)
 
 
-def isolate_callbacks(mod):
-    """Keep native callback signatures and grenade input, while removing account/gameplay hooks."""
+def isolate_callbacks(mod, retained_callbacks):
+    """Keep only the callbacks explicitly exercised by this isolated fixture."""
     callback = mod / "maps/mp/gametypes/_callbacksetup.gsc"
     source = callback.read_text()
     # Public callback names/signatures are the boundary under test. The expression
     # accepts ordinary whitespace changes and leaves unrelated helper functions intact.
-    pattern = re.compile(
-        r"(?ms)^(CodeCallback_\w+)\s*(\([^)]*\))[ \t]*(?://[^\n]*)?\s*\{.*?^\}"
-    )
+    pattern = re.compile(r"(?ms)^(CodeCallback_\w+)\s*(\([^)]*\))[ \t]*(?://[^\n]*)?\s*\{.*?^\}")
     declared_callbacks = re.findall(r"(?m)^CodeCallback_\w+\s*\(", source)
 
     def empty_callback(match):
-        if match.group(1) == "CodeCallback_FragButton":
+        if match.group(1) in retained_callbacks:
             return match.group(0)
         return match.group(1) + match.group(2) + "\n{\n}"
 
     source, count = pattern.subn(empty_callback, source)
     if count == 0 or count != len(declared_callbacks):
-        raise RuntimeError(
-            "Could not isolate every engine callback in the selected script release"
-        )
+        raise RuntimeError("Could not isolate every engine callback in the selected script release")
     callback.write_text(source)
     game = mod / "maps/mp/gametypes/cj.gsc"
     source, count = re.subn(
@@ -174,7 +175,7 @@ def isolate_callbacks(mod):
     # or frame loop. The fixture explicitly initializes the components it exercises.
 
 
-def prepare_fixture(options, home):
+def prepare_fixture(options, home, *, retained_callbacks=("CodeCallback_FragButton",)):
     mod = home / "mods/opencj"
     mod.mkdir(parents=True)
     copy_scripts(options, mod)
@@ -192,11 +193,11 @@ def prepare_fixture(options, home):
             mod / "opencj/demoselectiontest.gsc",
         )
     install_observation_hooks(mod, options.fixture.name)
-    isolate_callbacks(mod)
+    isolate_callbacks(mod, retained_callbacks)
     return original_hashes, script_hashes(mod)
 
 
-def server_command(options, home, container_name, map_name):
+def server_command(options, home, container_name, map_name, plugin_names):
     container_home = "/workspace/" + home.relative_to(ROOT).as_posix()
     command = [
         "docker",
@@ -226,21 +227,23 @@ def server_command(options, home, container_name, map_name):
     }
     for setting, value in settings.items():
         command.extend(["+set", setting, value])
+    for plugin_name in plugin_names:
+        command.extend(["+loadplugin", plugin_name])
     command.extend(["+map", map_name])
     return command
 
 
-def wait_for_fixture(container_name, completion_marker):
+def wait_for_fixture(container_name, completion_markers):
     """Bound the wait and retain the engine's own error when the container exits."""
     deadline = time.monotonic() + COMPLETION_TIMEOUT_SECONDS
     log = ""
     while time.monotonic() < deadline:
         time.sleep(1)
-        result = subprocess.run(
-            ["docker", "logs", container_name], capture_output=True, text=True
-        )
+        result = subprocess.run(["docker", "logs", container_name], capture_output=True, text=True)
         log = result.stdout + result.stderr
-        if completion_marker in log or any(error in log for error in SCRIPT_ERRORS):
+        if all(marker in log for marker in completion_markers) or any(
+            error in log for error in SCRIPT_ERRORS
+        ):
             break
         running = subprocess.check_output(
             ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
@@ -277,25 +280,26 @@ def run_fixture(options, map_name):
     return run_prepared_fixture(options, home, map_name, source_hashes)
 
 
-def run_prepared_fixture(options, home, map_name, source_hashes):
+def run_prepared_fixture(
+    options, home, map_name, source_hashes, *, plugin_names=(), extra_completion_markers=()
+):
     """Run an already prepared private copy and retain its actual source hashes."""
     fixture_hashes = script_hashes(home / "mods/opencj")
     container_name = "opencj-" + home.name
+    completion_markers = (options.completion_marker, *extra_completion_markers)
     try:
         subprocess.run(
-            server_command(options, home, container_name, map_name),
+            server_command(options, home, container_name, map_name, plugin_names),
             cwd=ROOT / "dev-tools",
             check=True,
             capture_output=True,
         )
-        log = wait_for_fixture(container_name, options.completion_marker)
+        log = wait_for_fixture(container_name, completion_markers)
         (home / "console.log").write_text(log)
-        successful_marker = re.search(
-            re.escape(options.completion_marker) + r"\s+failures=0(?:\s|$)", log
-        )
-        passed = bool(successful_marker) and not any(
-            error in log for error in SCRIPT_ERRORS
-        )
+        passed = all(
+            re.search(re.escape(marker) + r"\s+failures=0(?:\s|$)", log)
+            for marker in completion_markers
+        ) and not any(error in log for error in SCRIPT_ERRORS)
         libcod_loaded = None
         if passed:
             libcod_loaded = has_libcod_mapping(container_name)
@@ -326,9 +330,7 @@ def run_prepared_fixture(options, home, map_name, source_hashes):
                 position = log.index(error)
                 print(log[position : position + 1400], flush=True)
         if not passed:
-            raise RuntimeError(
-                "GSC fixture failed or timed out; see " + str(home / "console.log")
-            )
+            raise RuntimeError("GSC fixture failed or timed out; see " + str(home / "console.log"))
         return report
     finally:
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
