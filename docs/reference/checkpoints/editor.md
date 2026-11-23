@@ -246,11 +246,16 @@ optional alternatives explicitly labeled.
 ## Playing published routes
 
 A fresh run shows the first checkpoint areas for all routes. After selecting a
-route by landing in its first checkpoint, only its next areas are shown. In any%
-mode, all routes' finishes are shown. Areas that are alternatives share one step.
-CoD4 routes use a neutral waypoint HUD material with exact RGB tint; fixed-color
-compass objectives are omitted for these routes because they cannot carry RGB.
-Legacy checkpoints retain their old shader behavior.
+route by landing in its first checkpoint, only its next areas are eligible. In
+any% mode, markers point to routes' finishes. The display uses the first 16
+eligible areas; additional areas still count for gameplay. Areas that are
+alternatives share one step.
+
+CoD4 route markers use their exact RGB tint. Location-only mode uses world
+sprites; all-markers mode also shows screen-edge markers and compass arrows.
+Compass arrows use the nearest available palette color because the compass
+cannot apply arbitrary RGB tint. Legacy checkpoints retain their fixed-color
+materials.
 
 Finishing saves checkpoint statistics before marking the run complete. The
 leaderboard uses the finish snapshot of FPS mode, elevator use, any%, halfbeat

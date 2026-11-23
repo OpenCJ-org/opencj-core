@@ -154,6 +154,7 @@ main()
     player openCJ\checkpointPointers::showCheckpointPointers();
     check(!isDefined(player.checkpointPointers_huds[0]), "spectator does not create icons");
     mover delete();
+    checkPointerCapacity(player);
     finish();
 }
 changed(value)
@@ -192,4 +193,38 @@ recordShader(material, width, height)
 {
     self.testShader = material;
     self setShader(material, width, height);
+}
+
+// A large set of next checkpoints must not consume unbounded HUD slots.
+checkPointerCapacity(player)
+{
+    player.sessionState = "playing";
+    player.checkpoints_checkpoint.childs = [];
+    for (i = 0; i < 20; i++)
+    {
+        checkpoint = spawnStruct();
+        checkpoint.origin = player.origin + (100 + i * 10, 0, 40);
+        checkpoint.endShaderColor = "blue";
+        player.checkpoints_checkpoint.childs[i] = checkpoint;
+    }
+    player openCJ\menus\hudSettings::handleResponse("checkpointicons:2");
+    player openCJ\checkpointPointers::showCheckpointPointers();
+    check(player.checkpointPointers_huds.size == 16,
+          "twenty next checkpoints use at most sixteen world markers");
+    check(getArrayKeys(player.checkpointPointers_objectives).size == 16,
+          "world marker capacity matches the compass slots");
+    check(player.checkpoints_checkpoint.childs.size == 20,
+          "marker capacity does not discard gameplay checkpoints");
+
+    lastHud = player.checkpointPointers_huds[15];
+    firstCheckpoint = player.checkpoints_checkpoint.childs[0];
+    player.checkpoints_checkpoint.childs = [];
+    player.checkpoints_checkpoint.childs[0] = firstCheckpoint;
+    player openCJ\checkpointPointers::showCheckpointPointers();
+    check(player.checkpointPointers_huds.size == 1 && !isDefined(lastHud),
+          "refresh releases markers no longer needed");
+    player openCJ\checkpointPointers::onRunStopped();
+    check(player.checkpointPointers_huds.size == 0 &&
+          getArrayKeys(player.checkpointPointers_objectives).size == 0,
+          "stopping after capacity use releases all markers and objectives");
 }

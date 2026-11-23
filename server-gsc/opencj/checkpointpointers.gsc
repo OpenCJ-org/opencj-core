@@ -2,6 +2,8 @@
 
 onInit()
 {
+    // Match the 16 compass slots and leave room in the 31-element HUD snapshot for other UI.
+    level.maxCheckpointPointers = 16;
     if (getCodVersion() == 4)
     {
         precacheShader("opencj_checkpoint_tint");
@@ -59,7 +61,7 @@ onPlayerConnect()
     self.checkpointIconMode = 2;
     self.checkpointPointers_huds = [];
     self.checkpointPointers_objectives = [];
-    for (i = 0; i < 16; i++)
+    for (i = 0; i < level.maxCheckpointPointers; i++)
     {
         self objective_player_delete(i);
     }
@@ -113,6 +115,16 @@ showCheckpointPointers()
         return;
     }
     checkpoints = self nextVisibleCheckpoints();
+    if (checkpoints.size > level.maxCheckpointPointers)
+    {
+        displayedCheckpoints = [];
+        for (i = 0; i < level.maxCheckpointPointers; i++)
+        {
+            displayedCheckpoints[i] = checkpoints[i];
+        }
+        // Limit only the view. The full checkpoint graph still controls gameplay.
+        checkpoints = displayedCheckpoints;
+    }
 
     for (i = 0; i < checkpoints.size; i++)
     {
@@ -188,7 +200,7 @@ showCheckpointPointers()
 
         // Stock compass objectives have no RGB field. Default route colors have
         // matching materials; custom RGB uses the nearest palette arrow here.
-        if (i < 16 && self.checkpointIconMode == 2)
+        if (i < level.maxCheckpointPointers && self.checkpointIconMode == 2)
         {
             self.checkpointPointers_objectives[i] = true;
             if (getCodVersion() == 2)
@@ -375,7 +387,7 @@ _followMovingPointers(checkpoints)
             if (!isDefined(p))
             {
                 self.checkpointPointers_huds[i].alpha = 0;
-                if (i < 16 && isDefined(self.checkpointPointers_objectives[i]))
+                if (i < level.maxCheckpointPointers && isDefined(self.checkpointPointers_objectives[i]))
                 {
                     self objective_player_delete(i);
                     self.checkpointPointers_objectives[i] = undefined;
@@ -392,7 +404,7 @@ _followMovingPointers(checkpoints)
             {
                 shader = paletteShader(cp.routeInfo.color);
             }
-            if (i < 16 && self.checkpointIconMode == 2)
+            if (i < level.maxCheckpointPointers && self.checkpointIconMode == 2)
             {
                 self objective_player_add(i, "active", p, shader);
                 self.checkpointPointers_objectives[i] = true;
