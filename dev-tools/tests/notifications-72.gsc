@@ -40,6 +40,7 @@ main()
     verifyFinishSoundQueue(player, "run");
     verifyFinishSoundQueue(player, "disconnect");
     verifyLateFinishSound(player, "demo");
+    verifyLateFinishSound(player, "owner");
     verifyLateFinishSound(player, "cleared");
     printf("N72 COMPLETE failures=" + level.n72Failures + " checks=" + level.n72Checks + "\n");
 }
@@ -616,6 +617,7 @@ captureFinishSound(soundAlias)
 
 prepareFinishedRun(player)
 {
+    player.login_playerID = 1;
     player.playerRuns_runID = 1002;
     player.runInstanceNumber = 1;
     player.playerRuns_runFinished = true;
@@ -683,6 +685,10 @@ verifyLateFinishSound(player, changedState)
     if(changedState == "demo")
     {
         player.playingDemo = true;
+    }
+    else if(changedState == "owner")
+    {
+        player.login_playerID = 2;
     }
     else
     {

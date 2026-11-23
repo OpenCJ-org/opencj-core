@@ -33,7 +33,7 @@ def finish_tables(runs, checkpoints):
 
 
 def cases():
-    production_query = read_run_query("finishsounds.gsc", "recordQuery", 100)
+    production_query = read_run_query("finishsounds.gsc", "podiumQuery", 100)
     scenarios = []
 
     def add_scenario(name, others=(), current=None, expected=1, checkpoints=None):

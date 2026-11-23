@@ -16,7 +16,7 @@ auditRead(i)
 {
     level.capPending++;
     if(i%3==0)q=HUDQUERY;
-    else if(i%3==1)q=openCJ\finishSounds::recordQuery(10000+i);
+    else if(i%3==1)q=openCJ\finishSounds::podiumQuery(10000+i);
     else q=openCJ\recordNotices::finishQuery(10000+i);
     rows=self openCJ\mySQL::mysqlAsyncRead(q);
     check(isDefined(rows),"record and finish query");
