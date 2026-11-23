@@ -14,6 +14,7 @@ main()
     checkBackupCapacity(editor);
     checkRouteMigration(editor);
     checkPartialWriteRollback(editor);
+    checkSharedBranches(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
            " checks=" + level.publicationChecks + "\n");
 }
@@ -217,4 +218,47 @@ migrationBackupExists(path)
         return true;
     }
     return FS_TestFile(path);
+}
+
+// Either branch may publish first; the shared opening keeps one set of checkpoint IDs.
+checkSharedBranches(editor)
+{
+    editor.cpc = routeDraft("branch_a");
+    editor.cpc.sharedRoute = "shared_opening";
+    editor.cpc.sharedHex = "#abcdef";
+    editor.cpc.sharedCount = 2;
+    check(editor openCJ\checkpointPublish::publish(), "first branch publishes its shared opening");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='shared_opening'", 3,
+                "shared opening includes primary and alternative areas");
+    firstBranch = editor.cpc;
+    editor.cpc = routeDraft("branch_b");
+    editor.cpc.rows[2] = row(600, true, false);
+    editor.cpc.sharedRoute = "shared_opening";
+    editor.cpc.sharedHex = "#abcdef";
+    editor.cpc.sharedCount = 2;
+    check(editor openCJ\checkpointPublish::publish(), "second branch reuses the shared opening");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='shared_opening'", 3,
+                "second branch does not duplicate shared checkpoints");
+    checkScalar(
+        "SELECT COUNT(*) FROM checkpointConnections e " +
+        "JOIN checkpointAreas p ON p.cpID=e.cpID JOIN checkpointAreas c ON c.cpID=e.childcpID " +
+        "WHERE p.draftName='shared_opening' AND c.draftName IN ('branch_a','branch_b')",
+        4, "both shared alternatives connect to both branch finishes");
+    checkScalar(
+        "SELECT COUNT(*) FROM checkpointRoutes cr " +
+        "JOIN checkpointAreas a ON a.cpID=cr.cpID WHERE a.draftName='shared_opening'",
+        6, "shared checkpoints belong to both reachable routes");
+    check(editor openCJ\checkpointPublish::publish(), "repeated branch publication succeeds");
+    checkScalar(
+        "SELECT COUNT(*) FROM checkpointConnections e " +
+        "JOIN checkpointAreas p ON p.cpID=e.cpID JOIN checkpointAreas c ON c.cpID=e.childcpID " +
+        "WHERE p.draftName='shared_opening' AND c.draftName IN ('branch_a','branch_b')",
+        4, "repeated branch publication does not duplicate shared connections");
+    editor.cpc.rows[0] = row(50, false, false);
+    check(!editor openCJ\checkpointPublish::publish(), "changed shared opening is rejected");
+    checkScalar(
+        "SELECT c.x FROM checkpoints c JOIN checkpointAreas a ON a.cpID=c.cpID " +
+        "WHERE a.draftName='shared_opening' AND a.ordinal=0",
+        50, "rejected shared edit leaves the original opening center");
+    editor.cpc = firstBranch;
 }
