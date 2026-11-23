@@ -195,18 +195,24 @@ def observe_speed_changes(mod):
 
 
 def control_map_listeners(mod):
-    """Let each scenario start its own boost trigger without a competing map listener."""
+    """Let each scenario own the listener for its chosen physical boost ramp."""
     path = mod / "maps/mp/mp_to_the_moon.gsc"
     source = path.read_text()
-    for name in ("speed", "speed2", "speed3"):
-        source, removed = re.subn(r"\bthread\s+" + name + r"\s*\(\s*\)\s*;", "", source)
-        source, instrumented = re.subn(
-            r"(?m)^" + name + r"\s*\(\s*\)\s*\{",
-            lambda match: match[0] + '\n    level endon("moon_test_stop_listener");',
-            source,
-        )
-        if removed != 1 or instrumented != 1:
-            raise RuntimeError("Expected one map listener and startup call: " + name)
+    startup = re.compile(
+        r'\bthread\s+startBoostTrigger\s*\(\s*"(svt_accelerate_[123])"\s*\)\s*;'
+    )
+    ramp_names = startup.findall(source)
+    expected_ramps = {"svt_accelerate_1", "svt_accelerate_2", "svt_accelerate_3"}
+    if len(ramp_names) != len(expected_ramps) or set(ramp_names) != expected_ramps:
+        raise RuntimeError("Expected one startup listener for each of the three boost ramps")
+    source = startup.sub("", source)
+    source, instrumented = re.subn(
+        r"(?m)^startBoostTrigger\s*\([^)]*\)\s*\{",
+        lambda match: match[0] + '\n    level endon("moon_test_stop_listener");',
+        source,
+    )
+    if instrumented != 1:
+        raise RuntimeError("Expected one shared map boost listener")
     path.write_text(source)
 
 

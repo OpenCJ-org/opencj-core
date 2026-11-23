@@ -49,12 +49,12 @@ teleportPlayer(player)
     {
         return false;
     }
-    angles = (0, 0, 0);
+    destinationAngles = (0, 0, 0);
     if (isDefined(destination.angles))
     {
-        angles = destination.angles;
+        destinationAngles = destination.angles;
     }
     // Native placement clears carried velocity and jump/sprint state.
-    player setOriginAndAngles(destination.origin, angles);
+    player setOriginAndAngles(destination.origin, destinationAngles);
     return true;
 }

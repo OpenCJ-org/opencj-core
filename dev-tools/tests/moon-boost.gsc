@@ -43,7 +43,7 @@ verifyIndependentPlayers(otherPlayer)
     // Stationary, grounded placements inside ramp 1, separated across its width.
     self resetPlayerAt((-1000, -2200, 1669));
     otherPlayer resetPlayerAt((-1200, -2200, 1669));
-    thread maps\mp\mp_to_the_moon::speed();
+    thread maps\mp\mp_to_the_moon::startBoostTrigger("svt_accelerate_1");
     trigger = getEnt("svt_accelerate_1", "targetname");
     trigger notify("trigger", self);
     trigger notify("trigger", otherPlayer);
@@ -386,7 +386,7 @@ verifyEditorTravelCancelsBoost()
     for(i = 0; i < 2; i++)
     {
         self resetPlayerAt((7740, -1150, 1989));
-        thread maps\mp\mp_to_the_moon::speed3();
+        thread maps\mp\mp_to_the_moon::startBoostTrigger("svt_accelerate_3");
         trigger = getEnt("svt_accelerate_3", "targetname");
         trigger notify("trigger", self);
         wait 0.1;

@@ -58,6 +58,7 @@ teleportPlayer(player)
     return true;
 }
 
+// Resolve the fixed finish-ride path before accepting players.
 jumper()
 {
     trigger = getEnt("jump", "targetname");
@@ -65,15 +66,17 @@ jumper()
     {
         return;
     }
-    points = [];
-    for (i = 1; i <= 4; i++)
+    // The shipped finish ride follows the four air1 through air4 entities.
+    waypointCount = 4;
+    rideWaypoints = [];
+    for (i = 1; i <= waypointCount; i++)
     {
-        point = getEnt("air" + i, "targetname");
-        if (!isDefined(point))
+        waypointEntity = getEnt("air" + i, "targetname");
+        if (!isDefined(waypointEntity))
         {
             return;
         }
-        points[points.size] = point.origin;
+        rideWaypoints[rideWaypoints.size] = waypointEntity.origin;
     }
 
     glow = getEnt("glow", "targetname");
@@ -86,18 +89,20 @@ jumper()
     for (;;)
     {
         trigger waittill("trigger", player);
-        trigger ride(player, points);
+        trigger ride(player, rideWaypoints);
         wait 1;
     }
 }
 
-ride(player, points)
+// Follow the original ride path; the mover owns its cleanup after a player leaves.
+ride(player, rideWaypoints)
 {
     if (!isDefined(player) || !isPlayer(player) || !(player isTouching(self)))
     {
         return;
     }
-    if (!isDefined(points) || points.size != 4)
+    expectedWaypointCount = 4;
+    if (!isDefined(rideWaypoints) || rideWaypoints.size != expectedWaypointCount)
     {
         return;
     }
@@ -107,16 +112,19 @@ ride(player, points)
     mover = spawn("script_model", player.origin);
     mover.angles = player.angles;
     player linkTo(mover);
-    mover moveTo(points[0], 1);
-    wait 1;
-    mover moveTo(points[1], 1);
-    wait 0.5;
-    mover moveTo(points[2], 1);
-    wait 0.5;
-    mover moveTo(points[3], 1);
+    legDurationSeconds = 1;
+    cornerTransitionSeconds = 0.5;
+    finalTransformSettleSeconds = 0.05;
+    mover moveTo(rideWaypoints[0], legDurationSeconds);
+    wait legDurationSeconds;
+    mover moveTo(rideWaypoints[1], legDurationSeconds);
+    wait cornerTransitionSeconds;
+    mover moveTo(rideWaypoints[2], legDurationSeconds);
+    wait cornerTransitionSeconds;
+    mover moveTo(rideWaypoints[3], legDurationSeconds);
     mover waittill("movedone");
     // Give the linked player one server frame to receive the final transform.
-    wait 0.05;
+    wait finalTransformSettleSeconds;
 
     // Deleting the mover detaches only its remaining children. Native position
     // loads already unlink the player. Never touch the old player after a wait:

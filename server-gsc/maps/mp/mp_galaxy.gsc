@@ -102,12 +102,12 @@ isLoungeTeleport()
     }
     // Disable the private entrance and twelve practice shortcuts. Keep normal
     // route/finish portals and the exit from the old lounge usable.
-    disabled = strTok(
+    disabledTargets = strTok(
         "auto38 auto40 auto41 auto42 auto43 auto44 auto45 auto46 auto47 auto48 auto49 auto50 auto51",
         " ");
-    for (i = 0; i < disabled.size; i++)
+    for (i = 0; i < disabledTargets.size; i++)
     {
-        if (self.target == disabled[i])
+        if (self.target == disabledTargets[i])
         {
             return true;
         }
@@ -115,9 +115,9 @@ isLoungeTeleport()
     return false;
 }
 
-rotateModel(seconds)
+rotateModel(rotationSeconds)
 {
-    self.rotationSeconds = seconds;
+    self.rotationSeconds = rotationSeconds;
     for(;;)
     {
         self rotateYaw(360, self.rotationSeconds);
@@ -194,60 +194,61 @@ onSpawn()
     }
 }
 
+// Run the map's optional Testway challenge separately from OpenCJ route records.
 testwayTimer()
 {
     self endon("disconnect");
-    start = getEnt("test_start", "targetname");
-    middle = getEnt("test_check", "targetname");
-    finish = getEnt("test_end", "targetname");
-    reset = getEnt("reset_test", "targetname");
-    if (!isDefined(start) || !isDefined(middle) || !isDefined(finish) || !isDefined(reset))
+    startTrigger = getEnt("test_start", "targetname");
+    middleTrigger = getEnt("test_check", "targetname");
+    finishTrigger = getEnt("test_end", "targetname");
+    resetTrigger = getEnt("reset_test", "targetname");
+    if (!isDefined(startTrigger) || !isDefined(middleTrigger) || !isDefined(finishTrigger) || !isDefined(resetTrigger))
     {
         return;
     }
     // This optional four-minute challenge is separate from the normal OpenCJ routes.
-    active = false;
-    checked = false;
-    completed = false;
-    resetting = false;
-    elapsed = 0;
+    timerActive = false;
+    middleReached = false;
+    challengeCompleted = false;
+    touchingReset = false;
+    elapsedSeconds = 0;
     for (;;)
     {
-        if (self isTouching(reset))
+        if (self isTouching(resetTrigger))
         {
-            active = false;
-            checked = false;
-            completed = false;
-            elapsed = 0;
-            if (!resetting)
+            timerActive = false;
+            middleReached = false;
+            challengeCompleted = false;
+            elapsedSeconds = 0;
+            if (!touchingReset)
             {
                 self iPrintLn("Testway timer reset.");
             }
-            resetting = true;
+            touchingReset = true;
         }
         else
         {
-            resetting = false;
-            if (self isTouching(start))
+            touchingReset = false;
+            if (self isTouching(startTrigger))
             {
-                active = true;
-                checked = false;
-                elapsed = 0;
+                timerActive = true;
+                middleReached = false;
+                elapsedSeconds = 0;
             }
-            if (active && self isTouching(middle))
+            if (timerActive && self isTouching(middleTrigger))
             {
-                checked = true;
+                middleReached = true;
             }
-            if (active && checked && !completed && self isTouching(finish))
+            if (timerActive && middleReached && !challengeCompleted && self isTouching(finishTrigger))
             {
-                completed = true;
-                testwayFinish(elapsed);
+                challengeCompleted = true;
+                testwayFinish(elapsedSeconds);
             }
         }
         // Retain the original one-second timer and spectator pause.
-        if (active && self.sessionState != "spectator")
+        if (timerActive && self.sessionState != "spectator")
         {
-            elapsed++;
+            elapsedSeconds++;
             wait 1;
         }
         else
@@ -257,9 +258,10 @@ testwayTimer()
     }
 }
 
-testwayFinish(seconds)
+testwayFinish(elapsedSeconds)
 {
-    passed = seconds <= 240;
+    challengeLimitSeconds = 4 * 60;
+    passed = elapsedSeconds <= challengeLimitSeconds;
     if (passed)
     {
         self PlaySoundToPlayer("testwin_sound", self);
@@ -270,7 +272,7 @@ testwayFinish(seconds)
         self PlaySoundToPlayer("testfail_sound", self);
         self iPrintLnBold("You've failed the Testway!");
     }
-    self iPrintLn("Testway time: " + seconds + " seconds.");
+    self iPrintLn("Testway time: " + elapsedSeconds + " seconds.");
     return passed;
 }
 

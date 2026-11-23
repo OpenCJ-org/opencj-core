@@ -32,10 +32,13 @@ removeWeaponReward()
     }
     // The separate gravity-gun prompt has no targetname in the shipped map.
     // Remove only that prompt; keep the map's route finish/credit hint.
+    gravityPromptOrigin = (-4162, 12660, 87);
+    promptMatchRadiusUnits = 1;
     hints = getEntArray("trigger_use_touch", "classname");
     for (i = 0; i < hints.size; i++)
     {
-        if (distanceSquared(hints[i].origin, (-4162, 12660, 87)) < 1)
+        if (distanceSquared(hints[i].origin, gravityPromptOrigin) <
+            promptMatchRadiusUnits * promptMatchRadiusUnits)
         {
             hints[i] delete();
         }

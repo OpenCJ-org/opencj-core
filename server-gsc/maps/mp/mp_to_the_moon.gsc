@@ -18,21 +18,22 @@ main()
     setdvar("r_glowskybleedintensity0", ".3");
     setdvar("compassmaxrange", "1800");
 
-    level.msg_block = false;
-    thread endofmap();
-    thread endofmap1();
-    thread run_msg_2();
-    thread run_msg_3();
-    thread run_msg_4();
+    level.moonMessageCooldownActive = false;
+    level.moonMessageCooldownSeconds = 2;
+    thread showAdvancedFinish();
+    thread showBasicFinish();
+    thread showAuthorMessage();
+    thread showPlayerPraise();
+    thread showSecretBounceMessage();
 
-    thread reset();
-    thread speed();
-    thread speed2();
-    thread speed3();
-    thread endofmap2();
+    thread startResetTriggers();
+    thread startBoostTrigger("svt_accelerate_1");
+    thread startBoostTrigger("svt_accelerate_2");
+    thread startBoostTrigger("svt_accelerate_3");
+    thread showIntermediateFinish();
 }
 
-endofmap()
+showAdvancedFinish()
 {
     trigger = getent("end", "targetname");
     if (!isDefined(trigger))
@@ -42,80 +43,83 @@ endofmap()
 
     while (1)
     {
-        trigger waittill("trigger", user);
-        if (!isDefined(user) || !isPlayer(user) || !isAlive(user))
+        trigger waittill("trigger", player);
+        if (!isDefined(player) || !isPlayer(player) || !isAlive(player))
         {
             continue;
         }
-        if (isPlayer(user) && isAlive(user) && isdefined(user.moonDoneAdvanced))
+        if (isdefined(player.moonDoneAdvanced))
         {
             wait 0.5;
         }
         else
         {
-            iprintlnbold("Congratulations, " + user.name +
+            iprintlnbold("Congratulations, " + player.name +
                          ", you have completed mp_to_the_moon ^5Advanced!!");
-            user iprintlnbold("Map created by ^1=.VaRtaZiaN.=");
-            user.moonDoneAdvanced = true;
+            player iprintlnbold("Map created by ^1=.VaRtaZiaN.=");
+            player.moonDoneAdvanced = true;
         }
     }
 }
-run_msg_2()
+
+showAuthorMessage()
 {
-    var_msg_2 = getent("message2", "targetname");
-    if ( isdefined(var_msg_2) )
+    authorTrigger = getent("message2", "targetname");
+    if ( isdefined(authorTrigger) )
     {
         while (true)
         {
-            var_msg_2 waittill("trigger", user);
-            if ( isDefined(user) && isPlayer(user) && isAlive(user) && !level.msg_block )
+            authorTrigger waittill("trigger", player);
+            if ( isDefined(player) && isPlayer(player) && isAlive(player) && !level.moonMessageCooldownActive )
             {
-                level.msg_block = true;
+                level.moonMessageCooldownActive = true;
                 iprintlnbold("^4 Map by: ^1=.VaRtaZiaN.=");
-                wait 2;
-                level.msg_block = false;
-            }
-        }
-    }
-}
-run_msg_3()
-{
-    var_msg_3 = getent("message3", "targetname");
-    if ( isdefined(var_msg_3) )
-    {
-        while (true)
-        {
-            var_msg_3 waittill("trigger", user);
-            if ( isDefined(user) && isPlayer(user) && isAlive(user) && !level.msg_block )
-            {
-                level.msg_block = true;
-                iprintlnbold("" + user.name + " ^7is ^3better than you");
-                wait 2;
-                level.msg_block = false;
-            }
-        }
-    }
-}
-run_msg_4()
-{
-    var_msg_4 = getent("message4", "targetname");
-    if ( isdefined(var_msg_4) )
-    {
-        while (true)
-        {
-            var_msg_4 waittill("trigger", user);
-            if ( isDefined(user) && isPlayer(user) && isAlive(user) && !level.msg_block )
-            {
-                level.msg_block = true;
-                iprintlnbold("^1Another secret bounce?  ^3U Jelly Brah!!");
-                wait 2;
-                level.msg_block = false;
+                wait level.moonMessageCooldownSeconds;
+                level.moonMessageCooldownActive = false;
             }
         }
     }
 }
 
-endofmap1()
+showPlayerPraise()
+{
+    praiseTrigger = getent("message3", "targetname");
+    if ( isdefined(praiseTrigger) )
+    {
+        while (true)
+        {
+            praiseTrigger waittill("trigger", player);
+            if ( isDefined(player) && isPlayer(player) && isAlive(player) && !level.moonMessageCooldownActive )
+            {
+                level.moonMessageCooldownActive = true;
+                iprintlnbold("" + player.name + " ^7is ^3better than you");
+                wait level.moonMessageCooldownSeconds;
+                level.moonMessageCooldownActive = false;
+            }
+        }
+    }
+}
+
+showSecretBounceMessage()
+{
+    secretBounceTrigger = getent("message4", "targetname");
+    if ( isdefined(secretBounceTrigger) )
+    {
+        while (true)
+        {
+            secretBounceTrigger waittill("trigger", player);
+            if ( isDefined(player) && isPlayer(player) && isAlive(player) && !level.moonMessageCooldownActive )
+            {
+                level.moonMessageCooldownActive = true;
+                iprintlnbold("^1Another secret bounce?  ^3U Jelly Brah!!");
+                wait level.moonMessageCooldownSeconds;
+                level.moonMessageCooldownActive = false;
+            }
+        }
+    }
+}
+
+showBasicFinish()
 {
     trigger = getent("end1", "targetname");
     if (!isDefined(trigger))
@@ -125,38 +129,39 @@ endofmap1()
 
     while (1)
     {
-        trigger waittill("trigger", user);
-        if (!isDefined(user) || !isPlayer(user) || !isAlive(user))
+        trigger waittill("trigger", player);
+        if (!isDefined(player) || !isPlayer(player) || !isAlive(player))
         {
             continue;
         }
-        if (isPlayer(user) && isAlive(user) && isdefined(user.moonDoneBasic))
+        if (isdefined(player.moonDoneBasic))
         {
             wait 0.5;
         }
         else
         {
-            user iprintlnbold(
-                "Congratulations, " + user.name +
+            player iprintlnbold(
+                "Congratulations, " + player.name +
                 ", you have completed Basic way of mp_to_the_moon!! Now go try Intermediate ;)");
-            user iprintlnbold("Map created by ^1=.VaRtaZiaN.=");
-            user.moonDoneBasic = true;
-        }
-    }
-}
-reset()
-{
-    ent_ResetLoad = getentarray("reset", "targetname");
-    if(isdefined(ent_ResetLoad))
-    {
-        for(lp = 0; lp < ent_ResetLoad.size; lp++)
-        {
-            ent_ResetLoad[lp] thread _ResetLoad();
+            player iprintlnbold("Map created by ^1=.VaRtaZiaN.=");
+            player.moonDoneBasic = true;
         }
     }
 }
 
-_ResetLoad()
+startResetTriggers()
+{
+    resetTriggers = getentarray("reset", "targetname");
+    if(isdefined(resetTriggers))
+    {
+        for(i = 0; i < resetTriggers.size; i++)
+        {
+            resetTriggers[i] thread resetPlayerOnTouch();
+        }
+    }
+}
+
+resetPlayerOnTouch()
 {
     self endon("disconnect");
     self endon("killed_player");
@@ -175,9 +180,9 @@ _ResetLoad()
     }
 }
 
-speed()
+startBoostTrigger(triggerName)
 {
-    trigger = getent("svt_accelerate_1", "targetname");
+    trigger = getent(triggerName, "targetname");
     if (!isDefined(trigger))
     {
         return;
@@ -192,40 +197,7 @@ speed()
     }
 }
 
-speed2()
-{
-    trigger = getent("svt_accelerate_2", "targetname");
-    if (!isDefined(trigger))
-    {
-        return;
-    }
-    for (;;)
-    {
-        trigger waittill("trigger", player);
-        if (isDefined(player) && isPlayer(player) && isAlive(player))
-        {
-            player thread moonBoost();
-        }
-    }
-}
-
-speed3()
-{
-    trigger = getent("svt_accelerate_3", "targetname");
-    if (!isDefined(trigger))
-    {
-        return;
-    }
-    for (;;)
-    {
-        trigger waittill("trigger", player);
-        if (isDefined(player) && isPlayer(player) && isAlive(player))
-        {
-            player thread moonBoost();
-        }
-    }
-}
-endofmap2()
+showIntermediateFinish()
 {
     trigger = getent("end2", "targetname");
     if (!isDefined(trigger))
@@ -235,22 +207,22 @@ endofmap2()
 
     while (1)
     {
-        trigger waittill("trigger", user);
-        if (!isDefined(user) || !isPlayer(user) || !isAlive(user))
+        trigger waittill("trigger", player);
+        if (!isDefined(player) || !isPlayer(player) || !isAlive(player))
         {
             continue;
         }
-        if (isPlayer(user) && isAlive(user) && isdefined(user.moonDoneIntermediate))
+        if (isdefined(player.moonDoneIntermediate))
         {
             wait 0.5;
         }
         else
         {
-            user iprintlnbold(
-                "Congratulations, " + user.name +
+            player iprintlnbold(
+                "Congratulations, " + player.name +
                 ", you have completed Intermediate way of mp_to_the_moon!! Now go try Hard way ;)");
-            user iprintlnbold("Map created by ^1=.VaRtaZiaN.=");
-            user.moonDoneIntermediate = true;
+            player iprintlnbold("Map created by ^1=.VaRtaZiaN.=");
+            player.moonDoneIntermediate = true;
         }
     }
 }
@@ -258,5 +230,6 @@ endofmap2()
 // Preserve the original boost physics; OpenCJ owns lifecycle cancellation.
 moonBoost()
 {
-    self openCJ\mapBoost::start(12);
+    boostDurationSeconds = 12;
+    self openCJ\mapBoost::start(boostDurationSeconds);
 }

@@ -35,49 +35,49 @@ main()
 
 addFunc(targetname, function)
 {
-	entArray = getEntArray(targetname, "targetname");
+	entities = getEntArray(targetname, "targetname");
 
-	for(Idx = 0; Idx < entArray.size; Idx++)
+	for(Idx = 0; Idx < entities.size; Idx++)
 	{
-		if(isDefined(entArray[Idx]))
+		if(isDefined(entities[Idx]))
 		{
-			thread [[function]] (entArray[Idx]);
+			thread [[function]] (entities[Idx]);
 		}
 	}
 }
 
-fps(trigger, user)
+fps(trigger, player)
 {
-	if(!isDefined(user))
+	if(!isDefined(player))
 	{
 		for(;;)
 		{
-			trigger waittill("trigger", user);
-			if(!isDefined(user) || !isPlayer(user))
+			trigger waittill("trigger", player);
+			if(!isDefined(player) || !isPlayer(player))
 			{
 				continue;
 			}
 
-			if(isDefined(user.fps))
+			if(isDefined(player.fps))
 			{
 				continue;
 			}
 
-			thread fps(trigger, user);
+			thread fps(trigger, player);
 		}
 	}
 
-	user endon("disconnect");
+	player endon("disconnect");
 
-	user.fps = true;
+	player.fps = true;
 
-	for(; user isTouching(trigger);)
+	for(; player isTouching(trigger);)
 	{
-		user setClientDvar("com_maxFPS", 125);
+		player setClientDvar("com_maxFPS", 125);
 		wait 0.05;
 	}
 
-	user.fps = undefined;
+	player.fps = undefined;
 }
 
 teleport_easy()
@@ -212,31 +212,31 @@ showCredits()
     {
         return;
     }
-    hud = newClientHudElem(self);
-    self.blue2Credits = hud;
-    hud.alignX = "center";
-    hud.alignY = "middle";
-    hud.horzAlign = "center";
-    hud.vertAlign = "middle";
-    hud.alpha = 1;
-    hud.x = 0;
-    hud.y = 0;
-    hud.font = "objective";
-    hud.fontScale = 2;
-    hud.glowAlpha = 1;
-    hud.glowColor = (1, 0, 0);
-    hud setText("Mp_Blue2, created by Chucky, have fun!");
-    hud setPulseFX(40, 5400, 200);
+    creditsHud = newClientHudElem(self);
+    self.blue2Credits = creditsHud;
+    creditsHud.alignX = "center";
+    creditsHud.alignY = "middle";
+    creditsHud.horzAlign = "center";
+    creditsHud.vertAlign = "middle";
+    creditsHud.alpha = 1;
+    creditsHud.x = 0;
+    creditsHud.y = 0;
+    creditsHud.font = "objective";
+    creditsHud.fontScale = 2;
+    creditsHud.glowAlpha = 1;
+    creditsHud.glowColor = (1, 0, 0);
+    creditsHud setText("Mp_Blue2, created by Chucky, have fun!");
+    creditsHud setPulseFX(40, 5400, 200);
     wait 6;
-    hud.fontScale = 1.4;
-    hud.glowColor = (1, 1, 0);
-    hud setText("Xfire: chucky3379");
-    hud setPulseFX(40, 5400, 200);
+    creditsHud.fontScale = 1.4;
+    creditsHud.glowColor = (1, 1, 0);
+    creditsHud setText("Xfire: chucky3379");
+    creditsHud setPulseFX(40, 5400, 200);
     wait 6;
-    hud setText("^2Big thanks to ^3Tommy ^2for scripting help");
-    hud setPulseFX(40, 5400, 200);
+    creditsHud setText("^2Big thanks to ^3Tommy ^2for scripting help");
+    creditsHud setPulseFX(40, 5400, 200);
     wait 6;
-    hud destroy();
+    creditsHud destroy();
     self.blue2Credits = undefined;
     // On disconnect, the engine frees all client-owned HUDs and endon stops
     // this thread before it can use the disconnected player or freed HUD.
@@ -244,20 +244,20 @@ showCredits()
 
 start_easy_msg()
 {
-	start_easy_msg = getent("easystart", "targetname");
+	startTrigger = getent("easystart", "targetname");
 
-	if ( isdefined(start_easy_msg) )
+	if ( isdefined(startTrigger) )
 	{
 		while (true)
 		{
-			start_easy_msg waittill("trigger", user);
-			if ( !isDefined(user) || !isPlayer(user) )
+			startTrigger waittill("trigger", player);
+			if ( !isDefined(player) || !isPlayer(player) )
 			{
 				continue;
 			}
 
-			user.starteasy = true;
-			user iprintlnbold("^5You've picked ^2Easy. ^5Good luck & have fun! ^3Map by ^2Chucky.");
+			player.starteasy = true;
+			player iprintlnbold("^5You've picked ^2Easy. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
 		}
 	}
@@ -265,19 +265,19 @@ start_easy_msg()
 
 start_inter_msg()
 {
-	msg_inter = getent("interstart", "targetname");
+	startTrigger = getent("interstart", "targetname");
 
-	if (isdefined(msg_inter))
+	if (isdefined(startTrigger))
 	{
 		while (true)
 		{
-			msg_inter waittill("trigger", user);
-			if (!isDefined(user) || !isPlayer(user))
+			startTrigger waittill("trigger", player);
+			if (!isDefined(player) || !isPlayer(player))
 			{
 				continue;
 			}
 
-			user iprintlnbold(
+			player iprintlnbold(
 			    "^5You've picked ^2Intermediate. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
 		}
@@ -286,19 +286,19 @@ start_inter_msg()
 
 start_hard_msg()
 {
-	start_hard_msg = getent("hardstart", "targetname");
+	startTrigger = getent("hardstart", "targetname");
 
-	if ( isdefined(start_hard_msg) )
+	if ( isdefined(startTrigger) )
 	{
 		while (true)
 		{
-			start_hard_msg waittill("trigger", user);
-			if ( !isDefined(user) || !isPlayer(user) )
+			startTrigger waittill("trigger", player);
+			if ( !isDefined(player) || !isPlayer(player) )
 			{
 				continue;
 			}
 
-			user iprintlnbold("^5You've picked ^2Hard. ^5Good luck & have fun! ^3Map by ^2Chucky.");
+			player iprintlnbold("^5You've picked ^2Hard. ^5Good luck & have fun! ^3Map by ^2Chucky.");
 			wait 3;
 		}
 	}
@@ -306,22 +306,22 @@ start_hard_msg()
 
 end_easy_msg()
 {
-	end_easy_msg = getent("easyend", "targetname");
+	finishTrigger = getent("easyend", "targetname");
 
-	if(isdefined(end_easy_msg))
+	if(isdefined(finishTrigger))
 	{
 		while(true)
 		{
-			end_easy_msg waittill("trigger", user);
-			if(!isDefined(user) || !isPlayer(user))
+			finishTrigger waittill("trigger", player);
+			if(!isDefined(player) || !isPlayer(player))
 			{
 				continue;
 			}
 
-			if(!isDefined(user.endeasy) || !user.endeasy)
+			if(!isDefined(player.endeasy) || !player.endeasy)
 			{
-				user.endeasy = true;
-				iprintlnbold("^5Congratulations ^3" + user.name +
+				player.endeasy = true;
+				iprintlnbold("^5Congratulations ^3" + player.name +
 				             " ^5you've completed ^2Easy!\n^3Map by ^2Chucky.");
 			}
 		}
@@ -330,21 +330,21 @@ end_easy_msg()
 
 end_inter_msg()
 {
-	end_inter_msg = getent("interend", "targetname");
-	if (isdefined(end_inter_msg))
+	finishTrigger = getent("interend", "targetname");
+	if (isdefined(finishTrigger))
 	{
 		while (true)
 		{
-			end_inter_msg waittill("trigger", user);
-			if (!isDefined(user) || !isPlayer(user))
+			finishTrigger waittill("trigger", player);
+			if (!isDefined(player) || !isPlayer(player))
 			{
 				continue;
 			}
 
-			if (!isDefined(user.endinter) || !user.endinter)
+			if (!isDefined(player.endinter) || !player.endinter)
 			{
-				user.endinter = true;
-				iprintlnbold("^5Congratulations ^3" + user.name +
+				player.endinter = true;
+				iprintlnbold("^5Congratulations ^3" + player.name +
 				             " ^5you've completed ^2Intermediate!\n^3Map by ^2Chucky.");
 			}
 		}
@@ -353,21 +353,21 @@ end_inter_msg()
 
 end_hard_msg()
 {
-	end_hard_msg = getent("hardend", "targetname");
-	if (isdefined(end_hard_msg))
+	finishTrigger = getent("hardend", "targetname");
+	if (isdefined(finishTrigger))
 	{
 		while (true)
 		{
-			end_hard_msg waittill("trigger", user);
-			if (!isDefined(user) || !isPlayer(user))
+			finishTrigger waittill("trigger", player);
+			if (!isDefined(player) || !isPlayer(player))
 			{
 				continue;
 			}
 
-			if (!isDefined(user.endhard) || !user.endhard)
+			if (!isDefined(player.endhard) || !player.endhard)
 			{
-				user.endhard = true;
-				iprintlnbold("^5Congratulations ^3" + user.name +
+				player.endhard = true;
+				iprintlnbold("^5Congratulations ^3" + player.name +
 				             " ^5you've completed ^2Hard!\n^3Map by ^2Chucky.");
 			}
 		}
