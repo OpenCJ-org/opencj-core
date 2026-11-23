@@ -1,8 +1,8 @@
 # OpenCJ coding guidelines
 
-**Status: ACTIVE — approved and activated on 2026-11-17.**
+**Status: ACTIVE.**
 
-These thirteen agreed rules apply to first-party OpenCJ code. They complement
+These agreed rules apply to first-party OpenCJ code. They complement
 the repository's operational, privacy, licensing and test-maintenance rules.
 Keep this file as the single canonical policy; other agent entry points link here.
 
@@ -419,6 +419,35 @@ This does not require arbitrary caps on every small local collection or
 premature optimization. Apply it where growth or waiting can affect the server,
 other players, or persistence. The bounded native save history and SQL worker
 pool are existing examples to preserve and learn from.
+
+### R14. Protect competitive integrity against deliberate misuse
+
+When changing features that affect records, rankings, rewards, progression or
+movement advantages, consider how a player could deliberately misuse their
+inputs, timing or interactions. Enforce eligibility and scoring rules on the
+server.
+
+- Treat client commands, submitted values and UI restrictions as untrusted.
+  Check permissions, ownership and eligibility on the server before applying
+  effects. A hidden button or a normal client flow is not an access check.
+- Check repeated requests, overlapping actions, reconnects and mode changes
+  where they could bypass restrictions or duplicate rewards. Consider how the
+  changed feature interacts with saving, restoring and finishing runs.
+- Keep practice, tutorial, assisted and competitive results correctly classified
+  throughout their lifetime, including persistence and delayed callbacks.
+  A mode change must not make an ineligible result eligible.
+- On failure or uncertain completion, preserve legitimate progress without
+  granting unearned credit. Use the existing ownership and completion checks;
+  do not invent a successful outcome or blindly replay an uncertain award.
+- Verify plausible abuse cases for the changed feature with focused checks.
+  Describe the competitive rule being protected and the attempted bypass,
+  rather than relying only on the normal successful path.
+
+Intended CoDJumper movement and accepted techniques remain legitimate gameplay.
+This rule targets violations of the project's agreed competitive rules; it does
+not authorize redefining those rules or adding a blanket anti-cheat system.
+Keep the review proportionate to the feature and its realistic interactions,
+rather than expanding every edit into an unlimited search for exploits.
 
 ## What "self-explanatory" would mean in review
 
