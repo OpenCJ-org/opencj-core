@@ -422,12 +422,7 @@ _writeRouteColor(startCheckpointId)
     {
         return self _fail("Invalid route color; draft retained");
     }
-    maximumColorChannel = 255;
-    redByteMultiplier = 65536;
-    greenByteMultiplier = 256;
-    packedColor = int(color[0] * maximumColorChannel + 0.5) * redByteMultiplier +
-                  int(color[1] * maximumColorChannel + 0.5) * greenByteMultiplier +
-                  int(color[2] * maximumColorChannel + 0.5);
+    packedColor = packRouteColor(color);
     result = openCJ\mySQL::mysqlSyncQuery(
         "UPDATE routes " +
         "SET cpID=" + startCheckpointId + ",colorRGB=" + packedColor +
@@ -438,6 +433,18 @@ _writeRouteColor(startCheckpointId)
         return self _fail("Failed to store route color; transaction rolled back");
     }
     return true;
+}
+
+// Store normalized RGB channels as the existing 24-bit database color value.
+packRouteColor(color)
+{
+    maximumColorChannel = 255;
+    redByteMultiplier = 65536;
+    greenByteMultiplier = 256;
+    packedColor = int(color[0] * maximumColorChannel + 0.5) * redByteMultiplier +
+                  int(color[1] * maximumColorChannel + 0.5) * greenByteMultiplier +
+                  int(color[2] * maximumColorChannel + 0.5);
+    return packedColor;
 }
 
 // Flatten logical checkpoints into areas. cp holds shared requirements; group and leader are indices.

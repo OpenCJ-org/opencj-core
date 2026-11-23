@@ -10,9 +10,9 @@ from isolated_database import IsolatedDatabase
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def install_commit_observer(home):
+def install_commit_observer(home, script_name):
     """Hide a real COMMIT reply only in the fixture copy, leaving its SQL effects intact."""
-    path = home / "mods/opencj/opencj/checkpointpublish.gsc"
+    path = home / "mods/opencj/opencj" / script_name
     source, count = re.subn(
         r"openCJ\\mySQL::mysqlSyncQuery\s*\(",
         lambda match: r"openCJ\platformTest::publicationQuery(",
@@ -43,7 +43,9 @@ def main():
         )
         source_hashes, _ = gsc_fixture.prepare_fixture(options, fixture.home, retained_callbacks=())
         if options.fixture.name == "checkpoint-publication.gsc":
-            install_commit_observer(fixture.home)
+            install_commit_observer(fixture.home, "checkpointpublish.gsc")
+        elif options.fixture.name == "checkpoint-network.gsc":
+            install_commit_observer(fixture.home, "checkpointnetwork.gsc")
         fixture.write_engine_config()
         result = gsc_fixture.run_prepared_fixture(
             options,

@@ -15,6 +15,7 @@ main()
     {
         checkNetworkPublication(editor, network);
         checkSnapshotFallback(editor, network);
+        checkLostNetworkCommitReply(editor);
         checkDamagedSectionPreservation(editor);
         checkMissingOpening(editor, network);
     }
@@ -180,4 +181,29 @@ check(condition, label)
     }
     printf("NETWORK CHECK " + condition + ": " + label + "\n");
     return condition;
+}
+
+checkLostNetworkCommitReply(editor)
+{
+    network = editor openCJ\checkpointNetwork::load();
+    network.paths["net_a"].hex = "#654321";
+    check(editor openCJ\checkpointNetwork::save(network), "save changed route color before lost reply");
+    level.hideNetworkCommitReply = true;
+    check(!editor openCJ\checkpointPublish::publish(), "network does not claim success without commit reply");
+    check(isSubStr(editor.cpc.status, "confirm"), "network reports uncertain commit outcome");
+    checkScalar("SELECT colorRGB FROM routes WHERE routeName='net_a'", 6636321,
+                "network commit may succeed even when its reply is missing");
+    check(editor openCJ\checkpointPublish::publish(), "network retry reconciles committed route metadata");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas", 6, "network retry does not duplicate areas");
+}
+
+publicationQuery(query)
+{
+    result = openCJ\mySQL::mysqlSyncQuery(query);
+    if(query == "COMMIT" && isDefined(level.hideNetworkCommitReply) && level.hideNetworkCommitReply)
+    {
+        level.hideNetworkCommitReply = false;
+        return undefined;
+    }
+    return result;
 }

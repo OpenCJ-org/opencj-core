@@ -553,66 +553,22 @@ merge(commandArguments)
     return true;
 }
 
+// Validate every saved section before the transaction, then publish all routes together.
+// No waits occur while the synchronous SQL connection owns this transaction.
 publish()
 {
-    activeDraft = self.cpc;
     network = self load();
     if(!isDefined(network))
     {
         return self fail("Network draft cannot be read.");
     }
-    routeNames = getArrayKeys(network.paths);
-    routeDrafts = [];
-    openingDraft = self readSection(network.root);
-    if(!isDefined(openingDraft) || openingDraft.rows.size == 0)
+    routeDrafts = self prepareRouteDrafts(network);
+    if(!isDefined(routeDrafts))
     {
-        return self fail("Complete the shared opening before finalizing the network.");
+        return false;
     }
-    for(i = 0; i < routeNames.size; i++)
-    {
-        routeName = routeNames[i];
-        routePath = network.paths[routeName];
-        routeDraft = spawnStruct();
-        routeDraft.route = routeName;
-        routeDraft.routeHex = routePath.hex;
-        routeDraft.sharedRoute = network.root;
-        routeDraft.sharedHex = openingDraft.routeHex;
-        routeDraft.sharedCount = openingDraft.rows.size;
-        routeDraft.rows = [];
-        routeDraft.sections = [];
-        routeDraft.draft = openCJ\checkpointCreation::_empty();
-        for(j = 0; j < routePath.sections.size; j++)
-        {
-            sectionName = routePath.sections[j];
-            sectionDraft = self readSection(sectionName);
-            if(!isDefined(sectionDraft) || sectionDraft.rows.size == 0)
-            {
-                return self fail("Complete section " + sectionName +
-                                 " before finalizing the network.");
-            }
-            if(pendingEdit(sectionDraft))
-            {
-                return self fail("Confirm the pending area in " + sectionName + " first.");
-            }
-            for(k = 0; k < sectionDraft.rows.size; k++)
-            {
-                routeDraft.sections[routeDraft.rows.size] = sectionName;
-                routeDraft.rows[routeDraft.rows.size] = sectionDraft.rows[k];
-            }
-        }
-        validationMessage = openCJ\checkpointPublish::validationError(routeDraft.rows);
-        if(validationMessage != "")
-        {
-            return self fail(routeName + ": " + validationMessage);
-        }
-        if(routeDraft.rows.size > 256)
-        {
-            return self fail(routeName + " exceeds 256 checkpoints.");
-        }
-        routeDrafts[i] = routeDraft;
-    }
-    if(!isDefined(
-           openCJ\mySQL::mysqlSyncQuery("SELECT sectionName FROM checkpointSectionColors LIMIT 0")))
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery(
+           "SELECT sectionName FROM checkpointSectionColors LIMIT 0")))
     {
         return self fail("Install migration 005-checkpoint-sections.sql first.");
     }
@@ -620,100 +576,202 @@ publish()
     {
         return self fail("Cannot begin network publication.");
     }
-    published = true;
+    errorMessage = self writeNetworkRoutes(routeDrafts);
+    if(errorMessage == "")
+    {
+        errorMessage = self writeSectionColors(network);
+    }
+    if(errorMessage == "" && !isDefined(openCJ\mySQL::mysqlSyncQuery(
+           "CALL rebuildCheckpointRoutes(" + openCJ\mapID::getMapID() + ")")))
+    {
+        errorMessage = "Cannot rebuild route membership";
+    }
+    if(errorMessage != "")
+    {
+        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        return self fail("Network not published: " + errorMessage);
+    }
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")))
+    {
+        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        // A retry compares the saved graph; a lost reply does not prove it was rolled back.
+        return self fail("Cannot confirm network commit; drafts retained. Check the published routes.");
+    }
+    self.cpc.publishedLabel = label(getArrayKeys(network.paths));
+    return true;
+}
+
+// Return complete logical routes without replacing the player's active section.
+prepareRouteDrafts(network)
+{
+    openingDraft = self readSection(network.root);
+    if(!isDefined(openingDraft) || openingDraft.rows.size == 0)
+    {
+        self fail("Complete the shared opening before finalizing the network.");
+        return undefined;
+    }
+    routeNames = getArrayKeys(network.paths);
+    routeDrafts = [];
+    for(i = 0; i < routeNames.size; i++)
+    {
+        routeDraft = self flattenRoute(network, routeNames[i], openingDraft);
+        if(!isDefined(routeDraft))
+        {
+            return undefined;
+        }
+        routeDrafts[i] = routeDraft;
+    }
+    return routeDrafts;
+}
+
+// Retain each row's section name while building the branch publisher's sequential input.
+flattenRoute(network, routeName, openingDraft)
+{
+    routePath = network.paths[routeName];
+    routeDraft = spawnStruct();
+    routeDraft.route = routeName;
+    routeDraft.routeHex = routePath.hex;
+    routeDraft.sharedRoute = network.root;
+    routeDraft.sharedHex = openingDraft.routeHex;
+    routeDraft.sharedCount = openingDraft.rows.size;
+    routeDraft.rows = [];
+    routeDraft.sections = [];
+    routeDraft.draft = openCJ\checkpointCreation::_empty();
+    for(i = 0; i < routePath.sections.size; i++)
+    {
+        sectionName = routePath.sections[i];
+        sectionDraft = self readSection(sectionName);
+        if(!isDefined(sectionDraft) || sectionDraft.rows.size == 0)
+        {
+            self fail("Complete section " + sectionName + " before finalizing the network.");
+            return undefined;
+        }
+        if(pendingEdit(sectionDraft))
+        {
+            self fail("Confirm the pending area in " + sectionName + " first.");
+            return undefined;
+        }
+        for(j = 0; j < sectionDraft.rows.size; j++)
+        {
+            routeDraft.sections[routeDraft.rows.size] = sectionName;
+            routeDraft.rows[routeDraft.rows.size] = sectionDraft.rows[j];
+        }
+    }
+    validationMessage = openCJ\checkpointPublish::validationError(routeDraft.rows);
+    if(validationMessage != "")
+    {
+        self fail(routeName + ": " + validationMessage);
+        return undefined;
+    }
+    maximumLogicalCheckpoints = 256;
+    if(routeDraft.rows.size > maximumLogicalCheckpoints)
+    {
+        self fail(routeName + " exceeds " + maximumLogicalCheckpoints + " checkpoints.");
+        return undefined;
+    }
+    return routeDraft;
+}
+
+// The branch publisher reads self.cpc. Restore the original section before returning any error.
+writeNetworkRoutes(routeDrafts)
+{
+    activeDraft = self.cpc;
     errorMessage = "";
     for(i = 0; i < routeDrafts.size; i++)
     {
         self.cpc = routeDrafts[i];
         if(!self openCJ\checkpointPublish::_writeRoute())
         {
-            published = false;
             errorMessage = self.cpc.status;
             break;
         }
-        entries = self openCJ\checkpointPublish::_entries();
-        // Logical checkpoints retain route-specific records through a merge.
-        // Shared geometry is authored once in its section draft; the legacy
-        // runtime receives one ordered continuation per route after the fork.
-        areaIdRows = openCJ\mySQL::mysqlSyncQuery(
-            "SELECT cpID FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID() +
-            " AND draftName=" + dbStr(self.cpc.route) + " ORDER BY ordinal");
-        sharedAreaCount = 0;
-        for(j = 0; j < entries.size; j++)
-        {
-            if(entries[j].group < self.cpc.sharedCount)
-            {
-                sharedAreaCount++;
-            }
-        }
-        if(!isDefined(areaIdRows) || areaIdRows.size != entries.size - sharedAreaCount)
-        {
-            published = false;
-            errorMessage = "Cannot read published section IDs";
-            break;
-        }
-        for(j = sharedAreaCount; j < entries.size; j++)
-        {
-            sectionName = self.cpc.sections[entries[j].group];
-            if(!isDefined(openCJ\mySQL::mysqlSyncQuery(
-                   "UPDATE checkpointAreas SET sectionName=" + dbStr(sectionName) +
-                   " WHERE cpID=" + int(areaIdRows[j - sharedAreaCount][0]))))
-            {
-                published = false;
-                errorMessage = "Cannot assign checkpoint section";
-                break;
-            }
-        }
-        if(!published)
+        errorMessage = self assignRouteSections();
+        if(errorMessage != "")
         {
             break;
         }
     }
     self.cpc = activeDraft;
-    if(published)
+    return errorMessage;
+}
+
+// After the opening, keep one logical continuation per route so records survive later merges.
+assignRouteSections()
+{
+    entries = self openCJ\checkpointPublish::_entries();
+    areaIdRows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT cpID FROM checkpointAreas " +
+        "WHERE mapID=" + openCJ\mapID::getMapID() +
+        " AND draftName=" + dbStr(self.cpc.route) + " ORDER BY ordinal");
+    sharedAreaCount = 0;
+    for(i = 0; i < entries.size; i++)
     {
-        uniqueSections = [];
-        for(i = 0; i < routeNames.size; i++)
+        if(entries[i].group < self.cpc.sharedCount)
         {
-            for(j = 0; j < network.paths[routeNames[i]].sections.size; j++)
-            {
-                uniqueSections[network.paths[routeNames[i]].sections[j]] = true;
-            }
-        }
-        sectionNames = getArrayKeys(uniqueSections);
-        for(i = 0; i < sectionNames.size; i++)
-        {
-            sectionDraft = self readSection(sectionNames[i]);
-            sectionColor = openCJ\checkpointCreation::routeRGB(sectionDraft.routeHex);
-            packedColor = int(sectionColor[0] * 255 + 0.5) * 65536 +
-                          int(sectionColor[1] * 255 + 0.5) * 256 + int(sectionColor[2] * 255 + 0.5);
-            query = "INSERT INTO checkpointSectionColors(mapID,sectionName,colorRGB) VALUES (" +
-                    openCJ\mapID::getMapID() + "," + dbStr(sectionNames[i]) + "," + packedColor +
-                    ") ON DUPLICATE KEY UPDATE colorRGB=VALUES(colorRGB)";
-            if(!isDefined(openCJ\mySQL::mysqlSyncQuery(query)))
-            {
-                published = false;
-                errorMessage = "Cannot save section color";
-                break;
-            }
+            sharedAreaCount++;
         }
     }
-    if(published)
+    if(!isDefined(areaIdRows) || areaIdRows.size != entries.size - sharedAreaCount)
     {
-        published = isDefined(openCJ\mySQL::mysqlSyncQuery("CALL rebuildCheckpointRoutes(" +
-                                                           openCJ\mapID::getMapID() + ")"));
+        return "Cannot read published section IDs";
     }
-    if(published)
+    for(i = sharedAreaCount; i < entries.size; i++)
     {
-        published = isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT"));
+        sectionName = self.cpc.sections[entries[i].group];
+        checkpointId = int(areaIdRows[i - sharedAreaCount][0]);
+        assigned = openCJ\mySQL::mysqlSyncQuery(
+            "UPDATE checkpointAreas SET sectionName=" + dbStr(sectionName) +
+            " WHERE cpID=" + checkpointId);
+        if(!isDefined(assigned))
+        {
+            return "Cannot assign checkpoint section";
+        }
     }
-    if(!published)
+    return "";
+}
+
+sectionNames(network)
+{
+    uniqueSections = [];
+    routeNames = getArrayKeys(network.paths);
+    for(i = 0; i < routeNames.size; i++)
     {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        return self fail("Network not published: " + errorMessage);
+        routeSections = network.paths[routeNames[i]].sections;
+        for(j = 0; j < routeSections.size; j++)
+        {
+            uniqueSections[routeSections[j]] = true;
+        }
     }
-    self.cpc.publishedLabel = label(routeNames);
-    return true;
+    return getArrayKeys(uniqueSections);
+}
+
+// Persist each authored section's color once, regardless of how many routes share it.
+writeSectionColors(network)
+{
+    names = sectionNames(network);
+    for(i = 0; i < names.size; i++)
+    {
+        sectionDraft = self readSection(names[i]);
+        if(!isDefined(sectionDraft))
+        {
+            return "Cannot read section color";
+        }
+        sectionColor = openCJ\checkpointCreation::routeRGB(sectionDraft.routeHex);
+        if(!isDefined(sectionColor))
+        {
+            return "Invalid section color";
+        }
+        packedColor = openCJ\checkpointPublish::packRouteColor(sectionColor);
+        query =
+            "INSERT INTO checkpointSectionColors(mapID,sectionName,colorRGB) " +
+            "VALUES (" + openCJ\mapID::getMapID() + "," + dbStr(names[i]) + "," + packedColor + ") " +
+            "ON DUPLICATE KEY UPDATE colorRGB=VALUES(colorRGB)";
+        if(!isDefined(openCJ\mySQL::mysqlSyncQuery(query)))
+        {
+            return "Cannot save section color";
+        }
+    }
+    return "";
 }
 
 // Compare actual coplanar areas, not merely nearby centers. Also check edge

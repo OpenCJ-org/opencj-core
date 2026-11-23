@@ -229,8 +229,9 @@ rejected requirement/color edits, bounded recovery-name lookup, retirement, and
 rollback after a partial write.
 The engine account is restricted to that fixture schema. The runner deletes its
 schema, account and temporary credential file on exit; logs and draft snapshots
-remain under ignored `dev-tools/local/`. This does not exercise a live player's
-editor UI or concurrent publishers.
+remain under ignored `dev-tools/local/`. Both publication fixtures simulate a lost reply after a real commit and verify
+that retries retain one set of route/checkpoint IDs. This does not exercise a live
+player's editor UI, actual network transport failures or concurrent publishers.
 
 The same runner accepts the section-network fixture:
 
