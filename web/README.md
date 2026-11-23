@@ -59,8 +59,8 @@ Settings come from `web/.env` (private, ignored by Git). Copy
 | Setting | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `WEB_DB_PASSWORD` | Yes | | Password of the read-only account; `tools/grant_web_access.py` creates it |
-| `WEB_CONNECT_ADDRESS` | Yes | | Address shown after `/connect` |
-| `WEB_DISCORD_INVITE_URL` | No | | Discord invite (`https://discord.gg/<code>`) shown as a button on the homepage; hidden when empty |
+| `WEB_CONNECT_ADDRESS` | No | `eu.opencj.org:28960` | Game server address shown after `/connect` |
+| `WEB_DISCORD_INVITE_URL` | No | `https://discord.gg/VDtbYExYWd` | Discord invite shown as a button on the homepage; set to an empty value to hide it |
 | `WEB_USERMAPS_DIR` | Yes | | Host folder containing `<mapname>/` map folders |
 | `WEB_USERMAPS_GID` | Yes | | Group ID that may read that folder |
 | `WEB_GAME_NETWORK` | No | `opencj-dev_default` | Compose network of the game installation |

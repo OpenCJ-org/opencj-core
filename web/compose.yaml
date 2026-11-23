@@ -15,8 +15,9 @@ services:
       WEB_DB_PASSWORD: ${WEB_DB_PASSWORD:?Set WEB_DB_PASSWORD in web/.env}
       WEB_GAME_HOST: ${WEB_GAME_HOST:-server}
       WEB_GAME_PORT: ${WEB_GAME_PORT:-28960}
-      WEB_CONNECT_ADDRESS: ${WEB_CONNECT_ADDRESS:?Set WEB_CONNECT_ADDRESS in web/.env}
-      WEB_DISCORD_INVITE_URL: ${WEB_DISCORD_INVITE_URL:-}
+      WEB_CONNECT_ADDRESS: ${WEB_CONNECT_ADDRESS:-eu.opencj.org:28960}
+      # Unset uses the OpenCJ invite; set to an empty value to hide the button.
+      WEB_DISCORD_INVITE_URL: ${WEB_DISCORD_INVITE_URL-https://discord.gg/VDtbYExYWd}
       WEB_REBUILD_INTERVAL_SECONDS: ${WEB_REBUILD_INTERVAL_SECONDS:-60}
       WEB_RELEASES_DIR: /releases
       WEB_USERMAPS_DIR: /usermaps
