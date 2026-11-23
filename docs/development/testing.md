@@ -94,6 +94,11 @@ The aim-teleport runner uses the measured `mp_dark` fixture. Its optional
 `--engine PATH` selects an existing candidate inside the checkout; another map
 is rejected because the fixture's platform and wall coordinates would be invalid.
 
+The FPS-registration runner uses the stock `mp_killhouse` map by default and
+accepts `--binary PATH` and `--scripts PATH`. It runs the actual handshake
+with synthetic client IO and reports each assertion; it does not verify a
+human client's menu rendering.
+
 The moon movement runner accepts `--binary PATH` and `--scripts PATH` through
 the shared GSC harness. It requires `mp_to_the_moon` because its scenarios use
 that map's ramps. The report records engine and script hashes, and the fixture

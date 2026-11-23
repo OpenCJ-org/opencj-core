@@ -1,185 +1,125 @@
-"""Compile production GSC and test its registration state machine with mocked client IO.
-No client connection, database initialization, live reload, or config secrets.
-Run from the server: python3 dev-tools/tests/run-fps-registration-smoke.py
-"""
+"""Run the production startup/FPS handshake with synthetic client IO in the GSC VM."""
 
 from pathlib import Path
-import shutil
-import subprocess
-import time
+import re
 import uuid
 
-root = Path(__file__).resolve().parents[2]
-tag = "fpsregistration-" + uuid.uuid4().hex[:8]
-smoke = root / "dev-tools/local" / tag
-mod = smoke / "mods/opencj"
-mod.mkdir(parents=True)
-for name in ("opencj", "maps"):
-    shutil.copytree(root / "server-gsc" / name, mod / name)
-for name in ("mod.ff", "z_opencj.iwd"):
-    (mod / name).symlink_to("/mod-assets/" + name)
-(smoke / "plugins").mkdir()
+from gsc_fixture import parse_options
+from gsc_fixture import prepare_fixture
+from gsc_fixture import run_prepared_fixture
 
-(smoke / "steamclient.so").symlink_to("/game/steamclient.so")
-bs = chr(92)
+ROOT = Path(__file__).resolve().parents[2]
+REPORTED_FPS_CALL = r'\bself\s+getUserInfo\s*\(\s*"com_maxfps"\s*\)'
 
-
-def g(s):
-    return s.replace("@", bs)
-
-
-# Compile the production call sites unchanged. Copies replace only client IO;
-# the coordinator's waits, retries, acknowledgement listener, and FPS gates run
-# inside the real GSC VM, with no live client or database.
-def replace_io(source, replacements):
-    for old, new in replacements:
-        assert old in source, old
-        source = source.replace(old, new)
-    return source
-
-
-helper = (mod / "opencj/fpsregistration.gsc").read_text()
-helper = replace_io(
-    helper,
-    [
-        ('self getUserInfo("com_maxfps")', "self.fpsTestReportedFPS"),
-        (
-            g("self openCJ@events@spawnPlayer::main(self.fpsRegistrationSpawnAtSave);"),
-            "self.fpsTestSpawns++;",
-        ),
-        ("self iprintln(", "self testMessage("),
-        ("self iprintlnbold(", "self testMessage("),
-    ],
-)
-helper += """
-testMessage(message)
+REGISTRATION_OBSERVERS = """
+recordMessage(message)
 {
     self.fpsTestMessage = message;
 }
+
+recordSpawn(atLastSavedPosition)
+{
+    self.fpsTestSpawns++;
+}
 """
-(mod / "opencj/fpsregistrationtestdouble.gsc").write_text(helper)
-startup = (mod / "opencj/clientinit.gsc").read_text()
-assert "closeMenu(" not in startup, "A server close would cancel deferred setup"
-startup = replace_io(
-    startup,
-    [
-        ('self getUserInfo("com_maxfps")', "self.fpsTestReportedFPS"),
-        ('self openMenu("opencj_client_init");', "self testOpen();"),
-        ("self setClientCvar(", "self testCvar("),
-        ("fpsRegistration::", "fpsRegistrationTestDouble::"),
-    ],
-)
-startup += """
-testCvar(name, value)
+STARTUP_OBSERVERS = """
+recordClientCvar(cvarName, value)
 {
     self.fpsTestCvarWrites++;
 }
-testOpen()
+
+openTestMenu()
 {
     self.fpsTestAttempts++;
-    if (self.fpsTestAttempts == self.fpsTestSuccessAttempt)
-        self thread testReply();
+    if(self.fpsTestAttempts == self.fpsTestSuccessAttempt)
+    {
+        self thread replyToStartup();
+    }
 }
-testReply()
+
+replyToStartup()
 {
-    wait self.fpsTestReplyDelay;
-    if (self.fpsRegistrationRequested)
+    wait self.fpsTestReplyDelaySeconds;
+    if(self.fpsRegistrationRequested)
+    {
         self.fpsTestReportedFPS = self.fpsTestReplyValue;
+    }
     self notify("menuresponse", "opencj_client_init", "ready");
 }
 """
-(mod / "opencj/clientinittestdouble.gsc").write_text(startup)
-tests = (root / "dev-tools/tests/fps-registration.gsc").read_text()
-tests = tests.replace("fpsRegistration::", "fpsRegistrationTestDouble::")
-tests = tests.replace("clientInit::", "clientInitTestDouble::")
-(mod / "opencj/fpsregistrationtest.gsc").write_text(tests)
-p = mod / "opencj/events/init.gsc"
-s = p.read_text()
-assert "    level.playerCount = 0;" in s
-p.write_text(
-    s.replace(
-        "    level.playerCount = 0;", "    return;" + chr(10) + "    level.playerCount = 0;", 1
+
+
+def replace_client_io(source, replacements):
+    """Observe native IO boundaries without depending on statement formatting."""
+    for pattern, replacement in replacements:
+        source, count = re.subn(pattern, lambda match: replacement, source)
+        if count == 0:
+            raise RuntimeError("Client IO boundary was not found: " + pattern)
+    return source
+
+
+def instrument_registration(mod):
+    """Run the real registration decisions while observing messages and held spawns."""
+    source = (mod / "opencj/fpsregistration.gsc").read_text()
+    source = replace_client_io(
+        source,
+        [
+            (REPORTED_FPS_CALL, "self.fpsTestReportedFPS"),
+            (
+                r"\bself\s+openCJ\\events\\spawnPlayer::main\s*\(",
+                "self recordSpawn(",
+            ),
+            (r"\bself\s+iprintln(?:bold)?\s*\(", "self recordMessage("),
+        ],
     )
-)
-p = mod / "maps/mp/gametypes/cj.gsc"
-s = p.read_text()
-needle = "main()" + chr(10) + "{"
-assert needle in s
-p.write_text(
-    s.replace(needle, needle + chr(10) + g("    thread openCJ@fpsRegistrationTest::main();"), 1)
-)
-container = "opencj-" + tag
-args = [
-    "docker",
-    "compose",
-    "run",
-    "-d",
-    "--no-deps",
-    "--name",
-    container,
-    "--workdir",
-    "/workspace/" + str(smoke.relative_to(root)),
-    "server",
-    "/workspace/cod4x-server/bin/cod4x18_dedrun",
-    "+set",
-    "fs_basepath",
-    "/game",
-    "+set",
-    "fs_homepath",
-    "/workspace/dev-tools/local/" + tag,
-    "+set",
-    "fs_game",
-    "mods/opencj",
-    "+set",
-    "dedicated",
-    "2",
-    "+set",
-    "net_port",
-    "28963",
-    "+set",
-    "sv_maxclients",
-    "1",
-    "+set",
-    "sv_authorizemode",
-    "0",
-    "+set",
-    "com_hunkMegs",
-    "1024",
-    "+set",
-    "developer",
-    "1",
-    "+set",
-    "g_gametype",
-    "cj",
-    "+set",
-    "g_log",
-    "fpsregistration-test.log",
-    "+set",
-    "g_logSync",
-    "1",
-    "+map",
-    "mp_dark",
-]
-try:
-    subprocess.run(
-        args, cwd=root / "dev-tools", check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    (mod / "opencj/fpsregistrationtestdouble.gsc").write_text(
+        source + "\n" + REGISTRATION_OBSERVERS
     )
-    logfile = mod / "fpsregistration-test.log"
-    for _ in range(40):
-        time.sleep(1)
-        text = logfile.read_text(errors="replace") if logfile.exists() else ""
-        if "[FPSREG_TEST] FAIL" in text:
-            raise RuntimeError("FPS registration assertion failed: " + str(logfile))
-        if "[FPSREG_TEST] PASS all assertions" in text:
-            print(
-                "PASS: production scripts compiled; combined startup, retry, acknowledgement, FPS gate, recovery, and classification assertions passed."
+
+
+def instrument_startup(mod):
+    """Keep the real polling/retry loop and supply deterministic client acknowledgements."""
+    source = (mod / "opencj/clientinit.gsc").read_text()
+    source = replace_client_io(
+        source,
+        [
+            (REPORTED_FPS_CALL, "self.fpsTestReportedFPS"),
+            (
+                r'\bself\s+openMenu\s*\(\s*"opencj_client_init"\s*\)',
+                "self openTestMenu()",
+            ),
+            (r"\bself\s+setClientCvar\s*\(", "self recordClientCvar("),
+            (r"\bfpsRegistration::", "fpsRegistrationTestDouble::"),
+        ],
+    )
+    (mod / "opencj/clientinittestdouble.gsc").write_text(
+        source + "\n" + STARTUP_OBSERVERS
+    )
+
+
+def main():
+    options = parse_options(
+        default_fixture=ROOT / "dev-tools/tests/fps-registration.gsc",
+        completion_marker="FPS REGISTRATION COMPLETE",
+    )
+    for map_name in options.maps:
+        home = ROOT / "dev-tools/local" / ("fpsregistration-" + uuid.uuid4().hex[:8])
+        source_hashes, _ = prepare_fixture(options, home, retained_callbacks=())
+        mod = home / "mods/opencj"
+        instrument_registration(mod)
+        instrument_startup(mod)
+        fixture = mod / "opencj/platformtest.gsc"
+        fixture.write_text(
+            replace_client_io(
+                fixture.read_text(),
+                [
+                    (r"\bfpsRegistration::", "fpsRegistrationTestDouble::"),
+                    (r"\bclientInit::", "clientInitTestDouble::"),
+                ],
             )
-            break
-    else:
-        raise RuntimeError(
-            "Smoke test did not pass; inspect isolated container logs and " + str(logfile)
         )
-finally:
-    subprocess.run(
-        ["docker", "rm", "-f", container], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+        run_prepared_fixture(options, home, map_name, source_hashes)
+
+
+if __name__ == "__main__":
+    main()
