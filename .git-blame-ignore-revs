@@ -101,3 +101,6 @@ f342d9cf6db2744260d82b876ffaa1ea180fe9b6
 
 # Challenge layout; token, route SQL and VM checks passed.
 6eee8ddbc269e2ca94883d456475825c753866f8
+
+# Verified progress-bar layout; tokens preserved except explicit braces.
+0355ca29c01107785195daaa705549f92a61bb51
