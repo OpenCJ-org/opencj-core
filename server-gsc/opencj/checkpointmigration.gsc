@@ -14,40 +14,45 @@ plan(oldRows, newRows)
     {
         return undefined;
     }
-    first = 0;
-    while(first < oldRows.size && first < newRows.size && oldRows[first] == newRows[first])
+    firstChangedIndex = 0;
+    while(firstChangedIndex < oldRows.size && firstChangedIndex < newRows.size &&
+          oldRows[firstChangedIndex] == newRows[firstChangedIndex])
     {
-        first++;
+        firstChangedIndex++;
     }
-    tail = 0;
-    while(tail < oldRows.size - first && tail < newRows.size - first &&
-          oldRows[oldRows.size - 1 - tail] == newRows[newRows.size - 1 - tail])
+    unchangedSuffixCount = 0;
+    while(unchangedSuffixCount < oldRows.size - firstChangedIndex &&
+          unchangedSuffixCount < newRows.size - firstChangedIndex &&
+          oldRows[oldRows.size - 1 - unchangedSuffixCount] ==
+              newRows[newRows.size - 1 - unchangedSuffixCount])
     {
-        tail++;
+        unchangedSuffixCount++;
     }
-    removed = oldRows.size - first - tail;
-    added = newRows.size - first - tail;
-    if(removed > 3 || added > 3 || (removed > 0 && added > 0 && (removed != 1 || added != 1)))
+    maximumInsertedOrDeletedCheckpoints = 3;
+    removedCount = oldRows.size - firstChangedIndex - unchangedSuffixCount;
+    addedCount = newRows.size - firstChangedIndex - unchangedSuffixCount;
+    if(removedCount > maximumInsertedOrDeletedCheckpoints ||
+       addedCount > maximumInsertedOrDeletedCheckpoints ||
+       (removedCount > 0 && addedCount > 0 && (removedCount != 1 || addedCount != 1)))
     {
         return undefined;
     }
-    for(i = first; i < first + removed; i++)
+    for(i = firstChangedIndex; i < firstChangedIndex + removedCount; i++)
     {
-        cp = openCJ\checkpointCreation::_decode(oldRows[i]);
-        if(cp.finish)
+        checkpoint = openCJ\checkpointCreation::_decode(oldRows[i]);
+        if(checkpoint.finish)
         {
             return undefined;
         }
-        if(!added &&
-           (cp.heightAbove > 0 || cp.double || cp.allowEle || !cp.allowSave || !cp.onGround))
+        if(!addedCount && !hasDefaultRequirements(checkpoint))
         {
             return undefined;
         }
     }
-    for(i = first; i < first + added; i++)
+    for(i = firstChangedIndex; i < firstChangedIndex + addedCount; i++)
     {
-        cp = openCJ\checkpointCreation::_decode(newRows[i]);
-        if(cp.finish)
+        checkpoint = openCJ\checkpointCreation::_decode(newRows[i]);
+        if(checkpoint.finish)
         {
             return undefined;
         }
@@ -58,245 +63,338 @@ plan(oldRows, newRows)
                 return undefined;
             }
         }
-        if(removed == 1 && added == 1)
+        if(removedCount == 1 && addedCount == 1)
         {
-            prior = openCJ\checkpointCreation::_decode(oldRows[first]);
-            if(!openCJ\checkpointHeight::same(cp, prior) || cp.double != prior.double ||
-               cp.allowEle != prior.allowEle || cp.allowSave != prior.allowSave ||
-               cp.onGround != prior.onGround)
+            previousCheckpoint = openCJ\checkpointCreation::_decode(oldRows[firstChangedIndex]);
+            if(!sameRequirements(checkpoint, previousCheckpoint))
             {
                 return undefined;
             }
         }
-        else if(cp.heightAbove > 0 || cp.double || cp.allowEle || !cp.allowSave || !cp.onGround)
+        else if(!hasDefaultRequirements(checkpoint))
         {
             return undefined;
         }
     }
-    p = spawnStruct();
-    p.mapping = [];
+    migrationPlan = spawnStruct();
+    migrationPlan.mapping = [];
     for(i = 0; i < newRows.size; i++)
     {
-        p.mapping[i] = -1;
-        if(i < first)
+        migrationPlan.mapping[i] = -1;
+        if(i < firstChangedIndex)
         {
-            p.mapping[i] = i;
+            migrationPlan.mapping[i] = i;
         }
-        else if(i >= newRows.size - tail)
+        else if(i >= newRows.size - unchangedSuffixCount)
         {
-            p.mapping[i] = oldRows.size - (newRows.size - i);
+            migrationPlan.mapping[i] = oldRows.size - (newRows.size - i);
         }
-        else if(removed == 1 && added == 1)
+        else if(removedCount == 1 && addedCount == 1)
         {
-            p.mapping[i] = first;
+            migrationPlan.mapping[i] = firstChangedIndex;
         }
     }
-    return p;
+    return migrationPlan;
 }
 
 canonicalRows(rows)
 {
-    normalized = [];
+    canonical = [];
     for(i = 0; i < rows.size; i++)
     {
-        cp = openCJ\checkpointCreation::_decode(rows[i]);
-        if(!isDefined(cp))
+        checkpoint = openCJ\checkpointCreation::_decode(rows[i]);
+        if(!isDefined(checkpoint))
         {
             return undefined;
         }
-        normalized[i] = openCJ\checkpointCreation::_encode(cp);
+        canonical[i] = openCJ\checkpointCreation::_encode(checkpoint);
     }
-    return normalized;
+    return canonical;
 }
 
 // With no historical references, arbitrary edits need no run migration. Reuse
 // IDs by position so the route's start/color identity remains stable.
 unusedPlan(oldRows, newRows)
 {
-    p = spawnStruct();
-    p.mapping = [];
+    migrationPlan = spawnStruct();
+    migrationPlan.mapping = [];
     for(i = 0; i < newRows.size; i++)
     {
-        p.mapping[i] = -1;
+        migrationPlan.mapping[i] = -1;
         if(i < oldRows.size)
         {
-            p.mapping[i] = i;
+            migrationPlan.mapping[i] = i;
         }
     }
-    return p;
+    return migrationPlan;
 }
 
+// Called while publication holds the map row lock. The caller commits or rolls back.
+// Keep the recovery file before replacing any layout; historical records retain their IDs.
 prepare(entries, existing)
 {
     if(isDefined(level.demoPersisting) && level.demoPersisting > 0)
     {
         return self fail("A demo is still saving; retry finalizing shortly");
     }
-    map = openCJ\mapID::getMapID();
-    route = self.cpc.route;
-    rows = openCJ\mySQL::mysqlSyncQuery(
-        "SELECT a.cpID,b.bigBrotherID,c.finishRouteID,a.vertices,a.allowDoubleRPG,c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove FROM checkpointAreas a JOIN checkpoints c ON c.cpID=a.cpID LEFT JOIN checkpointBrothers b ON b.cpID=a.cpID WHERE a.mapID=" +
-        map + " AND a.draftName=" + openCJ\util::dbStr(route) + " ORDER BY a.ordinal");
-    if(!isDefined(rows) || !rows.size)
+    mapId = openCJ\mapID::getMapID();
+    routeName = self.cpc.route;
+    published = self readPublishedDraft(mapId, routeName);
+    if(!isDefined(published))
+    {
+        return undefined;
+    }
+    migrationPlan = self choosePlan(published, mapId, routeName);
+    if(!isDefined(migrationPlan))
+    {
+        return undefined;
+    }
+    if(!self canReplaceRoute(published.checkpointIdsSql, routeName))
+    {
+        return undefined;
+    }
+    if(!self backUpPublishedDraft(routeName, published.rows))
+    {
+        return undefined;
+    }
+    retainedIdsSql = matchExistingAreas(entries, existing, published.groups, migrationPlan);
+    if(!self replaceLayout(published.checkpointIdsSql, retainedIdsSql, mapId, routeName))
+    {
+        return undefined;
+    }
+    return migrationPlan;
+}
+
+// Decode SQL columns once, then combine contiguous alternative areas into logical rows.
+readPublishedDraft(mapId, routeName)
+{
+    areaRows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT a.cpID,b.bigBrotherID,c.finishRouteID,a.vertices,a.allowDoubleRPG," +
+        "c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove " +
+        "FROM checkpointAreas a " +
+        "JOIN checkpoints c ON c.cpID=a.cpID " +
+        "LEFT JOIN checkpointBrothers b ON b.cpID=a.cpID " +
+        "WHERE a.mapID=" + mapId +
+        " AND a.draftName=" + openCJ\util::dbStr(routeName) + " ORDER BY a.ordinal");
+    if(!isDefined(areaRows) || !areaRows.size)
     {
         return self fail("Cannot read route for migration");
     }
-    old = [];
-    groups = [];
-    ids = "(";
-    for(i = 0; i < rows.size; i++)
+    published = spawnStruct();
+    published.rows = [];
+    published.groups = [];
+    published.checkpointIdsSql = "(";
+    checkpointIds = [];
+    for(i = 0; i < areaRows.size; i++)
     {
+        checkpointId = int(areaRows[i][0]);
+        leaderId = areaRows[i][1];
+        finishRouteId = areaRows[i][2];
+        vertices = areaRows[i][3];
+        checkpoint = openCJ\checkpointCreation::_empty();
+        checkpoint.points = openCJ\checkpointArea::decode(vertices);
+        checkpoint.double = int(areaRows[i][4]);
+        checkpoint.onGround = int(areaRows[i][5]);
+        checkpoint.allowSave = int(areaRows[i][6]);
+        checkpoint.allowEle = int(areaRows[i][7]);
+        checkpoint.platformRef = areaRows[i][8];
+        checkpoint.heightAbove = float(areaRows[i][9]);
+        checkpoint.finish = isDefined(finishRouteId);
+        checkpointIds[i] = checkpointId;
         if(i)
         {
-            ids += ",";
+            published.checkpointIdsSql += ",";
         }
-        ids += rows[i][0];
-        cp = openCJ\checkpointCreation::_empty();
-        cp.points = openCJ\checkpointArea::decode(rows[i][3]);
-        if(isDefined(rows[i][8]))
-        {
-            cp.platformRef = rows[i][8];
-        }
-        cp.heightAbove = float(rows[i][9]);
-        cp.finish = isDefined(rows[i][2]);
-        cp.double = int(rows[i][4]);
-        cp.onGround = int(rows[i][5]);
-        cp.allowSave = int(rows[i][6]);
-        cp.allowEle = int(rows[i][7]);
-        if(!isDefined(rows[i][1]))
+        published.checkpointIdsSql += checkpointId;
+        if(!isDefined(leaderId))
         {
             group = [];
             group[0] = i;
-            groups[groups.size] = group;
-            old[old.size] = openCJ\checkpointCreation::_encode(cp);
+            published.groups[published.groups.size] = group;
+            published.rows[published.rows.size] = openCJ\checkpointCreation::_encode(checkpoint);
+            continue;
         }
-        else
+        groupIndex = published.groups.size - 1;
+        if(groupIndex < 0 || int(leaderId) != checkpointIds[published.groups[groupIndex][0]])
         {
-            g = groups.size - 1;
-            if(g < 0 || int(rows[i][1]) != int(rows[groups[g][0]][0]))
-            {
-                return self fail("Complex alternative grouping; draft retained");
-            }
-            prior = openCJ\checkpointCreation::_decode(old[g]);
-            prior.alternatives[prior.alternatives.size] = cp.points;
-            if(!openCJ\checkpointHeight::same(cp, prior) || prior.double != cp.double ||
-               prior.allowEle != cp.allowEle || prior.allowSave != cp.allowSave ||
-               prior.onGround != cp.onGround || prior.finish != cp.finish)
-            {
-                return self fail("Alternative requirements differ; draft retained");
-            }
-            old[g] = openCJ\checkpointCreation::_encode(prior);
-            groups[g][groups[g].size] = i;
+            return self fail("Complex alternative grouping; draft retained");
         }
+        primary = openCJ\checkpointCreation::_decode(published.rows[groupIndex]);
+        primary.alternatives[primary.alternatives.size] = checkpoint.points;
+        if(!sameRequirements(checkpoint, primary))
+        {
+            return self fail("Alternative requirements differ; draft retained");
+        }
+        published.rows[groupIndex] = openCJ\checkpointCreation::_encode(primary);
+        published.groups[groupIndex][published.groups[groupIndex].size] = i;
     }
-    ids += ")";
-    p = plan(old, self.cpc.rows);
-    if(!isDefined(p))
+    published.checkpointIdsSql += ")";
+    return published;
+}
+
+// Routes with history allow only the supported contiguous edit. Unused routes may be rebuilt.
+choosePlan(published, mapId, routeName)
+{
+    migrationPlan = plan(published.rows, self.cpc.rows);
+    if(isDefined(migrationPlan))
     {
-        history = openCJ\mySQL::mysqlSyncQuery(
-            "SELECT EXISTS(SELECT 1 FROM playerRuns WHERE finishcpID IN " + ids +
-            ")+EXISTS(SELECT 1 FROM checkpointStatistics WHERE cpID IN " + ids +
-            ")+EXISTS(SELECT 1 FROM playerSaves WHERE checkpointID IN " + ids +
-            ")+EXISTS(SELECT 1 FROM demoRuns WHERE mapID=" + map +
-            " AND routeID IN (SELECT routeID FROM routes WHERE mapID=" + map +
-            " AND routeName=" + openCJ\util::dbStr(route) + ")" + ")");
-        if(!isDefined(history) || history.size != 1)
-        {
-            return self fail("Cannot check route history; draft retained");
-        }
-        if(int(history[0][0]) != 0)
-        {
-            return self fail(
-                "Route has run history: keep start/finish and requirements; change one checkpoint or insert/delete up to 3 together");
-        }
-        p = unusedPlan(old, self.cpc.rows);
+        return migrationPlan;
     }
-    outside = openCJ\mySQL::mysqlSyncQuery(
-        "SELECT cpID FROM checkpointConnections WHERE (cpID IN " + ids + " AND childcpID NOT IN " +
-        ids + ") OR (childcpID IN " + ids + " AND cpID NOT IN " + ids +
-        ") UNION SELECT cpID FROM checkpointBrothers WHERE bigBrotherID IN " + ids +
-        " AND cpID NOT IN " + ids + " LIMIT 1");
-    if(!isDefined(outside) || outside.size)
+    checkpointIdsSql = published.checkpointIdsSql;
+    historyRows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT EXISTS(SELECT 1 FROM playerRuns WHERE finishcpID IN " + checkpointIdsSql + ")" +
+        "+EXISTS(SELECT 1 FROM checkpointStatistics WHERE cpID IN " + checkpointIdsSql + ")" +
+        "+EXISTS(SELECT 1 FROM playerSaves WHERE checkpointID IN " + checkpointIdsSql + ")" +
+        "+EXISTS(SELECT 1 FROM demoRuns WHERE mapID=" + mapId +
+        " AND routeID IN (SELECT routeID FROM routes WHERE mapID=" + mapId +
+        " AND routeName=" + openCJ\util::dbStr(routeName) + "))");
+    if(!isDefined(historyRows) || historyRows.size != 1)
     {
-        return self fail("Shared route connections require manual migration; draft retained");
+        return self fail("Cannot check route history; draft retained");
+    }
+    referenceCount = int(historyRows[0][0]);
+    if(referenceCount != 0)
+    {
+        return self fail(
+            "Route has run history: keep start/finish and requirements; change one checkpoint or insert/delete up to 3 together");
+    }
+    return unusedPlan(published.rows, self.cpc.rows);
+}
+
+// Do not detach shared graphs or replace a route while another player's run uses it.
+canReplaceRoute(checkpointIdsSql, routeName)
+{
+    outsideConnections = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT cpID FROM checkpointConnections " +
+        "WHERE (cpID IN " + checkpointIdsSql +
+        " AND childcpID NOT IN " + checkpointIdsSql + ")" + " OR (childcpID IN " +
+        checkpointIdsSql + " AND cpID NOT IN " + checkpointIdsSql + ")" +
+        " UNION SELECT cpID FROM checkpointBrothers " +
+        "WHERE bigBrotherID IN " +
+        checkpointIdsSql + " AND cpID NOT IN " + checkpointIdsSql + " LIMIT 1");
+    if(!isDefined(outsideConnections) || outsideConnections.size)
+    {
+        self fail("Shared route connections require manual migration; draft retained");
+        return false;
     }
     players = getEntArray("player", "classname");
     for(i = 0; i < players.size; i++)
     {
-        if(players[i] != self && players[i] openCJ\playerRuns::hasRunID() &&
-           isDefined(players[i].route) && players[i].route == route)
+        player = players[i];
+        if(player != self && player openCJ\playerRuns::hasRunID() && isDefined(player.route) &&
+           player.route == routeName)
         {
-            return self fail(
-                "Another player has this route open; ask them to reset before finalizing");
+            self fail("Another player has this route open; ask them to reset before finalizing");
+            return false;
         }
     }
-    // Save old geometry before replacing the graph. This file is never overwritten.
-    original = self.cpc;
+    return true;
+}
+
+// _save writes through self.cpc; restore the active draft even when the backup fails.
+backUpPublishedDraft(routeName, oldRows)
+{
+    activeDraft = self.cpc;
     backup = spawnStruct();
-    backup.route = route;
-    backup.rows = old;
-    backup.selected = old.size;
+    backup.route = routeName;
+    backup.rows = oldRows;
+    backup.selected = oldRows.size;
     backup.draft = openCJ\checkpointCreation::_empty();
     backup.revision = 0;
-    backup.routeHex = original.routeHex;
-    prefix = original.path + ".before-migration-" + getTime();
-    backup.path = prefix;
-    for(n = 0; FS_TestFile(backup.path + ".b"); n++)
+    backup.routeHex = activeDraft.routeHex;
+    basePath = activeDraft.path + ".before-migration-" + getTime();
+    backup.path = basePath;
+    for(suffix = 0; FS_TestFile(backup.path + ".b"); suffix++)
     {
-        backup.path = prefix + "-" + n;
+        backup.path = basePath + "-" + suffix;
     }
     self.cpc = backup;
-    ok = self openCJ\checkpointCreation::_save();
-    self.cpc = original;
-    if(!ok)
+    saved = self openCJ\checkpointCreation::_save();
+    self.cpc = activeDraft;
+    if(!saved)
     {
-        return self fail("Cannot back up finalized geometry; migration cancelled");
+        self fail("Cannot back up finalized geometry; migration cancelled");
     }
-    p.existing = [];
-    kept = "(";
+    return saved;
+}
+
+// Each new area reuses its matching old group/area ID, or has an empty insertion slot.
+matchExistingAreas(entries, existing, groups, migrationPlan)
+{
+    migrationPlan.existing = [];
+    retainedIdsSql = "(";
     for(i = 0; i < entries.size; i++)
     {
-        target = [];
-        oldGroup = p.mapping[entries[i].group];
-        area = i - entries[i].leader;
-        if(oldGroup >= 0 && area < groups[oldGroup].size)
+        existingArea = [];
+        oldGroupIndex = migrationPlan.mapping[entries[i].group];
+        areaIndex = i - entries[i].leader;
+        if(oldGroupIndex >= 0 && areaIndex < groups[oldGroupIndex].size)
         {
-            target = existing[groups[oldGroup][area]];
-            if(kept != "(")
+            existingArea = existing[groups[oldGroupIndex][areaIndex]];
+            checkpointId = int(existingArea[0]);
+            if(retainedIdsSql != "(")
             {
-                kept += ",";
+                retainedIdsSql += ",";
             }
-            kept += target[0];
+            retainedIdsSql += checkpointId;
         }
-        p.existing[i] = target;
+        migrationPlan.existing[i] = existingArea;
     }
-    kept += ")";
+    retainedIdsSql += ")";
+    return retainedIdsSql;
+}
+
+// Replace layout inside the owner's transaction, preserving all historical records.
+replaceLayout(checkpointIdsSql, retainedIdsSql, mapId, routeName)
+{
     queries = [];
-    // Retain all checkpoint IDs, statistics, completed results, saves and footage.
+    queries[queries.size] = "UPDATE checkpoints SET retired=1 " +
+                            "WHERE cpID IN " +
+                            checkpointIdsSql + " AND cpID NOT IN " + retainedIdsSql;
+    queries[queries.size] = "DELETE FROM checkpointConnections " +
+                            "WHERE cpID IN " +
+                            checkpointIdsSql + " AND childcpID IN " + checkpointIdsSql;
+    queries[queries.size] = "DELETE FROM checkpointBrothers WHERE cpID IN " + checkpointIdsSql;
+    queries[queries.size] = "DELETE FROM checkpointAreas WHERE cpID IN " + checkpointIdsSql;
     queries[queries.size] =
-        "UPDATE checkpoints SET retired=1 WHERE cpID IN " + ids + " AND cpID NOT IN " + kept;
-    // Only replaceable layout definitions are rebuilt, inside publish's transaction.
-    queries[queries.size] =
-        "DELETE FROM checkpointConnections WHERE cpID IN " + ids + " AND childcpID IN " + ids;
-    queries[queries.size] = "DELETE FROM checkpointBrothers WHERE cpID IN " + ids;
-    queries[queries.size] = "DELETE FROM checkpointAreas WHERE cpID IN " + ids;
-    queries[queries.size] =
-        "UPDATE playerRuns r SET archived=1 WHERE r.finishcpID IS NULL AND (EXISTS(SELECT 1 FROM checkpointStatistics s WHERE s.runID=r.runID AND s.cpID IN " +
-        ids +
-        ") OR EXISTS(SELECT 1 FROM playerSaves s WHERE s.runID=r.runID AND s.checkpointID IN " +
-        ids + "))";
-    // ready=2 retains old footage while excluding playback and winner comparison.
-    queries[queries.size] = "UPDATE demoRuns SET ready=2 WHERE mapID=" + map +
-                            " AND routeID IN (SELECT routeID FROM routes WHERE mapID=" + map +
-                            " AND routeName=" + openCJ\util::dbStr(route) + ")";
+        "UPDATE playerRuns r SET archived=1 " +
+        "WHERE r.finishcpID IS NULL " +
+        "AND (EXISTS(SELECT 1 FROM checkpointStatistics s WHERE s.runID=r.runID AND s.cpID IN " +
+        checkpointIdsSql + ")" +
+        " OR EXISTS(SELECT 1 FROM playerSaves s WHERE s.runID=r.runID AND s.checkpointID IN " +
+        checkpointIdsSql + "))";
+    // Keep old footage, but exclude it from playback and winner comparison.
+    archivedDemoState = 2;
+    queries[queries.size] = "UPDATE demoRuns SET ready=" + archivedDemoState +
+                            " WHERE mapID=" + mapId +
+                            " AND routeID IN (SELECT routeID FROM routes WHERE mapID=" + mapId +
+                            " AND routeName=" + openCJ\util::dbStr(routeName) + ")";
     for(i = 0; i < queries.size; i++)
     {
         if(!isDefined(openCJ\mySQL::mysqlSyncQuery(queries[i])))
         {
-            return self fail("Migration failed; transaction rolled back and draft retained");
+            self fail("Migration failed; transaction rolled back and draft retained");
+            return false;
         }
     }
-    return p;
+    return true;
+}
+
+hasDefaultRequirements(checkpoint)
+{
+    return checkpoint.heightAbove <= 0 && !checkpoint.double && !checkpoint.allowEle &&
+           checkpoint.allowSave && checkpoint.onGround;
+}
+
+sameRequirements(first, second)
+{
+    if(!openCJ\checkpointHeight::same(first, second) || first.double != second.double ||
+       first.allowEle != second.allowEle)
+    {
+        return false;
+    }
+    return first.allowSave == second.allowSave && first.onGround == second.onGround &&
+           first.finish == second.finish;
 }
 
 fail(message)
