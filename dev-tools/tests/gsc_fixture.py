@@ -109,7 +109,10 @@ def script_hashes(mod):
 def copy_scripts(options, mod):
     """Copy the selected release; an explicit baseline replaces only its GSC sources."""
     for folder in SCRIPT_FOLDERS:
-        shutil.copytree(options.scripts / folder, mod / folder)
+        # Observation hooks edit only these owned copies; releases may be read-only.
+        shutil.copytree(
+            options.scripts / folder, mod / folder, copy_function=shutil.copyfile
+        )
     if not options.baseline:
         return
     for folder in SCRIPT_FOLDERS:
