@@ -2,90 +2,25 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import json
-import os
 from pathlib import Path
 import re
-import secrets
-import subprocess
-import sys
-import uuid
 
-from compose_environment import database_container
+from isolated_database import IsolatedDatabase
 import gsc_fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFERRED_COOLDOWN_SECONDS = 60 * 60
 # Separate CLI queries may cross several clock ticks during the cooldown checks.
 QUERY_TIMING_ALLOWANCE_SECONDS = 10
-sys.path.insert(0, str(ROOT / "server-db/tools"))
-from mysql_session import MySQL
 
 
-class PlayerNameVerification:
+class PlayerNameVerification(IsolatedDatabase):
     """Own the synthetic schema, account, configuration and isolated engine fixture."""
 
     def __init__(self, options):
         self.options = options
-        self.database_container = database_container()
-        suffix = uuid.uuid4().hex[:8]
-        self.database = "opencj_verify_names_" + suffix + "_cod4"
-        self.account = "names_fixture_" + suffix
-        self.password = secrets.token_urlsafe(32)
-        self.home = ROOT / "dev-tools/local" / ("player-names-" + suffix)
-        self.config = self.home / "mods/opencj/names-fixture.cfg"
-        self.owns_database_resources = False
+        super().__init__("player-names")
         self.report = {"productionWrites": False, "checks": 0, "failures": 0}
-
-    def query_database(self, query, target=None):
-        if target is not None and target != self.database:
-            raise ValueError("Player-name fixture can query only its own schema")
-        try:
-            with MySQL(self.database_container, target or "mysql") as database:
-                return database.query(query, timeout=60)
-        except Exception as error:
-            path = self.home / "sql-error.txt"
-            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(descriptor, "w") as stream:
-                stream.write(str(error).replace(self.password, "<redacted>"))
-            raise RuntimeError("SQL fixture failed; see private sql-error.txt") from None
-
-    def prepare_database(self):
-        schema_count = self.query_database(
-            "SELECT COUNT(*) FROM information_schema.SCHEMATA"
-            f" WHERE SCHEMA_NAME='{self.database}';"
-        )
-        account_count = self.query_database(
-            f"SELECT COUNT(*) FROM mysql.user WHERE User='{self.account}' AND Host='%';"
-        )
-        if schema_count != "0" or account_count != "0":
-            raise RuntimeError("Player-name fixture identities already exist")
-        dump = subprocess.run(
-            [
-                "docker",
-                "exec",
-                self.database_container,
-                "sh",
-                "-c",
-                'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root'
-                " --no-data --routines --triggers --skip-comments --skip-lock-tables"
-                " --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if dump.returncode or re.search(r"^INSERT INTO", dump.stdout, re.M):
-            raise RuntimeError("Expected a schema-only fixture export")
-        # The fresh names were checked above; cleanup also covers a lost CREATE reply.
-        self.owns_database_resources = True
-        self.query_database(
-            f"CREATE DATABASE {self.database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
-        )
-        self.query_database(dump.stdout.replace("openCJ_cod4", self.database), self.database)
-        self.query_database(
-            f"CREATE USER '{self.account}'@'%' IDENTIFIED BY '{self.password}';"
-            f" GRANT ALL PRIVILEGES ON {self.database}.* TO '{self.account}'@'%';"
-        )
 
     def check(self, condition, scenario):
         self.report["checks"] += 1
@@ -277,17 +212,7 @@ _request(query, policy, key, scope, queueWaitMs, retainRows)
             self.options, self.home, retained_callbacks=()
         )
         self.install_record_observers()
-        settings = {
-            "db_host": "db",
-            "db_user": self.account,
-            "db_pass": self.password,
-            "db_base": self.database[:-1],
-            "db_port": "3306",
-        }
-        descriptor = os.open(self.config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as stream:
-            for key, value in settings.items():
-                stream.write(f'set {key} "{value}"\n')
+        self.write_engine_config()
         return source_hashes
 
     def execute(self):
@@ -309,14 +234,7 @@ _request(query, policy, key, scope, queueWaitMs, retainRows)
             self.report["engine"] = engine
             (self.home / "result.json").write_text(json.dumps(self.report, indent=2) + "\n")
         finally:
-            try:
-                if self.owns_database_resources:
-                    self.query_database(
-                        f"DROP DATABASE IF EXISTS {self.database};"
-                        f" DROP USER IF EXISTS '{self.account}'@'%';"
-                    )
-            finally:
-                self.config.unlink(missing_ok=True)
+            self.cleanup()
             print("Evidence: " + str(self.home), flush=True)
 
 

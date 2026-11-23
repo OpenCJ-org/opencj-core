@@ -577,12 +577,13 @@
     {
       "id": "shared-support",
       "category": "support",
-      "description": "Compose prerequisite resolution and synthetic run/CTE fixtures shared by integration runners.",
+      "description": "Compose prerequisites, owned schema-only database copies and synthetic run/CTE fixtures shared by integration runners.",
       "requires": "Imported helpers; database operations require a selected disposable installation.",
       "effects": "No work at import. Helpers resolve Compose prerequisites or construct and explicitly execute synthetic SQL scenarios.",
       "files": [
         "dev-tools/tests/compose_environment.py",
-        "dev-tools/tests/sql_run_fixture.py"
+        "dev-tools/tests/sql_run_fixture.py",
+        "dev-tools/tests/isolated_database.py"
       ],
       "commands": []
     },
@@ -655,6 +656,20 @@
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-demo-storage.py"
+      ]
+    },
+    {
+      "id": "checkpoint-publication",
+      "category": "integration",
+      "description": "Real checkpoint publication, idempotent retries, historical ID preservation, migration rejection and transaction rollback.",
+      "requires": "Initialized Compose with current schema and engine, licensed game assets; schema-only export requires database administration access.",
+      "effects": "Creates a uniquely named empty schema and restricted account, isolated engine and private draft/log files. Deletes owned SQL resources and credentials on exit; no gameplay record writes.",
+      "files": [
+        "dev-tools/tests/run-checkpoint-publication.py",
+        "dev-tools/tests/checkpoint-publication.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-checkpoint-publication.py"
       ]
     }
   ]
