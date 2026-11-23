@@ -2,8 +2,14 @@
 # Optional Ubuntu host prerequisites. Run as your normal SSH user.
 set -euo pipefail
 source /etc/os-release
-[[ "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || { echo 'This installer targets Ubuntu 24.04.' >&2; exit 1; }
-[[ "$(uname -m)" == x86_64 ]] || { echo 'An x86_64 host is required.' >&2; exit 1; }
+[[ "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || {
+    echo 'This installer targets Ubuntu 24.04.' >&2
+    exit 1
+}
+[[ "$(uname -m)" == x86_64 ]] || {
+    echo 'An x86_64 host is required.' >&2
+    exit 1
+}
 sudo apt-get update
 sudo apt-get install -y git python3 ca-certificates curl
 if ! command -v docker >/dev/null; then

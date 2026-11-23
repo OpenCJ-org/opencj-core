@@ -3,19 +3,28 @@ set -euo pipefail
 runtime=/workspace/dev-tools/local/runtime
 mod="$runtime/mods/opencj"
 mkdir -p "$mod"
-[[ -f /mod-assets/mod.ff ]] || { echo 'Missing mod.ff in MOD_DIR.' >&2; exit 1; }
+[[ -f /mod-assets/mod.ff ]] || {
+    echo 'Missing mod.ff in MOD_DIR.' >&2
+    exit 1
+}
 # A native deployment may pin a known-good script release. Preserve it when
 # restarting; deployment explicitly switches these links after validation.
 for tree in opencj maps; do
     if [[ ! -e "$mod/$tree" && ! -L "$mod/$tree" ]]; then
         ln -s "/workspace/server-gsc/$tree" "$mod/$tree"
     fi
-    [[ -d "$mod/$tree" ]] || { echo "Missing script tree: $mod/$tree" >&2; exit 1; }
+    [[ -d "$mod/$tree" ]] || {
+        echo "Missing script tree: $mod/$tree" >&2
+        exit 1
+    }
 done
 ln -sfn /mod-assets/mod.ff "$mod/mod.ff"
 shopt -s nullglob
 assets=(/mod-assets/*.iwd)
-(( ${#assets[@]} > 0 )) || { echo 'Missing OpenCJ IWD in MOD_DIR.' >&2; exit 1; }
+(( ${#assets[@]} > 0 )) || {
+    echo 'Missing OpenCJ IWD in MOD_DIR.' >&2
+    exit 1
+}
 for asset in "${assets[@]}"; do
     ln -sfn "$asset" "$mod/$(basename "$asset")"
 done
@@ -25,7 +34,17 @@ if [[ -f /game/steamclient.so ]]; then
     ln -sfn /game/steamclient.so "$runtime/steamclient.so"
 fi
 exec /workspace/cod4x-server/bin/cod4x18_dedrun \
-    +set fs_basepath /game +set fs_homepath "$runtime" +set fs_game mods/opencj \
-    +set dedicated 2 +set net_ip 0.0.0.0 +set net_port 28960 \
-    +set sv_maxclients 4 +set com_hunkMegs 1024 +set sv_authorizemode 1 \
-    +set developer 1 +set g_gametype cj +exec opencj-dev.cfg +set sv_timeout 1800 +map "$START_MAP"
+    +set fs_basepath /game \
+    +set fs_homepath "$runtime" \
+    +set fs_game mods/opencj \
+    +set dedicated 2 \
+    +set net_ip 0.0.0.0 \
+    +set net_port 28960 \
+    +set sv_maxclients 4 \
+    +set com_hunkMegs 1024 \
+    +set sv_authorizemode 1 \
+    +set developer 1 \
+    +set g_gametype cj \
+    +exec opencj-dev.cfg \
+    +set sv_timeout 1800 \
+    +map "$START_MAP"
