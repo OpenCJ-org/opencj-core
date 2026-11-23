@@ -26,7 +26,10 @@
     <div class="big-number offline">Offline</div>
     <div class="muted">The server did not answer the last status check.</div>
     {% endif %}
-    <div>Join from the game console: {{ connect_command(connect_address, "connect-command") }}</div>
+    <div class="connect-block">
+      <span>Join from the game console</span>
+      {{ connect_command(connect_address, "connect-command") }}
+    </div>
     <div class="actions">
       <a class="button" href="{{ root }}downloads/">Download maps</a>
       {% if discord_invite_url %}{{ discord_button(discord_invite_url) }}{% endif %}

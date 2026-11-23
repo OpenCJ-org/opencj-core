@@ -45,8 +45,16 @@
 </a>
 {%- endmacro %}
 
+{# A console-style box with a copy icon button. The button stays hidden without JavaScript. #}
 {% macro connect_command(address, element_id) -%}
-<span class="copy-row"><code id="{{ element_id }}">/connect {{ address }}</code><button type="button" class="copy-button" data-copy-target="{{ element_id }}" hidden>Copy</button></span>
+<span class="command-box">
+  <code id="{{ element_id }}">/connect {{ address }}</code>
+  <button type="button" class="copy-button" data-copy-target="{{ element_id }}" aria-label="Copy the connect command" title="Copy" hidden>
+    <svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+    <svg class="icon-done" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12.5l5 5L20 6.5"/></svg>
+  </button>
+</span>
+<span class="copy-status" role="status" aria-live="polite"></span>
 {%- endmacro %}
 
 {% macro plays_text(summary) -%}

@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import hashlib
 import os
 import shutil
 import sys
@@ -22,6 +23,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = PACKAGE_DIR / "templates"
 STATIC_DIR = PACKAGE_DIR / "static"
 STATUS_TIMEOUT_SECONDS = 2.0
+STATIC_VERSION_LENGTH = 10
 # Keep the live build plus one older build, so a reader mid-request is never cut off.
 KEPT_BUILD_COUNT = 2
 BUILDS_FOLDER = "builds"
@@ -45,6 +47,17 @@ def create_template_environment():
     environment.filters["duration"] = site_model.format_duration_ms
     environment.filters["filesize"] = site_model.format_size_bytes
     return environment
+
+
+def static_files_version():
+    """Short hash of the static files. Pages link to them with ?v=<hash>, so a
+    changed stylesheet or script is fetched again instead of served from cache."""
+    digest = hashlib.sha256()
+    for static_path in sorted(STATIC_DIR.rglob("*")):
+        if static_path.is_file():
+            digest.update(static_path.name.encode())
+            digest.update(static_path.read_bytes())
+    return digest.hexdigest()[:STATIC_VERSION_LENGTH]
 
 
 def collect_site_data(settings):
@@ -75,6 +88,7 @@ def collect_site_data(settings):
 
     return {
         "generated_at": datetime.datetime.now(datetime.timezone.utc),
+        "static_version": static_files_version(),
         "connect_address": settings.connect_address,
         "discord_invite_url": settings.discord_invite_url,
         "server": server_status,
