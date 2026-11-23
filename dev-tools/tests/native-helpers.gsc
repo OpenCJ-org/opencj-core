@@ -9,6 +9,8 @@ main()
     level.helperChecks = 0;
     level.helperFailures = 0;
     checkAsciiConversions();
+    checkNumericText();
+    checkNumericSettings();
     checkPlayerNameCleanup();
     checkHudRegistrations();
     checkConfigstringLookup();
@@ -201,4 +203,94 @@ check(passed, label)
         level.helperFailures++;
         printf("NATIVE HELPERS FAIL: " + label + "\n");
     }
+}
+
+// Numeric input must be complete and representable before a caller converts it.
+checkNumericText()
+{
+    validIntegerTexts = [];
+    validIntegerTexts[0] = "0";
+    validIntegerTexts[1] = "-12";
+    validIntegerTexts[2] = "+12";
+    validIntegerTexts[3] = "0012";
+    validIntegerTexts[4] = "2147483647";
+    validIntegerTexts[5] = "-2147483648";
+    for(i = 0; i < validIntegerTexts.size; i++)
+    {
+        check(isValidInt(validIntegerTexts[i]), "valid signed integer: " + validIntegerTexts[i]);
+    }
+
+    invalidIntegerTexts = [];
+    invalidIntegerTexts[0] = "";
+    invalidIntegerTexts[1] = "12junk";
+    invalidIntegerTexts[2] = "1.5";
+    invalidIntegerTexts[3] = "2147483648";
+    invalidIntegerTexts[4] = "-2147483649";
+    invalidIntegerTexts[5] = "4294967296";
+    invalidIntegerTexts[6] = "7 ";
+    invalidIntegerTexts[7] = " 7";
+    invalidIntegerTexts[8] = "+";
+    invalidIntegerTexts[9] = "--1";
+    for(i = 0; i < invalidIntegerTexts.size; i++)
+    {
+        check(!isValidInt(invalidIntegerTexts[i]), "invalid integer rejected: " + invalidIntegerTexts[i]);
+    }
+
+    validFloatTexts = [];
+    validFloatTexts[0] = "0";
+    validFloatTexts[1] = "-1.5";
+    validFloatTexts[2] = "+0.25";
+    validFloatTexts[3] = ".5";
+    validFloatTexts[4] = "1e2";
+    validFloatTexts[5] = "3.4e38";
+    for(i = 0; i < validFloatTexts.size; i++)
+    {
+        check(isValidFloat(validFloatTexts[i]), "valid finite float: " + validFloatTexts[i]);
+    }
+
+    invalidFloatTexts = [];
+    invalidFloatTexts[0] = "";
+    invalidFloatTexts[1] = "1.5junk";
+    invalidFloatTexts[2] = "nan";
+    invalidFloatTexts[3] = "NaN";
+    invalidFloatTexts[4] = "inf";
+    invalidFloatTexts[5] = "-inf";
+    invalidFloatTexts[6] = "1e40";
+    invalidFloatTexts[7] = "1e-50";
+    invalidFloatTexts[8] = "7 ";
+    invalidFloatTexts[9] = " 7";
+    for(i = 0; i < invalidFloatTexts.size; i++)
+    {
+        check(!isValidFloat(invalidFloatTexts[i]), "invalid float rejected: " + invalidFloatTexts[i]);
+    }
+}
+
+// Use the real settings parser so native rejection also protects its range checks.
+checkNumericSettings()
+{
+    integerSetting = spawnStruct();
+    integerSetting.type = "int";
+    integerSetting.minVal = -20;
+    integerSetting.maxVal = 20;
+    check(openCJ\settings::parseSettingValue(integerSetting, "-12") == -12,
+          "integer setting accepts a signed value");
+    check(!isDefined(openCJ\settings::parseSettingValue(integerSetting, "12junk")),
+          "integer setting rejects a numeric prefix");
+    check(!isDefined(openCJ\settings::parseSettingValue(integerSetting, "4294967296")),
+          "integer setting rejects overflow before conversion");
+    check(!isDefined(openCJ\settings::parseSettingValue(integerSetting, "21")),
+          "integer setting still enforces its own maximum");
+
+    floatSetting = spawnStruct();
+    floatSetting.type = "float";
+    floatSetting.minVal = -2;
+    floatSetting.maxVal = 2;
+    check(openCJ\settings::parseSettingValue(floatSetting, "-1.5") == -1.5,
+          "float setting accepts a signed fraction");
+    check(!isDefined(openCJ\settings::parseSettingValue(floatSetting, "nan")),
+          "float setting rejects NaN before comparing bounds");
+    check(!isDefined(openCJ\settings::parseSettingValue(floatSetting, "1e-50")),
+          "float setting rejects underflow instead of accepting zero");
+    check(!isDefined(openCJ\settings::parseSettingValue(floatSetting, "2.5")),
+          "float setting still enforces its own maximum");
 }

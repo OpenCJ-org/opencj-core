@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h> // For isalnum
+#include <errno.h>
+#include <limits.h>
+#include <math.h>
 
 #include "gsc_custom_utils.hpp"
 
@@ -148,34 +151,22 @@ void Gsc_Utils_VoidFunc()
     stackPushUndefined();
 }
 
+// Validate the whole input before GSC converts it to a signed integer.
 void Gsc_Utils_IsValidInt()
 {
-    char *buf = NULL;
-    stackGetParamString(0, &buf);
-
-    if (!buf)
+    char *text = NULL;
+    if (!stackGetParamString(0, &text) || !text || isspace((unsigned char)text[0]))
     {
         stackPushBool(false);
         return;
     }
 
-    // strtoX functions allow spaces so they can be called multiple times, but that's not safe for user input
-    if (strchr(buf, ' ') != NULL)
-    {
-        stackPushBool(false);
-        return;
-    }
-
-    char *ptr = NULL;
-    long number = strtol(buf, &ptr, 10);
-    (void)number;
-    if (buf == ptr)
-    {
-        stackPushBool(false);
-        return;
-    }
-
-    stackPushBool(true);
+    errno = 0;
+    char *end = NULL;
+    long value = strtol(text, &end, 10);
+    bool completeNumber = end != text && *end == '\0';
+    bool withinIntegerRange = errno != ERANGE && value >= INT_MIN && value <= INT_MAX;
+    stackPushBool(completeNumber && withinIntegerRange);
 }
 
 // Nine significant digits round-trip every finite IEEE-754 float used by GSC.
@@ -192,34 +183,23 @@ void Gsc_Utils_FloatToPreciseString()
     stackPushString(text);
 }
 
+// Reject incomplete input and values that cannot safely enter GSC range checks.
 void Gsc_Utils_IsValidFloat()
 {
-    char *buf = NULL;
-    stackGetParamString(0, &buf);
-
-    if (!buf)
+    char *text = NULL;
+    if (!stackGetParamString(0, &text) || !text || isspace((unsigned char)text[0]))
     {
         stackPushBool(false);
         return;
     }
 
-    // strtoX functions allow spaces so they can be called multiple times, but that's not safe for user input
-    if (strchr(buf, ' ') != NULL)
-    {
-        stackPushBool(false);
-        return;
-    }
-
-    char *ptr = NULL;
-    float number = strtof(buf, &ptr);
-    (void)number;
-    if (buf == ptr)
-    {
-        stackPushBool(false);
-        return;
-    }
-
-    stackPushBool(true);
+    errno = 0;
+    char *end = NULL;
+    float value = strtof(text, &end);
+    bool completeNumber = end != text && *end == '\0';
+    // NaN defeats ordinary min/max checks; range errors can silently become zero or infinity.
+    bool withinFloatRange = errno != ERANGE && isfinite(value);
+    stackPushBool(completeNumber && withinFloatRange);
 }
 
 void Gsc_Utils_ContainsIllegalChars()

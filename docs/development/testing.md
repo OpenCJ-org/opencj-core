@@ -337,3 +337,12 @@ operation. They verify rejected-spawn completion and ordinary movement, not
 fuzzy player-name matching or a full successful login/spawn lifecycle. The fixture
 uses the shared runner's engine/source selection, bounded wait and owned-container
 cleanup; it does not inspect the client's rendered menu.
+
+### Numeric input boundaries
+
+The native-helper fixture checks complete signed decimal integers, the signed
+32-bit boundaries and finite floating-point input. It rejects numeric prefixes,
+whitespace, overflow, underflow and non-finite values. Valid signs, leading
+integer zeros and decimal exponents remain supported. Its settings cases call
+the production parser to check that rejected numbers cannot bypass setting
+limits; no account or database records are used.
