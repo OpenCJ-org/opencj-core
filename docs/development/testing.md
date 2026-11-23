@@ -88,6 +88,13 @@ a separate candidate without replacing the deployed executable. The candidate mu
 core checkout so the Compose container can read it. A missing or external path
 is rejected before any fixture resources are created.
 
+The history-save runner also tests latest-run lookup ownership with real SQL.
+It delays completed replies to verify run changes and overlapping requests, and
+occupies native workers to prove obsolete queued lookups are cancelled before
+execution. Mode-change and disconnect scenarios call their production cancellation
+boundaries; the final restore handoff is observed in the fixture copy. These cases
+do not verify client rendering or a physical network disconnect.
+
 The SQL adapter fixture also uploads and downloads a small synthetic clip. It
 checks destroyed/reused native IDs, map teardown, malformed payloads and missing
 chunks without running the capacity benchmark.

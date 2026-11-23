@@ -421,9 +421,10 @@ setRunIDAndInstanceNumber(runID, instanceNumber)
     self.runInstanceNumber = instanceNumber;
 }
 
-// Invalidate pending creation replies when another run is selected or requested.
+// Cancel old lookups and invalidate creation replies when another run is selected or requested.
 _invalidatePendingCreation()
 {
+    self openCJ\commands::cancelRestoreLookup();
     if(!isDefined(self.playerRuns_creationVersion))
     {
         self.playerRuns_creationVersion = 0;

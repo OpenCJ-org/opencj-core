@@ -207,9 +207,10 @@ _finishPage(state, requestID)
     }
 }
 
-// Invalidate the current page request so its delayed result cannot update a newer load.
+// Cancel run selection and invalidate page replies before a load or mode change.
 cancelPendingPage()
 {
+    self openCJ\commands::cancelRestoreLookup();
     self notify("history_load_cancelled");
     if(!isDefined(self.historySaves))
     {

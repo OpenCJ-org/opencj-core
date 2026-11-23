@@ -315,6 +315,22 @@ class HistoryVerification:
             "main()\n{\n    self.history192CreatedEvents++;\n}\n"
         )
 
+    def observe_latest_run_restore(self):
+        """Run the real latest-run query and observe its final restore request."""
+        path = self.mod / "opencj/commands.gsc"
+        source = path.read_text()
+        function = re.search(r"(?ms)^_restoreLastRun\s*\([^)]*\)\s*\{.*?^\}", source)
+        assert function, "Latest-run lookup function was not found"
+        observed, replacements = re.subn(
+            r"openCJ\\playerRuns::restoreRun\s*\(",
+            lambda match: r"openCJ\history192Test::recordCommandRestore(",
+            function.group(0),
+        )
+        assert replacements == 1, "Expected one latest-run restore handoff"
+        path.write_text(
+            source[: function.start()] + observed + source[function.end() :]
+        )
+
     def write_database_config(self):
         """Keep credentials private and force the disposable schema name."""
         runtime_config = (
@@ -703,6 +719,7 @@ def main(*, with_adapter=False):
         verification.observe_history_warnings()
         verification.delay_sql_replies()
         verification.observe_run_events()
+        verification.observe_latest_run_restore()
         verification.write_database_config()
         if with_adapter:
             verification.prepare_adapter_scripts()

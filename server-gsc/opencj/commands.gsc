@@ -45,6 +45,7 @@ onInit()
 
 onPlayerDisconnect()
 {
+    self cancelRestoreLookup();
     if (isDefined(self.targetRef))
     {
         self.targetRef delete();
@@ -199,71 +200,88 @@ _onCmdRuns(args) // TODO: support self-named runs
     }
 }
 
-_restoreLastRun(runID)
+// Restore the newest eligible run only while this lookup still belongs to the player.
+_restoreLastRun(excludedRunID)
 {
+    self endon("disconnect");
     if (isDefined(self.cpc))
     {
         self sendLocalChatMessage("Exit checkpoint editing with !cp stop before restoring a run.", true);
         return;
     }
     self endon("cpc_started");
-
-    if (!self openCJ\mapID::hasMapID())
+    if (!self openCJ\playerRuns::_canAccessRuns())
     {
-        self sendLocalChatMessage("Sorry, the current map is not in the database", true);
         return;
     }
 
-    if (!self isPlayerReady(false))
+    if (!isDefined(excludedRunID) && self openCJ\playerRuns::hasRunID())
     {
-        self sendLocalChatMessage("You're not logged in or settings haven't loaded yet", true);
+        excludedRunID = self openCJ\playerRuns::getRunID();
+    }
+    excludeCurrentRun = "";
+    if (isDefined(excludedRunID))
+    {
+        excludeCurrentRun = " AND runID != " + excludedRunID;
+    }
+    query = "SELECT runID FROM playerRuns "
+            + "WHERE playerID = " + self openCJ\login::getPlayerID()
+            + " AND finishTimeStamp IS NULL"
+            + " AND mapID = " + openCJ\mapID::getMapID()
+            + excludeCurrentRun
+            + " AND archived = False"
+            + " ORDER BY lastUsedTimeStamp DESC, runID DESC LIMIT 1";
+
+    request = self _beginRestoreLookup();
+    // Scoped cancellation uses the native menu-read policy, with a scope separate from UI menus.
+    result = self openCJ\mySQL::_request(query, level.sqlConstants.policyMenu, "", request.scope,
+                                       level.sqlConstants.defaultQueueWaitMs, true);
+    // Cancellation can arrive after SQL completion but before this thread resumes.
+    if (!isDefined(self.latestRunLookup) || self.latestRunLookup != request)
+    {
         return;
     }
-
-    if (self openCJ\demos::isPlayingDemo())
-    {
-        self sendLocalChatMessage("Can't access runs while watching a demo", true);
-        return;
-    }
-
-    mapId = self openCJ\mapID::getMapID();
-    runSqlStr = " ";
-    if (!isDefined(runID))
-    {
-        if (self openCJ\playerRuns::hasRunID())
-        {
-            runID = self openCJ\playerRuns::getRunID();
-        }
-    }
-
-    if (isDefined(runID))
-    {
-        runSqlStr += "AND runID != " + runID + " ";
-        hasRunID = true;
-    }
-
-    query = "SELECT runID FROM playerRuns " + 
-            "WHERE playerID = " + self openCJ\login::getPlayerID() +
-            " AND finishTimeStamp IS NULL AND mapID = " + mapId +
-            runSqlStr +
-            " AND archived = False" + 
-            " ORDER BY lastUsedTimeStamp DESC, runID DESC LIMIT 1";
-    printf("DEBUG: executing restore position query:\n" + query + "\n");
-
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query);
-    if (isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
-    {
-        restoredRunID = int(rows[0][0]);
-        if (!isDefined(runID) || (restoredRunID != runID))
-        {
-            self openCJ\playerRuns::restoreRun(restoredRunID);
-            self sendLocalChatMessage("Restored your latest run");
-        }
-    }
-    else
+    self.latestRunLookup = undefined;
+    rows = result.rows;
+    if (!isDefined(rows) || rows.size == 0 || !isDefined(rows[0][0]))
     {
         self sendLocalChatMessage("Failed to restore position, please use runs menu instead", true);
+        return;
     }
+    restoredRunID = int(rows[0][0]);
+    if (!isDefined(excludedRunID) || restoredRunID != excludedRunID)
+    {
+        // The loader owns success/failure messages; selecting a row is not a successful restore.
+        self openCJ\playerRuns::restoreRun(restoredRunID);
+    }
+}
+
+// Give each lookup its own scope, including after an entity slot is reused.
+_beginRestoreLookup()
+{
+    self cancelRestoreLookup();
+    if (!isDefined(level.latestRunLookupSequence))
+    {
+        level.latestRunLookupSequence = 0;
+    }
+    level.latestRunLookupSequence++;
+    request = spawnStruct();
+    request.scope = "run-restore:" + self getEntityNumber() + ":" + level.latestRunLookupSequence;
+    self.latestRunLookup = request;
+    return request;
+}
+
+// Stop obsolete reads while retaining completion so waiting callers can finish normally.
+cancelRestoreLookup()
+{
+    if (!isDefined(self.latestRunLookup))
+    {
+        return;
+    }
+    request = self.latestRunLookup;
+    self.latestRunLookup = undefined;
+    mysql_async_cancel(request.scope, level.sqlConstants.scopeExact,
+                       level.sqlConstants.retainCompletion);
 }
 
 // Useful commands for debugging maps

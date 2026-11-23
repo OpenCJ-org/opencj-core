@@ -558,6 +558,11 @@ verifyDelayedRunReplies()
     self verifyDelayedRunCreation("SELECT createRunID(", 0);
     self verifyDelayedRunCreation("SELECT createRunInstance(", 1);
     self verifyOverlappingRunCreation();
+    self verifyDelayedLatestRunLookup();
+    self verifyOverlappingLatestRunLookups();
+    self verifyQueuedLatestRunCancellation("run switch");
+    self verifyQueuedLatestRunCancellation("mode switch");
+    self verifyQueuedLatestRunCancellation("disconnect");
 }
 
 verifyDelayedFinish(checkpoint, resumeSameRun)
@@ -786,4 +791,146 @@ observeSQLResult(query)
     {
         level.history192InstanceRequests++;
     }
+}
+
+// Delay the lookup's real result; selecting another run must make it obsolete.
+verifyDelayedLatestRunLookup()
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self selectRun(originalRunID, originalInstance);
+    self.history192CommandRestores = [];
+
+    level.history192DelayedQuery = "SELECT runID FROM playerRuns ";
+    self thread lookupLatestRun("history192_lookup_done");
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self waittill("history192_lookup_done");
+    level.history192DelayedQuery = undefined;
+
+    check(self.history192CommandRestores.size == 0,
+          "late latest-run lookup cannot request a restore after a run switch");
+    check(self openCJ\runStorage::isCurrent(replacementRunID, replacementInstance),
+          "late latest-run lookup preserves the selected run");
+}
+
+// Release the first lookup only after the second has selected its newer candidate.
+verifyOverlappingLatestRunLookups()
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    newRun();
+    self selectRun(originalRunID, originalInstance);
+    self.history192CommandRestores = [];
+
+    level.history192DelayedQuery = "SELECT runID FROM playerRuns ";
+    level.history192HoldReply = true;
+    self thread lookupLatestRun("history192_first_lookup_done");
+    self waittill("history192_result_ready");
+    level.history192DelayedQuery = undefined;
+
+    latestCandidate = newRun();
+    self thread lookupLatestRun("history192_second_lookup_done");
+    self waittill("history192_second_lookup_done");
+    self notify("history192_release_result");
+    self waittill("history192_first_lookup_done");
+    level.history192HoldReply = false;
+
+    check(self.history192CommandRestores.size == 1,
+          "overlapping latest-run lookups request only the current restore");
+    check(self.history192CommandRestores[0] == latestCandidate,
+          "the current latest-run lookup selects the newer candidate");
+}
+
+lookupLatestRun(completionEvent)
+{
+    if(!isDefined(self.history192LookupDone))
+    {
+        self.history192LookupDone = [];
+    }
+    self.history192LookupDone[completionEvent] = false;
+    self openCJ\commands::_restoreLastRun();
+    self.history192LookupDone[completionEvent] = true;
+    self notify(completionEvent);
+}
+
+recordCommandRestore(runID)
+{
+    self.history192CommandRestores[self.history192CommandRestores.size] = runID;
+}
+
+// Occupy all workers so cancellation must remove the lookup before it can execute.
+verifyQueuedLatestRunCancellation(cancelReason)
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self selectRun(originalRunID, originalInstance);
+    self.history192CommandRestores = [];
+
+    stats = mysql_async_stats();
+    cancelledBefore = stats[11];
+    workerCount = stats[0];
+    for(i = 0; i < workerCount; i++)
+    {
+        // Progress jobs occupy all workers; ordinary reads reserve capacity for writes.
+        blockerID = mysql_async_submit("SELECT SLEEP(1)", level.sqlConstants.policyProgress, "", "",
+                                       level.sqlConstants.defaultQueueWaitMs, 1);
+        check(isDefined(blockerID) && blockerID > 0, "latest-run queue blocker is admitted");
+    }
+    deadlineMs = getTime() + 2000;
+    stats = mysql_async_stats();
+    while(stats[2] != workerCount && getTime() < deadlineMs)
+    {
+        wait .05;
+        stats = mysql_async_stats();
+    }
+    check(stats[2] == workerCount, "workers are occupied before queuing latest-run lookup");
+    completionEvent = "history192_queued_lookup_done";
+    self thread lookupLatestRun(completionEvent);
+    wait .05;
+    stats = mysql_async_stats();
+    check(stats[1] == 1, "latest-run lookup is queued before " + cancelReason);
+
+    if(cancelReason == "run switch")
+    {
+        self selectRun(replacementRunID, replacementInstance);
+    }
+    else if(cancelReason == "mode switch")
+    {
+        // Demo and checkpoint-editor entry both call this production cancellation boundary.
+        self openCJ\historySave::cancelPendingPage();
+    }
+    else
+    {
+        self openCJ\commands::onPlayerDisconnect();
+    }
+    wait .15;
+    stats = mysql_async_stats();
+    printf("HISTORY192 QUEUE " + cancelReason + " queued=" + stats[1] +
+           " cancelled=" + stats[11] + " before=" + cancelledBefore + "\n");
+    check(stats[1] == 0 && stats[11] == cancelledBefore + 1,
+          cancelReason + " cancels the queued lookup before execution");
+
+    deadlineMs = getTime() + 2000;
+    while(!self.history192LookupDone[completionEvent] && getTime() < deadlineMs)
+    {
+        wait .05;
+    }
+    check(self.history192LookupDone[completionEvent],
+          "cancelled latest-run caller finishes after " + cancelReason);
+    check(self.history192CommandRestores.size == 0,
+          "cancelled latest-run lookup cannot request a restore after " + cancelReason);
+
+    deadlineMs = getTime() + 3000;
+    stats = mysql_async_stats();
+    while(stats[4] != 0 && getTime() < deadlineMs)
+    {
+        wait .05;
+        stats = mysql_async_stats();
+    }
+    check(stats[4] == 0, "latest-run queue scenario releases all native results");
 }
