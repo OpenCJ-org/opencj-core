@@ -40,6 +40,14 @@
     "assets/ranks/rings/rank-10.svg": {
       "sha256": "70bebe6125b4a2a2ab99367e1368dfa65324f395277c5bf586a1360cd71c2b66",
       "bytes": 62947
+    },
+    "source/build_rank_icons.py": {
+      "sha256": "da249867ac56dd3726973b91cd3f0d970eb80ab0e7bbf0e7b5c0cbd74d67a809",
+      "bytes": 8795
+    },
+    "source/iwi_texture.py": {
+      "sha256": "3d46916aefefb6f13d757d51144e5eca7e98e9783e53f50951d874b2fb6cf797",
+      "bytes": 1322
     }
   },
   "outputs": {

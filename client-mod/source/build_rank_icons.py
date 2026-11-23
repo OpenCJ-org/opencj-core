@@ -10,159 +10,198 @@ import hashlib
 import io
 import json
 import math
-import struct
 import cairosvg
 from PIL import Image, ImageDraw, ImageFont
 
+from iwi_texture import IWI_FORMAT_RGBA, encode_iwi, mipmaps
+
 ROOT = Path(__file__).resolve().parents[1]
-ART = ROOT / 'assets/ranks/rings'
+ART = ROOT / "assets/ranks/rings"
+MAX_RANK = 10
+SPECTRUM_SEGMENTS = 720
+SECTOR_OVERLAP_RADIANS = 0.0005
+FONT_MEASURE_SCALE = 10
 
 
-def spectrum(stops, t):
-    for (a, ca), (b, cb) in zip(stops, stops[1:]):
-        if t <= b:
-            u = (t - a) / (b - a)
-            rgb = [
-                round(int(ca[j : j + 2], 16) * (1 - u) + int(cb[j : j + 2], 16) * u)
-                for j in (1, 3, 5)
-            ]
-            return '#' + ''.join(f'{v:02x}' for v in rgb)
+def spectrum(stops, spectrum_position):
+    """Interpolate the two color stops surrounding this point around the ring."""
+    for (start_position, start_color), (end_position, end_color) in zip(stops, stops[1:]):
+        if spectrum_position <= end_position:
+            interpolation_factor = (spectrum_position - start_position) / (
+                end_position - start_position
+            )
+            channels = []
+            for offset in (1, 3, 5):
+                start_channel = int(start_color[offset : offset + 2], 16)
+                end_channel = int(end_color[offset : offset + 2], 16)
+                channels.append(
+                    round(
+                        start_channel * (1 - interpolation_factor)
+                        + end_channel * interpolation_factor
+                    )
+                )
+            return "#" + "".join(f"{channel:02x}" for channel in channels)
     return stops[-1][1]
 
 
-def svg_source(rank, c):
-    r, w = c['radius'], c['stroke_width']
+def svg_source(rank, palette):
+    """Draw the rank's progress ring and center its number by the actual glyph bounds."""
+    radius = palette["radius"]
+    stroke_width = palette["stroke_width"]
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">',
-        f'<title>OpenCJ rank {rank}: {c["names"][rank-1]}</title>',
-        f'<circle id="backing" cx="50" cy="50" r="{r}" fill="{c["backing_color"]}"/>',
-        f'<circle id="center" cx="50" cy="50" r="{c["center_radius"]}" fill="{c["center_color"]}"/>',
-        f'<circle id="track" cx="50" cy="50" r="{r}" fill="none" stroke="{c["track_color"]}" stroke-width="{w}"/>',
+        f'<title>OpenCJ rank {rank}: {palette["names"][rank-1]}</title>',
+        f'<circle id="backing" cx="50" cy="50" r="{radius}" fill="{palette["backing_color"]}"/>',
+        f'<circle id="center" cx="50" cy="50" r="{palette["center_radius"]}" fill="{palette["center_color"]}"/>',
+        f'<circle id="track" cx="50" cy="50" r="{radius}"'
+        ' fill="none"'
+        f' stroke="{palette["track_color"]}"'
+        f' stroke-width="{stroke_width}"/>',
     ]
-    if rank == 10:
-        # One smooth circular alpha mask owns both boundaries. Color sectors
-        # overlap inside the mask, preventing seams and polygonal outer edges.
-        parts += [
-            f'<defs><mask id="ring-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><circle cx="50" cy="50" r="{r}" fill="none" stroke="white" stroke-width="{w}"/></mask></defs>',
-            '<g id="spectrum" mask="url(#ring-mask)">',
-        ]
-        count = 720
-        for i in range(count):
-            t = (i + 0.5) / count
-            a = (i / count) * 2 * math.pi - math.pi / 2
-            b = ((i + 1) / count) * 2 * math.pi - math.pi / 2 + 0.0005
-            x1, y1 = 50 + 60 * math.cos(a), 50 + 60 * math.sin(a)
-            x2, y2 = 50 + 60 * math.cos(b), 50 + 60 * math.sin(b)
-            parts.append(
-                f'<path d="M50 50 L{x1:.5f} {y1:.5f} A60 60 0 0 1 {x2:.5f} {y2:.5f} Z" fill="{spectrum(c["spectrum_stops"],t)}"/>'
-            )
-        parts.append('</g>')
+    if rank == MAX_RANK:
+        parts += spectrum_ring(palette, radius, stroke_width)
     else:
-        cap = w / (2 * r)
-        start, end = -math.pi / 2 + cap, -math.pi / 2 + rank / 10 * 2 * math.pi - cap
-        x1, y1 = 50 + r * math.cos(start), 50 + r * math.sin(start)
-        x2, y2 = 50 + r * math.cos(end), 50 + r * math.sin(end)
-        large = int(end - start > math.pi)
+        cap_angle = stroke_width / (2 * radius)
+        start_angle, end_angle = (
+            -math.pi / 2 + cap_angle,
+            -math.pi / 2 + rank / MAX_RANK * 2 * math.pi - cap_angle,
+        )
+        x1, y1 = 50 + radius * math.cos(start_angle), 50 + radius * math.sin(start_angle)
+        x2, y2 = 50 + radius * math.cos(end_angle), 50 + radius * math.sin(end_angle)
+        is_large_arc = int(end_angle - start_angle > math.pi)
         parts.append(
-            f'<path id="progress" d="M{x1:.5f} {y1:.5f} A{r} {r} 0 {large} 1 {x2:.5f} {y2:.5f}" fill="none" stroke="{c["colors"][rank-1]}" stroke-width="{w}" stroke-linecap="round"/>'
+            f'<path id="progress" d="M{x1:.5f} {y1:.5f} A{radius} {radius} 0 {is_large_arc} 1 {x2:.5f} {y2:.5f}"'
+            ' fill="none"'
+            f' stroke="{palette["colors"][rank-1]}"'
+            f' stroke-width="{stroke_width}" stroke-linecap="round"/>'
         )
     # Center by visible glyph bounds. Same font size and baseline rule for 1-10.
-    font = ImageFont.truetype(c['font_file'], c['number_size'] * 10)
-    bounds = font.getbbox(str(rank), anchor='ls')
-    baseline = 50 - (bounds[1] + bounds[3]) / 20
+    font = ImageFont.truetype(palette["font_file"], palette["number_size"] * FONT_MEASURE_SCALE)
+    bounds = font.getbbox(str(rank), anchor="ls")
+    baseline = 50 - (bounds[1] + bounds[3]) / (2 * FONT_MEASURE_SCALE)
     parts.append(
-        f'<text id="number" x="50" y="{baseline:.3f}" text-anchor="middle" font-family="{c["font_family"]}" font-weight="700" font-size="{c["number_size"]}" fill="{c["number_color"]}">{rank}</text>'
+        f'<text id="number" x="50" y="{baseline:.3f}"'
+        ' text-anchor="middle"'
+        f' font-family="{palette["font_family"]}"'
+        ' font-weight="700"'
+        f' font-size="{palette["number_size"]}"'
+        f' fill="{palette["number_color"]}">{rank}</text>'
     )
-    parts.append('</svg>')
-    return '\n'.join(parts) + '\n'
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
 
 
-def mipmaps(image):
-    result = [image]
-    while result[-1].width > 1:
-        prev = result[-1]
-        # Pillow resamples RGBA through premultiplied alpha to avoid dark fringes.
-        result.append(
-            prev.resize(
-                (max(1, prev.width // 2), max(1, prev.height // 2)), Image.Resampling.LANCZOS
-            )
+def spectrum_ring(palette, radius, stroke_width):
+    """Overlap the colored sectors inside a circular mask to avoid seams."""
+    # One smooth circular alpha mask owns both boundaries. Color sectors
+    # overlap inside the mask, preventing seams and polygonal outer edges.
+    parts = [
+        '<defs><mask id="ring-mask" maskUnits="userSpaceOnUse" x="0" y="0"'
+        ' width="100" height="100">'
+        f'<circle cx="50" cy="50" r="{radius}"'
+        ' fill="none"'
+        ' stroke="white"'
+        f' stroke-width="{stroke_width}"/></mask></defs>',
+        '<g id="spectrum" mask="url(#ring-mask)">',
+    ]
+    segment_count = SPECTRUM_SEGMENTS
+    for i in range(segment_count):
+        spectrum_position = (i + 0.5) / segment_count
+        start_angle = (i / segment_count) * 2 * math.pi - math.pi / 2
+        end_angle = ((i + 1) / segment_count) * 2 * math.pi - math.pi / 2 + SECTOR_OVERLAP_RADIANS
+        x1, y1 = 50 + 60 * math.cos(start_angle), 50 + 60 * math.sin(start_angle)
+        x2, y2 = 50 + 60 * math.cos(end_angle), 50 + 60 * math.sin(end_angle)
+        parts.append(
+            f'<path d="M50 50 L{x1:.5f} {y1:.5f} A60 60 0 0 1 {x2:.5f} {y2:.5f} Z"'
+            f' fill="{spectrum(palette["spectrum_stops"],spectrum_position)}"/>'
         )
-    return result
+    parts.append("</g>")
+    return parts
 
 
-def iwi(levels):
-    data = [im.tobytes('raw', 'BGRA') for im in levels]
-    header = b'IWi' + bytes([6, 1, 0]) + struct.pack('<HHH', levels[0].width, levels[0].height, 1)
-    return (
-        header
-        + struct.pack('<4I', *[28 + sum(map(len, data[i:])) for i in range(4)])
-        + b''.join(reversed(data))
+def build_size_preview(images, palette):
+    """Compare the generated ranks at actual HUD sizes and one enlarged size."""
+    # Actual pixel samples plus enlarged samples, without game capture.
+    sheet = Image.new("RGBA", (800, 340), "#171f26")
+    draw = ImageDraw.Draw(sheet)
+    font = ImageFont.truetype(palette["font_file"], 14)
+    for size, y in [(64, 28), (28, 124), (26, 206), (15, 272)]:
+        for i, image in enumerate(images):
+            sheet.alpha_composite(
+                image.resize((size, size), Image.Resampling.LANCZOS), (i * 78 + (78 - size) // 2, y)
+            )
+        draw.text((12, y + size + 8), f"{size} px", font=font, fill="#a5b7c2")
+    sheet.save(ART / "size-preview.png")
+
+
+def render_rank(rank, palette, render_only):
+    """Render an existing editable SVG, or deliberately regenerate it from the palette."""
+    svg_path = ART / f"rank-{rank}.svg"
+    if not render_only:
+        svg_path.write_text(svg_source(rank, palette))
+    texture_size_px = palette["texture_size"]
+    raster_size_px = texture_size_px * palette["supersample"]
+    raster = cairosvg.svg2png(
+        url=str(svg_path), output_width=raster_size_px, output_height=raster_size_px
     )
+    with Image.open(io.BytesIO(raster)) as rendered:
+        image = rendered.convert("RGBA").resize(
+            (texture_size_px, texture_size_px), Image.Resampling.LANCZOS
+        )
+    return svg_path, image
 
 
 def main():
-    args = argparse.ArgumentParser(description=__doc__)
-    args.add_argument(
-        '--render-only',
-        action='store_true',
-        help='Render manually edited SVGs without regenerating them from palette.json',
+    """Build the ten approved textures and their size-preview/source manifest."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--render-only",
+        action="store_true",
+        help="Render manually edited SVGs without regenerating them from palette.json",
     )
-    opts = args.parse_args()
-    c = json.loads((ART / 'palette.json').read_text())
+    options = parser.parse_args()
+    palette = json.loads((ART / "palette.json").read_text())
     images = []
     manifest = {
-        'config': 'palette.json',
-        'sources': {},
-        'outputs': {},
-        'consumers': {
-            'challenge_tabs': 28,
-            'challenge_own_rank': 26,
-            'escape_menu': 15,
-            'scoreboard': '75% of row height, centered in its slot',
+        "config": "palette.json",
+        "sources": {},
+        "outputs": {},
+        "consumers": {
+            "challenge_tabs": 28,
+            "challenge_own_rank": 26,
+            "escape_menu": 15,
+            "scoreboard": "75% of row height, centered in its slot",
         },
     }
-    for rank in range(1, 11):
-        source = ART / f'rank-{rank}.svg'
-        if not opts.render_only:
-            source.write_text(svg_source(rank, c))
-        side = c['texture_size']
-        high = side * c['supersample']
-        raster = cairosvg.svg2png(url=str(source), output_width=high, output_height=high)
-        image = (
-            Image.open(io.BytesIO(raster))
-            .convert('RGBA')
-            .resize((side, side), Image.Resampling.LANCZOS)
-        )
-        image.save(ART / f'rank-{rank}.png')
+    for rank in range(1, MAX_RANK + 1):
+        svg_path, image = render_rank(rank, palette, options.render_only)
+        image.save(ART / f"rank-{rank}.png")
         images.append(image)
-        tga = ROOT / 'source/texture_source' / f'opencj_rank_{rank}.tga'
-        image.save(tga)
-        target = ROOT / 'cod4/images' / f'opencj_rank_{rank}.iwi'
-        target.write_bytes(iwi(mipmaps(image)))
-        for f, group in [
-            (source, 'sources'),
-            (ART / f'rank-{rank}.png', 'outputs'),
-            (tga, 'outputs'),
-            (target, 'outputs'),
+        tga_path = ROOT / "source/texture_source" / f"opencj_rank_{rank}.tga"
+        image.save(tga_path)
+        iwi_path = ROOT / "cod4/images" / f"opencj_rank_{rank}.iwi"
+        encoded_mips = [mip.tobytes("raw", "BGRA") for mip in mipmaps(image)]
+        iwi_path.write_bytes(encode_iwi(image.width, image.height, encoded_mips, IWI_FORMAT_RGBA))
+        for path, group in [
+            (svg_path, "sources"),
+            (ART / f"rank-{rank}.png", "outputs"),
+            (tga_path, "outputs"),
+            (iwi_path, "outputs"),
         ]:
-            manifest[group][str(f.relative_to(ROOT))] = {
-                'sha256': hashlib.sha256(f.read_bytes()).hexdigest(),
-                'bytes': f.stat().st_size,
+            manifest[group][str(path.relative_to(ROOT))] = {
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "bytes": path.stat().st_size,
             }
-    # Actual pixel samples plus enlarged samples, without game capture.
-    sheet = Image.new('RGBA', (800, 340), '#171f26')
-    draw = ImageDraw.Draw(sheet)
-    font = ImageFont.truetype(c['font_file'], 14)
-    for row, (size, y) in enumerate([(64, 28), (28, 124), (26, 206), (15, 272)]):
-        for i, im in enumerate(images):
-            sheet.alpha_composite(
-                im.resize((size, size), Image.Resampling.LANCZOS), (i * 78 + (78 - size) // 2, y)
-            )
-        draw.text((12, y + size + 8), f'{size} px', font=font, fill='#a5b7c2')
-    sheet.save(ART / 'size-preview.png')
-    (ART / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    print('Built ten rank rings: editable SVG, PNG, TGA, RGBA IWI with full mipmaps.')
+    for source_path in (Path(__file__), Path(__file__).with_name("iwi_texture.py")):
+        content = source_path.read_bytes()
+        manifest["sources"][str(source_path.relative_to(ROOT))] = {
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "bytes": len(content),
+        }
+    build_size_preview(images, palette)
+    (ART / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print("Built ten rank rings: editable SVG, PNG, TGA, RGBA IWI with full mipmaps.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
