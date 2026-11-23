@@ -150,3 +150,6 @@ fb2f3ba92b90f77c3cb341111781c66ab60103a5
 
 # Verified camera fixture layout; non-brace tokens and comments are unchanged.
 d25853c6faf0a40b04dc0f9df91e56c48eb779dd
+
+# Expand memory and protocol fixtures; verified tokens and comments unchanged.
+d7a5dc56f9742f8aaf200007f180f6fd1401997a
