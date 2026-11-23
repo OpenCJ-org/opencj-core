@@ -34,7 +34,7 @@ WRITABLE_TABLES = {
     "shopCatalog",
     "messages",
 }
-INSERT_ONLY_TABLES = {"challengeCompletions"}
+INSERT_ONLY_TABLES = {"challengeCompletions", "mapPlays"}
 DELETABLE_TABLES = {
     "checkpointAreas",
     "checkpointBrothers",

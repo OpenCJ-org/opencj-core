@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "macros.html" import plays_text %}
+{% block title %}{{ map.name }} · OpenCJ{% endblock %}
+{% block content %}
+<div class="grid-2">
+  <header class="card">
+    <div class="label">Map · by {{ map.mappers }}</div>
+    <h1>{{ map.name }}</h1>
+    <dl class="facts">
+      <dt>Plays</dt><dd>{{ plays_text(map) }}{% if plays_available and map.popularity_position %} <span class="muted">(#{{ map.popularity_position }} most played)</span>{% endif %}</dd>
+      <dt>Players</dt><dd>{{ map.players }}</dd>
+      <dt>Finishes</dt><dd>{{ map.finishes }}</dd>
+      {% if map.release_date %}<dt>Released</dt><dd>{{ map.release_date.strftime("%d %b %Y") }}</dd>{% endif %}
+      {% if map.last_played_at %}<dt>Last played</dt><dd>{{ map.last_played_at.strftime("%d %b %Y") }}</dd>{% endif %}
+    </dl>
+  </header>
+  <section class="card" aria-labelledby="map-download">
+    <div class="label" id="map-download">Download</div>
+    {% if map.download and map.download.is_available %}
+    <ul class="file-list">
+      {% for map_file in map.download.files %}
+      <li><a href="{{ root }}usermaps/{{ map.name }}/{{ map_file.name }}">{{ map_file.name }}</a><span class="muted">{{ map_file.size_bytes | filesize }}</span></li>
+      {% endfor %}
+    </ul>
+    <p class="muted">Place the files in <code>usermaps/{{ map.name }}/</code> inside your CoD4 folder.</p>
+    {% else %}
+    <p class="empty">Files for this map are not available for download yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% for board in map.routes %}
+<section class="card" aria-labelledby="route-{{ board.route_id }}">
+  <div class="label">Leaderboard · top {{ board.entries | length }}</div>
+  <h2 id="route-{{ board.route_id }}">{{ board.name }}{% if board.route_type != "normal" %}<span class="tag">{{ board.route_type }}</span>{% endif %}</h2>
+  {% if board.entries %}
+  <div class="table-box">
+  <table>
+    <thead><tr><th>#</th><th>Player</th><th class="num">Time</th><th class="num">Loads</th><th class="num">RPGs</th><th>FPS</th><th>Date</th></tr></thead>
+    <tbody>
+    {% for entry in board.entries %}
+      <tr>
+        <td class="pos">{{ entry.position }}</td>
+        <td><a href="{{ root }}players/{{ entry.player_id }}/">{{ entry.name }}</a></td>
+        <td class="num time">{{ entry.time_ms | duration }}</td>
+        <td class="num">{{ entry.load_count }}</td>
+        <td class="num">{{ entry.explosive_jumps }}</td>
+        <td>{{ entry.fps_mode }}</td>
+        <td class="muted">{{ entry.finished_at.strftime("%d %b %Y") if entry.finished_at else "" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No ranked finishes on this route yet.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="card"><p class="empty">This map has no published routes yet.</p></section>
+{% endfor %}
+<p class="muted">Leaderboards use the in-game default filters: runs without elevators, shortcuts, halfbeat or TAS, in any FPS mode. Each player's best run counts.</p>
+{% endblock %}

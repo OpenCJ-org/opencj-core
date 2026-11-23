@@ -29,6 +29,18 @@
       "mode": "unit"
     },
     {
+      "id": "web-unit",
+      "category": "portable",
+      "description": "Website generator: game status parsing, release notes, shared ranking positions and pool-only map download copies.",
+      "requires": "Python 3 standard library.",
+      "effects": "Temporary directories; no database, network or containers.",
+      "files": [
+        "dev-tools/tests/test_web_generator.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
       "id": "history-runner-unit",
       "category": "portable",
       "description": "Persistence runner console transport: EOF, timeouts, rejected upgrades and resource release.",

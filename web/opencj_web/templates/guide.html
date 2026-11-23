@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "macros.html" import connect_command %}
+{% block title %}Guide · OpenCJ{% endblock %}
+{% block content %}
+<header>
+  <h1>Guide</h1>
+  <p class="lead">OpenCJ is a CoDJumper mod for Call of Duty 4. The goal of every map is to reach the end using CoD4 movement: bounces, FPS changes and rocket jumps.</p>
+</header>
+
+<section class="card prose" aria-labelledby="join">
+  <div class="label" id="join">How to join</div>
+  <ul>
+    <li>Start Call of Duty 4 multiplayer.</li>
+    <li>Open the console and type:
+      <div class="connect-block">{{ connect_command(connect_address, "guide-connect-command") }}</div></li>
+    <li>Every pool map is also available from the <a href="{{ root }}downloads/">downloads page</a>.</li>
+    <li>New players start with a short tutorial.</li>
+  </ul>
+</section>
+
+<section class="card prose" aria-labelledby="challenges">
+  <div class="label" id="challenges">Challenges and the Top 10</div>
+  <p>Challenges ask you to finish a route under set conditions, such as a time limit or a maximum number of rockets. Each completed challenge earns points, and harder tiers are worth more.</p>
+  <p>The <a href="{{ root }}rankings/">Most skilled players</a> ranking adds up the points of all active challenges you completed. It is the same ranking as the in-game Top 10. Players with equal points share a position.</p>
+</section>
+
+<section class="card prose" aria-labelledby="leaderboards">
+  <div class="label" id="leaderboards">Map leaderboards</div>
+  <p>Every route has its own leaderboard of fastest finishes. The website shows the in-game default view: runs without elevators, shortcuts, halfbeat or TAS, in any FPS mode, with each player's best run.</p>
+  <p>The FPS column shows the run's FPS mode: <b>125</b>, <b>mix</b> (the standard mode) or <b>hax</b> (all FPS values).</p>
+  <p>Tutorial runs never count towards rankings.</p>
+</section>
+{% endblock %}

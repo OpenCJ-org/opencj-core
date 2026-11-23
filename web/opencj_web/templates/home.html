@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "macros.html" import release_body, ranking_table, plays_text, discord_button, connect_command %}
+{% block content %}
+<div class="grid-2">
+  <section class="card" aria-labelledby="latest-release">
+    {% if releases %}
+    {% set release = releases[0] %}
+    <div class="label">Latest release · {{ release.released_on.strftime("%d %b %Y") }}</div>
+    <h1 id="latest-release">{{ release.title }}<span class="version">v{{ release.version }}</span></h1>
+    {{ release_body(release) }}
+    <div class="actions"><a class="button" href="{{ root }}releases/">All release notes</a></div>
+    {% else %}
+    <div class="label">Release notes</div>
+    <h1 id="latest-release">No releases published yet</h1>
+    <p class="lead">Notes for each OpenCJ version appear here as soon as it is released.</p>
+    {% endif %}
+  </section>
+
+  <section class="card stack" aria-labelledby="server-heading">
+    <div class="label" id="server-heading">Server</div>
+    {% if server %}
+    <div class="big-number">{{ server.player_count }}<small>/ {{ server.max_players }} players</small></div>
+    <div>Now playing <a href="{{ root }}maps/{{ server.map_name }}/"><b>{{ server.map_name }}</b></a></div>
+    <div class="meter" aria-hidden="true"><i style="width: {{ (100 * server.player_count / server.max_players) | round(1) if server.max_players else 0 }}%"></i></div>
+    {% else %}
+    <div class="big-number offline">Offline</div>
+    <div class="muted">The server did not answer the last status check.</div>
+    {% endif %}
+    <div class="connect-block">
+      <span>Join from the game console</span>
+      {{ connect_command(connect_address, "connect-command") }}
+    </div>
+    <div class="actions">
+      <a class="button" href="{{ root }}downloads/">Download maps</a>
+      {% if discord_invite_url %}{{ discord_button(discord_invite_url) }}{% endif %}
+    </div>
+  </section>
+</div>
+
+<div class="grid-even">
+  <section class="card" aria-labelledby="top-ten">
+    <div class="label" id="top-ten">Most skilled players · challenge points</div>
+    {% if top_ten %}
+    {{ ranking_table(top_ten, root) }}
+    {% else %}
+    <p class="empty">No players yet.</p>
+    {% endif %}
+    <div class="actions"><a class="button secondary" href="{{ root }}rankings/">Full ranking</a></div>
+  </section>
+
+  <section class="card" aria-labelledby="popular-maps">
+    <div class="label" id="popular-maps">Most played maps</div>
+    {% if popular_maps %}
+    {% set most_plays = popular_maps[0].plays or 1 %}
+    <div class="table-box">
+    <table>
+      <thead><tr><th>#</th><th>Map</th><th class="num">Plays</th></tr></thead>
+      <tbody>
+      {% for summary in popular_maps %}
+        <tr>
+          <td class="pos">{{ summary.popularity_position }}</td>
+          <td class="bar-cell"><a href="{{ root }}maps/{{ summary.name }}/">{{ summary.name }}</a>
+            {% if plays_available %}<div class="meter" aria-hidden="true"><i style="width: {{ (100 * (summary.plays or 0) / most_plays) | round(1) }}%"></i></div>{% endif %}</td>
+          <td class="num">{{ plays_text(summary) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">No maps in the pool yet.</p>
+    {% endif %}
+    <div class="actions"><a class="button secondary" href="{{ root }}rankings/#maps">All maps by plays</a></div>
+  </section>
+</div>
+{% endblock %}

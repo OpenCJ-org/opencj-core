@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "macros.html" import release_body %}
+{% block title %}Releases · OpenCJ{% endblock %}
+{% block content %}
+<header>
+  <h1>Release notes</h1>
+  <p class="lead">What changed in each OpenCJ version, newest first.</p>
+</header>
+{% for release in releases %}
+<section class="card" id="v-{{ release.slug }}" aria-labelledby="title-{{ release.slug }}">
+  <div class="label">{{ release.released_on.strftime("%d %b %Y") }}</div>
+  <h2 id="title-{{ release.slug }}">{{ release.title }}<span class="version">v{{ release.version }}</span></h2>
+  {{ release_body(release) }}
+</section>
+{% else %}
+<section class="card"><p class="empty">No releases published yet.</p></section>
+{% endfor %}
+{% endblock %}

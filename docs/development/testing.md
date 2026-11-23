@@ -64,6 +64,7 @@ to their listed harnesses, not standalone commands.
 | Shared route-catalogue refresh ownership | `map-routes`, `focused-gsc` |
 | Tutorial mode, automatic FPS or landing targets | `tutorial-mode` |
 | Discord listener | `discord-socket` |
+| Website generator | `web-unit` |
 
 ## Integration prerequisites and isolation
 

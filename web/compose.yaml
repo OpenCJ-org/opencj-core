@@ -1,0 +1,85 @@
+# OpenCJ website: a generator that builds static pages every minute and a
+# static web server. Settings and their meaning are listed in web/README.md.
+name: ${WEB_COMPOSE_PROJECT:-opencj-web}
+
+services:
+  generator:
+    build: .
+    image: opencj-web-generator:local
+    restart: unless-stopped
+    environment:
+      WEB_DB_HOST: ${WEB_DB_HOST:-db}
+      WEB_DB_PORT: ${WEB_DB_PORT:-3306}
+      WEB_DB_NAME: ${WEB_DB_NAME:-openCJ_cod4}
+      WEB_DB_USER: ${WEB_DB_USER:-opencj_web}
+      WEB_DB_PASSWORD: ${WEB_DB_PASSWORD:?Set WEB_DB_PASSWORD in web/.env}
+      WEB_GAME_HOST: ${WEB_GAME_HOST:-server}
+      WEB_GAME_PORT: ${WEB_GAME_PORT:-28960}
+      WEB_CONNECT_ADDRESS: ${WEB_CONNECT_ADDRESS:-eu.opencj.org:28960}
+      # Unset uses the OpenCJ invite; set to an empty value to hide the button.
+      WEB_DISCORD_INVITE_URL: ${WEB_DISCORD_INVITE_URL-https://discord.gg/VDtbYExYWd}
+      WEB_REBUILD_INTERVAL_SECONDS: ${WEB_REBUILD_INTERVAL_SECONDS:-60}
+      WEB_RELEASES_DIR: /releases
+      WEB_USERMAPS_DIR: /usermaps
+      WEB_OUTPUT_DIR: /srv/output
+    volumes:
+      - type: bind
+        source: ../docs/releases
+        target: /releases
+        read_only: true
+      - type: bind
+        source: ${WEB_USERMAPS_DIR:?Set WEB_USERMAPS_DIR in web/.env}
+        target: /usermaps
+        read_only: true
+      - output:/srv/output
+    # Lets the generator read map folders that belong to the game's group.
+    group_add:
+      - ${WEB_USERMAPS_GID:?Set WEB_USERMAPS_GID in web/.env}
+    networks:
+      - game
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  httpd:
+    image: nginxinc/nginx-unprivileged:1.27.3-alpine
+    restart: unless-stopped
+    depends_on:
+      - generator
+    # Loopback by default: reachable only from this machine. Production uses a
+    # tunnel (for example cloudflared) on the same host instead of opening ports.
+    ports:
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-8090}:8080"
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+      - type: volume
+        source: output
+        target: /srv/output
+        read_only: true
+    # Deliberately not on the game network: the web server cannot reach the
+    # database or the game server.
+    networks:
+      - public
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  game:
+    external: true
+    name: ${WEB_GAME_NETWORK:-opencj-dev_default}
+  public: {}
+
+volumes:
+  output: {}

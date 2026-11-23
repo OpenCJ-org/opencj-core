@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Downloads · OpenCJ{% endblock %}
+{% block content %}
+<header>
+  <h1>Map downloads</h1>
+  <p class="lead">Every map in the OpenCJ pool. These are the same files the game downloads when you join the server. To install a map yourself, put its files in <code>usermaps/&lt;mapname&gt;/</code> inside your CoD4 folder.</p>
+</header>
+<section class="card" aria-labelledby="download-list">
+  <div class="label" id="download-list">Pool maps</div>
+  <div class="table-box">
+  <table>
+    <thead><tr><th>Map</th><th>Files</th><th class="num">Size</th></tr></thead>
+    <tbody>
+    {% for download in downloads %}
+      <tr>
+        <td><a href="{{ root }}maps/{{ download.map_name }}/">{{ download.map_name }}</a></td>
+        <td>
+          {% if download.is_available %}
+            {% for map_file in download.files %}<a href="{{ root }}usermaps/{{ download.map_name }}/{{ map_file.name }}">{{ map_file.name }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}
+          {% else %}
+            <span class="muted">Not available yet</span>
+          {% endif %}
+        </td>
+        <td class="num">{% if download.is_available %}{{ download.total_bytes | filesize }}{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="muted">No maps in the pool yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}
