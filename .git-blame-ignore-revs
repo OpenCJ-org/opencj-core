@@ -43,3 +43,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # Player, map and visibility helper layout; optimized objects unchanged.
 7145877fa54a778079456934b9f8fda476d9619b
+
+# Demo/clip GSC: complete control bodies braced, other tokens preserved; VM checks passed.
+347c0fea9e07ac18b230d1c18b96ad1d05ec7ab1
