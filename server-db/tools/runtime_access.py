@@ -5,7 +5,7 @@ import argparse
 import re
 from mysql_session import MySQL
 
-WRITABLE = {
+WRITABLE_TABLES = {
     "checkpointAreas",
     "checkpointBrothers",
     "checkpointConnections",
@@ -34,8 +34,8 @@ WRITABLE = {
     "shopCatalog",
     "messages",
 }
-INSERT_ONLY = {"challengeCompletions"}
-DELETABLE = {
+INSERT_ONLY_TABLES = {"challengeCompletions"}
+DELETABLE_TABLES = {
     "checkpointAreas",
     "checkpointBrothers",
     "checkpointConnections",
@@ -48,143 +48,134 @@ DELETABLE = {
 }
 
 
-def ident(value):
+
+def quote_identifier(value):
     return chr(96) + value.replace(chr(96), chr(96) * 2) + chr(96)
 
 
-def literal(value):
+def quote_literal(value):
     return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
 
 
-def apply_policy(db, database, account="opencj", readonly_database=None):
-    if not re.fullmatch(r"[A-Za-z0-9_]+", account):
-        raise ValueError("Invalid runtime account")
-    principal = literal(account) + "@'%'"
-    grantee = literal("'" + account + "'@'%'")
-    global_privs = db.query(
-        "SELECT PRIVILEGE_TYPE FROM information_schema.USER_PRIVILEGES WHERE GRANTEE="
-        + grantee
-        + " AND PRIVILEGE_TYPE<>'USAGE';"
-    )
-    if global_privs:
+def validate_account_privileges(db, account, grantee):
+    """Refuse accounts whose broader rights would bypass the reviewed table policy."""
+    global_privileges = db.query(f"""
+        SELECT PRIVILEGE_TYPE
+        FROM information_schema.USER_PRIVILEGES
+        WHERE GRANTEE = {grantee} AND PRIVILEGE_TYPE <> 'USAGE';
+        """)
+    if global_privileges:
         raise RuntimeError(
             "Runtime account has global permissions; review them before narrowing schema permissions"
         )
-    unsafe = db.query(
-        "SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE() AND (SECURITY_TYPE<>'DEFINER' OR DEFINER="
-        + literal(account + "@%")
-        + ");"
-    )
-    if unsafe:
+    unsafe_routines = db.query(f"""
+        SELECT ROUTINE_NAME
+        FROM information_schema.ROUTINES
+        WHERE ROUTINE_SCHEMA = DATABASE()
+          AND (SECURITY_TYPE <> 'DEFINER' OR DEFINER = {quote_literal(account + '@%')});
+        """)
+    if unsafe_routines:
         raise RuntimeError("Review routine definers before narrowing runtime permissions")
+
+
+def revoke_existing_grants(db, databases, account, principal, grantee):
+    """Remove old schema, table and routine grants before rebuilding the current policy."""
+    schema_patterns = db.query(f"""
+        SELECT DISTINCT TABLE_SCHEMA
+        FROM information_schema.SCHEMA_PRIVILEGES
+        WHERE GRANTEE = {grantee};
+        """).splitlines()
+    for pattern in schema_patterns:
+        database_name = pattern.replace("\\_", "_").replace("\\%", "%")
+        if database_name in databases:
+            db.query(
+                f"REVOKE ALL PRIVILEGES ON {quote_identifier(pattern)}.* FROM {principal};"
+            )
+
+    # Removing table/routine grants too prevents obsolete permissions from surviving a rerun.
+    for database in databases:
+        table_names = db.query(f"""
+            SELECT DISTINCT TABLE_NAME
+            FROM information_schema.TABLE_PRIVILEGES
+            WHERE TABLE_SCHEMA = {quote_literal(database)} AND GRANTEE = {grantee};
+            """).splitlines()
+        for table_name in table_names:
+            qualified_table = quote_identifier(database) + "." + quote_identifier(table_name)
+            db.query(f"REVOKE ALL PRIVILEGES ON {qualified_table} FROM {principal};")
+
+        routine_rows = db.query(f"""
+            SELECT Routine_name, Routine_type
+            FROM mysql.procs_priv
+            WHERE Db = {quote_literal(database)}
+              AND User = {quote_literal(account)} AND Host = '%';
+            """).splitlines()
+        for row in routine_rows:
+            routine_name, routine_kind = row.split("\t")
+            qualified_routine = quote_identifier(database) + "." + quote_identifier(routine_name)
+            db.query(
+                f"REVOKE ALL PRIVILEGES ON {routine_kind} {qualified_routine} FROM {principal};"
+            )
+
+
+def grant_gameplay_permissions(db, database, principal):
+    """Give gameplay its reviewed write rights and access to administrator-owned routines."""
+    # Schema grants treat underscores as wildcards unless escaped; table grants use exact names.
+    schema_pattern = quote_identifier(database.replace("_", "\\_"))
+    db.query(f"GRANT SELECT ON {schema_pattern}.* TO {principal};")
+    for table_name in sorted(WRITABLE_TABLES | INSERT_ONLY_TABLES):
+        privileges = "INSERT,UPDATE" if table_name in WRITABLE_TABLES else "INSERT"
+        qualified_table = quote_identifier(database) + "." + quote_identifier(table_name)
+        db.query(f"GRANT {privileges} ON {qualified_table} TO {principal};")
+    for table_name in sorted(DELETABLE_TABLES):
+        qualified_table = quote_identifier(database) + "." + quote_identifier(table_name)
+        db.query(f"GRANT DELETE ON {qualified_table} TO {principal};")
+
+    routine_rows = db.query("""
+        SELECT ROUTINE_NAME, ROUTINE_TYPE
+        FROM information_schema.ROUTINES
+        WHERE ROUTINE_SCHEMA = DATABASE();
+        """).splitlines()
+    for row in routine_rows:
+        routine_name, routine_kind = row.split("\t")
+        qualified_routine = quote_identifier(database) + "." + quote_identifier(routine_name)
+        db.query(f"GRANT EXECUTE ON {routine_kind} {qualified_routine} TO {principal};")
+
+
+def apply_policy(db, database, account="opencj", readonly_database=None):
+    """Replace runtime grants while holding the maintenance lock until this session closes.
+
+    Grant statements do not roll back together. A failure stops this operation;
+    correct its cause and reapply the complete policy before resuming gameplay.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_]+", account):
+        raise ValueError("Invalid runtime account")
+    principal = quote_literal(account) + "@'%'"
+    grantee = quote_literal("'" + account + "'@'%'")
+    validate_account_privileges(db, account, grantee)
     if db.query("SELECT GET_LOCK('opencj:migrate:" + database + "',0);") != "1":
         raise RuntimeError("Another database maintenance session is active")
-    targets = {database}
+
+    databases = {database}
     if readonly_database:
-        targets.add(readonly_database)
-    patterns = db.query(
-        "SELECT DISTINCT TABLE_SCHEMA FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE="
-        + grantee
-        + ";"
-    ).splitlines()
-    for pattern in patterns:
-        if pattern.replace("\\_", "_").replace("\\%", "%") in targets:
-            db.query("REVOKE ALL PRIVILEGES ON " + ident(pattern) + ".* FROM " + principal + ";")
-    # Remove old table/routine grants too, so repeated application cannot retain
-    # privileges removed from this policy.
-    for target in targets:
-        tables = db.query(
-            "SELECT DISTINCT TABLE_NAME FROM information_schema.TABLE_PRIVILEGES WHERE TABLE_SCHEMA="
-            + literal(target)
-            + " AND GRANTEE="
-            + grantee
-            + ";"
-        ).splitlines()
-        for table in tables:
-            db.query(
-                "REVOKE ALL PRIVILEGES ON "
-                + ident(target)
-                + "."
-                + ident(table)
-                + " FROM "
-                + principal
-                + ";"
-            )
-        routines = db.query(
-            "SELECT Routine_name,Routine_type FROM mysql.procs_priv WHERE Db="
-            + literal(target)
-            + " AND User="
-            + literal(account)
-            + " AND Host='%';"
-        ).splitlines()
-        for row in routines:
-            name, kind = row.split("\t")
-            db.query(
-                "REVOKE ALL PRIVILEGES ON "
-                + kind
-                + " "
-                + ident(target)
-                + "."
-                + ident(name)
-                + " FROM "
-                + principal
-                + ";"
-            )
-    escaped = database.replace("_", "\\_")
-    db.query("GRANT SELECT ON " + ident(escaped) + ".* TO " + principal + ";")
-    for table in sorted(WRITABLE | INSERT_ONLY):
-        privileges = "INSERT,UPDATE" if table in WRITABLE else "INSERT"
-        db.query(
-            "GRANT "
-            + privileges
-            + " ON "
-            + ident(database)
-            + "."
-            + ident(table)
-            + " TO "
-            + principal
-            + ";"
-        )
-    for table in sorted(DELETABLE):
-        db.query(
-            "GRANT DELETE ON " + ident(database) + "." + ident(table) + " TO " + principal + ";"
-        )
-    for row in db.query(
-        "SELECT ROUTINE_NAME,ROUTINE_TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE();"
-    ).splitlines():
-        name, kind = row.split("\t")
-        db.query(
-            "GRANT EXECUTE ON "
-            + kind
-            + " "
-            + ident(database)
-            + "."
-            + ident(name)
-            + " TO "
-            + principal
-            + ";"
-        )
+        databases.add(readonly_database)
+    revoke_existing_grants(db, databases, account, principal, grantee)
+    grant_gameplay_permissions(db, database, principal)
     if readonly_database:
-        db.query(
-            "GRANT SELECT ON "
-            + ident(readonly_database.replace("_", "\\_"))
-            + ".* TO "
-            + principal
-            + ";"
-        )
+        schema_pattern = quote_identifier(readonly_database.replace("_", "\\_"))
+        db.query(f"GRANT SELECT ON {schema_pattern}.* TO {principal};")
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--container", default="opencj-dev-db-1")
-    p.add_argument("--database", default="openCJ_cod4")
-    p.add_argument("--readonly-database")
-    p.add_argument("--confirm-database", required=True)
-    a = p.parse_args()
-    if a.confirm_database != a.database:
-        p.error("Confirmation must match database")
-    with MySQL(a.container, a.database) as db:
-        apply_policy(db, a.database, readonly_database=a.readonly_database)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--container", default="opencj-dev-db-1")
+    parser.add_argument("--database", default="openCJ_cod4")
+    parser.add_argument("--readonly-database")
+    parser.add_argument("--confirm-database", required=True)
+    args = parser.parse_args()
+    if args.confirm_database != args.database:
+        parser.error("Confirmation must match database")
+    with MySQL(args.container, args.database) as db:
+        apply_policy(db, args.database, readonly_database=args.readonly_database)
     print("Runtime permissions applied; no credentials changed.")
 
 
