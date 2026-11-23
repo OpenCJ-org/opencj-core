@@ -457,7 +457,9 @@
         "dev-tools/tests/run-sticky-walls-native.py",
         "dev-tools/tests/sticky-walls-native.c",
         "dev-tools/tests/run-sticky-walls-server.py",
-        "dev-tools/tests/sticky-walls.gsc"
+        "dev-tools/tests/sticky-walls.gsc",
+        "dev-tools/tests/sticky_wall_build.py",
+        "dev-tools/tests/sticky_wall_fixture.py"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-sticky-walls-native.py"

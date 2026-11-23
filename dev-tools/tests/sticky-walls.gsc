@@ -1,34 +1,61 @@
+// Probe the reported mp_galaxy wall and place a bot to trigger native movement cases.
+// Native assertions live in run-sticky-walls-native.py; these rays are diagnostics.
 main()
 {
     wait 1;
-    p = (-16296, 100312, -24898);
-    for(z = 0; z <= 60; z += 30)
+    wallPoint = (-16296, 100312, -24898);
+    probeWallRays(wallPoint);
+    player = addTestClient();
+    if(!isDefined(player))
     {
-        for(a = 0; a < 360; a += 45)
-        {
-            d = anglesToForward((0, a, 0));
-            t = bulletTrace(p + (0, 0, z), p + (0, 0, z) + d * 128, false, undefined);
-            printf("STICKY SELFTEST ray z=" + z + " yaw=" + a + " fraction=" + t["fraction"] +
-                   " pos=" + t["position"] + " normal=" + t["normal"] + "\n");
-        }
+        printf("STICKY SELFTEST COMPLETE failures=1 reason=missing_test_client\n");
+        return;
     }
-    b = addTestClient();
     wait 1.5;
-    b.sessionTeam = "allies";
-    b.sessionState = "playing";
-    b.pers["team"] = "allies";
-    for(k = 0; k <= 4; k++)
+    player.sessionTeam = "allies";
+    player.sessionState = "playing";
+    player.pers["team"] = "allies";
+    player probeWallMovement(wallPoint);
+    printf("STICKY SELFTEST COMPLETE failures=0\n");
+}
+
+probeWallRays(wallPoint)
+{
+    rayLength = 128;
+    for(height = 0; height <= 60; height += 30)
     {
-        a = 120;
-        offset = k * 0.125;
-        b spawn(p + (0.498964, -0.866622, 0) * offset, (0, a, 0));
-        b setVelocity(anglesToForward((0, a, 0)) * 180 + (0, 0, 50));
-        for(i = 0; i < 12; i++)
+        rayStart = wallPoint + (0, 0, height);
+        for(yaw = 0; yaw < 360; yaw += 45)
         {
-            wait 0.05;
-            printf("STICKY SELFTEST move offset=" + offset + " yaw=" + a + " tick=" + i +
-                   " pos=" + b.origin + " vel=" + b getVelocity() + "\n");
+            direction = anglesToForward((0, yaw, 0));
+            trace = bulletTrace(rayStart, rayStart + direction * rayLength, false, undefined);
+            printf("STICKY SELFTEST ray z=" + height + " yaw=" + yaw +
+                   " fraction=" + trace["fraction"] + " pos=" + trace["position"] +
+                   " normal=" + trace["normal"] + "\n");
         }
     }
-    printf("STICKY SELFTEST COMPLETE failures=0\n");
+}
+
+probeWallMovement(wallPoint)
+{
+    wallNormal = (0.498964, -0.866622, 0);
+    yaw = 120;
+    initialHorizontalSpeed = 180;
+    initialVerticalSpeed = 50;
+    samplesPerOffset = 12;
+    sampleSeconds = 0.05;
+    offsetStep = 0.125;
+    for(offsetIndex = 0; offsetIndex <= 4; offsetIndex++)
+    {
+        wallOffset = offsetIndex * offsetStep;
+        self spawn(wallPoint + wallNormal * wallOffset, (0, yaw, 0));
+        self setVelocity(anglesToForward((0, yaw, 0)) * initialHorizontalSpeed +
+                         (0, 0, initialVerticalSpeed));
+        for(sampleIndex = 0; sampleIndex < samplesPerOffset; sampleIndex++)
+        {
+            wait sampleSeconds;
+            printf("STICKY SELFTEST move offset=" + wallOffset + " yaw=" + yaw + " tick=" +
+                   sampleIndex + " pos=" + self.origin + " vel=" + self getVelocity() + "\n");
+        }
+    }
 }
