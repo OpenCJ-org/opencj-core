@@ -89,7 +89,7 @@ markRunAsTutorial(runID)
     return isDefined(stored);
 }
 
-_onSettingTutorial(newVal)
+_onSettingTutorial(requestedTutorialMode)
 {
     // While settings load at login there is no run yet; the value only applies
     // to runs created later.
@@ -97,7 +97,7 @@ _onSettingTutorial(newVal)
     {
         return;
     }
-    if (newVal == self isTutorialRun())
+    if (requestedTutorialMode == self isTutorialRun())
     {
         return;
     }
@@ -105,12 +105,12 @@ _onSettingTutorial(newVal)
     // An untouched run has nothing worth keeping, so it changes mode in place.
     if (!self openCJ\playerRuns::hasRunStarted())
     {
-        self.tutorialRun = newVal;
+        self.tutorialRun = requestedTutorialMode;
         self _announceMode();
         return;
     }
 
-    self thread _switchRunMode(newVal);
+    self thread _switchRunMode(requestedTutorialMode);
 }
 
 // Saves the current run and starts a new run in the requested mode.
@@ -208,9 +208,9 @@ onNewAccount()
 }
 
 // Switching the introduction on (also with !tutorialintro) shows it on the next spawn.
-_onSettingTutorialIntro(newVal)
+_onSettingTutorialIntro(showIntroduction)
 {
-    if (newVal)
+    if (showIntroduction)
     {
         self.tutorialIntroShownThisConnection = false;
     }
@@ -399,59 +399,69 @@ _nearestCheckpointPoint(checkpoint)
         return checkpoint.origin;
     }
     points = checkpoint.area;
-    nearest = undefined;
+    nearestPoint = undefined;
     nearestDistanceSquared = undefined;
-    side = 0;
+    polygonSide = 0;
     isInside = true;
     for (i = 0; i < points.size; i++)
     {
-        a = points[i];
-        b = points[(i + 1) % points.size];
+        edgeStart = points[i];
+        edgeEnd = points[(i + 1) % points.size];
         // Above the area (all edges on the same side): the player is over it.
-        cross = (b[0] - a[0]) * (self.origin[1] - a[1]) - (b[1] - a[1]) * (self.origin[0] - a[0]);
-        if (cross != 0)
+        edgeCrossProduct = (edgeEnd[0] - edgeStart[0]) * (self.origin[1] - edgeStart[1])
+            - (edgeEnd[1] - edgeStart[1]) * (self.origin[0] - edgeStart[0]);
+        if (edgeCrossProduct != 0)
         {
-            sign = 1;
-            if (cross < 0)
+            edgeSide = 1;
+            if (edgeCrossProduct < 0)
             {
-                sign = -1;
+                edgeSide = -1;
             }
-            if (side != 0 && side != sign)
+            if (polygonSide != 0 && polygonSide != edgeSide)
             {
                 isInside = false;
             }
-            side = sign;
+            polygonSide = edgeSide;
         }
-        dx = b[0] - a[0];
-        dy = b[1] - a[1];
-        lengthSquared = dx * dx + dy * dy;
-        t = 0;
-        if (lengthSquared > 0.0001)
-        {
-            t = ((self.origin[0] - a[0]) * dx + (self.origin[1] - a[1]) * dy) / lengthSquared;
-        }
-        if (t < 0)
-        {
-            t = 0;
-        }
-        if (t > 1)
-        {
-            t = 1;
-        }
-        point = a + vectorScale(b - a, t);
+        point = _nearestPointOnCheckpointEdge(self.origin, edgeStart, edgeEnd);
         x = self.origin[0] - point[0];
         y = self.origin[1] - point[1];
         if (!isDefined(nearestDistanceSquared) || x * x + y * y < nearestDistanceSquared)
         {
             nearestDistanceSquared = x * x + y * y;
-            nearest = point;
+            nearestPoint = point;
         }
     }
     if (isInside)
     {
-        return (self.origin[0], self.origin[1], nearest[2]);
+        return (self.origin[0], self.origin[1], nearestPoint[2]);
     }
-    return nearest;
+    return nearestPoint;
+}
+
+// Project a position onto a checkpoint edge, keeping its interpolated landing height.
+_nearestPointOnCheckpointEdge(position, edgeStart, edgeEnd)
+{
+    dx = edgeEnd[0] - edgeStart[0];
+    dy = edgeEnd[1] - edgeStart[1];
+    lengthSquared = dx * dx + dy * dy;
+    interpolationFactor = 0;
+    // Avoid dividing by a nearly zero horizontal edge.
+    minimumEdgeLengthSquared = 0.0001;
+    if (lengthSquared > minimumEdgeLengthSquared)
+    {
+        interpolationFactor = ((position[0] - edgeStart[0]) * dx
+            + (position[1] - edgeStart[1]) * dy) / lengthSquared;
+    }
+    if (interpolationFactor < 0)
+    {
+        interpolationFactor = 0;
+    }
+    if (interpolationFactor > 1)
+    {
+        interpolationFactor = 1;
+    }
+    return edgeStart + vectorScale(edgeEnd - edgeStart, interpolationFactor);
 }
 
 _startAutoFPS()

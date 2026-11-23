@@ -42,7 +42,7 @@
 #include <math.h>
 #include <string.h>
 
-extern "C" void OpenCJ_PM_Accelerate(playerState_t *ps, const pml_t *pml,
+extern "C" void OpenCJ_PM_Accelerate(playerState_t *playerState, const pml_t *pml,
                                      const float *wishDirection, float wishSpeed,
                                      float accelerationScale);
 extern "C" void Sys_SnapVector(float *vector);
@@ -177,26 +177,26 @@ static int frameDurationMs(int frameRate)
 // acceleration at frameRate, holding the current keys and the strafe angle: the
 // view turns with the velocity, as a strafing player's mouse does. Uses the
 // engine's own acceleration, inertia update and per-frame velocity rounding.
-static double horizontalSpeedAfterHorizon(const playerState_t *ps, float yawRadians,
+static double horizontalSpeedAfterHorizon(const playerState_t *playerState, float yawRadians,
                                           int forwardMove, int rightMove, float wishSpeed,
                                           int frameRate)
 {
-    playerState_t candidate = *ps;
+    playerState_t candidate = *playerState;
     pml_t frame;
     memset(&frame, 0, sizeof(frame));
     frame.msec = frameDurationMs(frameRate);
     frame.frametime = frame.msec * 0.001f;
-    float startVelocityYaw = atan2f(ps->velocity[1], ps->velocity[0]);
+    float startVelocityYawRadians = atan2f(playerState->velocity[1], playerState->velocity[0]);
 
     for (int elapsedMs = 0; elapsedMs < SPEED_COMPARISON_HORIZON_MS; elapsedMs += frame.msec)
     {
-        float velocityYaw = atan2f(candidate.velocity[1], candidate.velocity[0]);
-        float velocityTurn = velocityYaw - startVelocityYaw;
-        float frameYaw = yawRadians + velocityTurn;
+        float velocityYawRadians = atan2f(candidate.velocity[1], candidate.velocity[0]);
+        float velocityTurnRadians = velocityYawRadians - startVelocityYawRadians;
+        float frameYawRadians = yawRadians + velocityTurnRadians;
         // Air movement uses the flattened view direction, so only yaw matters.
         float wishDirection[3] = {
-            forwardMove * cosf(frameYaw) + rightMove * sinf(frameYaw),
-            forwardMove * sinf(frameYaw) - rightMove * cosf(frameYaw),
+            forwardMove * cosf(frameYawRadians) + rightMove * sinf(frameYawRadians),
+            forwardMove * sinf(frameYawRadians) - rightMove * cosf(frameYawRadians),
             0,
         };
         float wishLength = hypotf(wishDirection[0], wishDirection[1]);
@@ -217,23 +217,27 @@ static double horizontalSpeedAfterHorizon(const playerState_t *ps, float yawRadi
 // Chooses 333, 250 or 125 for an airborne player: whichever keeps the most
 // horizontal speed. Without movement keys 250; 333 or 125 only when they beat
 // 250 by at least MIN_SPEED_ADVANTAGE, otherwise 250.
-static int chooseSpeedFrameRate(const playerState_t *ps, const usercmd_t *cmd)
+static int chooseSpeedFrameRate(const playerState_t *playerState, const usercmd_t *movementCommand)
 {
-    bool hasMovementKeys = cmd->forwardmove != 0 || cmd->rightmove != 0;
-    bool hasValidVelocity = isfinite(ps->velocity[0]) && isfinite(ps->velocity[1]);
-    if (!hasMovementKeys || !hasValidVelocity || ps->speed <= 0)
+    bool hasMovementKeys = movementCommand->forwardmove != 0 || movementCommand->rightmove != 0;
+    bool hasValidVelocity =
+        isfinite(playerState->velocity[0]) && isfinite(playerState->velocity[1]);
+    if (!hasMovementKeys || !hasValidVelocity || playerState->speed <= 0)
     {
         return AUTO_FPS_250;
     }
 
-    float yawRadians = ps->viewangles[1] * float(M_PI / 180.0);
-    float wishSpeed = float(ps->speed);
-    double speedAt250 = horizontalSpeedAfterHorizon(ps, yawRadians, cmd->forwardmove,
-                                                    cmd->rightmove, wishSpeed, AUTO_FPS_250);
-    double speedAt125 = horizontalSpeedAfterHorizon(ps, yawRadians, cmd->forwardmove,
-                                                    cmd->rightmove, wishSpeed, AUTO_FPS_125);
-    double speedAt333 = horizontalSpeedAfterHorizon(ps, yawRadians, cmd->forwardmove,
-                                                    cmd->rightmove, wishSpeed, AUTO_FPS_333);
+    float yawRadians = playerState->viewangles[1] * float(M_PI / 180.0);
+    float wishSpeed = float(playerState->speed);
+    double speedAt250 =
+        horizontalSpeedAfterHorizon(playerState, yawRadians, movementCommand->forwardmove,
+                                    movementCommand->rightmove, wishSpeed, AUTO_FPS_250);
+    double speedAt125 =
+        horizontalSpeedAfterHorizon(playerState, yawRadians, movementCommand->forwardmove,
+                                    movementCommand->rightmove, wishSpeed, AUTO_FPS_125);
+    double speedAt333 =
+        horizontalSpeedAfterHorizon(playerState, yawRadians, movementCommand->forwardmove,
+                                    movementCommand->rightmove, wishSpeed, AUTO_FPS_333);
     int bestFrameRate = AUTO_FPS_250;
     double bestSpeed = speedAt250;
     if (speedAt333 > bestSpeed + MIN_SPEED_ADVANTAGE)
@@ -250,18 +254,22 @@ static int chooseSpeedFrameRate(const playerState_t *ps, const usercmd_t *cmd)
 
 // Horizontal acceleration (units/s^2) at 250 FPS over the comparison horizon,
 // holding the keys and strafe angle; 0 without keys or when 250 gains nothing.
-static float horizontalAccelerationAt250(const playerState_t *ps, const usercmd_t *cmd)
+static float horizontalAccelerationAt250(const playerState_t *playerState,
+                                         const usercmd_t *movementCommand)
 {
-    bool hasMovementKeys = cmd->forwardmove != 0 || cmd->rightmove != 0;
-    bool hasValidVelocity = isfinite(ps->velocity[0]) && isfinite(ps->velocity[1]);
-    if (!hasMovementKeys || !hasValidVelocity || ps->speed <= 0)
+    bool hasMovementKeys = movementCommand->forwardmove != 0 || movementCommand->rightmove != 0;
+    bool hasValidVelocity =
+        isfinite(playerState->velocity[0]) && isfinite(playerState->velocity[1]);
+    if (!hasMovementKeys || !hasValidVelocity || playerState->speed <= 0)
     {
         return 0;
     }
-    float yawRadians = ps->viewangles[1] * float(M_PI / 180.0);
-    double speedAt250 = horizontalSpeedAfterHorizon(ps, yawRadians, cmd->forwardmove,
-                                                    cmd->rightmove, float(ps->speed), AUTO_FPS_250);
-    double gain = speedAt250 - hypot(double(ps->velocity[0]), double(ps->velocity[1]));
+    float yawRadians = playerState->viewangles[1] * float(M_PI / 180.0);
+    double speedAt250 = horizontalSpeedAfterHorizon(
+        playerState, yawRadians, movementCommand->forwardmove, movementCommand->rightmove,
+        float(playerState->speed), AUTO_FPS_250);
+    double gain =
+        speedAt250 - hypot(double(playerState->velocity[0]), double(playerState->velocity[1]));
     if (gain <= 0)
     {
         return 0;
@@ -286,10 +294,10 @@ static int clientSwitchLeadMs(int clientNum)
 
 // Applies the speed and RPG parts of the rule at the top of this file and updates
 // *inPushRise. Pure apart from *inPushRise, so offline replays run the shipped rule.
-extern "C" int opencj_autoFpsChooseFrameRate(bool *inPushRise, const playerState_t *ps,
-                                            const usercmd_t *cmd, int switchLeadMs)
+extern "C" int opencj_autoFpsChooseFrameRate(bool *inPushRise, const playerState_t *playerState,
+                                             const usercmd_t *movementCommand, int switchLeadMs)
 {
-    bool isStanding = ps->groundEntityNum != GROUND_ENTITY_NONE;
+    bool isStanding = playerState->groundEntityNum != GROUND_ENTITY_NONE;
     if (isStanding)
     {
         *inPushRise = false;
@@ -298,74 +306,77 @@ extern "C" int opencj_autoFpsChooseFrameRate(bool *inPushRise, const playerState
 
     if (*inPushRise)
     {
-        float verticalSpeed = ps->velocity[2];
-        float msUntilPeak = verticalSpeed / EFFECTIVE_GRAVITY_AT_333 * 1000.0f;
-        bool peakIsBeyondLead = verticalSpeed > 0 && msUntilPeak > switchLeadMs;
+        float verticalSpeed = playerState->velocity[2];
+        float timeUntilPeakMs = verticalSpeed / EFFECTIVE_GRAVITY_AT_333 * 1000.0f;
+        bool peakIsBeyondLead = verticalSpeed > 0 && timeUntilPeakMs > switchLeadMs;
         if (peakIsBeyondLead)
         {
             return AUTO_FPS_333;
         }
         *inPushRise = false;
     }
-    return chooseSpeedFrameRate(ps, cmd);
+    return chooseSpeedFrameRate(playerState, movementCommand);
 }
 
 // Height of a player after secondsAhead of free flight under effectiveGravity.
-static float heightAfter(const playerState_t *ps, float secondsAhead, float effectiveGravity)
+static float heightAfter(const playerState_t *playerState, float secondsAhead,
+                         float effectiveGravity)
 {
-    return ps->origin[2] + ps->velocity[2] * secondsAhead -
+    return playerState->origin[2] + playerState->velocity[2] * secondsAhead -
            0.5f * effectiveGravity * secondsAhead * secondsAhead;
 }
 
 // True when the airborne player is on the way to the target: not over it yet
 // and moving towards it fast enough for an arrival time to mean something.
 // Gives the horizontal distance and the speed towards it.
-static bool isApproachingTarget(const playerState_t *ps, const float *target,
+static bool isApproachingTarget(const playerState_t *playerState, const float *target,
                                 float *horizontalDistance, float *speedTowardsTarget)
 {
-    if (ps->groundEntityNum != GROUND_ENTITY_NONE)
+    if (playerState->groundEntityNum != GROUND_ENTITY_NONE)
     {
         return false;
     }
-    float toTargetX = target[0] - ps->origin[0];
-    float toTargetY = target[1] - ps->origin[1];
+    float toTargetX = target[0] - playerState->origin[0];
+    float toTargetY = target[1] - playerState->origin[1];
     *horizontalDistance = hypotf(toTargetX, toTargetY);
     if (*horizontalDistance < TARGET_REACHED_DISTANCE_UNITS)
     {
         return false;
     }
-    *speedTowardsTarget = (ps->velocity[0] * toTargetX + ps->velocity[1] * toTargetY) /
-                          *horizontalDistance;
+    *speedTowardsTarget =
+        (playerState->velocity[0] * toTargetX + playerState->velocity[1] * toTargetY) /
+        *horizontalDistance;
     return *speedTowardsTarget >= MIN_APPROACH_SPEED;
 }
 
 // Highest point of the current climb at 250/125 FPS; the current height when
 // not climbing.
-static float peakAt250(const playerState_t *ps)
+static float peakHeightAt250(const playerState_t *playerState)
 {
-    float verticalSpeed = ps->velocity[2];
+    float verticalSpeed = playerState->velocity[2];
     if (verticalSpeed <= 0)
     {
-        return ps->origin[2];
+        return playerState->origin[2];
     }
-    return ps->origin[2] + verticalSpeed * verticalSpeed / (2 * EFFECTIVE_GRAVITY_AT_250);
+    return playerState->origin[2] + verticalSpeed * verticalSpeed / (2 * EFFECTIVE_GRAVITY_AT_250);
 }
 
 // True when the player, switching to 250/125 now and gaining speed at
 // horizontalAcceleration along the way, would reach the target horizontally at
 // least ARRIVAL_MARGIN_UNITS above its height: more height is not needed and
 // speed can decide. False when not on the way to the target.
-extern "C" bool opencj_autoFpsArrivesHighEnoughAt250(const playerState_t *ps, const float *target,
-                                                    float horizontalAcceleration)
+extern "C" bool opencj_autoFpsArrivesHighEnoughAt250(const playerState_t *playerState,
+                                                     const float *target,
+                                                     float horizontalAcceleration)
 {
     float horizontalDistance;
     float speedTowardsTarget;
-    if (!isApproachingTarget(ps, target, &horizontalDistance, &speedTowardsTarget))
+    if (!isApproachingTarget(playerState, target, &horizontalDistance, &speedTowardsTarget))
     {
         return false;
     }
     // Only the part of the gain that points at the target shortens the way.
-    float horizontalSpeed = hypotf(ps->velocity[0], ps->velocity[1]);
+    float horizontalSpeed = hypotf(playerState->velocity[0], playerState->velocity[1]);
     float accelerationTowardsTarget = 0;
     if (horizontalAcceleration > 0 && horizontalSpeed > 0)
     {
@@ -379,7 +390,7 @@ extern "C" bool opencj_autoFpsArrivesHighEnoughAt250(const playerState_t *ps, co
                              2 * accelerationTowardsTarget * horizontalDistance;
         secondsToArrival = (sqrtf(discriminant) - speedTowardsTarget) / accelerationTowardsTarget;
     }
-    float arrivalHeight = heightAfter(ps, secondsToArrival, EFFECTIVE_GRAVITY_AT_250);
+    float arrivalHeight = heightAfter(playerState, secondsToArrival, EFFECTIVE_GRAVITY_AT_250);
     return arrivalHeight >= target[2] + ARRIVAL_MARGIN_UNITS;
 }
 
@@ -389,17 +400,19 @@ extern "C" bool opencj_autoFpsArrivesHighEnoughAt250(const playerState_t *ps, co
 // else (a bounce, an RPG), so speed matters more. Arrival time is the horizontal
 // distance over the speed towards the target; when the player is not heading
 // there (or is already over it) there is no answer and this is false.
-extern "C" bool opencj_autoFpsNeedsHeight(const playerState_t *ps, const float *target)
+extern "C" bool opencj_autoFpsNeedsHeight(const playerState_t *playerState, const float *target)
 {
     float horizontalDistance;
     float speedTowardsTarget;
-    if (!isApproachingTarget(ps, target, &horizontalDistance, &speedTowardsTarget))
+    if (!isApproachingTarget(playerState, target, &horizontalDistance, &speedTowardsTarget))
     {
         return false;
     }
     float secondsToArrival = horizontalDistance / speedTowardsTarget;
-    bool tooLowAt250 = heightAfter(ps, secondsToArrival, EFFECTIVE_GRAVITY_AT_250) < target[2];
-    bool highEnoughAt333 = heightAfter(ps, secondsToArrival, EFFECTIVE_GRAVITY_AT_333) >= target[2];
+    bool tooLowAt250 =
+        heightAfter(playerState, secondsToArrival, EFFECTIVE_GRAVITY_AT_250) < target[2];
+    bool highEnoughAt333 =
+        heightAfter(playerState, secondsToArrival, EFFECTIVE_GRAVITY_AT_333) >= target[2];
     if (tooLowAt250 && highEnoughAt333)
     {
         return true;
@@ -410,14 +423,14 @@ extern "C" bool opencj_autoFpsNeedsHeight(const playerState_t *ps, const float *
     // that even 333 falls short. The peak does not depend on it: a climb whose
     // peak at 250/125 stays below the checkpoint (plus a margin) can only get
     // there at 333.
-    float verticalSpeed = ps->velocity[2];
+    float verticalSpeed = playerState->velocity[2];
     if (verticalSpeed <= 0)
     {
         return false;
     }
-    float peakAt333 = ps->origin[2] +
-                      verticalSpeed * verticalSpeed / (2 * EFFECTIVE_GRAVITY_AT_333);
-    return peakAt250(ps) < target[2] + PEAK_MARGIN_UNITS && peakAt333 >= target[2];
+    float peakAt333 =
+        playerState->origin[2] + verticalSpeed * verticalSpeed / (2 * EFFECTIVE_GRAVITY_AT_333);
+    return peakHeightAt250(playerState) < target[2] + PEAK_MARGIN_UNITS && peakAt333 >= target[2];
 }
 
 // True when a command ended rising, with at least UPWARD_GAIN_MIN_SPEED more
@@ -488,8 +501,8 @@ static bool sendClientFrameRate(int clientNum, int frameRate)
                              va("%c com_maxfps \"%d\"", CLIENT_DVAR_COMMAND, frameRate));
 
     AutoFpsClient &state = autoFpsClients[clientNum];
-    bool alreadySentThisFrame = state.hasImmediateSnapshot &&
-                                state.lastImmediateSnapshotTime == svs.time;
+    bool alreadySentThisFrame =
+        state.hasImmediateSnapshot && state.lastImmediateSnapshotTime == svs.time;
     if (isImmediateDeliveryEnabled() && !alreadySentThisFrame)
     {
         SV_SendClientSnapshotNow(&svs.clients[clientNum]);
@@ -512,34 +525,17 @@ extern "C" void opencj_autoFpsInitClient(int clientNum)
     memset(&autoFpsClients[clientNum], 0, sizeof(autoFpsClients[clientNum]));
 }
 
-extern "C" void opencj_autoFpsObserve(const playerState_t *ps, const usercmd_t *cmd)
+// A gain can arrive before or after the script's RPG notification.
+static void observeAutoFpsGain(AutoFpsClient &state, const playerState_t *playerState,
+                               bool hadPreviousEnd, float previousEndVerticalSpeed)
 {
-    if (!ps || !cmd || !isValidClientNum(ps->clientNum))
-    {
-        return;
-    }
-    AutoFpsClient &state = autoFpsClients[ps->clientNum];
-    if (!state.enabled)
-    {
-        return;
-    }
-
-    bool hadPreviousEnd = state.hasPreviousEnd;
-    float previousEndVerticalSpeed = state.previousEndVerticalSpeed;
-    state.hasPreviousEnd = true;
-    state.previousEndVerticalSpeed = ps->velocity[2];
-    if (ps->pm_type != PM_TYPE_NORMAL)
-    {
-        return;
-    }
-
-    bool isAirborne = ps->groundEntityNum == GROUND_ENTITY_NONE;
-    bool gainedUpwardSpeed = hadPreviousEnd &&
-                             opencj_autoFpsIsUpwardGain(previousEndVerticalSpeed, ps->velocity[2]);
+    bool isAirborne = playerState->groundEntityNum == GROUND_ENTITY_NONE;
+    bool gainedUpwardSpeed = hadPreviousEnd && opencj_autoFpsIsUpwardGain(previousEndVerticalSpeed,
+                                                                          playerState->velocity[2]);
     if (isAirborne && gainedUpwardSpeed)
     {
-        bool rpgFiredRecently = state.hasRPGFired &&
-                                opencj_autoFpsIsWithinRPGWindow(state.lastRPGFiredTime, svs.time);
+        bool rpgFiredRecently =
+            state.hasRPGFired && opencj_autoFpsIsWithinRPGWindow(state.lastRPGFiredTime, svs.time);
         if (rpgFiredRecently)
         {
             startPushRise(state);
@@ -551,35 +547,68 @@ extern "C" void opencj_autoFpsObserve(const playerState_t *ps, const usercmd_t *
             state.lastUnexplainedGainTime = svs.time;
         }
     }
+}
 
+// Combine the speed choice with the current checkpoint's height requirement.
+static int chooseTargetFrameRate(AutoFpsClient &state, const playerState_t *playerState,
+                                 const usercmd_t *movementCommand)
+{
     // Height (RPG push or a climb short of the next checkpoint) comes before
     // speed, but only while 250, with the speed it would add, would not reach the
     // next checkpoint high enough.
     bool heightIsEnough = false;
     bool mayNeedHeight = state.inPushRise ||
-                         (state.hasTarget && opencj_autoFpsNeedsHeight(ps, state.target));
+                         (state.hasTarget && opencj_autoFpsNeedsHeight(playerState, state.target));
     if (state.hasTarget && mayNeedHeight)
     {
-        heightIsEnough = opencj_autoFpsArrivesHighEnoughAt250(ps, state.target,
-                                                              horizontalAccelerationAt250(ps, cmd));
+        heightIsEnough = opencj_autoFpsArrivesHighEnoughAt250(
+            playerState, state.target, horizontalAccelerationAt250(playerState, movementCommand));
     }
     if (state.inPushRise && heightIsEnough)
     {
         state.inPushRise = false;
     }
-    int frameRate = opencj_autoFpsChooseFrameRate(&state.inPushRise, ps, cmd,
-                                                  clientSwitchLeadMs(ps->clientNum));
-    bool needsHeight = state.hasTarget && !heightIsEnough &&
-                       opencj_autoFpsNeedsHeight(ps, state.target);
+    int frameRate = opencj_autoFpsChooseFrameRate(&state.inPushRise, playerState, movementCommand,
+                                                  clientSwitchLeadMs(playerState->clientNum));
+    bool needsHeight =
+        state.hasTarget && !heightIsEnough && opencj_autoFpsNeedsHeight(playerState, state.target);
     if (frameRate != AUTO_FPS_333 && needsHeight)
     {
         frameRate = AUTO_FPS_333;
     }
+    return frameRate;
+}
+
+// Observe one movement result, update push tracking, and send only changed choices.
+extern "C" void opencj_autoFpsObserve(const playerState_t *playerState,
+                                      const usercmd_t *movementCommand)
+{
+    if (!playerState || !movementCommand || !isValidClientNum(playerState->clientNum))
+    {
+        return;
+    }
+    AutoFpsClient &state = autoFpsClients[playerState->clientNum];
+    if (!state.enabled)
+    {
+        return;
+    }
+
+    bool hadPreviousEnd = state.hasPreviousEnd;
+    float previousEndVerticalSpeed = state.previousEndVerticalSpeed;
+    state.hasPreviousEnd = true;
+    state.previousEndVerticalSpeed = playerState->velocity[2];
+    if (playerState->pm_type != PM_TYPE_NORMAL)
+    {
+        return;
+    }
+
+    observeAutoFpsGain(state, playerState, hadPreviousEnd, previousEndVerticalSpeed);
+    const int frameRate = chooseTargetFrameRate(state, playerState, movementCommand);
     if (frameRate == state.sentFrameRate)
     {
         return;
     }
-    if (sendClientFrameRate(ps->clientNum, frameRate))
+    if (sendClientFrameRate(playerState->clientNum, frameRate))
     {
         state.sentFrameRate = frameRate;
     }
