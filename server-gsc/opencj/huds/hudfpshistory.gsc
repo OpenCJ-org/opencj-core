@@ -4,12 +4,34 @@
 onInit()
 {
     level.fpsHistoryHudName = "fpshistory";
+    initializeHistoryLimits();
     openCJ\huds\infiniteHuds::initInfiniteHud(level.fpsHistoryHudName);
+    minimumModeLength = 3;
+    maximumModeLength = 8;
     command = openCJ\settings::addSettingString(
-        "specfps", 3, 8, "detailed",
+        "specfps", minimumModeLength, maximumModeLength, "detailed",
         "Spectator FPS mode: !specfps off, compact or detailed (default detailed)",
         ::_onModeChanged);
     openCJ\commands_base::addAlias(command, "fpshistory");
+}
+
+// Keep live timers and recorded-time comparisons on the same policy.
+initializeHistoryLimits()
+{
+    limits = spawnStruct();
+    limits.inputConfirmationMs = 150;
+    limits.bounceGroupingMs = 150;
+    limits.separatorFPSDelayMs = 150;
+    limits.bhopWindowMs = 250;
+    limits.landingExpiryMs = 2000;
+    limits.sampleIntervalMs = 50; // Stored demos contain 20 samples per second.
+    limits.maxEvents = 64;
+    limits.historyCharacters = 512;
+    limits.actionCharacters = 480; // Leave space for other actions and separators.
+    limits.detailedPhases = 6;
+    limits.detailedFPSCharacters = 8;
+    limits.truncationMarker = "...";
+    level.fpsHistoryLimits = limits;
 }
 
 onPlayerConnect()
@@ -59,7 +81,7 @@ _onModeChanged(value)
         self _clearDemoFPSHistory();
         self.demoFPSWaiting = value != "off";
         flags = self readPlaybackFrame_flags();
-        self.demoFPSWaitGround = isDefined(flags) && (flags & 8192) != 0;
+        self.demoFPSWaitGround = isDefined(flags) && (flags & level.demoFlags.onGround) != 0;
     }
     else
     {
@@ -96,14 +118,17 @@ onSpectatorClientChanged(newClient)
     }
     self _render(newClient);
 }
+
 onSpawnSpectator()
 {
     self hideAndClearFPSHistory();
 }
+
 onSpawnPlayer()
 {
     self hideAndClearFPSHistory();
 }
+
 hideAndClearFPSHistory()
 {
     self.fpsHistorySource = undefined;
@@ -138,28 +163,30 @@ inputLabel(forward, right)
 }
 
 // Native callback supplies complete held input, including releases.
-onMovementState(forward, right, time, onGround)
+onMovementState(forward, right, sampleTimeMs, onGround)
 {
     if(self openCJ\demos::isPlayingDemo())
     {
         return;
     }
-    self _movement(forward, right, time, onGround);
+    self _movement(forward, right, sampleTimeMs, onGround);
 }
 
-_movement(forward, right, time, onGround, incomingFPS)
+// Debounce short airborne taps while retaining their FPS changes.
+_movement(forward, right, sampleTimeMs, onGround, incomingFPS)
 {
     // Confirm the previous held input before processing its release. Demo time
     // advances by recorded samples; live input also has a cancellable timer.
-    if(isDefined(self.fpsHistoryPending) && time - self.fpsHistoryPending.time >= 150)
+    if(isDefined(self.fpsHistoryPending) &&
+       sampleTimeMs - self.fpsHistoryPending.time >= level.fpsHistoryLimits.inputConfirmationMs)
     {
         self _confirmPendingInput();
     }
-    wasGround = self.fpsHistoryInputGround;
+    wasOnGround = self.fpsHistoryInputGround;
     self.fpsHistoryForward = forward;
     self.fpsHistoryRight = right;
     self.fpsHistoryInputGround = onGround;
-    if(onGround || !isDefined(wasGround) || wasGround)
+    if(onGround || !isDefined(wasOnGround) || wasOnGround)
     {
         self _flushPendingInput();
         self.fpsHistoryAcceptedForward = forward;
@@ -197,7 +224,7 @@ _movement(forward, right, time, onGround, incomingFPS)
     pending = spawnStruct();
     pending.forward = forward;
     pending.right = right;
-    pending.time = time;
+    pending.time = sampleTimeMs;
     pending.fps = fps;
     self.fpsHistoryPending = pending;
     if(!self openCJ\demos::isPlayingDemo())
@@ -211,7 +238,7 @@ _waitPendingInput()
     self endon("disconnect");
     self endon("fpshistory_clear");
     self endon("fpshistory_pending");
-    wait .15;
+    wait level.fpsHistoryLimits.inputConfirmationMs / 1000.0;
     if(!isDefined(self.fpsHistoryPending) || self.fpsHistoryInputGround ||
        self openCJ\demos::isPlayingDemo())
     {
@@ -251,15 +278,18 @@ _confirmPendingInput()
     right = pending.right;
     self.fpsHistoryAcceptedForward = forward;
     self.fpsHistoryAcceptedRight = right;
-    flags =
+    transitionFlags =
         strafeTransition(self.fpsHistoryAnchorForward, self.fpsHistoryAnchorRight, forward, right);
-    if((flags & 1) || (forward != 0 && right != 0) ||
-       (self.fpsHistoryAnchorForward == 0 && self.fpsHistoryAnchorRight == 0))
+    phaseSwitchFlag = 1; // Native strafeTransition result: the held input changed phase.
+    switchedPhase = (transitionFlags & phaseSwitchFlag) != 0;
+    diagonalInput = forward != 0 && right != 0;
+    noAnchor = self.fpsHistoryAnchorForward == 0 && self.fpsHistoryAnchorRight == 0;
+    if(switchedPhase || diagonalInput || noAnchor)
     {
         self.fpsHistoryAnchorForward = forward;
         self.fpsHistoryAnchorRight = right;
     }
-    self _action("move", pending.fps, (flags & 1) != 0, pending.time, pending.firstFPSChange);
+    self _action("move", pending.fps, switchedPhase, pending.time, pending.firstFPSChange);
 }
 
 onFPSChanged(newFPS)
@@ -287,6 +317,7 @@ _beginHistory(fps)
     self _action("move", fps, false);
 }
 
+// Record one input action; rendering groups these actions into strafe phases.
 _action(kind, fps, switched, inputTime, firstFPSChange)
 {
     if(kind != "move" && isDefined(self.fpsHistoryPending))
@@ -302,11 +333,11 @@ _action(kind, fps, switched, inputTime, firstFPSChange)
     {
         self.fpsHistoryEvents = [];
     }
-    count = self.fpsHistoryEvents.size;
-    now = self historyTime();
-    if(count > 0)
+    eventCount = self.fpsHistoryEvents.size;
+    eventTimeMs = self historyTime();
+    if(eventCount > 0)
     {
-        self.fpsHistoryEvents[count - 1].ended = now;
+        self.fpsHistoryEvents[eventCount - 1].ended = eventTimeMs;
     }
     event = spawnStruct();
     event.kind = kind;
@@ -315,8 +346,8 @@ _action(kind, fps, switched, inputTime, firstFPSChange)
     event.forward = self.fpsHistoryAcceptedForward;
     event.right = self.fpsHistoryAcceptedRight;
     event.switched = switched;
-    event.started = now;
-    event.inputTime = now;
+    event.started = eventTimeMs;
+    event.inputTime = eventTimeMs;
     if(isDefined(inputTime))
     {
         event.inputTime = inputTime;
@@ -329,21 +360,21 @@ _action(kind, fps, switched, inputTime, firstFPSChange)
     if(kind == "bounce")
     {
         event.incomingFPS = self.fpshistory["shortfps"];
-        self.fpsHistoryBounceDisplayAt = now + 150;
+        self.fpsHistoryBounceDisplayAt = eventTimeMs + level.fpsHistoryLimits.bounceGroupingMs;
         if(!self openCJ\demos::isPlayingDemo())
         {
             self thread _waitBounceDisplay();
         }
     }
-    self.fpsHistoryEvents[count] = event;
-    if(self.fpsHistoryEvents.size > 64)
+    self.fpsHistoryEvents[eventCount] = event;
+    if(self.fpsHistoryEvents.size > level.fpsHistoryLimits.maxEvents)
     {
-        kept = [];
+        retainedEvents = [];
         for(i = 1; i < self.fpsHistoryEvents.size; i++)
         {
-            kept[kept.size] = self.fpsHistoryEvents[i];
+            retainedEvents[retainedEvents.size] = self.fpsHistoryEvents[i];
         }
-        self.fpsHistoryEvents = kept;
+        self.fpsHistoryEvents = retainedEvents;
         self.fpsHistoryTruncated = true;
     }
     self _refresh();
@@ -400,16 +431,20 @@ _appendRecordedFPS(fps)
     self _refresh();
 }
 
+// Bound a single action without discarding its newest distinct FPS changes.
 mergeActionFPS(history, part)
 {
     merged = mergePhaseFPS(history, part);
-    if(merged.size > 480)
+    characterLimit = level.fpsHistoryLimits.actionCharacters;
+    marker = level.fpsHistoryLimits.truncationMarker;
+    if(merged.size > characterLimit)
     {
-        merged = "..." + getSubStr(merged, merged.size - 477);
+        merged = marker + getSubStr(merged, merged.size - (characterLimit - marker.size));
     }
     return merged;
 }
 
+// Build compact history from whole newest actions, reserving room for truncation.
 renderHistory(events, detailed, truncated)
 {
     if(detailed)
@@ -449,11 +484,13 @@ renderHistory(events, detailed, truncated)
         previousKind = event.kind;
     }
     result = "";
+    marker = level.fpsHistoryLimits.truncationMarker;
+    contentLimit = level.fpsHistoryLimits.historyCharacters - marker.size;
     cut = truncated;
     for(i = parts.size - 1; i >= 0; i--)
     {
         // Reserve the visible marker while selecting complete newest entries.
-        if(result.size + parts[i].size > 509)
+        if(result.size + parts[i].size > contentLimit)
         {
             cut = true;
             break;
@@ -462,7 +499,7 @@ renderHistory(events, detailed, truncated)
     }
     if(cut)
     {
-        result = "..." + result;
+        result = marker + result;
     }
     return result;
 }
@@ -471,16 +508,18 @@ renderHistory(events, detailed, truncated)
 // CoD's inline text palette uses cyan/gold for bounce/bhop.
 renderDetailed(actions, truncated)
 {
-    start = int(max(0, actions.size - 6));
+    firstVisiblePhase = int(max(0, actions.size - level.fpsHistoryLimits.detailedPhases));
+    marker = level.fpsHistoryLimits.truncationMarker;
+    fpsCharacterLimit = level.fpsHistoryLimits.detailedFPSCharacters;
     result = "";
-    if(start > 0 || truncated)
+    if(firstVisiblePhase > 0 || truncated)
     {
         result = "^7... > ";
     }
-    for(i = start; i < actions.size; i++)
+    for(i = firstVisiblePhase; i < actions.size; i++)
     {
         event = actions[i];
-        if(i > start)
+        if(i > firstVisiblePhase)
         {
             result += " ^7> ";
         }
@@ -504,9 +543,9 @@ renderDetailed(actions, truncated)
                 color = "^2";
             }
             fps = event.fps;
-            if(fps.size > 8)
+            if(fps.size > fpsCharacterLimit)
             {
-                fps = "..." + getSubStr(fps, fps.size - 5);
+                fps = marker + getSubStr(fps, fps.size - (fpsCharacterLimit - marker.size));
             }
             result += color + event.keys + " ^7" + fps;
         }
@@ -515,11 +554,12 @@ renderDetailed(actions, truncated)
 }
 
 // Only the first 150 ms after a bounce may be attached to the new strafe.
-// Keep raw source actions intact: this is a shared display projection, not a
-// sampling blackout. Every distinct FPS change remains in the projected string.
-bounceDisplayEvents(events, now, pending)
+// Keep the recorded actions intact; only the display groups them. Every distinct
+// FPS change remains visible after grouping.
+bounceDisplayEvents(events, displayTimeMs, pending)
 {
     result = [];
+    groupingWindowMs = level.fpsHistoryLimits.bounceGroupingMs;
     for(i = 0; i < events.size; i++)
     {
         event = events[i];
@@ -533,52 +573,54 @@ bounceDisplayEvents(events, now, pending)
         {
             continue;
         }
-        first = events[i + 1];
+        bounceExit = events[i + 1];
         // Briefly buffer the bounce exit. A candidate beginning in the window
         // must still pass the existing 150 ms input-duration test before grouping.
-        waiting =
-            now < event.started + 150 && (!isDefined(event.displayReady) || !event.displayReady);
-        if(isDefined(pending) && pending.time <= event.started + 150)
+        waitingForInput = displayTimeMs < event.started + groupingWindowMs &&
+                          (!isDefined(event.displayReady) || !event.displayReady);
+        if(isDefined(pending) && pending.time <= event.started + groupingWindowMs)
         {
-            waiting = true;
+            waitingForInput = true;
         }
-        if(waiting)
+        if(waitingForInput)
         {
             break;
         }
-        copy = spawnStruct();
-        copy.kind = "move";
-        copy.fps = first.fps;
-        copy.keys = first.keys;
-        copy.forward = first.forward;
-        copy.right = first.right;
-        copy.switched = first.switched;
-        copy.started = first.started;
-        copy.viewPhase = first.viewPhase;
+        displayMove = spawnStruct();
+        displayMove.kind = "move";
+        displayMove.fps = bounceExit.fps;
+        displayMove.keys = bounceExit.keys;
+        displayMove.forward = bounceExit.forward;
+        displayMove.right = bounceExit.right;
+        displayMove.switched = bounceExit.switched;
+        displayMove.started = bounceExit.started;
+        displayMove.viewPhase = bounceExit.viewPhase;
         // A carry-over value already shown before the bounce is not a new FPS
         // step. Remove only that leading value, only when its first change is
         // inside the window. Rapid changes after it (e.g. 3->2->3) all survive.
-        if(isDefined(event.incomingFPS) && copy.fps.size > 1 && copy.fps[0] == event.incomingFPS &&
-           isDefined(first.firstFPSChange) && first.firstFPSChange <= event.started + 150)
+        if(isDefined(event.incomingFPS) && displayMove.fps.size > 1 &&
+           displayMove.fps[0] == event.incomingFPS && isDefined(bounceExit.firstFPSChange) &&
+           bounceExit.firstFPSChange <= event.started + groupingWindowMs)
         {
-            copy.fps = getSubStr(copy.fps, 1);
+            displayMove.fps = getSubStr(displayMove.fps, 1);
         }
         i++;
         if(i + 1 < events.size && events[i + 1].kind == "move")
         {
-            next = events[i + 1];
-            if(isDefined(next.inputTime) && next.inputTime <= event.started + 150 && next.switched)
+            nextMove = events[i + 1];
+            if(isDefined(nextMove.inputTime) &&
+               nextMove.inputTime <= event.started + groupingWindowMs && nextMove.switched)
             {
-                copy.fps = mergePhaseFPS(copy.fps, next.fps);
-                copy.keys = next.keys;
-                copy.forward = next.forward;
-                copy.right = next.right;
-                copy.viewPhase = next.viewPhase;
-                copy.switched = false;
+                displayMove.fps = mergePhaseFPS(displayMove.fps, nextMove.fps);
+                displayMove.keys = nextMove.keys;
+                displayMove.forward = nextMove.forward;
+                displayMove.right = nextMove.right;
+                displayMove.viewPhase = nextMove.viewPhase;
+                displayMove.switched = false;
                 i++;
             }
         }
-        result[result.size] = copy;
+        result[result.size] = displayMove;
     }
     return result;
 }
@@ -587,7 +629,7 @@ _waitBounceDisplay()
 {
     self endon("disconnect");
     self endon("fpshistory_clear");
-    wait .15;
+    wait level.fpsHistoryLimits.bounceGroupingMs / 1000.0;
     self.fpsHistoryBounceDisplayAt = undefined;
     self _refresh();
 }
@@ -628,17 +670,17 @@ _publish()
     }
 }
 
-_render(source)
+_render(sourcePlayer)
 {
     if(!self openCJ\demos::isPlayingDemo() && isDefined(self.fpsHistoryWaitJump))
     {
-        serial = 0;
-        if(isDefined(source.fpsHistoryJumpSerial))
+        jumpSerial = 0;
+        if(isDefined(sourcePlayer.fpsHistoryJumpSerial))
         {
-            serial = source.fpsHistoryJumpSerial;
+            jumpSerial = sourcePlayer.fpsHistoryJumpSerial;
         }
-        if((!isDefined(self.fpsHistoryWaitSource) || self.fpsHistoryWaitSource == source) &&
-           serial == self.fpsHistoryWaitJump)
+        if((!isDefined(self.fpsHistoryWaitSource) || self.fpsHistoryWaitSource == sourcePlayer) &&
+           jumpSerial == self.fpsHistoryWaitJump)
         {
             self _hide();
             return;
@@ -646,24 +688,24 @@ _render(source)
         self.fpsHistoryWaitJump = undefined;
         self.fpsHistoryWaitSource = undefined;
     }
-    self.fpsHistorySource = source;
-    mode = self.fpsHistoryMode;
-    if(!isDefined(mode))
+    self.fpsHistorySource = sourcePlayer;
+    displayMode = self.fpsHistoryMode;
+    if(!isDefined(displayMode))
     {
-        mode = "detailed";
+        displayMode = "detailed";
     }
-    text = source.fpsHistoryText;
-    if(mode == "detailed" && isDefined(source.fpsHistoryDetailedText))
+    displayText = sourcePlayer.fpsHistoryText;
+    if(displayMode == "detailed" && isDefined(sourcePlayer.fpsHistoryDetailedText))
     {
-        text = source.fpsHistoryDetailedText;
+        displayText = sourcePlayer.fpsHistoryDetailedText;
     }
-    if(mode == "off" || !isDefined(text) || text == "")
+    if(displayMode == "off" || !isDefined(displayText) || displayText == "")
     {
         self _hide();
         return;
     }
-    self.hud[level.fpsHistoryHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(text, self,
-                                                                                   false);
+    self.hud[level.fpsHistoryHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(displayText,
+                                                                                   self, false);
     self openCJ\huds\base::enableHUD(level.fpsHistoryHudName);
 }
 
@@ -671,9 +713,9 @@ _render(source)
 // fullbeat pair or halfbeat return pattern for this airborne history.
 inferStrafeStyle(events)
 {
-    diagonal = undefined;
+    previousDiagonal = undefined;
     previous = undefined;
-    before = undefined;
+    beforePrevious = undefined;
     for(j = 0; j < events.size; j++)
     {
         event = events[j];
@@ -683,19 +725,20 @@ inferStrafeStyle(events)
         }
         if(event.forward != 0)
         {
-            if(isDefined(diagonal) && diagonal.forward == event.forward &&
-               diagonal.right == (0 - event.right))
+            if(isDefined(previousDiagonal) && previousDiagonal.forward == event.forward &&
+               previousDiagonal.right == (0 - event.right))
             {
                 return makeStrafeStyle("fullbeat", event.forward, event.right);
             }
-            diagonal = event;
+            previousDiagonal = event;
         }
         if(isDefined(previous) && previous.forward == event.forward &&
            previous.right == event.right)
         {
             continue;
         }
-        if(isDefined(before) && before.forward == event.forward && before.right == event.right)
+        if(isDefined(beforePrevious) && beforePrevious.forward == event.forward &&
+           beforePrevious.right == event.right)
         {
             if(event.forward != 0 && previous.forward == 0 && previous.right == (0 - event.right))
             {
@@ -706,7 +749,7 @@ inferStrafeStyle(events)
                 return makeStrafeStyle("halfbeat", previous.forward, previous.right);
             }
         }
-        before = previous;
+        beforePrevious = previous;
         previous = event;
     }
     return undefined;
@@ -721,51 +764,33 @@ makeStrafeStyle(kind, forward, right)
     return style;
 }
 
+// Group accepted held input into display phases, preserving takeoff and marker timing.
 phaseActions(events, style)
 {
     if(!isDefined(style))
     {
         style = inferStrafeStyle(events);
     }
-    inferred = style;
+    inferredStyle = style;
     phases = [];
     phaseForward = 0;
     phaseRight = 0;
     pendingFPS = "";
-    pendingStart = undefined;
+    pendingStartMs = undefined;
     for(j = 0; j < events.size; j++)
     {
         event = events[j];
-        current = undefined;
+        currentPhase = undefined;
         if(phases.size > 0)
         {
-            current = phases[phases.size - 1];
+            currentPhase = phases[phases.size - 1];
         }
         if(event.kind == "move")
         {
-            style = inferred;
+            style = inferredStyle;
             if(isDefined(event.viewPhase) && event.viewPhase != 0)
             {
-                kind = "fullbeat";
-                if((event.viewPhase & 48) == 32)
-                {
-                    kind = "halfbeat";
-                }
-                else if((event.viewPhase & 48) == 48)
-                {
-                    kind = "invert";
-                }
-                f = 1;
-                if(event.viewPhase & 8)
-                {
-                    f = -1;
-                }
-                r = 1;
-                if(event.viewPhase & 1)
-                {
-                    r = -1;
-                }
-                style = makeStrafeStyle(kind, f, r);
+                style = recordedStrafeStyle(event.viewPhase);
             }
             forward = event.forward;
             right = event.right;
@@ -775,35 +800,21 @@ phaseActions(events, style)
             {
                 continue;
             }
-            accepted = false;
-            if(isDefined(style) && style.kind == "invert")
-            {
-                accepted = forward == 0 && right != 0;
-            }
-            else if(isDefined(style) && style.kind == "halfbeat")
-            {
-                accepted = (forward == style.forward && right == style.right) ||
-                           (forward == 0 && right == (0 - style.right));
-            }
-            else
-            {
-                accepted =
-                    forward != 0 && right != 0 && (!isDefined(style) || forward == style.forward);
-            }
+            accepted = isStrafeInput(style, forward, right);
 
             if(!hasPhase && isDefined(style) && !accepted)
             {
                 // The bounded raw history may begin with a release. Do not
                 // resurrect that release as the established style's first row.
                 pendingFPS = mergePhaseFPS(pendingFPS, event.fps);
-                if(!isDefined(pendingStart))
+                if(!isDefined(pendingStartMs))
                 {
-                    pendingStart = event.started;
+                    pendingStartMs = event.started;
                 }
                 continue;
             }
             switched = false;
-            upgrade = false;
+            completesTakeoffInput = false;
             if(!hasPhase)
             {
                 // Keep the takeoff input until a strafe style is established.
@@ -812,58 +823,104 @@ phaseActions(events, style)
             }
             else if(accepted)
             {
-                upgrade = phaseForward == 0 || phaseRight == 0;
+                completesTakeoffInput = phaseForward == 0 || phaseRight == 0;
                 if(isDefined(style) && style.kind == "halfbeat")
                 {
-                    upgrade = !((phaseForward == style.forward && phaseRight == style.right) ||
-                                (phaseForward == 0 && phaseRight == (0 - style.right)));
+                    completesTakeoffInput = !isStrafeInput(style, phaseForward, phaseRight);
                 }
                 // Converted samples carry an already confirmed native phase.
                 // A preserved takeoff must remain its own row when HB begins.
                 if(isDefined(event.viewPhase) && event.viewPhase != 0)
                 {
-                    upgrade = false;
+                    completesTakeoffInput = false;
                 }
-                switched = !upgrade && (phaseForward != forward || phaseRight != right);
+                switched =
+                    !completesTakeoffInput && (phaseForward != forward || phaseRight != right);
                 phaseForward = forward;
                 phaseRight = right;
             }
-            if(isDefined(current) && current.kind == "move" && !switched)
+            if(isDefined(currentPhase) && currentPhase.kind == "move" && !switched)
             {
-                if(upgrade)
+                if(completesTakeoffInput)
                 {
-                    current.keys = inputLabel(phaseForward, phaseRight);
+                    currentPhase.keys = inputLabel(phaseForward, phaseRight);
                 }
-                current.fps = mergePhaseFPS(current.fps, event.fps);
+                currentPhase.fps = mergePhaseFPS(currentPhase.fps, event.fps);
                 continue;
             }
-            next = spawnStruct();
-            next.kind = "move";
-            next.keys = inputLabel(phaseForward, phaseRight);
-            next.fps = mergePhaseFPS(pendingFPS, event.fps);
-            next.started = event.started;
-            if(isDefined(pendingStart))
+            nextPhase = spawnStruct();
+            nextPhase.kind = "move";
+            nextPhase.keys = inputLabel(phaseForward, phaseRight);
+            nextPhase.fps = mergePhaseFPS(pendingFPS, event.fps);
+            nextPhase.started = event.started;
+            if(isDefined(pendingStartMs))
             {
-                next.started = pendingStart;
+                nextPhase.started = pendingStartMs;
             }
             pendingFPS = "";
-            pendingStart = undefined;
+            pendingStartMs = undefined;
         }
         else
         {
-            next = spawnStruct();
-            next.kind = event.kind;
-            next.keys = "";
-            next.fps = "";
-            next.started = event.started;
+            nextPhase = spawnStruct();
+            nextPhase.kind = event.kind;
+            nextPhase.keys = "";
+            nextPhase.fps = "";
+            nextPhase.started = event.started;
         }
-        if(isDefined(current))
+        if(isDefined(currentPhase))
         {
-            current.ended = next.started;
+            currentPhase.ended = nextPhase.started;
         }
-        phases[phases.size] = next;
+        phases[phases.size] = nextPhase;
     }
     return phases;
+}
+
+// Native technique conversion packs style and input signs into each recorded phase.
+recordedStrafeStyle(viewPhase)
+{
+    kindMask = 48;
+    halfbeatBits = 32;
+    invertBits = 48;
+    backwardBit = 8;
+    leftBit = 1;
+    kind = "fullbeat";
+    if((viewPhase & kindMask) == halfbeatBits)
+    {
+        kind = "halfbeat";
+    }
+    else if((viewPhase & kindMask) == invertBits)
+    {
+        kind = "invert";
+    }
+    forwardInput = 1;
+    if(viewPhase & backwardBit)
+    {
+        forwardInput = -1;
+    }
+    rightInput = 1;
+    if(viewPhase & leftBit)
+    {
+        rightInput = -1;
+    }
+    return makeStrafeStyle(kind, forwardInput, rightInput);
+}
+
+// Accept the two held-input shapes belonging to the established strafe style.
+isStrafeInput(style, forward, right)
+{
+    if(isDefined(style) && style.kind == "invert")
+    {
+        return forward == 0 && right != 0;
+    }
+    if(isDefined(style) && style.kind == "halfbeat")
+    {
+        diagonalInput = forward == style.forward && right == style.right;
+        oppositeSideOnly = forward == 0 && right == (0 - style.right);
+        return diagonalInput || oppositeSideOnly;
+    }
+    return forward != 0 && right != 0 && (!isDefined(style) || forward == style.forward);
 }
 
 mergePhaseFPS(history, part)
@@ -884,6 +941,7 @@ onBounced()
     self resetStrafeTracking();
     self thread _separator("bounce");
 }
+
 _separator(kind)
 {
     self endon("disconnect");
@@ -894,9 +952,10 @@ _separator(kind)
     }
     self _action(kind, "", false);
     self endon("fpshistory_fpschanged");
-    wait 0.15;
+    wait level.fpsHistoryLimits.separatorFPSDelayMs / 1000.0;
     self _recordFPS(openCJ\fps::getShortFPS(self openCJ\fps::getCurrentFPS()));
 }
+
 onLoaded()
 {
     if(self openCJ\demos::isPlayingDemo())
@@ -906,6 +965,7 @@ onLoaded()
     self resetStrafeTracking();
     self _clearFPSHistory();
 }
+
 onOnGround(onGround)
 {
     if(self openCJ\demos::isPlayingDemo())
@@ -914,6 +974,7 @@ onOnGround(onGround)
     }
     self thread _onOnGroundThread(onGround);
 }
+// A new ground transition cancels the previous landing-expiry timer.
 _onOnGroundThread(onGround)
 {
     self endon("disconnect");
@@ -922,10 +983,11 @@ _onOnGroundThread(onGround)
     if(onGround)
     {
         self _flushPendingInput();
-        wait 2;
+        wait level.fpsHistoryLimits.landingExpiryMs / 1000.0;
         self _clearFPSHistory();
     }
-    else if(self openCJ\events\onGroundChanged::getLastGroundEnterTime() >= getTime() - 250 &&
+    else if(self openCJ\events\onGroundChanged::getLastGroundEnterTime() >=
+                getTime() - level.fpsHistoryLimits.bhopWindowMs &&
             self.fpsHistoryText != "")
     {
         self _onBhopThread();
@@ -935,12 +997,14 @@ _onOnGroundThread(onGround)
         self _beginHistory(openCJ\fps::getShortFPS(self openCJ\fps::getCurrentFPS()));
     }
 }
+
 _onBhopThread()
 {
     self markNextJump();
     self _separator("bhop");
 }
 
+// Cancel pending input and bounce work before discarding the history it belongs to.
 _resetHistory()
 {
     self notify("fpshistory_clear");
@@ -956,6 +1020,7 @@ _resetHistory()
     self.fpsHistoryAnchorForward = 0;
     self.fpsHistoryAnchorRight = 0;
 }
+
 _clearFPSHistory()
 {
     self _resetHistory();
@@ -969,20 +1034,21 @@ _clearFPSHistory()
 // Keep the bounded raw-string helpers for callers restoring older history.
 appendFPSHistory(history, text)
 {
-    limit = 512;
-    marker = "...";
-    if(history.size + text.size <= limit)
+    characterLimit = level.fpsHistoryLimits.historyCharacters;
+    marker = level.fpsHistoryLimits.truncationMarker;
+    if(history.size + text.size <= characterLimit)
     {
         return history + text;
     }
-    remaining = limit - marker.size;
-    if(text.size >= remaining)
+    retainedCharacters = characterLimit - marker.size;
+    if(text.size >= retainedCharacters)
     {
-        return marker + getSubStr(text, text.size - remaining);
+        return marker + getSubStr(text, text.size - retainedCharacters);
     }
-    remaining -= text.size;
-    return marker + getSubStr(history, history.size - remaining) + text;
+    retainedCharacters -= text.size;
+    return marker + getSubStr(history, history.size - retainedCharacters) + text;
 }
+
 _setFPSHistory(text)
 {
     if(self openCJ\demos::isPlayingDemo())
@@ -995,10 +1061,12 @@ _setFPSHistory(text)
     self.fpsHistoryDetailedText = self.fpsHistoryText;
     self _publish();
 }
+
 _addFPSHistory(text)
 {
     self _setFPSHistory(appendFPSHistory(self.fpsHistoryText, text));
 }
+
 _clearDemoFPSHistory()
 {
     self _resetHistory();
@@ -1015,15 +1083,15 @@ applyRecordedFrame(frame, sequential, interpolated)
         return;
     }
     self.fpsHistoryViewPhase = frame.techniquePhase;
-    f = int(frame.forward) - int(frame.back);
-    r = int(frame.right) - int(frame.left);
+    forwardInput = int(frame.forward) - int(frame.back);
+    rightInput = int(frame.right) - int(frame.left);
     fps = openCJ\fps::getShortFPS(frame.FPS);
     if(!sequential || frame.loadNow)
     {
         self notify("fpshistory_ongroundchange");
         self _clearDemoFPSHistory();
-        self.fpsHistoryForward = f;
-        self.fpsHistoryRight = r;
+        self.fpsHistoryForward = forwardInput;
+        self.fpsHistoryRight = rightInput;
         self.fpsHistoryInputGround = frame.onGround;
         self.fpsHistoryDemoTime = 0;
         self.fpsHistoryDemoLandTime = undefined;
@@ -1034,46 +1102,7 @@ applyRecordedFrame(frame, sequential, interpolated)
     }
     else
     {
-        // OpenCJ recordings contain one sample per 50 ms, not per client FPS.
-        self.fpsHistoryDemoTime += 50;
-        wasGround = self.fpsHistoryInputGround;
-        self _movement(f, r, self.fpsHistoryDemoTime, frame.onGround, fps);
-        if(wasGround && !frame.onGround)
-        {
-            self notify("fpshistory_ongroundchange");
-            if(isDefined(self.fpsHistoryDemoLandTime) &&
-               self.fpsHistoryDemoTime - self.fpsHistoryDemoLandTime < 250 &&
-               self.fpsHistoryText != "")
-            {
-                self _action("bhop", "", false);
-            }
-            else
-            {
-                self _beginHistory(fps);
-            }
-        }
-        else if(!wasGround && frame.onGround)
-        {
-            self.fpsHistoryDemoLandTime = self.fpsHistoryDemoTime;
-        }
-        if(frame.onGround && isDefined(self.fpsHistoryDemoLandTime) &&
-           self.fpsHistoryDemoTime - self.fpsHistoryDemoLandTime >= 2000 &&
-           self.fpsHistoryText != "")
-        {
-            self _clearDemoFPSHistory();
-        }
-        if(frame.bounce && !frame.onGround)
-        {
-            self _action("bounce", "", false);
-        }
-        if(!frame.onGround)
-        {
-            if(self.fpshistory["shortfps"] != fps)
-            {
-                self notify("fpshistory_fpschanged");
-            }
-            self _recordFPS(fps);
-        }
+        self advanceRecordedHistory(frame, forwardInput, rightInput, fps);
     }
     if(isDefined(self.fpsHistoryBounceDisplayAt) &&
        self.fpsHistoryDemoTime >= self.fpsHistoryBounceDisplayAt)
@@ -1085,23 +1114,71 @@ applyRecordedFrame(frame, sequential, interpolated)
     self.demoPreviousFPS = frame.FPS;
 }
 
-restoreLiveHistory(state)
+// Advance ground, bounce and FPS state using recording time rather than playback speed.
+advanceRecordedHistory(frame, forwardInput, rightInput, fps)
+{
+    // OpenCJ recordings contain one sample per 50 ms, not per client FPS.
+    self.fpsHistoryDemoTime += level.fpsHistoryLimits.sampleIntervalMs;
+    wasOnGround = self.fpsHistoryInputGround;
+    self _movement(forwardInput, rightInput, self.fpsHistoryDemoTime, frame.onGround, fps);
+    if(wasOnGround && !frame.onGround)
+    {
+        self notify("fpshistory_ongroundchange");
+        if(isDefined(self.fpsHistoryDemoLandTime) &&
+           self.fpsHistoryDemoTime - self.fpsHistoryDemoLandTime <
+               level.fpsHistoryLimits.bhopWindowMs &&
+           self.fpsHistoryText != "")
+        {
+            self _action("bhop", "", false);
+        }
+        else
+        {
+            self _beginHistory(fps);
+        }
+    }
+    else if(!wasOnGround && frame.onGround)
+    {
+        self.fpsHistoryDemoLandTime = self.fpsHistoryDemoTime;
+    }
+    if(frame.onGround && isDefined(self.fpsHistoryDemoLandTime) &&
+       self.fpsHistoryDemoTime - self.fpsHistoryDemoLandTime >=
+           level.fpsHistoryLimits.landingExpiryMs &&
+       self.fpsHistoryText != "")
+    {
+        self _clearDemoFPSHistory();
+    }
+    if(frame.bounce && !frame.onGround)
+    {
+        self _action("bounce", "", false);
+    }
+    if(!frame.onGround)
+    {
+        if(self.fpshistory["shortfps"] != fps)
+        {
+            self notify("fpshistory_fpschanged");
+        }
+        self _recordFPS(fps);
+    }
+}
+
+// Restore the saved live history after demo viewing without resuming old input timers.
+restoreLiveHistory(savedHistory)
 {
     self notify("fpshistory_ongroundchange");
-    self.fpshistory = state.fpshistory;
-    self.fpsHistoryText = state.fpsHistoryText;
-    self.fpshistory["shortfps"] = state.fpsHistoryShortFPS;
-    self.fpsHistoryEvents = state.fpsHistoryEvents;
-    self.fpsHistoryTruncated = state.fpsHistoryTruncated;
-    self.fpsHistoryStyle = state.fpsHistoryStyle;
+    self.fpshistory = savedHistory.fpshistory;
+    self.fpsHistoryText = savedHistory.fpsHistoryText;
+    self.fpshistory["shortfps"] = savedHistory.fpsHistoryShortFPS;
+    self.fpsHistoryEvents = savedHistory.fpsHistoryEvents;
+    self.fpsHistoryTruncated = savedHistory.fpsHistoryTruncated;
+    self.fpsHistoryStyle = savedHistory.fpsHistoryStyle;
     self _cancelPendingInput();
     self.fpsHistoryAcceptedForward = 0;
     self.fpsHistoryAcceptedRight = 0;
     if(self.fpsHistoryEvents.size > 0)
     {
-        last = self.fpsHistoryEvents[self.fpsHistoryEvents.size - 1];
-        self.fpsHistoryAcceptedForward = last.forward;
-        self.fpsHistoryAcceptedRight = last.right;
+        lastEvent = self.fpsHistoryEvents[self.fpsHistoryEvents.size - 1];
+        self.fpsHistoryAcceptedForward = lastEvent.forward;
+        self.fpsHistoryAcceptedRight = lastEvent.right;
     }
     self.fpsHistoryForward = self.fpsHistoryAcceptedForward;
     self.fpsHistoryRight = self.fpsHistoryAcceptedRight;
