@@ -455,26 +455,26 @@ _preferredNameRequest(args)
 }
 _onResetPreferredName(args)
 {
-    if(!digits(args[0]))
+    targetPlayerID = parsePlayerID(args[0]);
+    if(!isDefined(targetPlayerID))
     {
-        self sendLocalChatMessage("Use a numeric playerID.", true);
+        self sendLocalChatMessage("Use a playerID between 1 and 2147483647.", true);
         return;
     }
     rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT resetPreferredNameByModerator(" +
                                                   self openCJ\login::getPlayerID() + "," +
-                                                  int(args[0]) + ")",
-                                              "prefname:" + int(args[0]));
+                                                  targetPlayerID + ")",
+                                              "prefname:" + targetPlayerID);
     if(hasResult(rows) && int(rows[0][0]) == 0)
     {
-        id = int(args[0]);
         rows = self openCJ\mySQL::mysqlAsyncRead(
-            "SELECT playerName FROM playerInformation WHERE playerID=" + id);
+            "SELECT playerName FROM playerInformation WHERE playerID=" + targetPlayerID);
         fallback = undefined;
         if(hasResult(rows))
         {
             fallback = rows[0][0];
         }
-        _publishPreferredName(id, undefined, fallback);
+        _publishPreferredName(targetPlayerID, undefined, fallback);
         self sendLocalChatMessage("Preferred name removed; one-hour cooldown applied.");
     }
     else
@@ -636,4 +636,37 @@ _showPlayerNameHud()
         }
     }
     self.playerNameHud.alpha = 0;
+}
+
+// Validate decimal digits before int() so out-of-range input never reaches a moderation query.
+// Database player IDs use a positive signed INT, matching the GSC integer range.
+parsePlayerID(text)
+{
+    if(!isDefined(text) || !digits(text))
+    {
+        return undefined;
+    }
+    maximumPlayerIDText = "2147483647";
+    if(text.size == maximumPlayerIDText.size)
+    {
+        for(i = 0; i < text.size; i++)
+        {
+            digit = getAscii(text[i]);
+            maximumDigit = getAscii(maximumPlayerIDText[i]);
+            if(digit < maximumDigit)
+            {
+                break;
+            }
+            if(digit > maximumDigit)
+            {
+                return undefined;
+            }
+        }
+    }
+    playerID = int(text);
+    if(playerID <= 0)
+    {
+        return undefined;
+    }
+    return playerID;
 }

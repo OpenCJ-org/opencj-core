@@ -215,6 +215,7 @@ main()
     a openCJ\playerNames::_loadPreferredName();
 
     wait .2;
+    verifyInvalidModeratorTargets(a);
     printf("NAME SELFTEST COMPLETE failures=" + level.nameTestFailures +
            " checks=" + level.nameTestChecks + "\n");
 }
@@ -226,4 +227,40 @@ check(value, label)
         level.nameTestFailures++;
     }
     printf("NAME SELFTEST " + int(value) + ": " + label + "\n");
+}
+
+
+// Reject overflowing or nonpositive account IDs before issuing any moderation write.
+verifyInvalidModeratorTargets(player)
+{
+    check(openCJ\playerNames::parsePlayerID("1") == 1,
+          "smallest player ID is accepted");
+    check(openCJ\playerNames::parsePlayerID("0000000001") == 1,
+          "leading zeros retain the intended player ID");
+    check(openCJ\playerNames::parsePlayerID("2147483647") == 2147483647,
+          "largest signed database player ID is accepted");
+    player.login_playerID = 3;
+    player.adminLevel = 40;
+    invalidTargets = [];
+    invalidTargets[0] = "0";
+    invalidTargets[1] = "2147483648";
+    invalidTargets[2] = "4294967297";
+    invalidTargets[3] = "9999999999";
+    for(i = 0; i < invalidTargets.size; i++)
+    {
+        stats = mysql_async_stats();
+        acceptedBefore = stats[8];
+        args = [];
+        args[0] = invalidTargets[i];
+        player openCJ\playerNames::_onResetPreferredName(args);
+        stats = mysql_async_stats();
+        check(stats[8] == acceptedBefore,
+              "invalid moderator account ID submits no SQL: " + invalidTargets[i]);
+    }
+    rows = openCJ\mySQL::mysqlAsyncRead(
+        "SELECT preferredName FROM playerNamePreferences WHERE playerID=1");
+    check(hasResult(rows) && isDefined(rows[0][0]) && rows[0][0] == "RecordName",
+          "overflowing moderator input cannot reset another account");
+    player.login_playerID = 1;
+    player.adminLevel = 0;
 }
