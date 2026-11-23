@@ -346,9 +346,19 @@ verifyHistoryCommand(viewer, sourcePlayer)
     sourcePlayer.demoRecordings["" + sourceDemoID] = recording;
     args = [];
     args[0] = sourcePlayer.name;
+    viewer.demoTestCvars = [];
+    viewer.demoTestMenuCloses = 0;
+    viewer.demoTestOpenedMenu = undefined;
+    viewer.demoTestOverlayReadyAtOpen = false;
     viewer thread openCJ\demos::viewHistory(args);
     wait .1;
     check(viewer openCJ\demos::isPlayingDemo(), "view command starts fixed history");
+    check(viewer.demoTestOpenedMenu == "opencj_demo"
+          && viewer.demoTestCvars["g_scriptMainMenu"] == "opencj_demo",
+          "demo startup opens its toolbar and installs the in-game menu");
+    check(viewer.demoTestOverlayReadyAtOpen,
+          "demo status and controls are populated before opening the toolbar");
+
     watchedCopyID = viewer.demoID;
     check(viewer.demoHistorySource == sourcePlayer && viewer.demoAuthor == sourcePlayer.name,
           "correct source attribution");
@@ -372,7 +382,11 @@ verifyHistoryCommand(viewer, sourcePlayer)
     viewer.demoHistorySource = sourcePlayer;
     sourcePlayer openCJ\demos::_shareHistory(false);
     check(viewer.demoExitRequested, "opt-out ends an existing other-player view");
+    menuClosesBeforeStop = viewer.demoTestMenuCloses;
     viewer openCJ\demos::stopDemo(false);
+    check(viewer.demoTestMenuCloses > menuClosesBeforeStop
+          && viewer.demoTestCvars["g_scriptMainMenu"] == level.menu["ingame"],
+          "demo stop closes the in-game menu and restores the normal menu");
     check(!isDefined(level.demoCache["" + watchedCopyID]) && numberOfDemoFrames(sourceDemoID) == 20,
           "exit frees copy without source damage");
     sourcePlayer.settingValues["sharehistory"] = false;
@@ -482,4 +496,35 @@ check(ok, label)
         level.lifecycleFailures++;
         printf("DEMO VIEWING FAIL " + label + "\n");
     }
+}
+
+// Forward native client IO while recording the command order in the isolated copy.
+recordDemoCvar(cvarName, value)
+{
+    if(!isDefined(self.demoTestCvars))
+    {
+        self.demoTestCvars = [];
+    }
+    self.demoTestCvars[cvarName] = value;
+    self setClientCvar(cvarName, value);
+}
+
+recordDemoMenuOpen(menuName)
+{
+    self.demoTestOpenedMenu = menuName;
+    self.demoTestOverlayReadyAtOpen = isDefined(self.demoTestCvars["opencj_demo_status"])
+                                     && isDefined(self.demoTestCvars["opencj_demo_checkpoint"])
+                                     && isDefined(self.demoTestCvars["opencj_demo_speed"])
+                                     && isDefined(self.demoTestCvars["opencj_demo_paused"]);
+    self openMenu(menuName);
+}
+
+recordDemoMenuClose()
+{
+    if(!isDefined(self.demoTestMenuCloses))
+    {
+        self.demoTestMenuCloses = 0;
+    }
+    self.demoTestMenuCloses++;
+    self closeInGameMenu();
 }

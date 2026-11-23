@@ -54,7 +54,7 @@
     {
       "id": "demo-menu-source",
       "category": "portable",
-      "description": "Demo toolbar source wiring, command tokens, controls and layout assertions.",
+      "description": "Demo menu source registration, response protocol and toolbar geometry; tolerates ordinary whitespace changes.",
       "requires": "Tracked GSC and client menu sources.",
       "effects": "Read-only source checks; does not build or render a menu.",
       "files": [
@@ -294,7 +294,7 @@
     {
       "id": "demo-engine",
       "category": "integration",
-      "description": "Demo lifecycle, viewing and timeline scenarios through one isolated GSC runner; selection SQL replay.",
+      "description": "Demo lifecycle, viewing and timeline scenarios through one isolated GSC runner; selection SQL replay. Native client-output observations verify menu startup, initial overlay values and close/restore.",
       "requires": "Initialized Compose, matching engine and game/compiled assets (mp_killhouse by default). Selection SQL replay also requires a selected disposable current database and captured fixture log.",
       "effects": "Isolated servers and private logs; selection replay uses temporary SQL tables.",
       "files": [

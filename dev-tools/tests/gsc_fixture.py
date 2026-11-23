@@ -124,6 +124,23 @@ def copy_scripts(options, mod):
 def install_observation_hooks(mod, fixture_name):
     """Observe selected side effects only in the isolated script copy."""
     hooks = {
+        "demo-viewing-24.gsc": (
+            "opencj/demos.gsc",
+            (
+                (
+                    r"\bself\s+setClientCvar\s*\(",
+                    r"self openCJ\platformTest::recordDemoCvar(",
+                ),
+                (
+                    r"\bself\s+openMenu\s*\(",
+                    r"self openCJ\platformTest::recordDemoMenuOpen(",
+                ),
+                (
+                    r"\bself\s+closeInGameMenu\s*\(",
+                    r"self openCJ\platformTest::recordDemoMenuClose(",
+                ),
+            ),
+        ),
         "client-startup.gsc": (
             "opencj/camera.gsc",
             (

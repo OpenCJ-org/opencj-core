@@ -1,94 +1,140 @@
+"""Check demo menu asset registration, actions and toolbar geometry.
+
+Startup/stop GSC behavior belongs to the demo engine fixture. This source check
+does not establish that a compiled menu or a human client's rendering works.
+An optional unlinked menu file also checks the actual compiled geometry.
+"""
+
+import argparse
 from pathlib import Path
-
-root = Path(__file__).resolve().parents[2]
-script = (root / "server-gsc/opencj/demos.gsc").read_text()
-start = script.split("startDemo(demoID)\n{", 1)[1].split("\nisPlayingDemo()", 1)[0]
-assert 'menu="opencj_demo";' in start and 'self openMenu(menu)' in start
-assert 'setClientCvar("g_scriptMainMenu",menu)' in start
-assert 'self demoUpdateOverlay();' in start
-assert 'opencj_demo.menu' in (root / "client-mod/cod4/ui_mp/ingame.txt").read_text()
-assert 'opencj_demo.menu' in (root / "client-mod/cod4/mod.csv").read_text()
-assert (
-    'scriptMenuResponse "opened"'
-    in (root / "client-mod/cod4/ui_mp/scriptmenus/opencj_demo.menu").read_text()
-)
-print("Demo menu startup and asset registration checks passed")
-
 import re
 
-menu = (root / "client-mod/cod4/ui_mp/scriptmenus/opencj_demo.menu").read_text()
-for response in re.findall(r'scriptMenuResponse "([^"]+)"', menu):
-    assert not any(c.isspace() for c in response), response
-print("All menu responses fit the engine single-token protocol")
-
-assert 'scriptMenuResponse "stop"; close self;' in menu
-stop = script.split("stopDemo(loadClipSave)\n{", 1)[1].split("\nonDisconnect()", 1)[0]
-assert "self closeInGameMenu();" in stop
-print("Exit closes both the client toolbar and the in-game menu path")
-
-# Direction and speed form independent controls with explicit selected states.
-responses = re.findall(r'scriptMenuResponse "([^"]+)"', menu)
-assert sorted(set(r for r in responses if r.startswith("speed_"))) == [
-    "speed_0.25",
-    "speed_0.5",
-    "speed_1",
-    "speed_2",
-    "speed_4",
-]
-assert responses.count("direction") == 2
-assert all(
-    text in menu
-    for text in [
-        'text "Slowest"',
-        'text "Slow"',
-        'text "Normal"',
-        'text "Fast"',
-        'text "Fastest"',
-        'Normal: 1x (default)',
-    ]
-)
-assert menu.count('visible when (dvarFloat("opencj_demo_speed") ==') == 5
-assert '<4x' not in menu and '4x>' not in menu
-print("Independent direction, five named speeds, Normal default and selected-state checks passed")
+ROOT = Path(__file__).resolve().parents[2]
+MENU_SOURCE = ROOT / "client-mod/cod4/ui_mp/scriptmenus/opencj_demo.menu"
+QUOTED_OR_COMMENT = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.S)
+BRACES_OR_STRING = re.compile(r'"(?:\\.|[^"\\])*"|[{}]')
 
 
-def items(source):
-    result = {}
-    for match in re.finditer(r'\bitemDef\s*\{', source):
-        i = match.end()
-        start = i
+def strip_comments(source):
+    """Leave quoted menu values intact while removing comments from syntax checks."""
+    return QUOTED_OR_COMMENT.sub(
+        lambda match: match.group(0) if match.group(0).startswith('"') else " ",
+        source,
+    )
+
+
+def blocks(source, keyword):
+    """Read bounded brace blocks, ignoring braces inside quoted menu values."""
+    source = strip_comments(source)
+    for opening in re.finditer(r"\b" + re.escape(keyword) + r"\s*\{", source):
         depth = 1
-        quoted = False
-        while depth:
-            c = source[i]
-            if c == '"':
-                quoted = not quoted
-            elif not quoted:
-                if c == "{":
-                    depth += 1
-                elif c == "}":
-                    depth -= 1
-            i += 1
-        block = source[start : i - 1]
-        name = re.search(r'\bname\s+"?([^\s"]+)', block).group(1)
-        rect = tuple(
-            map(
-                float,
-                re.search(
-                    r'\brect\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)', block
-                ).groups(),
-            )
-        )
-        origin = re.search(r'\borigin\s+([-\d.]+)\s+([-\d.]+)', block)
+        for token in BRACES_OR_STRING.finditer(source, opening.end()):
+            if token.group() == "{":
+                depth += 1
+            elif token.group() == "}":
+                depth -= 1
+            if depth == 0:
+                yield source[opening.end() : token.start()]
+                break
+        else:
+            raise ValueError("Unclosed " + keyword + " block")
+
+
+def menu_items(source):
+    """Decode each named control's rectangle, including linker origin offsets."""
+    controls = {}
+    for block in blocks(source, "itemDef"):
+        name_match = re.search(r'\bname\s+"?([^\s"]+)', block)
+        if not name_match:
+            raise ValueError("Menu item has no name")
+        name = name_match.group(1)
+        if name in controls:
+            raise ValueError("Duplicate menu item: " + name)
+        rectangle = re.search(r"\brect\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)", block)
+        if not rectangle:
+            raise ValueError("Menu item has no numeric rectangle: " + name)
+        rect = tuple(float(value) for value in rectangle.groups())
+        origin = re.search(r"\borigin\s+([-\d.]+)\s+([-\d.]+)", block)
         if origin:
             rect = (rect[0] + float(origin[1]), rect[1] + float(origin[2]), rect[2], rect[3])
         text = re.search(r'\btext\s+"([^"]*)"', block)
-        result[name] = {"rect": rect, "text": text[1] if text else None, "block": block}
-    return result
+        controls[name] = {"rect": rect, "text": text[1] if text else None, "block": block}
+    if not controls:
+        raise ValueError("No menu items found")
+    return controls
+
+
+def check_asset_registration():
+    registration = ROOT / "client-mod/cod4/ui_mp/ingame.txt"
+    manifest = ROOT / "client-mod/cod4/mod.csv"
+    assert "ui_mp/scriptmenus/opencj_demo.menu" in registration.read_text()
+    assert "menufile,ui_mp\\scriptmenus\\opencj_demo.menu" in manifest.read_text().splitlines()
+    print("Demo menu source registration checks passed")
+
+
+def check_menu_actions(source):
+    """Check the menu protocol and independent direction/speed controls."""
+    menu = strip_comments(source)
+    responses = re.findall(r'scriptMenuResponse\s+"([^"]+)"', menu)
+    assert responses, "Demo menu must send script responses"
+    assert all(
+        not any(character.isspace() for character in response) for response in responses
+    ), "Menu responses must fit the engine's single-token protocol"
+    on_open = list(blocks(menu, "onOpen"))
+    on_escape = list(blocks(menu, "onEsc"))
+    assert len(on_open) == len(on_escape) == 1
+    assert re.search(r'scriptMenuResponse\s+"opened"\s*;', on_open[0])
+    stop_and_close = r'scriptMenuResponse\s+"stop"\s*;\s*close\s+self\s*;'
+    assert re.search(
+        stop_and_close, on_escape[0]
+    ), "Escape must stop playback and close the toolbar"
+    exit_control = menu_items(menu)["exit"]
+    assert re.search(
+        stop_and_close, exit_control["block"]
+    ), "Exit must stop playback and close the toolbar"
+
+    assert sorted({response for response in responses if response.startswith("speed_")}) == [
+        "speed_0.25",
+        "speed_0.5",
+        "speed_1",
+        "speed_2",
+        "speed_4",
+    ]
+    assert responses.count("direction") == 2
+    for label in ("Slowest", "Slow", "Normal", "Fast", "Fastest"):
+        assert re.search(r'\btext\s+"' + label + '"', menu), label
+    assert "Normal: 1x (default)" in menu
+    selected_speed = r'visible\s+when\s*\(\s*dvarFloat\s*\(\s*"opencj_demo_speed"\s*\)\s*=='
+    assert len(re.findall(selected_speed, menu)) == 5
+    assert "<4x" not in menu and "4x>" not in menu
+    print("Demo menu response, exit and selected-control checks passed")
+
+
+def check_nonoverlap(controls, names, paired_states):
+    """Only mutually exclusive states may share the same rectangle."""
+    for index, first_name in enumerate(names):
+        first_x, first_y, first_width, first_height = controls[first_name]["rect"]
+        for second_name in names[index + 1 :]:
+            second_x, second_y, second_width, second_height = controls[second_name]["rect"]
+            overlaps_x = max(first_x, second_x) < min(
+                first_x + first_width, second_x + second_width
+            )
+            overlaps_y = max(first_y, second_y) < min(
+                first_y + first_height, second_y + second_height
+            )
+            if overlaps_x and overlaps_y:
+                assert frozenset([first_name, second_name]) in paired_states, (
+                    first_name,
+                    second_name,
+                )
+                assert controls[first_name]["rect"] == controls[second_name]["rect"], (
+                    first_name,
+                    second_name,
+                )
 
 
 def check_layout(source):
-    controls = items(source)
+    controls = menu_items(source)
     assert controls["toolbar"]["rect"] == (0, 443, 640, 37), "Restore the original bar height"
     names = [
         "previous",
@@ -99,7 +145,7 @@ def check_layout(source):
         "direction_reverse",
         "exit",
     ]
-    speeds = [n for n in controls if n.startswith("speed_")]
+    speeds = [name for name in controls if name.startswith("speed_")]
     assert len(speeds) == 10, "Five speed choices, each with selected/unselected states"
     names += speeds + ["technique"]
     # The stock linker parses origin offsets as integers (449.5 -> 449).
@@ -111,7 +157,7 @@ def check_layout(source):
         assert y + h / 2 == 461.5 and 8 <= x and x + w <= 632, (name, control["rect"])
         if name not in ("previous", "pause", "resume", "next", "technique"):
             assert control["text"], name + " must own its visible label"
-        assert re.search(r'\btype\s+(?:ITEM_TYPE_BUTTON|1)\b', control["block"]), name
+        assert re.search(r"\btype\s+(?:ITEM_TYPE_BUTTON|1)\b", control["block"]), name
     pairs = {frozenset(["pause", "resume"]), frozenset(["direction_forward", "direction_reverse"])}
     pairs.update(
         frozenset([name, name + "_selected"]) for name in speeds if not name.endswith("_selected")
@@ -142,18 +188,12 @@ def check_layout(source):
     # Status must retain its own space; invisible counterparts are the only overlap.
     assert controls["status"]["rect"] == (96, 450.5, 116, 12)
     assert controls["technique"]["rect"] == (536, 449.5, 46, 24)
-    assert 'setdvar opencj_demo_hint "Switch viewing technique' in controls["technique"]["block"]
-    assert 'setdvar opencj_demo_hint ""' in controls["technique"]["block"]
+    assert re.search(
+        r'setdvar\s+opencj_demo_hint\s+"Switch viewing technique', controls["technique"]["block"]
+    )
+    assert re.search(r'setdvar\s+opencj_demo_hint\s+""', controls["technique"]["block"])
     names += ["status", "checkpoint"]
-    for i, a in enumerate(names):
-        ax, ay, aw, ah = controls[a]["rect"]
-        for b in names[i + 1 :]:
-            bx, by, bw, bh = controls[b]["rect"]
-            if max(ax, bx) < min(ax + aw, bx + bw) and max(ay, by) < min(ay + ah, by + bh):
-                assert frozenset([a, b]) in pairs and controls[a]["rect"] == controls[b]["rect"], (
-                    a,
-                    b,
-                )
+    check_nonoverlap(controls, names, pairs)
     assert not any(
         name.startswith(("label_", "multiplier_", "selected_")) for name in controls
     ), "No detached speed labels or overlay cards"
@@ -162,10 +202,18 @@ def check_layout(source):
     )
 
 
-check_layout(menu)
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1:
-        check_layout(Path(sys.argv[1]).read_text())
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("compiled_menu", nargs="?", type=Path)
+    options = parser.parse_args()
+    menu = MENU_SOURCE.read_text()
+    check_asset_registration()
+    check_menu_actions(menu)
+    check_layout(menu)
+    if options.compiled_menu:
+        check_layout(options.compiled_menu.read_text())
         print("Compiled menu geometry checked")
+
+
+if __name__ == "__main__":
+    main()

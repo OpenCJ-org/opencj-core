@@ -152,8 +152,11 @@ Capacity testing needs two available CPU cores and substantial runtime.
 `run-query-capacity.py --cpu-set` can select a different available pair.
 
 Compiled menu checks require actual Unlinker output from the build being reviewed.
-The source-only demo-menu check does not establish that a fastfile or game client
-works. The recording trace tool accepts an explicit export or a synthetic
+The source-only demo-menu check verifies asset registration, response actions and
+toolbar geometry. Menu startup, initial overlay output and closing/restoring the
+normal menu are exercised by the demo engine fixture through forwarding native
+IO observers in its private script copy. Neither check establishes that a human
+client renders the fastfile correctly. The recording trace tool accepts an explicit export or a synthetic
 database run/clip; it is a diagnostic, not a standard regression suite.
 
 ## Maintaining the test set
