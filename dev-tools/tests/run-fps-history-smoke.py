@@ -58,10 +58,10 @@ for mapname in options.maps or ['mp_killhouse']:
     (home / 'steamclient.so').symlink_to('/game/steamclient.so')
     shutil.copyfile(root / 'dev-tools/tests/fps-history.gsc', mod / 'opencj/platformtest.gsc')
     init = mod / 'opencj/events/init.gsc'
-    s = init.read_text()
-    init.write_text(
-        s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;', 1)
-    )
+    # This fixture initializes its own HUD state and has no gameplay services.
+    # An early return still makes GSC load every referenced startup script;
+    # remove those unused references from this private copy to avoid its precache limit.
+    init.write_text("main()\n{\n}\n")
     game = mod / 'maps/mp/gametypes/cj.gsc'
     s = game.read_text()
     game.write_text(
@@ -128,6 +128,7 @@ for mapname in options.maps or ['mp_killhouse']:
                 ('FPS HISTORY SELFTEST COMPLETE' in log and 'STRAFE NATIVE COMPLETE' in log)
                 or 'script compile error' in log
                 or 'script runtime error' in log
+                or 'MAX_PRECACHE_ENTRIES exceeded' in log
             ):
                 break
         if 'script compile error' in log or 'script runtime error' in log:

@@ -1,3 +1,7 @@
+#include openCJ\huds\hudFPSHistory;
+
+// Import the production HUD functions once. Repeating the module on every call
+// fills the engine's precache list before this large fixture can start.
 main()
 {
     openCJ\settings::onInit();
@@ -5,27 +9,27 @@ main()
     level.failures = 0;
     level.checks = 0;
     openCJ\huds\infiniteHuds::onInit();
-    openCJ\huds\hudFPSHistory::onInit();
+    onInit();
     openCJ\huds\infiniteHuds::initInfiniteHud("fps");
     wait 1;
     setCvar("opencj_test_movement",1);
 
-    check(openCJ\huds\hudFPSHistory::appendFPSHistory("", "") == "", "empty history");
-    check(openCJ\huds\hudFPSHistory::appendFPSHistory("14-2/", "3") == "14-2/3", "short history and separators unchanged");
+    check(appendFPSHistory("", "") == "", "empty history");
+    check(appendFPSHistory("14-2/", "3") == "14-2/3", "short history and separators unchanged");
     full = sequence(0, 512);
-    check(sameText(openCJ\huds\hudFPSHistory::appendFPSHistory("", full), full), "exactly 512 characters unchanged");
-    check(sameText(openCJ\huds\hudFPSHistory::appendFPSHistory(getSubStr(full, 0, 511), getSubStr(full, 511)), full), "append up to exact boundary");
-    check(sameText(openCJ\huds\hudFPSHistory::appendFPSHistory(full, "X"), "..." + getSubStr(full, 4) + "X"), "first overflow retains newest 509 with marker");
+    check(sameText(appendFPSHistory("", full), full), "exactly 512 characters unchanged");
+    check(sameText(appendFPSHistory(getSubStr(full, 0, 511), getSubStr(full, 511)), full), "append up to exact boundary");
+    check(sameText(appendFPSHistory(full, "X"), "..." + getSubStr(full, 4) + "X"), "first overflow retains newest 509 with marker");
     large = sequence(0, 1000);
-    check(sameText(openCJ\huds\hudFPSHistory::appendFPSHistory("old", large), "..." + getSubStr(large, 491)), "large incoming chunk trimmed before concatenation");
-    check(sameText(openCJ\huds\hudFPSHistory::appendFPSHistory(large, "X"), "..." + getSubStr(large, 492) + "X"), "oversized existing history recovered");
-    check(sameText(openCJ\huds\hudFPSHistory::appendFPSHistory(full, getSubStr(full, 0, 509)), "..." + getSubStr(full, 0, 509)), "incoming chunk exactly fills retained payload");
+    check(sameText(appendFPSHistory("old", large), "..." + getSubStr(large, 491)), "large incoming chunk trimmed before concatenation");
+    check(sameText(appendFPSHistory(large, "X"), "..." + getSubStr(large, 492) + "X"), "oversized existing history recovered");
+    check(sameText(appendFPSHistory(full, getSubStr(full, 0, 509)), "..." + getSubStr(full, 0, 509)), "incoming chunk exactly fills retained payload");
     history = "";
     bounded = true;
     pattern = "142-/3065K";
     for (i = 0; i < 10000; i++)
     {
-        history = openCJ\huds\hudFPSHistory::appendFPSHistory(history, pattern[i % pattern.size]);
+        history = appendFPSHistory(history, pattern[i % pattern.size]);
         if (history.size > 512) bounded = false;
         if (i % 100 == 0) wait 0.05;
     }
@@ -62,25 +66,25 @@ main()
     detailedWindow(player,viewer);
     playbackControls(player,viewer);
     playbackSampling(player);
-    player openCJ\huds\hudFPSHistory::_setFPSHistory("14-2/3");
+    player _setFPSHistory("14-2/3");
     check(viewer.hud[level.fpsHistoryHudName].lastText == "14-2/3", "live history delivered to spectator HUD");
-    player openCJ\huds\hudFPSHistory::_setFPSHistory(large);
+    player _setFPSHistory(large);
     check(sameText(player.fpsHistoryText, "..." + getSubStr(large, 491)), "direct live setter bounded");
-    viewer openCJ\huds\hudFPSHistory::onSpectatorClientChanged(player);
+    viewer onSpectatorClientChanged(player);
     check(viewer.hud[level.fpsHistoryHudName].lastText == player.fpsHistoryText, "spectator switch receives bounded history and marker");
-    viewer openCJ\huds\hudFPSHistory::onSpectatorClientChanged(undefined);
+    viewer onSpectatorClientChanged(undefined);
     check(viewer.fpsHistoryText == "" && viewer.hud[level.fpsHistoryHudName].alpha == 0, "leaving spectator target clears and hides HUD");
 
     viewer followPlayer(-1);
-    player openCJ\huds\hudFPSHistory::_clearFPSHistory();
+    player _clearFPSHistory();
     viewer.playingDemo = true;
     // Drive the actual recording consumer instead of the retired event helpers.
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
     bounded = true;expected = "3";
     for (i = 0; i < 3000; i++)
     {
         fps=250;token="2";if(i%2){fps=333;token="3";}
-        viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,fps,false),true,false);
+        viewer applyRecordedFrame(demoFrame(1,-1,false,fps,false),true,false);
         expected+=token;
         if(expected.size>480)expected="..."+getSubStr(expected,expected.size-477);
         if(viewer.fpsHistoryText.size>512 || !sameText(viewer.fpsHistoryText,expected))bounded=false;
@@ -88,53 +92,53 @@ main()
     }
     check(bounded,"3000 recorded FPS changes retain the exact bounded newest suffix");
     check(sameText(viewer.hud[level.fpsHistoryHudName].lastText,expected),"recorded-frame HUD receives bounded suffix");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),true,false);
     check(sameText(viewer.fpsHistoryText,expected),"recorded duplicate FPS suppression preserved");
-    viewer openCJ\huds\hudFPSHistory::onLoaded();
+    viewer onLoaded();
     check(viewer.fpsHistoryText!="","live load event does not clear demo history");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,125,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,125,false),false,false);
     check(viewer.fpsHistoryText=="1" && viewer.hud[level.fpsHistoryHudName].alpha==1,"new recorded jump removes truncation marker");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,142,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
-    for(i=0;i<3;i++)viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,142,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
+    for(i=0;i<3;i++)viewer applyRecordedFrame(demoFrame(1,-1,false,250,false),true,false);
     check(viewer.fpsHistoryText=="14-2","recorded bounce separator preserved");
     player.FPS = 125;
     setSequence(player,"14");
-    player openCJ\huds\hudFPSHistory::onBounced();
+    player onBounced();
     wait 0.2;
     check(player.fpsHistoryText == "14-1", "live bounce separator preserved");
-    player thread openCJ\huds\hudFPSHistory::_onBhopThread();
+    player thread _onBhopThread();
     wait 0.2;
     check(player.fpsHistoryText == "14-1/1", "live bhop separator preserved");
 
-    player openCJ\huds\hudFPSHistory::onLoaded();
+    player onLoaded();
     check(player.fpsHistoryText == "", "loading clears live history");
-    player openCJ\huds\hudFPSHistory::_addFPSHistory("2");
+    player _addFPSHistory("2");
     check(player.fpsHistoryText == "2", "new live history starts without truncation marker");
-    player openCJ\huds\hudFPSHistory::_clearFPSHistory();
+    player _clearFPSHistory();
     check(player.fpsHistoryText == "", "explicit history clear removes previous live history");
     setSequence(player,"14");
-    player openCJ\huds\hudFPSHistory::onSpawnPlayer();
+    player onSpawnPlayer();
     check(player.fpsHistoryText == "" && player.hud[level.fpsHistoryHudName].alpha == 0, "spawn clears and hides history");
 
     viewer.playingDemo = false;
     viewer followPlayer(player getEntityNumber());
     wait 0.1;
-    player openCJ\huds\hudFPSHistory::_setFPSHistory(full);
-    player openCJ\huds\hudFPSHistory::_addFPSHistory("2");
+    player _setFPSHistory(full);
+    player _addFPSHistory("2");
     check(viewer.hud[level.fpsHistoryHudName].lastText == player.fpsHistoryText, "spectator receives updated truncated history");
-    player openCJ\huds\hudFPSHistory::onOnGround(true);
+    player onOnGround(true);
     wait 0.1;
     check(player.fpsHistoryText != "", "landing retains history during two-second grace period");
     wait 2;
     check(player.fpsHistoryText == "" && viewer.hud[level.fpsHistoryHudName].alpha == 0, "landing clears live history and spectator HUD");
     viewer followPlayer(-1);
     viewer.playingDemo = true;
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,true,333,false),true,false);
-    for(i=0;i<39;i++)viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,true,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,true,333,false),true,false);
+    for(i=0;i<39;i++)viewer applyRecordedFrame(demoFrame(1,-1,true,333,false),true,false);
     check(viewer.fpsHistoryText!="","recorded landing grace period lasts 1950 ms");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,true,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,true,333,false),true,false);
     check(viewer.fpsHistoryText=="" && viewer.hud[level.fpsHistoryHudName].alpha==0,"recorded landing clears history at 2000 ms");
 
     hud = viewer.hud[level.fpsHistoryHudName];
@@ -161,7 +165,7 @@ setupPlayer(player)
     player spawn((0, 0, 200), (0, 0, 0));
     player.isFirstSpawn = false;
     player openCJ\huds\base::onPlayerConnect();
-    player openCJ\huds\hudFPSHistory::onPlayerConnect();
+    player onPlayerConnect();
     player openCJ\huds\hudFPS::onPlayerConnect();
     player.fpsHistoryMode="compact";
 }
@@ -206,17 +210,17 @@ sameText(a, b)
 
 setSequence(player,text)
 {
-    player openCJ\huds\hudFPSHistory::_beginHistory(text[0]);
-    for(j=1;j<text.size;j++)player openCJ\huds\hudFPSHistory::_recordFPS(text[j]);
+    player _beginHistory(text[0]);
+    for(j=1;j<text.size;j++)player _recordFPS(text[j]);
 }
 startMovement(player,forward,right)
 {
     player.FPS=333;player.fpsTestTime=200;
-    player openCJ\huds\hudFPSHistory::_clearFPSHistory();
-    player openCJ\huds\hudFPSHistory::onMovementState(forward,right,100,true);
-    player openCJ\huds\hudFPSHistory::onMovementState(forward,right,103,false);
+    player _clearFPSHistory();
+    player onMovementState(forward,right,100,true);
+    player onMovementState(forward,right,103,false);
     player.lastGroundEnterTime=getTime()-1000;
-    player openCJ\huds\hudFPSHistory::onOnGround(false);
+    player onOnGround(false);
 }
 demoFrame(forward,right,onGround,fps,bounce)
 {
@@ -229,7 +233,7 @@ strafeHistory(player,viewer)
     check(level.settings["specfps"].defaultVal=="detailed","Detailed is the persistent setting default");
     check(isDefined(level.commands["specfps"]) && level.commands["fpshistory"].cmd.name=="specfps","mode command and alias registered for help");
     player setOrigin((0,0,5000));player setVelocity((0,0,0));wait .1;
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("detailed");
+    viewer _onModeChanged("detailed");
     startMovement(player,1,-1);
     check(player.fpsHistoryText=="3" && viewer.hud[level.fpsHistoryHudName].lastText=="^6WA ^73","detailed takeoff labels held input");
     heldInput(player,1,1);
@@ -238,26 +242,26 @@ strafeHistory(player,viewer)
     check(viewer.hud[level.fpsHistoryHudName].lastText=="^6WA ^73 ^7> ^2WD ^732","detailed fullbeat and FPS changes grouped");
     heldInput(player,0,1);
     check(player.fpsHistoryText=="32" && player.fpsHistoryDetailedText=="^6WA ^73 ^7> ^2WD ^732","Detailed groups landing adjustment within its strafe phase");
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("compact");
+    viewer _onModeChanged("compact");
     check(viewer.hud[level.fpsHistoryHudName].alpha==0,"switching live spectator mode hides the current jump");
     startMovement(player,1,-1);player openCJ\fps::onFPSChange(250);
     check(viewer.hud[level.fpsHistoryHudName].lastText=="32","Compact starts on the next jump without key labels");
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("off");
+    viewer _onModeChanged("off");
     player openCJ\fps::onFPSChange(333);
     check(viewer.hud[level.fpsHistoryHudName].alpha==0,"Off stays hidden while source updates");
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("detailed");
+    viewer _onModeChanged("detailed");
 
 
-    player openCJ\huds\hudFPSHistory::onBounced();
+    player onBounced();
 
     wait .2;
 
-    player thread openCJ\huds\hudFPSHistory::_onBhopThread();
+    player thread _onBhopThread();
 
-    viewer openCJ\huds\hudFPSHistory::_render(player);
+    viewer _render(player);
 
 
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("detailed");
+    viewer _onModeChanged("detailed");
     startMovement(player,1,-1);
     heldInput(player,1,0);
     heldInput(player,1,1);
@@ -275,7 +279,7 @@ strafeHistory(player,viewer)
     startMovement(player,-1,-1);
     heldInput(player,-1,1);
     check(player.fpsHistoryDetailedText=="^6SA ^73 ^7> ^2SD ^73","backward fullbeat labels supported");
-    check(openCJ\huds\hudFPSHistory::inputLabel(0,0)=="None" && openCJ\huds\hudFPSHistory::inputLabel(-1,0)=="S","neutral and S-only actions labelled");
+    check(inputLabel(0,0)=="None" && inputLabel(-1,0)=="S","neutral and S-only actions labelled");
     for(j=0;j<150;j++)
     {
         heldInput(player,1,1-2*(j%2));
@@ -283,61 +287,61 @@ strafeHistory(player,viewer)
     }
     check(player.fpsHistoryEvents.size<=64 && player.fpsHistoryText.size<=512 && player.fpsHistoryDetailedText.size<=512,"structured history and both renderings bounded");
     check(getSubStr(player.fpsHistoryDetailedText,0,5)=="^7...","detailed history visibly marks truncation");
-    viewer openCJ\huds\hudFPSHistory::onSpectatorClientChanged(player);
+    viewer onSpectatorClientChanged(player);
     check(viewer.hud[level.fpsHistoryHudName].lastText==player.fpsHistoryDetailedText,"new spectator receives current detailed history");
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("off");
+    viewer _onModeChanged("off");
 
 
     viewer.playingDemo=true;
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("detailed");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,true,333,false),false,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,250,false),true,false);
+    viewer _onModeChanged("detailed");
+    viewer applyRecordedFrame(demoFrame(1,-1,true,333,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,250,false),true,false);
     repeatDemo(viewer,1,1,250,2);
     check(viewer.fpsHistoryText=="32" && viewer.fpsHistoryDetailedText=="^6WA ^73 ^7> ^2WD ^732","demo frames share detailed parastrafe history");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,true,333,false),false,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,250,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,true,333,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,250,false),true,false);
     repeatDemo(viewer,1,1,250,3);
     check(viewer.fpsHistoryText=="32","same-frame FPS/key change does not invent an extra 333");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,true,250,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,250,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,true,250,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,250,false),true,false);
     check(viewer.fpsHistoryText=="32/2","demo bhop retains history with matching separator");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
-    for(j=0;j<5;j++)viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
+    for(j=0;j<5;j++)viewer applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
     check(viewer.fpsHistoryText=="3","300 ms demo ground contact is not misclassified using recorded client FPS");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(0,-1,false,250,false),false,false);
+    viewer applyRecordedFrame(demoFrame(0,-1,false,250,false),false,false);
     check(viewer.fpsHistoryText=="2" && viewer.fpsHistoryDetailedText=="^6A ^72","seek or reversed playback starts fresh history");
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,333,false),true,true);
+    viewer applyRecordedFrame(demoFrame(1,1,false,333,false),true,true);
     check(viewer.fpsHistoryText=="2","interpolation creates no phantom input actions");
     saved=spawnStruct();saved.fpshistory=player.fpshistory;saved.fpsHistoryText=player.fpsHistoryText;
     saved.fpsHistoryEvents=player.fpsHistoryEvents;saved.fpsHistoryTruncated=player.fpsHistoryTruncated;
     saved.fpsHistoryShortFPS=player.fpshistory["shortfps"];saved.fpsHistoryStyle=player.fpsHistoryStyle;
-    viewer openCJ\huds\hudFPSHistory::restoreLiveHistory(saved);
+    viewer restoreLiveHistory(saved);
     check(viewer.fpsHistoryText==saved.fpsHistoryText && viewer.fpshistory["shortfps"]==saved.fpsHistoryShortFPS,
         "return from demo restores structured history and original FPS");
     viewer notify("fpshistory_ongroundchange");
-    viewer openCJ\huds\hudFPSHistory::_clearDemoFPSHistory();viewer.playingDemo=false;
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("compact");
-    player openCJ\huds\hudFPSHistory::onLoaded();
+    viewer _clearDemoFPSHistory();viewer.playingDemo=false;
+    viewer _onModeChanged("compact");
+    player onLoaded();
 }
 
 
 // Regression for noisy real-demo input: adjustments stay within a Detailed phase.
 phaseGrouping(player,viewer)
 {
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("detailed");
+    viewer _onModeChanged("detailed");
     startMovement(player,1,-1);
     heldInput(player,1,0);
     heldInput(player,1,1);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
+    player _recordFPS("2");
     heldInput(player,0,1);
     heldInput(player,0,0);
-    player openCJ\huds\hudFPSHistory::_recordFPS("3");
+    player _recordFPS("3");
     heldInput(player,1,1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents);
+    groups=phaseActions(player.fpsHistoryEvents);
     check(groups.size==2 && groups[0].keys=="WA" && groups[1].keys=="WD",
         "Detailed fullbeat suppresses W/D/neutral release rows");
     check(groups[1].fps=="323","Detailed retains FPS transitions across ignored releases");
@@ -348,16 +352,16 @@ phaseGrouping(player,viewer)
     heldInput(player,0,1);
 
     heldInput(player,1,-1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
+    groups=phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
     check(groups.size==3 && groups[0].keys=="WA" && groups[1].keys=="D" && groups[2].keys=="WA" &&
         player.fpsHistoryStyle.kind=="halfbeat","WA D WA confirms halfbeat and recovers the first D in its trail");
     heldInput(player,1,1);
     heldInput(player,1,0);
     heldInput(player,0,0);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
+    player _recordFPS("2");
     heldInput(player,0,1);
     heldInput(player,1,-1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
+    groups=phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
     check(groups.size==5 && groups[2].keys=="WA" && groups[2].fps=="32" && groups[3].keys=="D",
         "confirmed halfbeat ignores WD W and neutral adjustments while retaining FPS");
 
@@ -366,7 +370,7 @@ phaseGrouping(player,viewer)
     heldInput(player,1,1);
     heldInput(player,1,-1);
     heldInput(player,1,1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
+    groups=phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
     check(groups.size==3 && groups[1].keys=="A" && groups[2].keys=="WD",
         "confirmed WD A WD halfbeat suppresses WA air-control input");
 
@@ -378,7 +382,7 @@ phaseGrouping(player,viewer)
     heldInput(player,0,-1);
     heldInput(player,-1,0);
     heldInput(player,0,1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
+    groups=phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
     check(groups.size==2 && groups[1].keys=="WD" && player.fpsHistoryStyle.kind=="fullbeat",
         "recorded Moon fullbeat landing A S D taps never change the established style");
     heldInput(player,1,1);
@@ -389,17 +393,17 @@ phaseGrouping(player,viewer)
     startMovement(player,1,0);
     heldInput(player,0,0);
     heldInput(player,-1,0);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
+    player _recordFPS("2");
     heldInput(player,0,-1);
     heldInput(player,0,1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
+    groups=phaseActions(player.fpsHistoryEvents,player.fpsHistoryStyle);
     check(groups.size==1 && groups[0].keys=="W" && groups[0].fps=="32",
         "straight W jump keeps its label through S braking and A D landing steering");
     startMovement(player,-1,-1);
     heldInput(player,-1,1);
     heldInput(player,-1,0);
     heldInput(player,0,1);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(player.fpsHistoryEvents);
+    groups=phaseActions(player.fpsHistoryEvents);
     check(groups.size==2 && groups[1].keys=="SD","backward fullbeat release adjustments stay in their phase");
 
     startMovement(player,0,0);
@@ -408,27 +412,27 @@ phaseGrouping(player,viewer)
 
 
     viewer.playingDemo=true;
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,true),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,true),true,false);
 
     wait .2;
 
 
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,true),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,true),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
 
     repeatDemo(viewer,1,1,333,3);
-    groups=openCJ\huds\hudFPSHistory::phaseActions(viewer.fpsHistoryEvents);
+    groups=phaseActions(viewer.fpsHistoryEvents);
 
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
+    viewer applyRecordedFrame(demoFrame(1,1,false,333,false),true,false);
 
     wait .2;
     viewer notify("fpshistory_ongroundchange");
-    viewer openCJ\huds\hudFPSHistory::_clearDemoFPSHistory();
+    viewer _clearDemoFPSHistory();
     viewer.playingDemo=false;
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("compact");
-    player openCJ\huds\hudFPSHistory::onLoaded();
+    viewer _onModeChanged("compact");
+    player onLoaded();
 }
 
 
@@ -436,27 +440,27 @@ phaseGrouping(player,viewer)
 heldInput(player,forward,right)
 {
     player.fpsTestTime+=200;
-    player openCJ\huds\hudFPSHistory::onMovementState(forward,right,player.fpsTestTime,false);
-    player openCJ\huds\hudFPSHistory::onMovementState(forward,right,player.fpsTestTime+150,false);
+    player onMovementState(forward,right,player.fpsTestTime,false);
+    player onMovementState(forward,right,player.fpsTestTime+150,false);
 }
 
 repeatDemo(player,forward,right,fps,count)
 {
-    for(k=0;k<count;k++)player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(forward,right,false,fps,false),true,false);
+    for(k=0;k<count;k++)player applyRecordedFrame(demoFrame(forward,right,false,fps,false),true,false);
 }
 
 heldDuration(player,viewer)
 {
     player setOrigin((0,0,5000));player setVelocity((0,0,0));
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("detailed");
+    viewer _onModeChanged("detailed");
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,349,false);
+    player onMovementState(1,1,200,false);
+    player _recordFPS("2");
+    player onMovementState(1,1,349,false);
 
     check(player.fpsHistoryEvents.size==1 && player.fpsHistoryText=="3" &&
         viewer.hud[level.fpsHistoryHudName].lastText=="^6WA ^73","149 ms remains pending in Compact and Detailed");
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,350,false);
+    player onMovementState(1,1,350,false);
     check(player.fpsHistoryText=="32" && viewer.hud[level.fpsHistoryHudName].lastText=="^6WA ^73 ^7> ^2WD ^732",
         "confirmed phase keeps its opening FPS in Detailed and deduplicates Compact");
 
@@ -464,10 +468,10 @@ heldDuration(player,viewer)
     startMovement(player,1,-1);
     for(k=0;k<20;k++)
     {
-        player openCJ\huds\hudFPSHistory::onMovementState(1,1,200+k*200,false);
-        player openCJ\huds\hudFPSHistory::_recordFPS("2");
-        player openCJ\huds\hudFPSHistory::_recordFPS("3");
-        player openCJ\huds\hudFPSHistory::onMovementState(1,-1,349+k*200,false);
+        player onMovementState(1,1,200+k*200,false);
+        player _recordFPS("2");
+        player _recordFPS("3");
+        player onMovementState(1,-1,349+k*200,false);
     }
 
     check(player.fpsHistoryEvents.size==1 && !isDefined(player.fpsHistoryStyle) &&
@@ -478,54 +482,54 @@ heldDuration(player,viewer)
     check(player.fpsHistoryDetailedText=="^6WA ^7...32323","Detailed abbreviates long FPS runs with a visible marker");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
-    player openCJ\huds\hudFPSHistory::onMovementState(1,-1,350,false);
+    player onMovementState(1,1,200,false);
+    player _recordFPS("2");
+    player onMovementState(1,-1,350,false);
     check(player.fpsHistoryText=="32","release exactly at the threshold retains the held strafe");
-    player openCJ\huds\hudFPSHistory::onMovementState(1,-1,500,false);
+    player onMovementState(1,-1,500,false);
     check(player.fpsHistoryText=="32","confirmed return phase adds no unchanged Compact FPS");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
+    player onMovementState(1,1,200,false);
     wait .2;
     check(player.fpsHistoryText=="3","live hold confirms without another input-change callback");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
-    player openCJ\huds\hudFPSHistory::onLoaded();
+    player onMovementState(1,1,200,false);
+    player onLoaded();
     wait .2;
     check(player.fpsHistoryText=="" && !isDefined(player.fpsHistoryPending),"load cancels a waiting confirmation");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,300,true);
+    player onMovementState(1,1,200,false);
+    player _recordFPS("2");
+    player onMovementState(1,1,300,true);
     wait .2;
     check(player.fpsHistoryText=="32" && !isDefined(player.fpsHistoryPending),"landing rejects a short phase without losing its FPS");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
-    player openCJ\huds\hudFPSHistory::_action("bounce","",false);
-    player openCJ\huds\hudFPSHistory::_recordFPS("3");
+    player onMovementState(1,1,200,false);
+    player _recordFPS("2");
+    player _action("bounce","",false);
+    player _recordFPS("3");
     check(player.fpsHistoryText=="32-" && player.fpsHistoryPending.fps=="23",
         "pending FPS is split at the bounce while the held input keeps its duration");
     wait .2;
 
-    player openCJ\huds\hudFPSHistory::_action("bhop","",false);
-    player openCJ\huds\hudFPSHistory::_recordFPS("2");
+    player _action("bhop","",false);
+    player _recordFPS("2");
     check(player.fpsHistoryDetailedText=="^6WA ^732 ^7> ^5BOUNCE^7 ^7> ^2WD ^73 ^7> ^3BHOP^7 ^7> ^2WD ^72",
         "Detailed preserves named markers alongside recent phases");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(0,1,200,false);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,-1,349,false);
+    player onMovementState(0,1,200,false);
+    player onMovementState(1,-1,349,false);
     check(!isDefined(player.fpsHistoryStyle) && player.fpsHistoryEvents.size==1,
         "short halfbeat taps cannot confirm a repeating pattern");
 
     startMovement(player,1,-1);
-    player openCJ\huds\hudFPSHistory::onMovementState(1,1,200,false);
-    player openCJ\huds\hudFPSHistory::onMovementState(0,-1,300,false);
+    player onMovementState(1,1,200,false);
+    player onMovementState(0,-1,300,false);
     wait .1;
     check(player.fpsHistoryEvents.size==1,"replacement candidate is not confirmed by the previous timer");
     wait .1;
@@ -533,7 +537,7 @@ heldDuration(player,viewer)
         "replacement candidate gets its own complete hold");
 
     viewer.playingDemo=true;
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    viewer applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
     repeatDemo(viewer,1,1,333,1);
     wait .2;
     check(viewer.fpsHistoryText=="3" && isDefined(viewer.fpsHistoryPending),
@@ -543,35 +547,35 @@ heldDuration(player,viewer)
     repeatDemo(viewer,1,1,250,1);
     check(viewer.fpsHistoryText=="32","150 ms of recorded samples confirms the phase without repeating Compact FPS");
     repeatDemo(viewer,1,-1,333,1);
-    viewer openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(-1,1,false,250,false),false,false);
+    viewer applyRecordedFrame(demoFrame(-1,1,false,250,false),false,false);
     wait .2;
     check(viewer.fpsHistoryText=="2" && !isDefined(viewer.fpsHistoryPending) &&
         viewer.fpsHistoryDetailedText=="^2SD ^72","demo seek discards previous pending input");
 
     viewer notify("fpshistory_ongroundchange");
-    viewer openCJ\huds\hudFPSHistory::_clearDemoFPSHistory();
+    viewer _clearDemoFPSHistory();
     viewer.playingDemo=false;
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("compact");
-    player openCJ\huds\hudFPSHistory::onLoaded();
+    viewer _onModeChanged("compact");
+    player onLoaded();
 }
 
 
 detailedWindow(player,viewer)
 {
-    check(viewer openCJ\huds\hudFPSHistory::_onModeChanged("live") && viewer.fpsHistoryMode=="detailed",
+    check(viewer _onModeChanged("live") && viewer.fpsHistoryMode=="detailed",
         "retired saved Live preference falls back to Detailed");
     actions=[];
     for(i=0;i<7;i++)
     {
         e=spawnStruct();e.kind="move";e.keys="WA";e.fps=""+i;actions[i]=e;
-        if(i==5)check(openCJ\huds\hudFPSHistory::renderDetailed(actions,false)==
+        if(i==5)check(renderDetailed(actions,false)==
             "^6WA ^70 ^7> ^6WA ^71 ^7> ^6WA ^72 ^7> ^6WA ^73 ^7> ^6WA ^74 ^7> ^6WA ^75",
             "Detailed keeps six whole recent actions without truncation");
     }
-    check(openCJ\huds\hudFPSHistory::renderDetailed(actions,false)==
+    check(renderDetailed(actions,false)==
         "^7... > ^6WA ^71 ^7> ^6WA ^72 ^7> ^6WA ^73 ^7> ^6WA ^74 ^7> ^6WA ^75 ^7> ^6WA ^76",
         "seventh action truncates the oldest with a visible marker");
-    viewer openCJ\huds\hudFPSHistory::_onModeChanged("compact");
+    viewer _onModeChanged("compact");
 }
 
 playbackControls(player,viewer)
@@ -634,7 +638,7 @@ playbackSampling(player)
     {
         skip=1;if(i==0)skip=0;
         frame=player openCJ\demos::_getDemoFrame(skip,false);
-        player openCJ\huds\hudFPSHistory::applyRecordedFrame(frame,i>0,false);
+        player applyRecordedFrame(frame,i>0,false);
         reference[i]=player.fpsHistoryDetailedText;compact[i]=player.fpsHistoryText;
     }
     check(compact[6]=="32","source reference contains only actual parastrafe FPS changes");
@@ -712,7 +716,7 @@ playbackSampling(player)
         "clip range change invalidates the cached chronology");
 
     player.demoBegin=0;
-    player openCJ\huds\hudFPSHistory::_onModeChanged("compact");
+    player _onModeChanged("compact");
     check((player demoFPSStats())[1]==0,"changing mode discards all previous mode text");
     player openCJ\demos::syncDemoFPSHistory(699);
     check(player.demoFPSWaiting && (player demoFPSStats())[1]==0,"mode switch waits through the current airborne jump");
@@ -726,7 +730,7 @@ playbackSampling(player)
     player openCJ\demos::syncDemoFPSHistory(16);
     check(player skipPlaybackFrames(0)==16 && isDefined(player demoFPSRead(16)),
         "after the new jump starts the selected mode can seek earlier normally");
-    player openCJ\huds\hudFPSHistory::_onModeChanged("off");
+    player _onModeChanged("off");
     player openCJ\demos::syncDemoFPSHistory(100);
     check((player demoFPSStats())[1]==0 && player.fpsHistoryEvents.size==0,"Off retains no demo FPS display history");
     player.fpsHistoryMode="detailed";player.demoFPSFloor=undefined;player.demoFPSWaiting=false;
@@ -745,7 +749,7 @@ playbackSampling(player)
         openCJ\demos::blendDemoAngle(-179,179,.5)==-180,
         "view rotation crosses wrap by the shortest arc");
     player.demoBegin=0;player.demoEnd=699;
-    player.playingDemo=false;player openCJ\huds\hudFPSHistory::onLoaded();
+    player.playingDemo=false;player onLoaded();
     destroyDemo(id);
 }
 
@@ -754,9 +758,9 @@ playbackSampling(player)
 bounceBoundaries(player)
 {
     player.playingDemo=true;
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
     repeatDemo(player,1,-1,250,1);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
     repeatDemo(player,1,-1,333,1);
     repeatDemo(player,1,1,333,1);
     check(player.fpsHistoryText=="32-","bounce setup waits instead of flashing the approach strafe");
@@ -769,11 +773,11 @@ bounceBoundaries(player)
     check(player.fpsHistoryEvents[2].fps=="23","raw bounce samples remain intact");
     repeatDemo(player,1,1,250,1);
     check(player.fpsHistoryText=="32-32","post-bounce FPS change remains visible");
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
+    player applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
     check(player.fpsHistoryText=="32-32","FPS switch first recorded on ground is excluded");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
     repeatDemo(player,1,-1,333,1);
     repeatDemo(player,1,-1,250,1);
     repeatDemo(player,1,-1,333,1);
@@ -781,14 +785,14 @@ bounceBoundaries(player)
     repeatDemo(player,1,-1,333,1);
     check(player.fpsHistoryText=="2-323","unchanged FPS does not add another digit");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,true),true,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,333,true),true,false);
     repeatDemo(player,1,-1,250,1);
     repeatDemo(player,1,-1,333,2);
     check(player.fpsHistoryText=="2-323","FPS already changed in the bounce sample is not mistaken for carried input");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
     repeatDemo(player,1,-1,250,3);
     check(player.fpsHistoryText=="2-2","unchanged bounce exit FPS is published after the window");
     repeatDemo(player,1,-1,333,1);
@@ -797,27 +801,27 @@ bounceBoundaries(player)
     check(player.fpsHistoryDetailedText=="^6WA ^72 ^7> ^5BOUNCE^7 ^7> ^6WA ^723 ^7> ^2WD ^73",
         "strafe beginning after the bounce window stays a separate phase");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
     repeatDemo(player,1,1,333,1);
     repeatDemo(player,1,-1,250,1);
     repeatDemo(player,1,-1,333,1);
     check(player.fpsHistoryText=="2-323" && !isSubStr(player.fpsHistoryDetailedText,"WD"),
         "rejected short exit tap retains its FPS without creating a strafe");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,false,250,false),false,false);
+    player applyRecordedFrame(demoFrame(1,1,false,250,false),false,false);
     repeatDemo(player,1,1,333,4);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
+    player applyRecordedFrame(demoFrame(1,1,true,333,false),true,false);
     check(player.fpsHistoryText=="23","genuine 333 change 200 ms before landing stays visible");
 
-    player openCJ\huds\hudFPSHistory::_clearDemoFPSHistory();player.playingDemo=false;
+    player _clearDemoFPSHistory();player.playingDemo=false;
 }
 
 
 compactFPSChanges(player)
 {
     player.playingDemo=true;
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
     repeatDemo(player,1,1,333,4);
     repeatDemo(player,1,-1,333,4);
     check(player.fpsHistoryText=="3" &&
@@ -828,20 +832,20 @@ compactFPSChanges(player)
     repeatDemo(player,1,1,333,1);
     check(player.fpsHistoryText=="323","real FPS changes survive independently of strafe boundaries");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
     repeatDemo(player,0,1,333,4);repeatDemo(player,1,-1,333,4);
     check(player.fpsHistoryText=="3" &&
         player.fpsHistoryDetailedText=="^6WA ^73 ^7> ^2D ^73 ^7> ^6WA ^73",
         "confirmed halfbeat retains Detailed phases without duplicate Compact FPS");
 
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,333,false),false,false);
     repeatDemo(player,1,-1,250,1);
-    player openCJ\huds\hudFPSHistory::applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
+    player applyRecordedFrame(demoFrame(1,-1,false,250,true),true,false);
     repeatDemo(player,1,-1,333,1);repeatDemo(player,1,1,333,4);
     repeatDemo(player,1,1,250,1);repeatDemo(player,1,-1,250,4);
     repeatDemo(player,1,1,250,2);repeatDemo(player,1,1,333,2);
     check(player.fpsHistoryText=="32-323","Basic skip Compact collapses repeated 250 at each strafe");
     check(player.fpsHistoryDetailedText=="^6WA ^732 ^7> ^5BOUNCE^7 ^7> ^2WD ^732 ^7> ^6WA ^72 ^7> ^2WD ^723",
         "Basic skip Detailed retains the accepted strafe breakdown");
-    player openCJ\huds\hudFPSHistory::_clearDemoFPSHistory();player.playingDemo=false;
+    player _clearDemoFPSHistory();player.playingDemo=false;
 }
