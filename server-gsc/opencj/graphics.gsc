@@ -47,24 +47,40 @@ onInit()
         "viewbob", false, "Change view bobbing. Usage: !viewbob [on/off]", ::_onSettingViewBob);
     underlyingCmd = openCJ\settings::addSettingBool("fx", true, "fx_enable. Usage: !fx [on/off]",
                                                     ::_onSettingFX);
-    openCJ\settings::addSettingInt("gfx_specular", -1, 2, -1, "Graphics menu: specular",
-                                   ::_gfx_specular);
-    openCJ\settings::addSettingInt("gfx_shadows", -1, 2, -1, "Graphics menu: shadows",
-                                   ::_gfx_shadows);
-    openCJ\settings::addSettingInt("gfx_glow", -1, 1, -1, "Graphics menu: glow", ::_gfx_glow);
-    openCJ\settings::addSettingInt("gfx_dof", -1, 1, -1, "Graphics menu: dof", ::_gfx_dof);
-    openCJ\settings::addSettingInt("gfx_decals", -1, 1, -1, "Graphics menu: decals", ::_gfx_decals);
-    openCJ\settings::addSettingInt("gfx_fog", -1, 1, -1, "Graphics menu: fog", ::_gfx_fog);
-    openCJ\settings::addSettingInt("gfx_sun", -1, 1, -1, "Graphics menu: sun", ::_gfx_sun);
-    openCJ\settings::addSettingInt("gfx_water", -1, 1, -1, "Graphics menu: water", ::_gfx_water);
-    openCJ\settings::addSettingInt("gfx_normal", -1, 1, -1, "Graphics menu: normal", ::_gfx_normal);
-    openCJ\settings::addSettingInt("gfx_detail", -1, 1, -1, "Graphics menu: detail", ::_gfx_detail);
-    openCJ\settings::addSettingInt("gfx_blur", -1, 1, -1, "Graphics menu: blur", ::_gfx_blur);
-    openCJ\settings::addSettingInt("gfx_entities", -1, 1, -1, "Graphics menu: entities",
-                                   ::_gfx_entities);
-    openCJ\settings::addSettingInt("gfx_distance", -1, 131072, -1, "Graphics menu: distance",
-                                   ::_gfx_distance);
-    openCJ\settings::addSettingInt("gfx_lod", -1, 2, -1, "Graphics menu: model detail", ::_gfx_lod);
+    // Negative preferences leave the player's captured client/map defaults alone.
+    unsetPreference = -1;
+    maximumSpecularMode = 2;
+    maximumShadowMode = 2;
+    lowestModelDetail = 2;
+    maximumMenuDistance = 131072; // Largest draw-distance choice in the graphics menu.
+    openCJ\settings::addSettingInt("gfx_specular", unsetPreference, maximumSpecularMode,
+                                   unsetPreference, "Graphics menu: specular", ::_gfx_specular);
+    openCJ\settings::addSettingInt("gfx_shadows", unsetPreference, maximumShadowMode,
+                                   unsetPreference, "Graphics menu: shadows", ::_gfx_shadows);
+    openCJ\settings::addSettingInt("gfx_glow", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: glow", ::_gfx_glow);
+    openCJ\settings::addSettingInt("gfx_dof", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: dof", ::_gfx_dof);
+    openCJ\settings::addSettingInt("gfx_decals", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: decals", ::_gfx_decals);
+    openCJ\settings::addSettingInt("gfx_fog", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: fog", ::_gfx_fog);
+    openCJ\settings::addSettingInt("gfx_sun", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: sun", ::_gfx_sun);
+    openCJ\settings::addSettingInt("gfx_water", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: water", ::_gfx_water);
+    openCJ\settings::addSettingInt("gfx_normal", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: normal", ::_gfx_normal);
+    openCJ\settings::addSettingInt("gfx_detail", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: detail", ::_gfx_detail);
+    openCJ\settings::addSettingInt("gfx_blur", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: blur", ::_gfx_blur);
+    openCJ\settings::addSettingInt("gfx_entities", unsetPreference, 1, unsetPreference,
+                                   "Graphics menu: entities", ::_gfx_entities);
+    openCJ\settings::addSettingInt("gfx_distance", unsetPreference, maximumMenuDistance,
+                                   unsetPreference, "Graphics menu: distance", ::_gfx_distance);
+    openCJ\settings::addSettingInt("gfx_lod", unsetPreference, lowestModelDetail, unsetPreference,
+                                   "Graphics menu: model detail", ::_gfx_lod);
 }
 
 onPlayerConnected()
@@ -74,19 +90,23 @@ onPlayerConnected()
         self setClientCvar("compassMaxRange", level.minimapMaxRange);
         self setClientCvar("opencj_gfx_fov", self openCJ\settings::getSetting("fov"));
         self setClientCvar("opencj_gfx_hideradius", self openCJ\settings::getSetting("hideradius"));
-        self setClientCvar("opencj_gfx_specular", -1);
-        self setClientCvar("opencj_gfx_shadows", -1);
+        unsetPreference = -1;
+        self setClientCvar("opencj_gfx_specular", unsetPreference);
+        self setClientCvar("opencj_gfx_shadows", unsetPreference);
         self setClientCvar("opencj_gfx_blur", 1);
-        mode = 0;
+        showAllPlayers = 0;
+        hideNearbyPlayers = 1;
+        hideAllPlayers = 2;
+        hideMode = showAllPlayers;
         if(self openCJ\settings::getSetting("hideall"))
         {
-            mode = 2;
+            hideMode = hideAllPlayers;
         }
         else if(self openCJ\settings::getSetting("hidenear"))
         {
-            mode = 1;
+            hideMode = hideNearbyPlayers;
         }
-        self setClientCvar("opencj_gfx_hidemode", mode);
+        self setClientCvar("opencj_gfx_hidemode", hideMode);
         // Map defaults are captured by the acknowledged client startup menu.
         self thread _graphicsMenuResponses();
     }
@@ -139,82 +159,127 @@ _onSettingFX(newVal)
     self setClientCvar("fx_enable", newVal);
 }
 
-// Changes remain pending until Apply. Reopening/Cancel drops the pending selection.
+// Keep choices local to this menu listener; reopening or Cancel discards them.
 _graphicsMenuResponses()
 {
     self endon("disconnect");
-    pending = [];
+    pendingSettings = [];
     for(;;)
     {
-        self waittill("menuresponse", menu, response);
-        if(toLower(menu) != "opencj_graphics")
+        self waittill("menuresponse", menuName, response);
+        if(toLower(menuName) != "opencj_graphics")
         {
             continue;
         }
         if(response == "begin" || response == "cancel")
         {
-            pending = [];
+            pendingSettings = [];
             continue;
         }
         if(response == "apply")
         {
-            if(!self openCJ\settings::areSettingsLoaded())
-            {
-                pending = [];
-                continue;
-            }
-            keys = getArrayKeys(pending);
-            for(i = 0; i < keys.size; i++)
-            {
-                if(isDefined(pending[keys[i]]))
-                {
-                    self openCJ\settings::setSettingByScript(keys[i], pending[keys[i]]);
-                }
-            }
-            pending = [];
+            self _applyGraphicsChoices(pendingSettings);
+            pendingSettings = [];
             continue;
         }
-        parts = strTok(response, ":");
-        if(parts.size != 2 || !isValidInt(parts[1]))
+        pendingSettings = _queueGraphicsChoice(pendingSettings, response);
+    }
+}
+
+// Settings may still be loading when the menu opens. Never overwrite them early.
+_applyGraphicsChoices(pendingSettings)
+{
+    if(!self openCJ\settings::areSettingsLoaded())
+    {
+        return;
+    }
+    settingNames = getArrayKeys(pendingSettings);
+    for(i = 0; i < settingNames.size; i++)
+    {
+        settingName = settingNames[i];
+        if(isDefined(pendingSettings[settingName]))
         {
-            continue;
-        }
-        key = parts[0];
-        if(key == "gfx_hidemode")
-        {
-            mode = int(parts[1]);
-            if(mode >= 0 && mode <= 2)
-            {
-                pending["hideall"] = (mode == 2);
-                pending["hidenear"] = (mode == 1);
-            }
-            continue;
-        }
-        if(key != "fullbright" && key != "fx" && key != "viewbob" && key != "fov" &&
-           key != "hideradius" && key != "gfx_specular" && key != "gfx_shadows" &&
-           key != "gfx_glow" && key != "gfx_dof" && key != "gfx_decals" && key != "gfx_fog" &&
-           key != "gfx_sun" && key != "gfx_water" && key != "gfx_lod" && key != "gfx_normal" &&
-           key != "gfx_detail" && key != "gfx_blur" && key != "gfx_entities" &&
-           key != "gfx_distance")
-        {
-            continue;
-        }
-        // Zero remains readable for old saved settings, but is not a menu choice.
-        if(key == "hideradius" && int(parts[1]) < 1)
-        {
-            continue;
-        }
-        if(key == "gfx_lod" && parts[1] == "3")
-        {
-            pending[key] = undefined;
-            continue;
-        }
-        value = openCJ\settings::parseSettingValue(level.settings[key], parts[1]);
-        if(isDefined(value))
-        {
-            pending[key] = value;
+            self openCJ\settings::setSettingByScript(settingName, pendingSettings[settingName]);
         }
     }
+}
+
+// Validate one menu selection without changing the player's applied settings.
+_queueGraphicsChoice(pendingSettings, response)
+{
+    responseParts = strTok(response, ":");
+    if(responseParts.size != 2 || !isValidInt(responseParts[1]))
+    {
+        return pendingSettings;
+    }
+    settingName = responseParts[0];
+    valueText = responseParts[1];
+    if(settingName == "gfx_hidemode")
+    {
+        showAllPlayers = 0;
+        hideNearbyPlayers = 1;
+        hideAllPlayers = 2;
+        hideMode = int(valueText);
+        if(hideMode >= showAllPlayers && hideMode <= hideAllPlayers)
+        {
+            pendingSettings["hideall"] = (hideMode == hideAllPlayers);
+            pendingSettings["hidenear"] = (hideMode == hideNearbyPlayers);
+        }
+        return pendingSettings;
+    }
+    if(!_isGraphicsMenuSetting(settingName))
+    {
+        return pendingSettings;
+    }
+    // Zero remains readable for old saved settings, but is not a menu choice.
+    if(settingName == "hideradius" && int(valueText) < 1)
+    {
+        return pendingSettings;
+    }
+    // The menu's "Current" choice leaves model detail as it was on opening.
+    currentModelDetailChoice = "3";
+    if(settingName == "gfx_lod" && valueText == currentModelDetailChoice)
+    {
+        pendingSettings[settingName] = undefined;
+        return pendingSettings;
+    }
+    value = openCJ\settings::parseSettingValue(level.settings[settingName], valueText);
+    if(isDefined(value))
+    {
+        pendingSettings[settingName] = value;
+    }
+    return pendingSettings;
+}
+
+// A registered setting alone does not make it writable through this menu.
+_isGraphicsMenuSetting(settingName)
+{
+    switch(settingName)
+    {
+        case "fullbright":
+        case "fx":
+        case "viewbob":
+        case "fov":
+        case "hideradius":
+        case "gfx_specular":
+        case "gfx_shadows":
+        case "gfx_glow":
+        case "gfx_dof":
+        case "gfx_decals":
+        case "gfx_fog":
+        case "gfx_sun":
+        case "gfx_water":
+        case "gfx_lod":
+        case "gfx_normal":
+        case "gfx_detail":
+        case "gfx_blur":
+        case "gfx_entities":
+        case "gfx_distance":
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 _gfx_specular(value)
@@ -226,7 +291,8 @@ _gfx_specular(value)
     }
     self setClientCvar("opencj_gfx_specular", value);
     self setClientCvar("r_specular", value != 0);
-    if(value == 2)
+    whiteSpecularMap = 2;
+    if(value == whiteSpecularMap)
     {
         self setClientCvar("r_specularMap", "White");
     }
@@ -245,7 +311,8 @@ _gfx_shadows(value)
     }
     self setClientCvar("opencj_gfx_shadows", value);
     self setClientCvar("sm_enable", value != 0);
-    if(value == 2)
+    allDynamicShadows = 2;
+    if(value == allDynamicShadows)
     {
         self setClientCvar("sm_sunEnable", 1);
         self setClientCvar("sm_spotEnable", 1);
@@ -324,16 +391,19 @@ _gfx_lod(value)
     {
         return;
     }
+    mediumModelDetail = 1;
+    lowModelDetail = 2;
+    // Preserve the menu presets: larger scales select simpler distant models.
     rigidScale = 1;
     skinnedScale = 1;
     rigidBias = 0;
     skinnedBias = 0;
-    if(value == 1)
+    if(value == mediumModelDetail)
     {
         rigidScale = 1.5;
         skinnedScale = 2;
     }
-    else if(value == 2)
+    else if(value == lowModelDetail)
     {
         rigidScale = 2;
         skinnedScale = 4;

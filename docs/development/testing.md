@@ -346,3 +346,11 @@ whitespace, overflow, underflow and non-finite values. Valid signs, leading
 integer zeros and decimal exponents remain supported. Its settings cases call
 the production parser to check that rejected numbers cannot bypass setting
 limits; no account or database records are used.
+
+### Graphics menu
+
+The graphics-menu fixture sends real menu notifications to a synthetic client.
+It checks pending edits, Apply/Cancel, unloaded settings, rejected values,
+visibility choices and graphics callback values. A forwarding hook records
+client cvar writes; all fixture settings are session-only. This checks server
+handling and requested values, not the client's rendered graphics.

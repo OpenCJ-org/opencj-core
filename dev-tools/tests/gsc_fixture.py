@@ -180,6 +180,15 @@ def install_observation_hooks(mod, fixture_name):
                 ),
             ),
         ),
+        "graphics-menu.gsc": (
+            "opencj/graphics.gsc",
+            (
+                (
+                    r"\bself\s+setClientCvar\s*\(",
+                    r"self openCJ\platformTest::recordGraphicsCvar(",
+                ),
+            ),
+        ),
         "client-startup.gsc": (
             "opencj/camera.gsc",
             (
