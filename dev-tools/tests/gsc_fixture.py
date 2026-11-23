@@ -113,8 +113,21 @@ def copy_scripts(options, mod):
 
 
 def install_observation_hooks(mod, fixture_name):
-    """Forward selected native HUD calls through fixture observers in the private copy."""
+    """Observe selected side effects only in the isolated script copy."""
     hooks = {
+        "save-position.gsc": (
+            "opencj/saveposition.gsc",
+            (
+                (
+                    r"openCJ\\historySave::saveToDatabase\s*\(",
+                    r"openCJ\platformTest::recordPersistence(",
+                ),
+                (
+                    r"openCJ\\demoRecording::onSaved\s*\(",
+                    r"openCJ\platformTest::recordDemoSave(",
+                ),
+            ),
+        ),
         "hud-display.gsc": (
             "opencj/huds/hudfps.gsc",
             (

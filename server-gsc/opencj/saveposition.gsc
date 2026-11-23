@@ -296,10 +296,26 @@ setSavedPosition()
     flags = self createFlags();
     FPSModeStr = self openCJ\fps::getCurrentFPSMode();
     FPSModeNum = self openCJ\fps::FPSModeToInt(FPSModeStr);
+    previousSaveCount = self openCJ\statistics::getSaveCount();
     saveNum = self openCJ\statistics::increaseAndGetSaveCount();
 
-    self thread openCJ\historySave::saveToDatabase(origin, angles, entTargetName, numOfEnt, self openCJ\statistics::getExplosiveJumps(), self openCJ\statistics::getDoubleExplosives(), self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeStr, flags);
-    self savePosition_save(origin, angles, entNum, self openCJ\statistics::getExplosiveJumps(), self openCJ\statistics::getDoubleExplosives(), self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeNum, flags, saveNum);
+    // Native validation can reject a position. Publish it only after local storage
+    // accepts it, so a failed save cannot advance progress or add a demo marker.
+    saved = self savePosition_save(origin, angles, entNum,
+        self openCJ\statistics::getExplosiveJumps(),
+        self openCJ\statistics::getDoubleExplosives(),
+        self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeNum, flags, saveNum);
+    if (!isDefined(saved))
+    {
+        self openCJ\statistics::setSaveCount(previousSaveCount);
+        self iprintln("^1Could not save this position.");
+        return undefined;
+    }
+
+    self thread openCJ\historySave::saveToDatabase(origin, angles, entTargetName, numOfEnt,
+        self openCJ\statistics::getExplosiveJumps(),
+        self openCJ\statistics::getDoubleExplosives(),
+        self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeStr, flags);
     self openCJ\demoRecording::onSaved(saveNum);
     return saveNum;
 }
