@@ -5,199 +5,230 @@
 onInit()
 {
     level.nameRulesReady = false;
-    loadRules(
-        openCJ\mySQL::mysqlSyncQuery(
-            "SELECT ruleID,nameHash,normalizedLength,matchMode FROM nameModerationRules WHERE enabled=1"),
-        openCJ\mySQL::mysqlSyncQuery(
-            "SELECT e.ruleID,e.nameHash FROM nameModerationExceptions e JOIN nameModerationRules r ON r.ruleID=e.ruleID WHERE r.enabled=1"));
+    loadRules(openCJ\mySQL::mysqlSyncQuery(rulesQuery()),
+              openCJ\mySQL::mysqlSyncQuery(exceptionsQuery()));
 }
-loadRules(rows, exceptions)
+
+// Build every lookup index before replacing the active policy.
+loadRules(ruleRows, exceptionRows)
 {
-    if(!isDefined(rows) || !isDefined(exceptions))
+    if(!isDefined(ruleRows) || !isDefined(exceptionRows))
     {
         return false;
     }
-    whole = [];
-    partial = [];
-    lengths = [];
-    allowed = [];
-    for(i = 0; i < rows.size; i++)
+    wholeRules = [];
+    containedRules = [];
+    containedLengths = [];
+    ruleExceptions = [];
+    for(i = 0; i < ruleRows.size; i++)
     {
-        id = int(rows[i][0]);
-        hash = rows[i][1];
-        size = int(rows[i][2]);
-        if(rows[i][3] == "contains")
+        ruleID = int(ruleRows[i][0]);
+        nameHash = ruleRows[i][1];
+        normalizedLength = int(ruleRows[i][2]);
+        if(ruleRows[i][3] == "contains")
         {
-            partial[hash] = id;
-            lengths[size] = true;
+            containedRules[nameHash] = ruleID;
+            containedLengths[normalizedLength] = true;
         }
         else
         {
-            whole[hash] = id;
+            wholeRules[nameHash] = ruleID;
         }
     }
-    for(i = 0; i < exceptions.size; i++)
+    for(i = 0; i < exceptionRows.size; i++)
     {
-        allowed[exceptions[i][0] + ":" + exceptions[i][1]] = true;
+        ruleExceptions[exceptionRows[i][0] + ":" + exceptionRows[i][1]] = true;
     }
-    level.nameWholeRules = whole;
-    level.namePartialRules = partial;
-    level.namePartialLengths = lengths;
-    level.nameRuleExceptions = allowed;
+    level.nameWholeRules = wholeRules;
+    level.namePartialRules = containedRules;
+    level.namePartialLengths = containedLengths;
+    level.nameRuleExceptions = ruleExceptions;
     level.nameRulesReady = true;
     return true;
 }
+
+// Keep the previous policy if either database read fails.
 reload()
 {
-    rows = openCJ\mySQL::mysqlAsyncRead(
-        "SELECT ruleID,nameHash,normalizedLength,matchMode FROM nameModerationRules WHERE enabled=1");
-    exceptions = openCJ\mySQL::mysqlAsyncRead(
-        "SELECT e.ruleID,e.nameHash FROM nameModerationExceptions e JOIN nameModerationRules r ON r.ruleID=e.ruleID WHERE r.enabled=1");
-    return loadRules(rows, exceptions);
+    ruleRows = openCJ\mySQL::mysqlAsyncRead(rulesQuery());
+    exceptionRows = openCJ\mySQL::mysqlAsyncRead(exceptionsQuery());
+    return loadRules(ruleRows, exceptionRows);
 }
+
+// Match the SQL normalizer so stored hashes and live names use the same alphabet.
 normalize(name)
 {
-    value = "";
-    last = "";
+    normalizedName = "";
+    previousLetter = "";
     name = toLower(name);
-    for(i = 0; i < min(name.size, 128); i++)
+    maximumInputCharacters = 128;
+    lowercaseStart = getAscii("a");
+    lowercaseEnd = getAscii("z");
+    for(i = 0; i < min(name.size, maximumInputCharacters); i++)
     {
-        c = name[i];
-        if(c == "^")
+        character = name[i];
+        if(character == "^")
         {
             i++;
             continue;
         }
-        if(c == "0")
+        if(character == "0")
         {
-            c = "o";
+            character = "o";
         }
-        else if(c == "1" || c == "!")
+        else if(character == "1" || character == "!")
         {
-            c = "i";
+            character = "i";
         }
-        else if(c == "3")
+        else if(character == "3")
         {
-            c = "e";
+            character = "e";
         }
-        else if(c == "4" || c == "@")
+        else if(character == "4" || character == "@")
         {
-            c = "a";
+            character = "a";
         }
-        else if(c == "5" || c == "$")
+        else if(character == "5" || character == "$")
         {
-            c = "s";
+            character = "s";
         }
-        else if(c == "7")
+        else if(character == "7")
         {
-            c = "t";
+            character = "t";
         }
-        n = getAscii(c);
-        if(n < 97 || n > 122)
+        characterCode = getAscii(character);
+        if(characterCode < lowercaseStart || characterCode > lowercaseEnd)
         {
             continue;
         }
-        if(c != last)
+        if(character != previousLetter)
         {
-            value += c;
+            normalizedName += character;
         }
-        last = c;
+        previousLetter = character;
     }
-    return value;
+    return normalizedName;
 }
-// -1 means no policy snapshot is available; keep an accepted/fallback name.
+
+// Return a matching rule ID, 0 for an allowed name, or -1 when no policy is available.
 blockedRule(name)
 {
     if(!isDefined(level.nameRulesReady) || !level.nameRulesReady)
     {
         return -1;
     }
-    normal = normalize(name);
-    full = sha256(normal);
-    id = level.nameWholeRules[full];
-    if(isDefined(id) && !isDefined(level.nameRuleExceptions[id + ":" + full]))
+    normalizedName = normalize(name);
+    fullNameHash = sha256(normalizedName);
+    ruleID = level.nameWholeRules[fullNameHash];
+    if(isDefined(ruleID) && !isDefined(level.nameRuleExceptions[ruleID + ":" + fullNameHash]))
     {
-        return id;
+        return ruleID;
     }
-    for(size = 1; size <= normal.size; size++)
+    for(substringLength = 1; substringLength <= normalizedName.size; substringLength++)
     {
-        if(!isDefined(level.namePartialLengths[size]))
+        if(!isDefined(level.namePartialLengths[substringLength]))
         {
             continue;
         }
-        for(start = 0; start + size <= normal.size; start++)
+        for(start = 0; start + substringLength <= normalizedName.size; start++)
         {
-            id = level.namePartialRules[sha256(getSubStr(normal, start, start + size))];
-            if(isDefined(id) && !isDefined(level.nameRuleExceptions[id + ":" + full]))
+            ruleID = level.namePartialRules[sha256(
+                getSubStr(normalizedName, start, start + substringLength))];
+            if(isDefined(ruleID) &&
+               !isDefined(level.nameRuleExceptions[ruleID + ":" + fullNameHash]))
             {
-                return id;
+                return ruleID;
             }
         }
     }
     return 0;
 }
+
 fallbackName()
 {
     if(isDefined(self.nameModerationFallback))
     {
         return self.nameModerationFallback;
     }
-    name = "Clown#";
-    for(i = 0; i < 4; i++)
+    fallback = "Clown#";
+    suffixDigits = 4;
+    for(i = 0; i < suffixDigits; i++)
     {
-        name += randomInt(10);
+        fallback += randomInt(10);
     }
-    self.nameModerationFallback = name;
-    return name;
+    self.nameModerationFallback = fallback;
+    return fallback;
 }
+
 preferredName(raw)
 {
     // Match the 15-character visible engine name budget; no hidden colors.
-    if(raw.size > 128)
+    maximumInputCharacters = 128;
+    minimumVisibleCharacters = 3;
+    maximumVisibleCharacters = 15;
+    minimumPrintableCode = 32;
+    maximumPrintableCode = 126;
+    if(raw.size > maximumInputCharacters)
     {
         return undefined;
     }
-    value = "";
-    space = false;
+    preferred = "";
+    pendingSpace = false;
     for(i = 0; i < raw.size; i++)
     {
-        c = raw[i];
-        n = getAscii(c);
-        if(n < 32 || n > 126 || c == "^")
+        character = raw[i];
+        characterCode = getAscii(character);
+        if(characterCode < minimumPrintableCode || characterCode > maximumPrintableCode ||
+           character == "^")
         {
             return undefined;
         }
-        if(c == " ")
+        if(character == " ")
         {
-            if(value != "")
+            if(preferred != "")
             {
-                space = true;
+                pendingSpace = true;
             }
             continue;
         }
-        if(space)
+        if(pendingSpace)
         {
-            value += " ";
-            space = false;
+            preferred += " ";
+            pendingSpace = false;
         }
-        value += c;
+        preferred += character;
     }
-    if(value.size < 3 || value.size > 15)
+    if(preferred.size < minimumVisibleCharacters || preferred.size > maximumVisibleCharacters)
     {
         return undefined;
     }
-    visible = false;
-    for(i = 0; i < value.size; i++)
+    hasLetterOrDigit = false;
+    for(i = 0; i < preferred.size; i++)
     {
-        n = getAscii(toLower(value[i]));
-        if((n >= 97 && n <= 122) || (n >= 48 && n <= 57))
+        characterCode = getAscii(toLower(preferred[i]));
+        isLetter = characterCode >= getAscii("a") && characterCode <= getAscii("z");
+        isDigit = characterCode >= getAscii("0") && characterCode <= getAscii("9");
+        if(isLetter || isDigit)
         {
-            visible = true;
+            hasLetterOrDigit = true;
         }
     }
-    if(!visible)
+    if(!hasLetterOrDigit)
     {
         return undefined;
     }
-    return value;
+    return preferred;
+}
+
+// These queries return hashes and numeric IDs; private submitted terms stay out of script memory.
+rulesQuery()
+{
+    return "SELECT ruleID,nameHash,normalizedLength,matchMode" +
+           " FROM nameModerationRules WHERE enabled=1";
+}
+
+exceptionsQuery()
+{
+    return "SELECT e.ruleID,e.nameHash FROM nameModerationExceptions e" +
+           " JOIN nameModerationRules r ON r.ruleID=e.ruleID WHERE r.enabled=1";
 }
