@@ -1,8 +1,8 @@
-// Reproduce the disconnect race without player accounts or database access.
+// Exercise startup waiters and disconnect/map cancellation without accounts or SQL.
 main()
 {
-    level.failures = 0;
-    level.checks = 0;
+    level.startupFailures = 0;
+    level.startupChecks = 0;
     wait 1;
     player = addTestClient();
     wait 0.2;
@@ -12,51 +12,80 @@ main()
         finish();
         return;
     }
-    player.clientInitPending = true;
-    level.afterWait = false;
-    player thread completionWaiter();
-    wait 0.1;
-    check(!level.afterWait, "startup consumers wait for acknowledgement");
-    player.clientInitPending = false;
-    wait 0.1;
-    check(level.afterWait, "startup consumers resume after acknowledgement");
-    player.clientInitPending = true;
-    level.cameraAfterWait = false;
-    player thread openCJ\camera::onPlayerConnected();
-    wait 0.1;
-    player notify("disconnect");
-    player.settingValues = undefined;
-    player.clientInitPending = false;
-    wait 0.15;
-    check(true, "camera thread cancelled without reading cleared settings");
-    player.clientInitPending = true;
-    level.afterWait = false;
-    player thread completionWaiter();
-    wait 0.05;
-    level notify("game_ended");
-    player.clientInitPending = false;
-    wait 0.1;
-    check(!level.afterWait, "map change cancels pending startup work");
+    player verifyConsumerWait();
+    player verifyDisconnectedCamera();
+    player verifyMapChangeCancellation();
     finish();
 }
+
+verifyConsumerWait()
+{
+    self.clientInitPending = true;
+    level.startupWaitCompleted = false;
+    self thread completionWaiter();
+    wait 0.1;
+    check(!level.startupWaitCompleted, "startup consumers wait for acknowledgement");
+    self.clientInitPending = false;
+    wait 0.1;
+    check(level.startupWaitCompleted, "startup consumers resume after acknowledgement");
+}
+
+verifyDisconnectedCamera()
+{
+    self.clientInitPending = true;
+    self.startupCameraWrites = 0;
+    self thread openCJ\camera::onPlayerConnected();
+    wait 0.1;
+
+    self notify("disconnect");
+    self.settingValues = undefined;
+    self.clientInitPending = false;
+    wait 0.15;
+
+    check(self.startupCameraWrites == 0, "disconnect prevents late camera cvar writes");
+}
+
+verifyMapChangeCancellation()
+{
+    self.clientInitPending = true;
+    level.startupWaitCompleted = false;
+    self thread completionWaiter();
+    wait 0.05;
+
+    level notify("game_ended");
+    self.clientInitPending = false;
+    wait 0.1;
+
+    check(!level.startupWaitCompleted, "map change cancels pending startup work");
+}
+
 completionWaiter()
 {
     self endon("disconnect");
     level endon("game_ended");
     self openCJ\clientInit::waitUntilFinished();
-    level.afterWait = true;
+    level.startupWaitCompleted = true;
 }
-check(passed, label)
+
+// Installed only in the fixture copy; retain the native cvar write when one occurs.
+recordCameraSetting(cvarName, value)
 {
-    level.checks++;
-    if(!passed)
-    {
-        level.failures++;
-    }
-    printf("STARTUP SELFTEST " + label + ": " + passed + "\n");
+    self.startupCameraWrites++;
+    self setClientCvar(cvarName, value);
 }
+
+check(passed, description)
+{
+    level.startupChecks++;
+    if(!isDefined(passed) || !passed)
+    {
+        level.startupFailures++;
+    }
+    printf("STARTUP SELFTEST " + description + ": " + passed + "\n");
+}
+
 finish()
 {
-    printf("STARTUP SELFTEST COMPLETE failures=" + level.failures + " checks=" + level.checks +
-           "\n");
+    printf("STARTUP SELFTEST COMPLETE failures=" + level.startupFailures
+        + " checks=" + level.startupChecks + "\n");
 }

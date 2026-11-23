@@ -124,6 +124,15 @@ def copy_scripts(options, mod):
 def install_observation_hooks(mod, fixture_name):
     """Observe selected side effects only in the isolated script copy."""
     hooks = {
+        "client-startup.gsc": (
+            "opencj/camera.gsc",
+            (
+                (
+                    r"\bself\s+setClientCvar\s*\(",
+                    r"self openCJ\platformTest::recordCameraSetting(",
+                ),
+            ),
+        ),
         "save-position.gsc": (
             "opencj/saveposition.gsc",
             (

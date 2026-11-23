@@ -14,19 +14,20 @@ canStart()
     {
         return false;
     }
-    value = self getUserInfo("com_maxfps");
+    reportedFPS = self getUserInfo("com_maxfps");
     if(isDefined(self.fpsRegistrationRequested) && self.fpsRegistrationRequested)
     {
-        return hasRestoredFPS(value);
+        return hasRestoredFPS(reportedFPS);
     }
-    return hasReportedFPS(value);
+    return hasReportedFPS(reportedFPS);
 }
 
 // During our menu handshake, 999 is the temporary value, not completion.
 // Other reported values still undergo the unchanged FPS legality checks.
 hasRestoredFPS(value)
 {
-    return hasReportedFPS(value) && value != "999";
+    temporaryFPSValue = "999";
+    return hasReportedFPS(value) && value != temporaryFPSValue;
 }
 
 begin()
@@ -62,7 +63,8 @@ finish()
 
 explainBlocked()
 {
-    if(isDefined(self.fpsRegistrationMessageAt) && getTime() < self.fpsRegistrationMessageAt + 5000)
+    messageCooldownMs = 5000;
+    if(isDefined(self.fpsRegistrationMessageAt) && getTime() < self.fpsRegistrationMessageAt + messageCooldownMs)
     {
         return;
     }

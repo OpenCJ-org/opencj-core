@@ -19,12 +19,16 @@ onConnected()
     self setClientCvar("opencj_init_fps", int(self.fpsRegistrationRequested));
     self thread watchAcknowledgement();
 
-    for(attempt = 0; attempt < 3; attempt++)
+    // Retry about once per second, stopping early when the client acknowledges.
+    maximumAttempts = 3;
+    acknowledgementPollsPerAttempt = 20;
+    acknowledgementPollSeconds = 0.05;
+    for(attempt = 0; attempt < maximumAttempts; attempt++)
     {
         self openMenu("opencj_client_init");
-        for(poll = 0; poll < 20; poll++)
+        for(poll = 0; poll < acknowledgementPollsPerAttempt; poll++)
         {
-            wait 0.05;
+            wait acknowledgementPollSeconds;
             if(self acknowledged())
             {
                 break;
@@ -77,10 +81,12 @@ watchAcknowledgement()
     }
 }
 
+// The coordinator clears pending after bounded retries. Callers own disconnect/map cancellation.
 waitUntilFinished()
 {
+    completionPollSeconds = 0.05;
     while(isDefined(self.clientInitPending) && self.clientInitPending)
     {
-        wait 0.05;
+        wait completionPollSeconds;
     }
 }
