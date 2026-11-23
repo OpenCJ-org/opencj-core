@@ -6,7 +6,7 @@
     {% if releases %}
     {% set release = releases[0] %}
     <div class="label">Latest release · {{ release.released_on.strftime("%d %b %Y") }}</div>
-    <h1 id="latest-release">{{ release.title }}<span class="version">v{{ release.version }}</span></h1>
+    <h1 id="latest-release">{{ release.title }}<span class="version">{{ release.version }}</span></h1>
     {{ release_body(release) }}
     <div class="actions"><a class="button" href="{{ root }}releases/">All release notes</a></div>
     {% else %}

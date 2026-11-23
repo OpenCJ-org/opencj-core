@@ -9,7 +9,7 @@
 {% for release in releases %}
 <section class="card" id="v-{{ release.slug }}" aria-labelledby="title-{{ release.slug }}">
   <div class="label">{{ release.released_on.strftime("%d %b %Y") }}</div>
-  <h2 id="title-{{ release.slug }}">{{ release.title }}<span class="version">v{{ release.version }}</span></h2>
+  <h2 id="title-{{ release.slug }}">{{ release.title }}<span class="version">{{ release.version }}</span></h2>
   {{ release_body(release) }}
 </section>
 {% else %}
