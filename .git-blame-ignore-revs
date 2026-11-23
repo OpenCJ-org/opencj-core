@@ -141,3 +141,6 @@ fb2f3ba92b90f77c3cb341111781c66ab60103a5
 
 # Map-menu layout; non-brace tokens/comments unchanged, engine checks passed.
 2be02c939fbe1d0d672f135092d406d020109386
+
+# Verified voting layout; non-brace tokens and comments are unchanged.
+56d4661ecb31ee778f28efdc90b1dfcc18c51ad2
