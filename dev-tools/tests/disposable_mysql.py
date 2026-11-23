@@ -20,7 +20,7 @@ READY_TIMEOUT_SECONDS = 90
 class DisposableMySQL:
     """Keep resource limits and load tests separate from the gameplay database."""
 
-    def __init__(self, home, label, *, memory="1536m", container_options=()):
+    def __init__(self, home, label, *, memory="1536m", container_options=(), server_options=()):
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,23}", label):
             raise ValueError("Disposable database label is invalid")
         self.home = Path(home).resolve()
@@ -35,6 +35,7 @@ class DisposableMySQL:
         self.config_files = []
         self.memory = memory
         self.container_options = tuple(container_options)
+        self.server_options = tuple(server_options)
         self.owns_container = False
         self.schema_sha256 = None
 
@@ -131,6 +132,7 @@ class DisposableMySQL:
                 str(self.environment_file),
                 "mysql:8.0",
                 "--log-bin-trust-function-creators=1",
+                *self.server_options,
             ]
         )
         if result.returncode:

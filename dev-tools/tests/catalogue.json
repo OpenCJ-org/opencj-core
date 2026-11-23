@@ -428,9 +428,9 @@
     {
       "id": "capacity",
       "category": "integration",
-      "description": "SQL capacity, real GSC query growth and before/current query equivalence.",
-      "requires": "Selected disposable current database, Docker build/server images, matching engine/assets, two available CPU cores and substantial time. Use documented CPU/fixture options.",
-      "effects": "Separate synthetic growth databases, engine clients and private measurements; helper scripts need the runner's temporary container/schema.",
+      "description": "Current SQL stress and query hosting workloads, with optional mature synthetic history and before/current query comparison.",
+      "requires": "Configured current-schema development database, Docker build/server images, matching engine/assets, two available cores for query hosting, and time for synthetic data generation.",
+      "effects": "Owned MySQL and engine containers, schema-only source read, synthetic records and private measurements; no gameplay rows copied or changed.",
       "files": [
         "dev-tools/tests/run-query-capacity.py",
         "dev-tools/tests/run-sql-capacity-190.py",
@@ -596,7 +596,11 @@
         "dev-tools/tests/compose_environment.py",
         "dev-tools/tests/sql_run_fixture.py",
         "dev-tools/tests/isolated_database.py",
-        "dev-tools/tests/disposable_mysql.py"
+        "dev-tools/tests/disposable_mysql.py",
+        "dev-tools/tests/capacity_data.py",
+        "dev-tools/tests/capacity_fixture.py",
+        "dev-tools/tests/capacity_observers.py",
+        "dev-tools/tests/capacity_metrics.py"
       ],
       "commands": []
     },
