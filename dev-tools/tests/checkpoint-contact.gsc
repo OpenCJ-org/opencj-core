@@ -7,6 +7,7 @@ main()
     level.contactFailures = 0;
     level.contactChecks = 0;
     checkContactTiming();
+    checkPassedCheckpointTraversal();
     checkLeaderboardKinds();
     checkFutileContacts();
     printf("CHECKPOINT CONTACT COMPLETE failures=" + level.contactFailures +
@@ -179,4 +180,67 @@ check(ok, label)
         level.contactFailures++;
         printf("CHECKPOINT CONTACT FAIL: " + label + "\n");
     }
+}
+
+// Rejoining branches must not duplicate their shared ancestors when a save is loaded.
+checkPassedCheckpointTraversal()
+{
+    previousGraph = level.checkpoints_checkpoints;
+    previousStart = level.checkpoints_startCheckpoint;
+    checkpoints = [];
+    for (i = 0; i < 4; i++)
+    {
+        checkpoint = spawnStruct();
+        checkpoint.id = i + 1;
+        checkpoint.childs = [];
+        checkpoints[i] = checkpoint;
+    }
+    opening = checkpoints[0];
+    leftBranch = checkpoints[1];
+    rightBranch = checkpoints[2];
+    finish = checkpoints[3];
+    opening.childs[0] = leftBranch;
+    opening.childs[1] = rightBranch;
+    leftBranch.childs[0] = finish;
+    rightBranch.childs[0] = finish;
+    finish.ender = "synthetic";
+    level.checkpoints_checkpoints = checkpoints;
+    level.checkpoints_startCheckpoint = spawnStruct();
+
+    // Keep the current checkpoint unchanged so restoration needs no HUD/event callbacks.
+    player = spawnStruct();
+    player.login_playerID = 1;
+    player.settingsLoaded = true;
+    player.sessionState = "playing";
+    player.playerRuns_runID = 1;
+    player.runInstanceNumber = 1;
+    player.checkpoints_checkpoint = finish;
+    player openCJ\checkpoints::updateCheckpointsForPlayer(finish.id);
+    check(player.checkpoints_passed.size == 4, "rejoined branches retain each passed checkpoint once");
+    for (i = 0; i < checkpoints.size; i++)
+    {
+        check(player openCJ\checkpoints::hasPassedCheckpoint(checkpoints[i]),
+              "rejoined traversal retains checkpoint " + checkpoints[i].id);
+    }
+
+    // An alternative with another parent between it and its leader must still be deduplicated.
+    alternative = spawnStruct();
+    alternative.id = 5;
+    alternative.childs = [];
+    alternative.childs[0] = finish;
+    alternative.bigBrother = leftBranch;
+    level.checkpoints_checkpoints[4] = alternative;
+    player openCJ\checkpoints::updateCheckpointsForPlayer(finish.id);
+    check(player.checkpoints_passed.size == 4,
+          "nonadjacent alternative parents share one passed checkpoint group");
+    check(player openCJ\checkpoints::hasPassedCheckpoint(alternative),
+          "alternative remains recognized as passed");
+
+    // A malformed cycle must terminate without dropping any reachable checkpoint.
+    finish.childs[0] = opening;
+    player openCJ\checkpoints::updateCheckpointsForPlayer(finish.id);
+    check(player.checkpoints_passed.size == 4, "cyclic ancestry visits each group only once");
+
+    level.checkpoints_checkpoints = previousGraph;
+    level.checkpoints_startCheckpoint = previousStart;
 }

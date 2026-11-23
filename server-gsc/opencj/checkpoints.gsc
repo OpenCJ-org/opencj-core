@@ -707,60 +707,51 @@ getCheckpointID(cp)
     return id;
 }
 
-updateCheckpointsForPlayer(newCheckpointID) // TODO: move a lot of the computation/memory heavy checkpoint things to C
+// Rebuild the passed-checkpoint cache after loading a save. The save already carries
+// any% state, so all ancestors count as passed even when the original run skipped one.
+updateCheckpointsForPlayer(newCheckpointID)
 {
-    // Function is called upon load position, so re-calculate which checkpoints have been passed
     self.checkpoints_passed = [];
-
-    cp = getCheckpointByID(newCheckpointID);
-
-    // Update the player's current checkpoint first, then we use the result of that to determine..
-    // ..which checkpoints have already been passed
-    self _setCurrentCheckpoint(cp);
-
-    // The above call to _setCurrentCheckpoint will have updated the player's current checkpoint, so use that
-    cp = self.checkpoints_checkpoint;
-    if (!isDefined(cp) || (cp == level.checkpoints_startCheckpoint)) // Start checkpoint doesn't have an ID
+    self _setCurrentCheckpoint(getCheckpointByID(newCheckpointID));
+    currentCheckpoint = self.checkpoints_checkpoint;
+    if (!isDefined(currentCheckpoint) || currentCheckpoint == level.checkpoints_startCheckpoint)
     {
-        // Player did not have a passed checkpoint
         return;
     }
 
-    // The next part of the code will obtain all checkpoints that the player has passed and store them so that..
-    // while the player is alive less computational time is needed to determine an action when a checkpoint has been passed
-    // This is important because can't check only the player's current checkpoint anymore since any% mode is implemented.
-    // If any prior checkpoints were skipped, it doesn't matter, because the player's save will have any% marked.
-    cpsToBeProcessed = [];
-    cpsToBeProcessed[0] = cp;
-    self.checkpoints_passed[self.checkpoints_passed.size] = cp;
-    while (cpsToBeProcessed.size > 0)
+    pendingCheckpoints = [];
+    pendingCheckpoints[0] = currentCheckpoint;
+    self.checkpoints_passed[0] = currentCheckpoint;
+    currentGroup = currentCheckpoint;
+    if (isDefined(currentGroup.bigBrother))
     {
-        // Start processing at last one so it can easily be removed from the list
-        nextIdx = (cpsToBeProcessed.size - 1);
-        parents = getCheckpointParents(cpsToBeProcessed[nextIdx]);
-        cpsToBeProcessed[nextIdx] = undefined; // Mark this one as processed
+        currentGroup = currentGroup.bigBrother;
+    }
+    visitedGroups = [];
+    visitedGroups["" + currentGroup.id] = true;
 
-        // Go through the parents of this checkpoint
-        prevBigBrother = undefined;
-        for (j = 0; j < parents.size; j++)
+    // Mark a group when queuing it. Rejoins and alternative areas must not add it
+    // twice; the same bound also stops a malformed cycle from stalling the server.
+    while (pendingCheckpoints.size > 0)
+    {
+        lastIndex = pendingCheckpoints.size - 1;
+        parents = getCheckpointParents(pendingCheckpoints[lastIndex]);
+        pendingCheckpoints[lastIndex] = undefined;
+        for (i = 0; i < parents.size; i++)
         {
-            toBeProcessed = parents[j];
-            if (isDefined(toBeProcessed.bigBrother))
+            parent = parents[i];
+            if (isDefined(parent.bigBrother))
             {
-                toBeProcessed = toBeProcessed.bigBrother;
+                parent = parent.bigBrother;
             }
-
-            // Maybe this checkpoint was already added due to being a big brother
-            if (isDefined(prevBigBrother) && (prevBigBrother.id == toBeProcessed.id))
+            groupKey = "" + parent.id;
+            if (isDefined(visitedGroups[groupKey]))
             {
                 continue;
             }
-            prevBigBrother = toBeProcessed;
-
-            // Add all parents of this checkpoint to the passed list, but also to the to-be-processed list..
-            // because their parents need to be added too
-            cpsToBeProcessed[cpsToBeProcessed.size] = toBeProcessed;
-            self.checkpoints_passed[self.checkpoints_passed.size] = toBeProcessed;
+            visitedGroups[groupKey] = true;
+            pendingCheckpoints[pendingCheckpoints.size] = parent;
+            self.checkpoints_passed[self.checkpoints_passed.size] = parent;
         }
     }
 }

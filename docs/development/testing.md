@@ -131,7 +131,9 @@ but no game assets. The `demo-storage` command uses the Compose build image to
 check native storage and script return values without a game server or database.
 Focused GSC commands name their fixture and completion marker;
 checkpoint contact uses `mp_futile_fixed`, not the stock map used by the other
-focused fixtures. The save-history native fixture checks invalid inputs, non-player
+focused fixtures. Its synthetic graph cases also exercise the real saved-position
+ancestor traversal across rejoined branches, alternative areas and a malformed
+cycle, without database writes. The save-history native fixture checks invalid inputs, non-player
 calls and stale selections without a database. HUD observation wrappers are
 installed only in the fixture copy.
 
