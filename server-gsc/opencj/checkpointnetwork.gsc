@@ -1438,6 +1438,7 @@ rename(previousName, newName)
                  " WHERE mapID=" + mapID + " AND sectionName=" + dbStr(previousName);
     queries[4] = "UPDATE checkpointSectionColors SET sectionName=" + dbStr(newName) +
                  " WHERE mapID=" + mapID + " AND sectionName=" + dbStr(previousName);
+    renamedRouteId = undefined;
     for(i = 0; i < queries.size; i++)
     {
         if(!isDefined(openCJ\mySQL::mysqlSyncQuery(queries[i])))
@@ -1445,6 +1446,22 @@ rename(previousName, newName)
             openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
             return self fail(
                 "Rename failed; existing database records unchanged. New draft copy retained.");
+        }
+        if(i == 0)
+        {
+            // Read identity after the map lock, before any rename updates.
+            routeRows = openCJ\mySQL::mysqlSyncQuery(
+                "SELECT routeID FROM routes " +
+                "WHERE mapID=" + mapID + " AND routeName=" + dbStr(previousName));
+            if(!isDefined(routeRows))
+            {
+                openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+                return self fail("Cannot read route identity; original names retained.");
+            }
+            if(routeRows.size == 1)
+            {
+                renamedRouteId = int(routeRows[0][0]);
+            }
         }
     }
     if(isDefined(network) && !self save(network))
@@ -1455,12 +1472,26 @@ rename(previousName, newName)
     if(!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")))
     {
         openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        if(isDefined(previousNetwork))
+        outcome = renameCommitOutcome(renamedRouteId, previousName, newName);
+        if(outcome == "rolled_back")
         {
-            previousNetwork.revision = network.revision;
-            self save(previousNetwork);
+            if(isDefined(previousNetwork))
+            {
+                previousNetwork.revision = network.revision;
+                if(!self save(previousNetwork))
+                {
+                    return self fail(
+                        "Database rename rolled back; manifest recovery failed. Both draft names retained.");
+                }
+            }
+            return self fail("Database rename rolled back; original names retained.");
         }
-        return self fail("Rename commit failed; original names restored.");
+        if(outcome != "committed")
+        {
+            // Keep both draft copies and both manifest slots when identity cannot settle the write.
+            return self fail(
+                "Cannot confirm rename; recovery drafts retained. Check published names before retrying.");
+        }
     }
     // Keep an explicit recovery snapshot outside the active draft names.
     if(isDefined(previousSection))
@@ -1496,6 +1527,33 @@ rename(previousName, newName)
         "Renamed " + previousName + " to " + newName +
         ". Colors, checkpoint IDs and records retained; separately named branches are unchanged.");
     return true;
+}
+
+// A named route has a stable ID even after its public name changes. Section-only
+// renames or an unavailable connection cannot be settled by this lookup.
+renameCommitOutcome(routeId, previousName, newName)
+{
+    if(!isDefined(routeId))
+    {
+        return "unknown";
+    }
+    rows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT routeName FROM routes WHERE routeID=" + routeId +
+        " AND mapID=" + openCJ\mapID::getMapID());
+    if(!isDefined(rows) || rows.size != 1)
+    {
+        return "unknown";
+    }
+    publishedName = rows[0][0];
+    if(publishedName == newName)
+    {
+        return "committed";
+    }
+    if(publishedName == previousName)
+    {
+        return "rolled_back";
+    }
+    return "unknown";
 }
 
 followingShared()

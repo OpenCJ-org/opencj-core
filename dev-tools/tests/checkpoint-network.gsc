@@ -240,6 +240,7 @@ checkEditingCommands(editor)
         return;
     }
     checkRouteRename(editor);
+    checkLostRenameReply(editor);
 }
 
 prepareSplitApproaches(editor)
@@ -362,4 +363,23 @@ openEditor(routeName)
 recordActivation()
 {
     level.networkActivationObserved = true;
+}
+
+// Reconcile the stable route ID before changing recovery manifests after a missing COMMIT reply.
+checkLostRenameReply(editor)
+{
+    routeRows = openCJ\mySQL::mysqlSyncQuery("SELECT routeID FROM routes WHERE routeName='edit_steep'");
+    if (!check(isDefined(routeRows) && routeRows.size == 1, "rename retry fixture has a stable route ID"))
+    {
+        return;
+    }
+    routeId = int(routeRows[0][0]);
+    level.hideNetworkCommitReply = true;
+    check(editor openCJ\checkpointNetwork::rename("edit_steep", "edit_precise"),
+          "lost rename reply reconciles the committed route identity");
+    network = editor openCJ\checkpointNetwork::load();
+    check(isDefined(network.paths["edit_precise"]) && !isDefined(network.paths["edit_steep"]),
+          "confirmed rename keeps the matching manifest names");
+    checkScalar("SELECT routeID FROM routes WHERE routeName='edit_precise'", routeId,
+                "lost rename reply preserves the same route identity");
 }

@@ -61,6 +61,12 @@ snapshots. Published routes keep their numeric IDs, checkpoint IDs, recordings
 and earned history; consumers resolve the current catalogue name. See
 [stable route identity](../database/route-identity.md).
 
+If the commit reply is lost, the editor checks a published route's stable ID
+before restoring any names. If the database is unavailable or the change only
+renames an internal section, the outcome may remain unknown: both draft copies
+and the alternating manifests are retained. Check the published names before
+retrying; an error reply alone does not prove that the database rename failed.
+
 Complete every branch, mark its finish, then use `!cp finalize` to publish the
 network in one database transaction. A shared finish is supported. Finalization
 may reuse an identical recorded route but rejects unsupported changes to
