@@ -6,195 +6,304 @@
 // Mode bits: any%=1, elevators=2, halfbeat=4, TAS=8. FPS is specified separately.
 definitions()
 {
-    level.challenges=[];
-    add("spectrum.beginner",1,"mp_spectrum","Beginner");
-    add("cj_sky_bounce.main_route",1,"mp_cj_sky_bounce","Main route");
-    add("to_the_moon.easy",1,"mp_to_the_moon","Basic");
-    add("palm.easy",1,"mp_palm","Easy");
-    add("blue2.easy",1,"mp_blue2","Easy");
-    add("spectrum.easy",1,"mp_spectrum","Easy");
-    add("descent_v2.easy",1,"mp_descent_v2","Easy");
-    add("mystic_v2.easy",1,"mp_mystic_v2","Easy");
-    add("mystic_v3.easy",1,"mp_mystic_v3","Easy");
-    add("galaxy.easy",1,"mp_galaxy","Easy");
-    add("to_the_moon.inter",2,"mp_to_the_moon","Intermediate");
-    add("palm.inter",2,"mp_palm","Intermediate");
-    add("blue2.inter",2,"mp_blue2","Intermediate");
-    add("mystic_v3.inter",2,"mp_mystic_v3","Intermediate");
-    add("galaxy.inter",2,"mp_galaxy","Intermediate");
-    add("to_the_moon.advanced",3,"mp_to_the_moon","Advanced");
-    add("blue2.hard",3,"mp_blue2","Hard");
-    add("palm.hard",3,"mp_palm","Hard");
-    add("bone.hard",3,"mp_bone","Hard");
-    add("insane.hard",3,"mp_insane","Hard");
-    add("descent_v2.hard",4,"mp_descent_v2","Hard");
-    add("descent.hard",4,"mp_descent","Hard");
-    add("shade.advanced",4,"mp_shade","Advanced");
-    add("dark.hard",4,"mp_dark","Hard");
-    add("dark_v2.hard",4,"mp_dark_v2","Hard");
-    add("mystic_v2.hard",5,"mp_mystic_v2","Hard");
-    add("palm_v2.hard",5,"mp_palm_v2","Hard");
-    add("qube_v2.hard",5,"mp_qube_v2","Hard");
-    add("marble.hard",5,"mp_marble","Hard");
-    add("restyled.hard",5,"mp_restyled","Hard");
-    add("awe.advanced",6,"mp_awe","Advanced");
-    add("bridge.hard",6,"mp_bridge","Hard");
-    add("mystic_v3.hard",6,"mp_mystic_v3","Hard");
-    add("dawn_v2.hard",6,"mp_dawn_v2","Hard");
-    add("galaxy.hard",6,"mp_galaxy","Hard");
-    add("edge.main_route_edge",7,"mp_edge","Main route (edge)");
-    add("mushroom.fungal_hazards",7,"mp_mushroom","Fungal Hazards");
-    add("heaven_v2.hard",7,"mp_heaven_v2","Hard");
-    add("dark_v3.hard",7,"mp_dark_v3","Hard");
-    add("sunset.hard",7,"mp_sunset","Hard");
-    add("sunset_v2.advanced",8,"mp_sunset_v2","Advanced");
-    add("cyber.reality_corp_advanced",8,"mp_cyber","Reality Corp");
-    add("new_york.hard",8,"mp_new_york","Hard");
-    add("palm_v3.advanced",8,"mp_palm_v3","Advanced");
-    add("palm_v3.challenge",8,"mp_palm_v3","Challenge");
-    add("dark_final.hard",9,"mp_dark_final","Hard");
-    add("restyled_v3.hard",9,"mp_restyled_v3","Hard");
-    add("void_v2.advanced",9,"mp_void_v2","Advanced");
-    add("edge_v2.brutal",9,"mp_edge_v2","Brutal");
-    add("12.advanced",9,"mp_12","Advanced");
-    c=add("dark_final.hard.timed",10,"mp_dark_final","Hard");c.maxTime=3600000;
-    c=add("restyled_v3.hard.timed",10,"mp_restyled_v3","Hard");c.maxTime=3600000;
-    c=add("void_v2.advanced.timed",10,"mp_void_v2","Advanced");c.maxTime=3600000;
-    c=add("edge_v2.brutal.timed",10,"mp_edge_v2","Brutal");c.maxTime=3600000;
-    c=add("12.advanced.timed",10,"mp_12","Advanced");c.maxTime=14400000;
-    c=add("12.challenge.timed",10,"mp_12","Challenge");c.maxTime=28800000;
-    level.challenges["dark.hard"].routeName="hard";
+    level.challenges = [];
+    add("spectrum.beginner", 1, "mp_spectrum", "Beginner");
+    add("cj_sky_bounce.main_route", 1, "mp_cj_sky_bounce", "Main route");
+    add("to_the_moon.easy", 1, "mp_to_the_moon", "Basic");
+    add("palm.easy", 1, "mp_palm", "Easy");
+    add("blue2.easy", 1, "mp_blue2", "Easy");
+    add("spectrum.easy", 1, "mp_spectrum", "Easy");
+    add("descent_v2.easy", 1, "mp_descent_v2", "Easy");
+    add("mystic_v2.easy", 1, "mp_mystic_v2", "Easy");
+    add("mystic_v3.easy", 1, "mp_mystic_v3", "Easy");
+    add("galaxy.easy", 1, "mp_galaxy", "Easy");
+    add("to_the_moon.inter", 2, "mp_to_the_moon", "Intermediate");
+    add("palm.inter", 2, "mp_palm", "Intermediate");
+    add("blue2.inter", 2, "mp_blue2", "Intermediate");
+    add("mystic_v3.inter", 2, "mp_mystic_v3", "Intermediate");
+    add("galaxy.inter", 2, "mp_galaxy", "Intermediate");
+    add("to_the_moon.advanced", 3, "mp_to_the_moon", "Advanced");
+    add("blue2.hard", 3, "mp_blue2", "Hard");
+    add("palm.hard", 3, "mp_palm", "Hard");
+    add("bone.hard", 3, "mp_bone", "Hard");
+    add("insane.hard", 3, "mp_insane", "Hard");
+    add("descent_v2.hard", 4, "mp_descent_v2", "Hard");
+    add("descent.hard", 4, "mp_descent", "Hard");
+    add("shade.advanced", 4, "mp_shade", "Advanced");
+    add("dark.hard", 4, "mp_dark", "Hard");
+    add("dark_v2.hard", 4, "mp_dark_v2", "Hard");
+    add("mystic_v2.hard", 5, "mp_mystic_v2", "Hard");
+    add("palm_v2.hard", 5, "mp_palm_v2", "Hard");
+    add("qube_v2.hard", 5, "mp_qube_v2", "Hard");
+    add("marble.hard", 5, "mp_marble", "Hard");
+    add("restyled.hard", 5, "mp_restyled", "Hard");
+    add("awe.advanced", 6, "mp_awe", "Advanced");
+    add("bridge.hard", 6, "mp_bridge", "Hard");
+    add("mystic_v3.hard", 6, "mp_mystic_v3", "Hard");
+    add("dawn_v2.hard", 6, "mp_dawn_v2", "Hard");
+    add("galaxy.hard", 6, "mp_galaxy", "Hard");
+    add("edge.main_route_edge", 7, "mp_edge", "Main route (edge)");
+    add("mushroom.fungal_hazards", 7, "mp_mushroom", "Fungal Hazards");
+    add("heaven_v2.hard", 7, "mp_heaven_v2", "Hard");
+    add("dark_v3.hard", 7, "mp_dark_v3", "Hard");
+    add("sunset.hard", 7, "mp_sunset", "Hard");
+    add("sunset_v2.advanced", 8, "mp_sunset_v2", "Advanced");
+    add("cyber.reality_corp_advanced", 8, "mp_cyber", "Reality Corp");
+    add("new_york.hard", 8, "mp_new_york", "Hard");
+    add("palm_v3.advanced", 8, "mp_palm_v3", "Advanced");
+    add("palm_v3.challenge", 8, "mp_palm_v3", "Challenge");
+    add("dark_final.hard", 9, "mp_dark_final", "Hard");
+    add("restyled_v3.hard", 9, "mp_restyled_v3", "Hard");
+    add("void_v2.advanced", 9, "mp_void_v2", "Advanced");
+    add("edge_v2.brutal", 9, "mp_edge_v2", "Brutal");
+    add("12.advanced", 9, "mp_12", "Advanced");
+    c = add("dark_final.hard.timed", 10, "mp_dark_final", "Hard");
+    c.maxTime = 3600000;
+    c = add("restyled_v3.hard.timed", 10, "mp_restyled_v3", "Hard");
+    c.maxTime = 3600000;
+    c = add("void_v2.advanced.timed", 10, "mp_void_v2", "Advanced");
+    c.maxTime = 3600000;
+    c = add("edge_v2.brutal.timed", 10, "mp_edge_v2", "Brutal");
+    c.maxTime = 3600000;
+    c = add("12.advanced.timed", 10, "mp_12", "Advanced");
+    c.maxTime = 14400000;
+    c = add("12.challenge.timed", 10, "mp_12", "Challenge");
+    c.maxTime = 28800000;
+    level.challenges["dark.hard"].routeName = "hard";
 }
-add(key,tier,mapName,routeLabel)
+add(key, tier, mapName, routeLabel)
 {
-    c=spawnStruct();c.key=key;c.tier=tier;c.points=tier*10;
-    c.mapName=mapName;c.routeLabel=routeLabel;c.routeName=undefined;
-    c.maxTime=0;c.maxRPG=-1;c.allowed=0;c.required=0;c.fps="125,mix";
-    level.challenges[key]=c;
+    c = spawnStruct();
+    c.key = key;
+    c.tier = tier;
+    c.points = tier * 10;
+    c.mapName = mapName;
+    c.routeLabel = routeLabel;
+    c.routeName = undefined;
+    c.maxTime = 0;
+    c.maxRPG = -1;
+    c.allowed = 0;
+    c.required = 0;
+    c.fps = "125,mix";
+    level.challenges[key] = c;
     return c;
 }
 onInit()
 {
-    level.challengesReady=false;
-    if(getCodVersion()!=4)return;
+    level.challengesReady = false;
+    if(getCodVersion() != 4)
+    {
+        return;
+    }
     definitions();
     precacheMenu("opencj_challenges");
-    openCJ\commands_base::registerCommand("challenges","!challenges",::command,0,0,0);
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT challengeKey FROM challenges LIMIT 0")))return;
+    openCJ\commands_base::registerCommand("challenges", "!challenges", ::command, 0, 0, 0);
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT challengeKey FROM challenges LIMIT 0")))
+    {
+        return;
+    }
     level thread initialize();
 }
 initialize()
 {
-    keys=getArrayKeys(level.challenges);
+    keys = getArrayKeys(level.challenges);
     // An atomic catalogue refresh changes thresholds without touching earned awards.
     openCJ\mySQL::mysqlSyncQuery("START TRANSACTION");
-    ok=isDefined(openCJ\mySQL::mysqlSyncQuery("UPDATE challenges SET active=0"));
-    for(i=0;ok && i<keys.size;i++)
+    ok = isDefined(openCJ\mySQL::mysqlSyncQuery("UPDATE challenges SET active=0"));
+    for(i = 0; ok && i < keys.size; i++)
     {
-        c=level.challenges[keys[i]];route="NULL";
-        maps=openCJ\mySQL::mysqlSyncQuery("SELECT COALESCE((SELECT mapID FROM challenges WHERE challengeKey="+dbStr(c.key)+"),getMapID("+dbStr(c.mapName)+"))");
-        if(!isDefined(maps) || maps.size!=1 || !isDefined(maps[0][0])){ok=false;break;}
-        mapID=int(maps[0][0]);
-        if(isDefined(c.routeName))route=dbStr(c.routeName);
-        values="tier="+c.tier+",points="+c.points+",mapID="+mapID+",routeLabel="+dbStr(c.routeLabel)+",routeHint="+route+",maxTimeMs="+c.maxTime+",maxRPG="+c.maxRPG+",allowedModes="+c.allowed+",requiredModes="+c.required+",fpsModes="+dbStr(c.fps)+",active=1";
-        ok=isDefined(openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges SET challengeKey="+dbStr(c.key)+","+values+" ON DUPLICATE KEY UPDATE "+values));
+        c = level.challenges[keys[i]];
+        route = "NULL";
+        maps = openCJ\mySQL::mysqlSyncQuery(
+            "SELECT COALESCE((SELECT mapID FROM challenges WHERE challengeKey=" + dbStr(c.key) +
+            "),getMapID(" + dbStr(c.mapName) + "))");
+        if(!isDefined(maps) || maps.size != 1 || !isDefined(maps[0][0]))
+        {
+            ok = false;
+            break;
+        }
+        mapID = int(maps[0][0]);
+        if(isDefined(c.routeName))
+        {
+            route = dbStr(c.routeName);
+        }
+        values = "tier=" + c.tier + ",points=" + c.points + ",mapID=" + mapID +
+                 ",routeLabel=" + dbStr(c.routeLabel) + ",routeHint=" + route +
+                 ",maxTimeMs=" + c.maxTime + ",maxRPG=" + c.maxRPG + ",allowedModes=" + c.allowed +
+                 ",requiredModes=" + c.required + ",fpsModes=" + dbStr(c.fps) + ",active=1";
+        ok = isDefined(
+            openCJ\mySQL::mysqlSyncQuery("INSERT INTO challenges SET challengeKey=" + dbStr(c.key) +
+                                         "," + values + " ON DUPLICATE KEY UPDATE " + values));
     }
-    if(!ok){openCJ\mySQL::mysqlSyncQuery("ROLLBACK");return;}
+    if(!ok)
+    {
+        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        return;
+    }
     openCJ\mySQL::mysqlSyncQuery("COMMIT");
-    level.challengeTierPoints=[];
-    for(t=1;t<=10;t++)level.challengeTierPoints[t]=0;
-    for(i=0;i<keys.size;i++){c=level.challenges[keys[i]];level.challengeTierPoints[c.tier]+=c.points;}
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery(routeLinkSQL())))return;
+    level.challengeTierPoints = [];
+    for(t = 1; t <= 10; t++)
+    {
+        level.challengeTierPoints[t] = 0;
+    }
+    for(i = 0; i < keys.size; i++)
+    {
+        c = level.challenges[keys[i]];
+        level.challengeTierPoints[c.tier] += c.points;
+    }
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery(routeLinkSQL())))
+    {
+        return;
+    }
     // Only proven, finalized run snapshots qualify, including existing players.
-    result=openCJ\mySQL::mysqlAsyncBackground(awardSQL(""), "challenge-awards");
-    if(!isDefined(result))return;
-    level.challengesReady=true;
+    result = openCJ\mySQL::mysqlAsyncBackground(awardSQL(""), "challenge-awards");
+    if(!isDefined(result))
+    {
+        return;
+    }
+    level.challengesReady = true;
 }
 awardSQL(extra)
 {
-    mask="(r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS)";
-    return "INSERT IGNORE INTO challengeCompletions(playerID,challengeKey,runID,pointsAwarded) SELECT r.playerID,c.challengeKey,MIN(r.runID),c.points FROM challenges c JOIN playerRuns r ON r.mapID=c.mapID JOIN checkpoints cp ON cp.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE c.active=1 AND c.routeID IS NOT NULL AND cp.finishRouteID=c.routeID AND r.finishTimeStamp IS NOT NULL AND r.tutorial=0 AND FIND_IN_SET(r.FPSMode,c.fpsModes)>0 AND ("+mask+" & c.allowedModes)="+mask+" AND ("+mask+" & c.requiredModes)=c.requiredModes AND (c.maxTimeMs=0 OR s.timePlayed<=c.maxTimeMs) AND (c.maxRPG<0 OR s.explosiveJumps<=c.maxRPG) "+extra+" GROUP BY r.playerID,c.challengeKey";
+    mask = "(r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS)";
+    return "INSERT IGNORE INTO challengeCompletions(playerID,challengeKey,runID,pointsAwarded) SELECT r.playerID,c.challengeKey,MIN(r.runID),c.points FROM challenges c JOIN playerRuns r ON r.mapID=c.mapID JOIN checkpoints cp ON cp.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE c.active=1 AND c.routeID IS NOT NULL AND cp.finishRouteID=c.routeID AND r.finishTimeStamp IS NOT NULL AND r.tutorial=0 AND FIND_IN_SET(r.FPSMode,c.fpsModes)>0 AND (" +
+           mask + " & c.allowedModes)=" + mask + " AND (" + mask +
+           " & c.requiredModes)=c.requiredModes AND (c.maxTimeMs=0 OR s.timePlayed<=c.maxTimeMs) AND (c.maxRPG<0 OR s.explosiveJumps<=c.maxRPG) " +
+           extra + " GROUP BY r.playerID,c.challengeKey";
 }
 rankForPoints(points)
 {
-    rank=1;threshold=0;
-    for(t=1;t<10;t++)
+    rank = 1;
+    threshold = 0;
+    for(t = 1; t < 10; t++)
     {
-        if(level.challengeTierPoints[t]<=0)break;
-        threshold+=level.challengeTierPoints[t];
-        if(points<threshold)break;
-        rank=t+1;
+        if(level.challengeTierPoints[t] <= 0)
+        {
+            break;
+        }
+        threshold += level.challengeTierPoints[t];
+        if(points < threshold)
+        {
+            break;
+        }
+        rank = t + 1;
     }
     return rank;
 }
 // Pure menu projection: total points remain unchanged; the bar covers this level only.
 progressForPoints(points)
 {
-    points=max(0,points);rank=rankForPoints(points);
-    data=[];data["level"]="Level "+rank;data["points"]=points+" points";
-    data["next"]="Maximum level";data["remaining"]="";data["fraction"]=1;
-    if(rank>=10)return data;
-    lower=0;for(t=1;t<rank;t++)lower+=level.challengeTierPoints[t];
-    upper=lower+level.challengeTierPoints[rank];
-    data["next"]="Next: Level "+(rank+1);
-    remaining=max(0,upper-points);
-    data["remaining"]=remaining+" points to go";
-    if(remaining==1)data["remaining"]="1 point to go";
-    data["fraction"]=0;
-    if(upper>lower)data["fraction"]=min(1,max(0,(points-lower)*1.0/(upper-lower)));
+    points = max(0, points);
+    rank = rankForPoints(points);
+    data = [];
+    data["level"] = "Level " + rank;
+    data["points"] = points + " points";
+    data["next"] = "Maximum level";
+    data["remaining"] = "";
+    data["fraction"] = 1;
+    if(rank >= 10)
+    {
+        return data;
+    }
+    lower = 0;
+    for(t = 1; t < rank; t++)
+    {
+        lower += level.challengeTierPoints[t];
+    }
+    upper = lower + level.challengeTierPoints[rank];
+    data["next"] = "Next: Level " + (rank + 1);
+    remaining = max(0, upper - points);
+    data["remaining"] = remaining + " points to go";
+    if(remaining == 1)
+    {
+        data["remaining"] = "1 point to go";
+    }
+    data["fraction"] = 0;
+    if(upper > lower)
+    {
+        data["fraction"] = min(1, max(0, (points - lower) * 1.0 / (upper - lower)));
+    }
     return data;
 }
 
 onPlayerConnected()
 {
-    if(getCodVersion()!=4)return;
-    self.challengeRank=1;self.challengePoints=0;
-    self setClientCvar("ocj_ch_rank",self.challengeRank);
-    self setClientCvar("ocj_ch_height",388);
-    self setClientCvar("ocj_ch_progress_ready",0);
-    self setClientCvar("ocj_ch_summary","Loading your progress...");
-    self thread connected();self thread responses();
+    if(getCodVersion() != 4)
+    {
+        return;
+    }
+    self.challengeRank = 1;
+    self.challengePoints = 0;
+    self setClientCvar("ocj_ch_rank", self.challengeRank);
+    self setClientCvar("ocj_ch_height", 388);
+    self setClientCvar("ocj_ch_progress_ready", 0);
+    self setClientCvar("ocj_ch_summary", "Loading your progress...");
+    self thread connected();
+    self thread responses();
 }
 connected()
 {
     self endon("disconnect");
-    while(!level.challengesReady || !self openCJ\login::isLoggedIn())wait 0.25;
+    while(!level.challengesReady || !self openCJ\login::isLoggedIn())
+    {
+        wait 0.25;
+    }
     self refresh();
 }
 refresh(menu)
 {
-    id=self openCJ\login::getPlayerID();
-    query="SELECT COALESCE(SUM(c.points),0) FROM challengeCompletions a JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 WHERE a.playerID="+id;
-    if (isDefined(menu) && menu) rows=self openCJ\mySQL::mysqlAsyncMenuQuery(query,"challenges");
-    else rows=self openCJ\mySQL::mysqlAsyncRead(query);
-    if(!isDefined(rows) || !rows.size)return;
-    self.challengePoints=int(rows[0][0]);self.challengeRank=rankForPoints(self.challengePoints);
-    self setClientCvar("ocj_ch_rank",self.challengeRank);
+    id = self openCJ\login::getPlayerID();
+    query =
+        "SELECT COALESCE(SUM(c.points),0) FROM challengeCompletions a JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 WHERE a.playerID=" +
+        id;
+    if(isDefined(menu) && menu)
+    {
+        rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "challenges");
+    }
+    else
+    {
+        rows = self openCJ\mySQL::mysqlAsyncRead(query);
+    }
+    if(!isDefined(rows) || !rows.size)
+    {
+        return;
+    }
+    self.challengePoints = int(rows[0][0]);
+    self.challengeRank = rankForPoints(self.challengePoints);
+    self setClientCvar("ocj_ch_rank", self.challengeRank);
     self publishProgress();
 }
 publishProgress()
 {
-    progress=progressForPoints(self.challengePoints);
-    self setClientCvar("ocj_ch_player_level",progress["level"]);
-    self setClientCvar("ocj_ch_player_points",progress["points"]);
-    self setClientCvar("ocj_ch_next_level",progress["next"]);
-    self setClientCvar("ocj_ch_points_remaining",progress["remaining"]);
-    self setClientCvar("ocj_ch_progress",progress["fraction"]);
-    self setClientCvar("ocj_ch_progress_ready",1);
+    progress = progressForPoints(self.challengePoints);
+    self setClientCvar("ocj_ch_player_level", progress["level"]);
+    self setClientCvar("ocj_ch_player_points", progress["points"]);
+    self setClientCvar("ocj_ch_next_level", progress["next"]);
+    self setClientCvar("ocj_ch_points_remaining", progress["remaining"]);
+    self setClientCvar("ocj_ch_progress", progress["fraction"]);
+    self setClientCvar("ocj_ch_progress_ready", 1);
 }
 
 awardRun(runID)
 {
     self endon("disconnect");
-    if(!level.challengesReady)return;
-    before=self.challengePoints;
-    result=self openCJ\mySQL::mysqlAsyncBackground(awardSQL("AND r.runID="+int(runID)), "run:"+runID);
-    if(!isDefined(result))return;
-    self refresh();
-    if(self.challengePoints>before)
+    if(!level.challengesReady)
     {
-        self iprintln("Challenge complete! +"+(self.challengePoints-before)+" points. Total: "+self.challengePoints+" | Level "+self.challengeRank);
-        self openCJ\notifications::result("challenge",runID);
+        return;
+    }
+    before = self.challengePoints;
+    result = self openCJ\mySQL::mysqlAsyncBackground(awardSQL("AND r.runID=" + int(runID)),
+                                                     "run:" + runID);
+    if(!isDefined(result))
+    {
+        return;
+    }
+    self refresh();
+    if(self.challengePoints > before)
+    {
+        self iprintln("Challenge complete! +" + (self.challengePoints - before) +
+                      " points. Total: " + self.challengePoints + " | Level " + self.challengeRank);
+        self openCJ\notifications::result("challenge", runID);
     }
 }
 command(args)
@@ -206,119 +315,276 @@ responses()
     self endon("disconnect");
     for(;;)
     {
-        self waittill("menuresponse",menu,response);
-        if(menu!="opencj_challenges")continue;
-        if(isDefined(self.challengeLastRequest) && getTime()-self.challengeLastRequest<200)continue;
-        self.challengeLastRequest=getTime();
-        if(!isDefined(self.challengeTab)){self.challengeTab=0;self.challengePage=0;}
-        if(response=="open"){self.challengeTab=0;self.challengePage=0;}
-        else if(response=="next")self.challengePage++;
-        else if(response=="previous"){if(self.challengePage>0)self.challengePage--;}
-        else if(isValidInt(response)){tier=int(response);if(tier<0 || tier>10)continue;self.challengeTab=tier;self.challengePage=0;}
-        else continue;
-        self thread show(response=="open");
+        self waittill("menuresponse", menu, response);
+        if(menu != "opencj_challenges")
+        {
+            continue;
+        }
+        if(isDefined(self.challengeLastRequest) && getTime() - self.challengeLastRequest < 200)
+        {
+            continue;
+        }
+        self.challengeLastRequest = getTime();
+        if(!isDefined(self.challengeTab))
+        {
+            self.challengeTab = 0;
+            self.challengePage = 0;
+        }
+        if(response == "open")
+        {
+            self.challengeTab = 0;
+            self.challengePage = 0;
+        }
+        else if(response == "next")
+        {
+            self.challengePage++;
+        }
+        else if(response == "previous")
+        {
+            if(self.challengePage > 0)
+            {
+                self.challengePage--;
+            }
+        }
+        else if(isValidInt(response))
+        {
+            tier = int(response);
+            if(tier < 0 || tier > 10)
+            {
+                continue;
+            }
+            self.challengeTab = tier;
+            self.challengePage = 0;
+        }
+        else
+        {
+            continue;
+        }
+        self thread show(response == "open");
     }
 }
 show(refreshProgress)
 {
-    sqlToken=self openCJ\mySQL::beginMenuRead("challenges");
-    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
-    self endon("disconnect");
-    self notify("challenge_menu_refresh");self endon("challenge_menu_refresh");
-    self setClientCvar("ocj_ch_busy",1);
-    if(!level.challengesReady || !self openCJ\login::isLoggedIn())
-    {self setClientCvar("ocj_ch_summary","Challenges are loading. Reopen in a moment.");return;}
-    // Tab/page navigation refreshes only the list; retain the published player stats.
-    if(isDefined(refreshProgress) && refreshProgress)self refresh(true);
-    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
-    self.challengeMenuValues=[];
-    tab=self.challengeTab;page=self.challengePage;
-    self setUI("ocj_ch_tab",tab);
-    title="Competitive - Top 10";hint="All challenge points count. Ties share position.";
-    if(tab==0)
+    sqlToken = self openCJ\mySQL::beginMenuRead("challenges");
+    if(!self openCJ\mySQL::menuReadCurrent(sqlToken))
     {
-        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT p.playerName,COALESCE(SUM(c.points),0),p.playerID FROM playerDisplayNames p LEFT JOIN challengeCompletions a ON a.playerID=p.playerID LEFT JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 GROUP BY p.playerID,p.playerName ORDER BY 2 DESC,p.playerID LIMIT 10", "challenges");
-        if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
-        if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
-        total=0;if(isDefined(rows))total=rows.size;
-        lastPoints=-1;position=0;
-        for(i=0;i<total;i++)
+        return;
+    }
+    self endon("disconnect");
+    self notify("challenge_menu_refresh");
+    self endon("challenge_menu_refresh");
+    self setClientCvar("ocj_ch_busy", 1);
+    if(!level.challengesReady || !self openCJ\login::isLoggedIn())
+    {
+        self setClientCvar("ocj_ch_summary", "Challenges are loading. Reopen in a moment.");
+        return;
+    }
+    // Tab/page navigation refreshes only the list; retain the published player stats.
+    if(isDefined(refreshProgress) && refreshProgress)
+    {
+        self refresh(true);
+    }
+    if(!self openCJ\mySQL::menuReadCurrent(sqlToken))
+    {
+        return;
+    }
+    self.challengeMenuValues = [];
+    tab = self.challengeTab;
+    page = self.challengePage;
+    self setUI("ocj_ch_tab", tab);
+    title = "Competitive - Top 10";
+    hint = "All challenge points count. Ties share position.";
+    if(tab == 0)
+    {
+        rows = self openCJ\mySQL::mysqlAsyncMenuQuery(
+            "SELECT p.playerName,COALESCE(SUM(c.points),0),p.playerID FROM playerDisplayNames p LEFT JOIN challengeCompletions a ON a.playerID=p.playerID LEFT JOIN challenges c ON c.challengeKey=a.challengeKey AND c.active=1 GROUP BY p.playerID,p.playerName ORDER BY 2 DESC,p.playerID LIMIT 10",
+            "challenges");
+        if(!self openCJ\mySQL::menuReadCurrent(sqlToken))
         {
-            points=int(rows[i][1]);if(points!=lastPoints)position=i+1;lastPoints=points;
-            self setUI("ocj_ch_name"+i,position+". "+openCJ\scoreboard::clean(rows[i][0],24));
-            self setUI("ocj_ch_detail"+i,"Level "+rankForPoints(points));
-            self setUI("ocj_ch_points"+i,""+points+" pts");
-            self setUI("ocj_ch_state"+i,"");self setUI("ocj_ch_count"+i,"");self setUI("ocj_ch_done"+i,0);self setUI("ocj_ch_status"+i,0);
+            return;
         }
-        pages=1;
+        if(!isDefined(rows))
+        {
+            self setClientCvar("ocj_ch_busy", 0);
+            return;
+        }
+        total = 0;
+        if(isDefined(rows))
+        {
+            total = rows.size;
+        }
+        lastPoints = -1;
+        position = 0;
+        for(i = 0; i < total; i++)
+        {
+            points = int(rows[i][1]);
+            if(points != lastPoints)
+            {
+                position = i + 1;
+            }
+            lastPoints = points;
+            self setUI("ocj_ch_name" + i,
+                       position + ". " + openCJ\scoreboard::clean(rows[i][0], 24));
+            self setUI("ocj_ch_detail" + i, "Level " + rankForPoints(points));
+            self setUI("ocj_ch_points" + i, "" + points + " pts");
+            self setUI("ocj_ch_state" + i, "");
+            self setUI("ocj_ch_count" + i, "");
+            self setUI("ocj_ch_done" + i, 0);
+            self setUI("ocj_ch_status" + i, 0);
+        }
+        pages = 1;
     }
     else
     {
-        title="Tier "+tab+" challenges";
-        hint="";
-        rows=self openCJ\mySQL::mysqlAsyncMenuQuery("SELECT c.challengeKey,m.mapname,COALESCE(rt.routeName,c.routeLabel),c.points,c.maxTimeMs,c.maxRPG,c.routeID,COUNT(a.playerID),MAX(a.playerID="+self openCJ\login::getPlayerID()+"),c.fpsModes,c.allowedModes FROM challenges c JOIN mapids m ON m.mapID=c.mapID LEFT JOIN routes rt ON rt.routeID=c.routeID LEFT JOIN challengeCompletions a ON a.challengeKey=c.challengeKey WHERE c.active=1 AND c.tier="+tab+" GROUP BY c.challengeKey ORDER BY c.challengeKey", "challenges");
-        if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
-        if (!isDefined(rows)) { self setClientCvar("ocj_ch_busy",0); return; }
-        count=0;if(isDefined(rows))count=rows.size;
-        // Reserve menu items for the personal progress header (engine limit: 256).
-        pageSize=15;
-        pages=int((count+pageSize-1)/pageSize);if(pages<1)pages=1;
-        if(page>=pages)page=pages-1;
-        self.challengePage=page;
-        total=count-page*pageSize;if(total>pageSize)total=pageSize;
-        for(i=0;i<total;i++)
+        title = "Tier " + tab + " challenges";
+        hint = "";
+        rows = self openCJ\mySQL::mysqlAsyncMenuQuery(
+            "SELECT c.challengeKey,m.mapname,COALESCE(rt.routeName,c.routeLabel),c.points,c.maxTimeMs,c.maxRPG,c.routeID,COUNT(a.playerID),MAX(a.playerID=" +
+                self openCJ\login::getPlayerID() +
+                "),c.fpsModes,c.allowedModes FROM challenges c JOIN mapids m ON m.mapID=c.mapID LEFT JOIN routes rt ON rt.routeID=c.routeID LEFT JOIN challengeCompletions a ON a.challengeKey=c.challengeKey WHERE c.active=1 AND c.tier=" +
+                tab + " GROUP BY c.challengeKey ORDER BY c.challengeKey",
+            "challenges");
+        if(!self openCJ\mySQL::menuReadCurrent(sqlToken))
         {
-            row=rows[page*pageSize+i];detail=row[2];target="Finish";
-            if(int(row[4])>0)target=formatTimeString(int(row[4]),true);
-            if(int(row[5])>=0)
+            return;
+        }
+        if(!isDefined(rows))
+        {
+            self setClientCvar("ocj_ch_busy", 0);
+            return;
+        }
+        count = 0;
+        if(isDefined(rows))
+        {
+            count = rows.size;
+        }
+        // Reserve menu items for the personal progress header (engine limit: 256).
+        pageSize = 15;
+        pages = int((count + pageSize - 1) / pageSize);
+        if(pages < 1)
+        {
+            pages = 1;
+        }
+        if(page >= pages)
+        {
+            page = pages - 1;
+        }
+        self.challengePage = page;
+        total = count - page * pageSize;
+        if(total > pageSize)
+        {
+            total = pageSize;
+        }
+        for(i = 0; i < total; i++)
+        {
+            row = rows[page * pageSize + i];
+            detail = row[2];
+            target = "Finish";
+            if(int(row[4]) > 0)
             {
-                if(int(row[4])>0)target+=" / ";else target="";
-                target+=row[5]+" RPG";
+                target = formatTimeString(int(row[4]), true);
             }
-            self setUI("ocj_ch_target"+i,target);
-            done=isDefined(row[8]) && int(row[8])!=0;
-            status=1;state="Incomplete";
-            if(!isDefined(row[6])){state="Not available yet";status=3;}
-            if(done){state="Completed";status=2;}
-            self setUI("ocj_ch_status"+i,status);
-            icons=allowedModeIcons(row[9],int(row[10]));
-            self setUI("ocj_ch_modes"+i,icons.size);
-            fpsCount=0;
-            for(m=0;m<icons.size;m++)if(isSubStr(icons[m],"opencj_icon_fps_"))fpsCount++;
-            self setUI("ocj_ch_fpscount"+i,fpsCount);
-            for(m=0;m<icons.size;m++)self setUI("ocj_ch_mode"+i+"_"+m,icons[m]);
-            self setUI("ocj_ch_name"+i,row[1]);self setUI("ocj_ch_detail"+i,detail);
-            self setUI("ocj_ch_points"+i,row[3]+" pts");self setUI("ocj_ch_state"+i,state);
-            self setUI("ocj_ch_count"+i,row[7]+" players");self setUI("ocj_ch_done"+i,int(done));
+            if(int(row[5]) >= 0)
+            {
+                if(int(row[4]) > 0)
+                {
+                    target += " / ";
+                }
+                else
+                {
+                    target = "";
+                }
+                target += row[5] + " RPG";
+            }
+            self setUI("ocj_ch_target" + i, target);
+            done = isDefined(row[8]) && int(row[8]) != 0;
+            status = 1;
+            state = "Incomplete";
+            if(!isDefined(row[6]))
+            {
+                state = "Not available yet";
+                status = 3;
+            }
+            if(done)
+            {
+                state = "Completed";
+                status = 2;
+            }
+            self setUI("ocj_ch_status" + i, status);
+            icons = allowedModeIcons(row[9], int(row[10]));
+            self setUI("ocj_ch_modes" + i, icons.size);
+            fpsCount = 0;
+            for(m = 0; m < icons.size; m++)
+            {
+                if(isSubStr(icons[m], "opencj_icon_fps_"))
+                {
+                    fpsCount++;
+                }
+            }
+            self setUI("ocj_ch_fpscount" + i, fpsCount);
+            for(m = 0; m < icons.size; m++)
+            {
+                self setUI("ocj_ch_mode" + i + "_" + m, icons[m]);
+            }
+            self setUI("ocj_ch_name" + i, row[1]);
+            self setUI("ocj_ch_detail" + i, detail);
+            self setUI("ocj_ch_points" + i, row[3] + " pts");
+            self setUI("ocj_ch_state" + i, state);
+            self setUI("ocj_ch_count" + i, row[7] + " players");
+            self setUI("ocj_ch_done" + i, int(done));
         }
     }
-    self setUI("ocj_ch_title",title);self setUI("ocj_ch_hint",hint);
-    self setUI("ocj_ch_rows",total);self setUI("ocj_ch_height",168+total*16);
-    self setUI("ocj_ch_page",page);self setUI("ocj_ch_pages",pages);
+    self setUI("ocj_ch_title", title);
+    self setUI("ocj_ch_hint", hint);
+    self setUI("ocj_ch_rows", total);
+    self setUI("ocj_ch_height", 168 + total * 16);
+    self setUI("ocj_ch_page", page);
+    self setUI("ocj_ch_pages", pages);
     self openCJ\scoreboard::sendChanged(self.challengeMenuValues);
-    self setClientCvar("ocj_ch_busy",0);
+    self setClientCvar("ocj_ch_busy", 0);
 }
 
-setUI(key,value)
+setUI(key, value)
 {
-    self.challengeMenuValues[key]=value;
+    self.challengeMenuValues[key] = value;
 }
 
 // Display the same FPS list and mode mask used to validate this challenge.
-allowedModeIcons(fps,allowed)
+allowedModeIcons(fps, allowed)
 {
-    icons=[];
-    fpsModes=strTok(fps,",");
-    for(m=0;m<fpsModes.size;m++)
+    icons = [];
+    fpsModes = strTok(fps, ",");
+    for(m = 0; m < fpsModes.size; m++)
     {
-        if(fpsModes[m]=="125")icons[icons.size]="opencj_icon_fps_classic";
-        else if(fpsModes[m]=="mix")icons[icons.size]="opencj_icon_fps_standard";
-        else if(fpsModes[m]=="hax")icons[icons.size]="opencj_icon_fps_any";
+        if(fpsModes[m] == "125")
+        {
+            icons[icons.size] = "opencj_icon_fps_classic";
+        }
+        else if(fpsModes[m] == "mix")
+        {
+            icons[icons.size] = "opencj_icon_fps_standard";
+        }
+        else if(fpsModes[m] == "hax")
+        {
+            icons[icons.size] = "opencj_icon_fps_any";
+        }
     }
-    if(allowed & 1)icons[icons.size]="opencj_icon_anypct";
-    if(allowed & 2)icons[icons.size]="opencj_icon_ele";
-    if(allowed & 4)icons[icons.size]="opencj_icon_halfbeat";
-    if(allowed & 8)icons[icons.size]="opencj_icon_tas";
+    if(allowed & 1)
+    {
+        icons[icons.size] = "opencj_icon_anypct";
+    }
+    if(allowed & 2)
+    {
+        icons[icons.size] = "opencj_icon_ele";
+    }
+    if(allowed & 4)
+    {
+        icons[icons.size] = "opencj_icon_halfbeat";
+    }
+    if(allowed & 8)
+    {
+        icons[icons.size] = "opencj_icon_tas";
+    }
     return icons;
 }
 
@@ -326,43 +592,77 @@ allowedModeIcons(fps,allowed)
 // abbreviations, never infer that Basic/Easy or Hard/Advanced are equivalent.
 routeKeySQL(value)
 {
-    key="LOWER(REPLACE(REPLACE("+value+",' ',''),'_',''))";
-    return "CASE "+key+" WHEN 'inter' THEN 'intermediate' WHEN 'inter+' THEN 'intermediate+' WHEN 'adv' THEN 'advanced' WHEN 'adv+' THEN 'advanced+' ELSE "+key+" END";
+    key = "LOWER(REPLACE(REPLACE(" + value + ",' ',''),'_',''))";
+    return "CASE " + key +
+           " WHEN 'inter' THEN 'intermediate' WHEN 'inter+' THEN 'intermediate+' WHEN 'adv' THEN 'advanced' WHEN 'adv+' THEN 'advanced+' ELSE " +
+           key + " END";
 }
 
 // Ambiguous normalized names do not link. Generic Main route labels may use the
 // sole published route, but difficulty labels never use that fallback.
 routeLinkSQL()
 {
-    published="SELECT r.mapID,"+routeKeySQL("r.routeName")+" AS routeKey,MIN(r.routeID) AS routeID,COUNT(*) AS routeCount FROM routes r WHERE EXISTS(SELECT 1 FROM checkpoints cp JOIN checkpointAreas a ON a.cpID=cp.cpID WHERE cp.finishRouteID=r.routeID AND cp.retired=0) GROUP BY r.mapID,routeKey";
-    return "UPDATE challenges c LEFT JOIN ("+published+") p ON p.mapID=c.mapID AND p.routeCount=1 AND p.routeKey=("+routeKeySQL("COALESCE(c.routeHint,c.routeLabel)")+ ") LEFT JOIN (SELECT mapID,MIN(routeID) AS routeID FROM ("+published+") publishedRoutes GROUP BY mapID HAVING SUM(routeCount)=1) sole ON sole.mapID=c.mapID LEFT JOIN (SELECT mapID,COUNT(DISTINCT LOWER(routeLabel)) AS routeCount FROM challenges WHERE active=1 GROUP BY mapID) labels ON labels.mapID=c.mapID SET c.routeID=COALESCE(p.routeID,CASE WHEN labels.routeCount=1 AND (LOWER(c.routeLabel)='main route' OR LOWER(c.routeLabel) LIKE 'main route (%)') THEN sole.routeID ELSE NULL END) WHERE c.active=1 AND c.routeID IS NULL";
+    published =
+        "SELECT r.mapID," + routeKeySQL("r.routeName") +
+        " AS routeKey,MIN(r.routeID) AS routeID,COUNT(*) AS routeCount FROM routes r WHERE EXISTS(SELECT 1 FROM checkpoints cp JOIN checkpointAreas a ON a.cpID=cp.cpID WHERE cp.finishRouteID=r.routeID AND cp.retired=0) GROUP BY r.mapID,routeKey";
+    return "UPDATE challenges c LEFT JOIN (" + published +
+           ") p ON p.mapID=c.mapID AND p.routeCount=1 AND p.routeKey=(" +
+           routeKeySQL("COALESCE(c.routeHint,c.routeLabel)") +
+           ") LEFT JOIN (SELECT mapID,MIN(routeID) AS routeID FROM (" + published +
+           ") publishedRoutes GROUP BY mapID HAVING SUM(routeCount)=1) sole ON sole.mapID=c.mapID LEFT JOIN (SELECT mapID,COUNT(DISTINCT LOWER(routeLabel)) AS routeCount FROM challenges WHERE active=1 GROUP BY mapID) labels ON labels.mapID=c.mapID SET c.routeID=COALESCE(p.routeID,CASE WHEN labels.routeCount=1 AND (LOWER(c.routeLabel)='main route' OR LOWER(c.routeLabel) LIKE 'main route (%)') THEN sole.routeID ELSE NULL END) WHERE c.active=1 AND c.routeID IS NULL";
 }
 onRoutesPublished()
 {
-    if(getCodVersion()!=4 || !isDefined(level.challengesReady) || !level.challengesReady)return;
+    if(getCodVersion() != 4 || !isDefined(level.challengesReady) || !level.challengesReady)
+    {
+        return;
+    }
     // Snapshot unavailable challenges before linking, so re-publishing is quiet.
-    pending=openCJ\mySQL::mysqlSyncQuery("SELECT challengeKey FROM challenges WHERE active=1 AND routeID IS NULL AND mapID="+openCJ\mapID::getMapID());
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery(routeLinkSQL())))return;
+    pending = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT challengeKey FROM challenges WHERE active=1 AND routeID IS NULL AND mapID=" +
+        openCJ\mapID::getMapID());
+    if(!isDefined(openCJ\mySQL::mysqlSyncQuery(routeLinkSQL())))
+    {
+        return;
+    }
     if(isDefined(pending) && pending.size)
     {
-        keys="";
-        for(i=0;i<pending.size;i++)
+        keys = "";
+        for(i = 0; i < pending.size; i++)
         {
-            if(i)keys+=",";
-            keys+=dbStr(pending[i][0]);
+            if(i)
+            {
+                keys += ",";
+            }
+            keys += dbStr(pending[i][0]);
         }
-        enabled=openCJ\mySQL::mysqlSyncQuery("SELECT r.routeName,c.tier FROM challenges c JOIN routes r ON r.routeID=c.routeID WHERE c.active=1 AND c.routeID IS NOT NULL AND c.challengeKey IN ("+keys+") ORDER BY tier,challengeKey");
+        enabled = openCJ\mySQL::mysqlSyncQuery(
+            "SELECT r.routeName,c.tier FROM challenges c JOIN routes r ON r.routeID=c.routeID WHERE c.active=1 AND c.routeID IS NOT NULL AND c.challengeKey IN (" +
+            keys + ") ORDER BY tier,challengeKey");
         if(isDefined(enabled))
-            for(i=0;i<enabled.size;i++)
-                self sendLocalChatMessage("Challenge now available: "+getDvar("mapname")+" / "+enabled[i][0]+" (Tier "+enabled[i][1]+").");
+        {
+            for(i = 0; i < enabled.size; i++)
+            {
+                self sendLocalChatMessage("Challenge now available: " + getDvar("mapname") + " / " +
+                                          enabled[i][0] + " (Tier " + enabled[i][1] + ").");
+            }
+        }
     }
     level thread backfillPublishedRoutes();
 }
 backfillPublishedRoutes()
 {
-    result=openCJ\mySQL::mysqlAsyncBackground(awardSQL(""), "challenge-awards");
-    if(!isDefined(result))return;
-    players=getEntArray("player","classname");
-    for(i=0;i<players.size;i++)
-        if(players[i] openCJ\login::isLoggedIn())players[i] thread refresh();
+    result = openCJ\mySQL::mysqlAsyncBackground(awardSQL(""), "challenge-awards");
+    if(!isDefined(result))
+    {
+        return;
+    }
+    players = getEntArray("player", "classname");
+    for(i = 0; i < players.size; i++)
+    {
+        if(players[i] openCJ\login::isLoggedIn())
+        {
+            players[i] thread refresh();
+        }
+    }
 }
