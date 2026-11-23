@@ -20,6 +20,11 @@ ROOT = Path(__file__).resolve().parents[2]
 ENGINE_POLL_COUNT = 100
 ENGINE_POLL_INTERVAL_SECONDS = 1
 POOL_TIMEOUT_SECONDS = 90
+ATTACH_TIMEOUT_SECONDS = 2
+MAX_ATTACH_HEADER_BYTES = 16 * 1024
+ATTACH_READ_BYTES = 4096
+CONSOLE_DRAIN_SECONDS = 2
+CONSOLE_OUTPUT_READ_BYTES = 65536
 
 
 def parse_engine_path():
@@ -41,6 +46,39 @@ def parse_engine_path():
             "The selected engine must be inside the core checkout for the Compose mount"
         )
     return engine_path
+
+
+def wait_for_console_attach(connection):
+    """Reject incomplete or unsuccessful Docker responses before sending console input."""
+    header = bytearray()
+    deadline = time.monotonic() + ATTACH_TIMEOUT_SECONDS
+    while b"\r\n\r\n" not in header:
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            raise TimeoutError("Docker attach header exceeded its deadline")
+        connection.settimeout(remaining_seconds)
+        chunk = connection.recv(ATTACH_READ_BYTES)
+        if not chunk:
+            raise RuntimeError(
+                "Docker closed the connection before completing its header"
+            )
+        header.extend(chunk)
+
+        # Normal attach headers are short. Bound malformed replies even if bytes keep arriving.
+        header_end = header.find(b"\r\n\r\n")
+        header_size = header_end + 4 if header_end >= 0 else len(header)
+        if header_size > MAX_ATTACH_HEADER_BYTES:
+            raise RuntimeError("Docker attach header is too large")
+
+    status_line = bytes(header).split(b"\r\n", 1)[0]
+    fields = status_line.split(maxsplit=2)
+    if len(fields) < 2 or not fields[0].startswith(b"HTTP/"):
+        raise RuntimeError("Docker attach returned a malformed status line")
+    status_code = fields[1]
+    if status_code not in (b"101", b"200"):
+        raise RuntimeError(
+            "Docker attach failed with status " + status_code.decode("ascii", "replace")
+        )
 
 
 class HistoryVerification:
@@ -513,36 +551,31 @@ class HistoryVerification:
 
     def change_map(self):
         """Send a console command only to this fixture container."""
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(2)
-        sock.connect("/var/run/docker.sock")
-        sock.sendall(
-            (
-                "POST /containers/"
-                + self.container_name
-                + "/attach?stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: tcp\r\nContent-Length: 0\r\n\r\n"
-            ).encode()
+        request = (
+            f"POST /containers/{self.container_name}/attach?"
+            "stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Connection: Upgrade\r\n"
+            "Upgrade: tcp\r\n"
+            "Content-Length: 0\r\n\r\n"
         )
-        header = b""
-        while b"\r\n\r\n" not in header:
-            header += sock.recv(4096)
-        assert (
-            b"101" in header.split(b"\r\n", 1)[0]
-            or b"200" in header.split(b"\r\n", 1)[0]
-        )
-        sock.sendall(b"map mp_killhouse\n")
-        # Docker attach can discard buffered stdin if closed immediately.
-        # Keep the upgraded connection alive long enough to consume output.
-        deadline = time.monotonic() + 2
-        try:
-            while time.monotonic() < deadline:
-                sock.settimeout(max(0.01, deadline - time.monotonic()))
-                if not sock.recv(65536):
-                    break
-        except socket.timeout:
-            pass
-        finally:
-            sock.close()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(ATTACH_TIMEOUT_SECONDS)
+            connection.connect("/var/run/docker.sock")
+            connection.sendall(request.encode())
+            wait_for_console_attach(connection)
+            connection.sendall(b"map mp_killhouse\n")
+
+            # Docker can discard buffered input if attach closes immediately.
+            # Briefly drain its output so the engine can consume the map command.
+            deadline = time.monotonic() + CONSOLE_DRAIN_SECONDS
+            try:
+                while time.monotonic() < deadline:
+                    connection.settimeout(max(0.01, deadline - time.monotonic()))
+                    if not connection.recv(CONSOLE_OUTPUT_READ_BYTES):
+                        break
+            except socket.timeout:
+                pass
 
     def record_results(self, log):
         for line in log.splitlines():

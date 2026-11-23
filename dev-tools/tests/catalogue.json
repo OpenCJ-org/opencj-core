@@ -28,6 +28,18 @@
       "mode": "unit"
     },
     {
+      "id": "history-runner-unit",
+      "category": "portable",
+      "description": "Persistence runner console transport: EOF, timeouts, rejected upgrades and resource release.",
+      "requires": "Python 3 standard library; no database, engine or Docker daemon.",
+      "effects": "Mocked Unix socket and clock; no files, containers or application services.",
+      "files": [
+        "dev-tools/tests/test_history_runner.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
       "id": "geoip-unit",
       "category": "portable",
       "description": "GeoIP input parsing, overlaps, gzip integrity and country mapping.",
