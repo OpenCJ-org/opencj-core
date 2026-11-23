@@ -755,3 +755,30 @@ createRunWithDelayedReply(completionEvent)
     self openCJ\playerRuns::_createRunID();
     self notify(completionEvent);
 }
+
+
+// Test-only observation after real SQL completion; scenarios choose which reply to delay.
+observeSQLResult(query)
+{
+    if(isDefined(level.history192DelayedQuery) && isSubStr(query, level.history192DelayedQuery))
+    {
+        self notify("history192_result_ready");
+        if(isDefined(level.history192HoldReply) && level.history192HoldReply)
+        {
+            self waittill("history192_release_result");
+        }
+        else
+        {
+            replyDelaySeconds = 0.2;
+            wait replyDelaySeconds;
+        }
+    }
+    if(isDefined(level.history192FinishRequests) && isSubStr(query, "SELECT runFinished("))
+    {
+        level.history192FinishRequests++;
+    }
+    if(isDefined(level.history192InstanceRequests) && isSubStr(query, "SELECT createRunInstance("))
+    {
+        level.history192InstanceRequests++;
+    }
+}
