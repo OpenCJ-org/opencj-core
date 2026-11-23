@@ -226,5 +226,11 @@ setWeaponSpread(value)
         self ResetSpreadOverride();
     }
 }
-pistolWeapon(){return level.weapons_loadouts[self openCJ\shop::resource(level.weapons_loadouts["default"])];}
-rpgWeapon(){return level.weapons_rpgs[self openCJ\shop::resource(level.weapons_rpgs["default"])];}
+pistolWeapon()
+{
+    return level.weapons_loadouts[self openCJ\shop::resource(level.weapons_loadouts["default"])];
+}
+rpgWeapon()
+{
+    return level.weapons_rpgs[self openCJ\shop::resource(level.weapons_rpgs["default"])];
+}

@@ -16,29 +16,38 @@ onMenuResponse()
     {
         self waittill("menuresponse", menu, response);
 
-        if (response=="sql_close" || response=="close" || response=="close_commands")
+        if(response == "sql_close" || response == "close" || response == "close_commands")
         {
             self openCJ\mySQL::cancelMenuReads(menu);
-            if(self.currentMenu==menu)self.currentMenu="";
+            if(self.currentMenu == menu)
+            {
+                self.currentMenu = "";
+            }
         }
-        if (response=="open_leaderboard" || response=="open_runsboard" || response=="open_maplist" || response=="open_commands" || (response=="open" && menu!="opencj_clips" && menu!="opencj_challenges"))
+        if(response == "open_leaderboard" || response == "open_runsboard" ||
+           response == "open_maplist" || response == "open_commands" ||
+           (response == "open" && menu != "opencj_clips" && menu != "opencj_challenges"))
+        {
             self openCJ\mySQL::cancelMenuReads();
+        }
 
         currentMenu = self.currentMenu;
         menuOpened = false;
-        if ((menu == "opencj_leaderboard") && (response == "open_leaderboard")) // Leaderboard was opened
+        if((menu == "opencj_leaderboard") &&
+           (response == "open_leaderboard")) // Leaderboard was opened
         {
             self.currentMenu = "opencj_leaderboard";
             menuOpened = true;
             self openCJ\menus\board_base::onBoardOpen("lb");
         }
-        else if ((menu == "opencj_runsboard") && (response == "open_runsboard")) // Runsboard was opened
+        else if((menu == "opencj_runsboard") &&
+                (response == "open_runsboard")) // Runsboard was opened
         {
             self.currentMenu = "opencj_runsboard";
             menuOpened = true;
             self openCJ\menus\board_base::onBoardOpen("rn");
         }
-        else if ((menu == "opencj_maplist") && (response == "open_maplist")) // Maplist was opened
+        else if((menu == "opencj_maplist") && (response == "open_maplist")) // Maplist was opened
         {
             menuOpened = true;
             self.currentMenu = "opencj_maplist";
@@ -46,7 +55,7 @@ onMenuResponse()
         }
 
         // Search text is used by various menus
-        if (menuOpened)
+        if(menuOpened)
         {
             self _clearSearchText();
         }

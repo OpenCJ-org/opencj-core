@@ -91,11 +91,13 @@ hasUsedEle()
 
 onElevate()
 {
-    if (!self openCJ\playerRuns::modeDetectionActive() || self _isEleAllowedThisCheckpoint())
-        return;
-    if (!isDefined(self.hasUsedEle) || !self.hasUsedEle)
+    if(!self openCJ\playerRuns::modeDetectionActive() || self _isEleAllowedThisCheckpoint())
     {
-        if (!self.allowEle)
+        return;
+    }
+    if(!isDefined(self.hasUsedEle) || !self.hasUsedEle)
+    {
+        if(!self.allowEle)
         {
             self iprintlnbold("Elevator detected, but your run doesn't allow them");
         }

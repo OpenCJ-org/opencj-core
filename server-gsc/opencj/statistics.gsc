@@ -114,7 +114,9 @@ _updateProgress()
         route = openCJ\checkpoints::getRouteNameForCheckpoint(currentCheckpoint);
         ends = openCJ\checkpoints::getEndCheckpoints(currentCheckpoint);
         if (!isDefined(route) && ends.size > 1)
+        {
             route = "Shared";
+        }
         if(isDefined(route))
         {
             // Route

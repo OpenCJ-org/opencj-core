@@ -126,12 +126,16 @@ setFPSMode(newFPSMode)
 _setFPSMode(newFPSMode, forced)
 {
     // If player is not ready / no run started, FPS mode will be updated by onRunStarted
-    if(!self isPlayerReady() || !self openCJ\playerRuns::hasRunID() || self openCJ\checkpointCreation::isEditing() || self openCJ\demos::isPlayingDemo())
+    if(!self isPlayerReady() || !self openCJ\playerRuns::hasRunID() ||
+       self openCJ\checkpointCreation::isEditing() || self openCJ\demos::isPlayingDemo())
     {
         return;
     }
 
-    if (!forced && !self openCJ\playerRuns::modeDetectionActive()) return;
+    if(!forced && !self openCJ\playerRuns::modeDetectionActive())
+    {
+        return;
+    }
 
     // No hax for CoD2
     if ((getCodVersion() == 2) && (newFPSMode == "hax"))

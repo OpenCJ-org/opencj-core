@@ -91,8 +91,15 @@ _updatePlayerTimers()
 // Playback moves the level timer clear of the toolbar; gameplay uses its normal position.
 setPlaybackLayout(playback)
 {
-    align = "center"; x = 0; y = -12;
-    if(playback){align = "right"; x = -8; y = -74;}
+    align = "center";
+    x = 0;
+    y = -12;
+    if(playback)
+    {
+        align = "right";
+        x = -8;
+        y = -74;
+    }
     self.hudTimeLimit.horzalign = align;
     self.hudTimeLimit.alignx = align;
     self.hudTimeLimit.x = x;

@@ -2,20 +2,27 @@
 
 main() // Not threaded as it returns a result
 {
-    if(isDefined(self.shopInspect))return undefined;
+    if(isDefined(self.shopInspect))
+    {
+        return undefined;
+    }
     if(!self openCJ\login::isLoggedIn())
     {
         return undefined;
     }
 
-    if (!self openCJ\checkpoints::canSaveHere())
+    if(!self openCJ\checkpoints::canSaveHere())
     {
-        self sendLocalChatMessage("Saving is not allowed in this checkpoint area (except in any%).", true);
+        self sendLocalChatMessage("Saving is not allowed in this checkpoint area (except in any%).",
+                                  true);
         return undefined;
     }
 
     saveNum = self openCJ\savePosition::setSavedPosition();
-    if(!isDefined(saveNum))return undefined;
+    if(!isDefined(saveNum))
+    {
+        return undefined;
+    }
     self openCJ\savePosition::resetBackwardsCount();
     self openCJ\savePosition::printSaveSuccess();
 

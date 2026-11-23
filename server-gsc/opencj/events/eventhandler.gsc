@@ -32,7 +32,10 @@ onRPGFired(rpg, name)
 
 onSavePositionRequest()
 {
-    if (self openCJ\demos::isPlayingDemo())return;
+    if(self openCJ\demos::isPlayingDemo())
+    {
+        return;
+    }
     self.eventQueue["save"] = true;
 }
 

@@ -11,7 +11,10 @@ main()
     }
 
     self openCJ\demos::cancelRequest();
-    if(self openCJ\demos::isPlayingDemo())self openCJ\demos::stopDemo(false);
+    if (self openCJ\demos::isPlayingDemo())
+    {
+        self openCJ\demos::stopDemo(false);
+    }
 
     self openCJ\clips::onSpawnSpectator();
     self openCJ\noclip::disableNoclip();

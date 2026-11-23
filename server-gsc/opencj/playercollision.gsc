@@ -4,14 +4,23 @@ onInit()
 {
     openCJ\settings::addSettingBool("hideall", false, "Hide all players", ::_onSettingHideALl);
     openCJ\settings::addSettingBool("hidenear", true, "Hide near players", ::_onSettingHideNear);
-    openCJ\settings::addSettingInt("hideradius", 0, 4096, 60, "Sets your radius for hiding nearby players. Usage !hideradius [0-4096]. 0 hides nobody by proximity. Default 60", ::_onSettingHideRadius);
+    openCJ\settings::addSettingInt(
+        "hideradius", 0, 4096, 60,
+        "Sets your radius for hiding nearby players. Usage !hideradius [0-4096]. 0 hides nobody by proximity. Default 60",
+        ::_onSettingHideRadius);
 }
 
 _onSettingHideAll(newVal)
 {
     mode = 0;
-    if(newVal) mode = 2;
-    else if(self openCJ\settings::getSetting("hidenear")) mode = 1;
+    if(newVal)
+    {
+        mode = 2;
+    }
+    else if(self openCJ\settings::getSetting("hidenear"))
+    {
+        mode = 1;
+    }
     self setClientCvar("opencj_gfx_hidemode", mode);
     if(newVal)
     {
@@ -33,8 +42,14 @@ _onSettingHideAll(newVal)
 _onSettingHideNear(newVal)
 {
     mode = 0;
-    if(self openCJ\settings::getSetting("hideall")) mode = 2;
-    else if(newVal) mode = 1;
+    if(self openCJ\settings::getSetting("hideall"))
+    {
+        mode = 2;
+    }
+    else if(newVal)
+    {
+        mode = 1;
+    }
     self setClientCvar("opencj_gfx_hidemode", mode);
     if(self openCJ\settings::getSetting("hideall"))
     {
@@ -65,9 +80,13 @@ onFrame()
     // The native visibility pass rewrites masks every frame. Apply demo hiding
     // afterwards, including for spectators, without changing mute/ignore settings.
     players = getEntArray("player", "classname");
-    for (i = 0; i < players.size; i++)
-        if (players[i] openCJ\demos::isPlayingDemo())
+    for(i = 0; i < players.size; i++)
+    {
+        if(players[i] openCJ\demos::isPlayingDemo())
+        {
             players[i] hide();
+        }
+    }
 }
 
 onIgnore(player) //self onIgnore(player) when self ignores a player //also called when loading ignore list from db, and should be called onconnect if someone has the player ignored

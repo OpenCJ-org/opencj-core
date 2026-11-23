@@ -43,7 +43,9 @@ loadSettingsFromDatabase()
             if(isInArray(name, availableSettings))
             {
                 if(isDefined(level.settings[name].sessionOnly) && level.settings[name].sessionOnly)
+                {
                     continue;
+                }
                 value = parseSettingValue(level.settings[name], normalizeStoredValue(name, rows[i][1]));
                 if(!isDefined(value))
                 {
@@ -303,7 +305,9 @@ onSetting(name, args, changedByScript)
 
     // Write updated setting to database
     if(!isDefined(setting.sessionOnly) || !setting.sessionOnly)
+    {
         self thread writePlayerSettingToDb(name, self.settingValues[name]);
+    }
 }
 
 addSettingString(name, minLen, maxLen, defaultVal, help, updateFunc)
@@ -400,7 +404,9 @@ writePlayerSettingToDb(setting, value)
 // touching account records. The current UI and command accept only 0..5.
 normalizeStoredValue(name, value)
 {
-    if (name == "speclisthud" && isValidInt(value) && int(value) > 5 && int(value) <= 10)
+    if(name == "speclisthud" && isValidInt(value) && int(value) > 5 && int(value) <= 10)
+    {
         return "5";
+    }
     return value;
 }
