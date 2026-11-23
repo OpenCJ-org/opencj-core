@@ -9,7 +9,11 @@ onInit()
     // Define random maps for the next map vote
     level.endVote["maps"] = [];
     level.endVote["votes"] = [];
-    level.endVote["status"] = 0; // 0 = idle, 1 = voting, 2 = loading next map
+    // These values are shared with opencj_endmapvote.menu.
+    level.endVote["phaseIdle"] = 0;
+    level.endVote["phaseVoting"] = 1;
+    level.endVote["phaseLoading"] = 2;
+    level.endVote["status"] = level.endVote["phaseIdle"];
     for (i = 0; i < level.endVote["nrMaps"]; i++)
     {
         level.endVote["votes"][i] = 0;
@@ -18,24 +22,25 @@ onInit()
     precacheMenu(level.endVote["menu"]);
 }
 
-fillRandomMaps() // Called when level.maps is filled
+// Offer ordinary players' eligible maps, excluding the current map and empty slots.
+fillRandomMaps() // Called when level.maps is filled.
 {
-    nrMapsFilled = 0;
     level.endVote["maps"] = [];
-    maps = openCJ\maps::voteMaps(0);
+    ordinaryAdminLevel = 0;
+    eligibleMaps = openCJ\maps::voteMaps(ordinaryAdminLevel);
     currentMapName = getCvar("mapname");
-    for (i = 0; i < maps.size; i++)
+    for (i = 0; i < eligibleMaps.size; i++)
     {
-        if (nrMapsFilled >= level.endVote["nrMaps"])
+        if (level.endVote["maps"].size >= level.endVote["nrMaps"])
         {
             break;
         }
 
-        map = maps[i];
-        if (map["name"] != currentMapName)
+        mapName = eligibleMaps[i]["name"];
+        if (mapName != currentMapName)
         {
-            level.endVote["maps"][nrMapsFilled] = map["name"];
-            nrMapsFilled++;
+            nextSlot = level.endVote["maps"].size;
+            level.endVote["maps"][nextSlot] = mapName;
         }
     }
 
@@ -60,26 +65,25 @@ _shuffleEndVoteMaps()
     }
 }
 
+// Send all menu slots so a newly joined client cannot retain an old map image.
 onPlayerConnected()
 {
     self.endVote = -1;
 
-    self setClientCvar(level.endVote["prefix"] + "status",
-                       level.endVote["status"]);               // Actual end map vote status
-    self setClientCvar(level.endVote["prefix"] + "voted", ""); // Player hasn't voted
+    self setClientCvar(level.endVote["prefix"] + "status", level.endVote["status"]);
+    self setClientCvar(level.endVote["prefix"] + "voted", "");
 
-    winning = "";
+    winningSlot = "";
     if (isDefined(level.endVote["winning"]))
     {
-        winning = (level.endVote["winning"] + 1);
+        winningSlot = (level.endVote["winning"] + 1);
     }
-    self setClientCvar(level.endVote["prefix"] + "winning",
-                       winning); // Which map is currently winning
+    self setClientCvar(level.endVote["prefix"] + "winning", winningSlot);
 
     for (i = 0; i < level.endVote["nrMaps"]; i++)
     {
-        nr = (i + 1); // Dvars for this start at 1
-        self setClientCvar(level.endVote["prefix"] + "votes" + nr, level.endVote["votes"][i]);
+        slotNumber = (i + 1); // Dvars for this start at 1
+        self setClientCvar(level.endVote["prefix"] + "votes" + slotNumber, level.endVote["votes"][i]);
         mapName = "";
         mapImage = "";
         if (isDefined(level.endVote["maps"][i]))
@@ -87,11 +91,11 @@ onPlayerConnected()
             mapName = level.endVote["maps"][i];
             mapImage = openCJ\maps::previewImage(mapName);
         }
-        self setClientCvar(level.endVote["prefix"] + "mapname" + nr, mapName);
-        self setClientCvar(level.endVote["prefix"] + "mapimage" + nr, mapImage);
+        self setClientCvar(level.endVote["prefix"] + "mapname" + slotNumber, mapName);
+        self setClientCvar(level.endVote["prefix"] + "mapimage" + slotNumber, mapImage);
     }
 
-    if (level.endVote["status"] > 0)
+    if (level.endVote["status"] > level.endVote["phaseIdle"])
     {
         self openEndMapVote();
     }
@@ -133,16 +137,18 @@ onTimeLimitReached() // Called multiple times due to map vote
 
     level.endVote["status"]++;
 
-    if (level.endVote["status"] == 1) // Start voting
+    if (level.endVote["status"] == level.endVote["phaseVoting"]) // Start voting
     {
         level thread opencj\events\onMapEnded::main();
         opencj\timeLimit::muteTimerSound(true); // Mute second beep timer
-        opencj\timeLimit::addTimeSeconds(20);
+        votingDurationSeconds = 20;
+        opencj\timeLimit::addTimeSeconds(votingDurationSeconds);
     }
-    else if (level.endVote["status"] == 2) // Start loading next map
+    else if (level.endVote["status"] == level.endVote["phaseLoading"]) // Start loading next map
     {
         opencj\timeLimit::muteTimerSound(false); // Unmute second beep timer
-        opencj\timeLimit::addTimeSeconds(3);
+        loadingDelaySeconds = 3;
+        opencj\timeLimit::addTimeSeconds(loadingDelaySeconds);
     }
     else // >=3
     {
@@ -161,12 +167,12 @@ onTimeLimitReached() // Called multiple times due to map vote
     {
         players[i] setClientCvar(level.endVote["prefix"] + "status", level.endVote["status"]);
 
-        if (level.endVote["status"] == 1)
+        if (level.endVote["status"] == level.endVote["phaseVoting"])
         {
             // End map vote is starting
             players[i] openEndMapVote();
         }
-        else if (level.endVote["status"] == 2)
+        else if (level.endVote["status"] == level.endVote["phaseLoading"])
         {
             // Tell players end map vote is over so that they draw "loading map" text instead
             players[i] setClientCvar(level.endVote["prefix"] + "active", "loading");
@@ -194,29 +200,33 @@ removeVote(mapIdx) // When a player disconnected
     _updateVotes(mapIdx, -1);
 }
 
-onVoteChanged(val)
+// Move the player's ballot only while the server is still accepting votes.
+onVoteChanged(slotNumber)
 {
-    // Only when end map vote is active and the vote is valid
-    if ((val < 1) || (val > level.endVote["maps"].size) || (level.endVote["status"] != 1))
+    if (level.endVote["status"] != level.endVote["phaseVoting"])
+    {
+        return;
+    }
+    if (slotNumber < 1 || slotNumber > level.endVote["maps"].size)
     {
         return;
     }
 
-    newVoteIdx = val - 1; // The array indices are 0-based, but player votes are 1-based
+    newVoteIndex = slotNumber - 1; // The array indices are 0-based, but player votes are 1-based
 
-    prevVoteIdx = -1;
+    previousVoteIndex = -1;
     if ((self.endVote != -1) && (level.endVote["votes"][self.endVote] > 0))
     {
-        prevVoteIdx = self.endVote;
+        previousVoteIndex = self.endVote;
         level.endVote["votes"][self.endVote]--;
     }
 
     // Update player's and total map votes
-    self.endVote = newVoteIdx;
-    level.endVote["votes"][newVoteIdx]++;
-    self setClientCvar(level.endVote["prefix"] + "voted", val);
+    self.endVote = newVoteIndex;
+    level.endVote["votes"][newVoteIndex]++;
+    self setClientCvar(level.endVote["prefix"] + "voted", slotNumber);
 
-    _updateVotes(prevVoteIdx, newVoteIdx);
+    _updateVotes(previousVoteIndex, newVoteIndex);
 }
 
 _updateVotes(prevVoteIdx, newVoteIdx)

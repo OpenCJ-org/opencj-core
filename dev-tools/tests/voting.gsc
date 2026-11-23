@@ -12,23 +12,40 @@ main()
     if(isDefined(player) && isDefined(otherPlayer))
     {
         wait 0.2;
-        player.login_playerID = 1;
-        otherPlayer.login_playerID = 2;
-        player.adminLevel = 0;
-        otherPlayer.adminLevel = 0;
-        player.isAFK = false;
-        otherPlayer.isAFK = false;
+        spawnpoints = getEntArray("mp_dm_spawn", "classname");
+        check(spawnpoints.size > 0, "map provides a spawn for voting clients");
+        if(spawnpoints.size == 0)
+        {
+            return;
+        }
+        spawnHeightUnits = 32;
+        player prepareVoter(1, spawnpoints[0].origin + (0, 0, spawnHeightUnits));
+        otherPlayer prepareVoter(2, spawnpoints[0].origin + (64, 0, spawnHeightUnits));
+        check(getEntArray("player", "classname").size == 2, "both clients are visible to vote counting");
         player openCJ\menus\endMapVote::onPlayerConnected();
         otherPlayer openCJ\menus\endMapVote::onPlayerConnected();
 
         player verifyMapLookup();
         player verifyCooldown();
         player verifyEndMapVoting();
+        player verifyNormalVote();
         player verifyVoteListenerStops(otherPlayer);
         verifyVoteTimerOwnership();
     }
 
     printf("VOTING COMPLETE failures=" + level.failures + " checks=" + level.checks + "\n");
+}
+
+// Spawn clients because connected-but-unspawned entities are not in the player array.
+prepareVoter(playerID, spawnOrigin)
+{
+    self.sessionTeam = "allies";
+    self.sessionState = "playing";
+    self spawn(spawnOrigin, (0, 0, 0));
+    self freezeControls(true);
+    self.login_playerID = playerID;
+    self.adminLevel = 0;
+    self.isAFK = false;
 }
 
 mapRow(mapName, inRotation)
@@ -151,6 +168,33 @@ voteState(durationSeconds, title)
     vote.timeLeft = durationSeconds;
     vote.extend = true;
     return vote;
+}
+
+// Two eligible clients keep one ballot below the majority threshold.
+verifyNormalVote()
+{
+    level.vote = undefined;
+    self openCJ\vote::_setupVote("mp_crossfire", "Fixture map vote", self);
+    check(isDefined(level.vote) && level.vote.map == "mp_crossfire" && level.vote.timeLeft == 30,
+          "new map vote initializes its map and thirty-second duration");
+    check(self.vote && level.vote.yesCount == 1 && level.vote.noCount == 0,
+          "initiating player receives one affirmative ballot");
+    check(abs(self.canVoteAt - getTime() / 1000 - 120) < 0.01,
+          "starting a vote applies the two-minute repeat cooldown");
+
+    self openCJ\vote::voteSingleArg("yes");
+    check(level.vote.yesCount == 1, "repeating an affirmative ballot does not add a vote");
+    self openCJ\vote::voteSingleArg("no");
+    self openCJ\vote::voteSingleArg("no");
+    check(!self.vote && level.vote.yesCount == 0 && level.vote.noCount == 1,
+          "changing to no transfers the ballot without duplicate counts");
+
+    self.login_playerID = undefined;
+    self openCJ\vote::voteSingleArg("yes");
+    check(!self.vote && level.vote.yesCount == 0, "logged-out player cannot change a normal ballot");
+    self.login_playerID = 1;
+    openCJ\vote::_destroyVote();
+    check(!isDefined(level.vote), "finishing the vote clears its shared state");
 }
 
 verifyVoteListenerStops(otherPlayer)

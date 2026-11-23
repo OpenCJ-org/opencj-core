@@ -2,18 +2,20 @@
 
 onInit()
 {
-    // Use OpenCJ votes exclusively; stock callvote bypasses the alpha policy.
+    // Stock callvote bypasses OpenCJ's map-pool and cooldown checks.
     setCvar("g_allowVote", 0);
-    cmd = openCJ\commands_base::registerCommand(
-        "vote", "Vote for something. Usage: !vote <extend|map mp_mapname|yes|no>", ::vote, 1, 2, 0);
-    openCJ\commands_base::addAlias(cmd, "v");
+    voteCommand = openCJ\commands_base::registerCommand(
+        "vote", "Vote for something. Usage: !vote <extend|map mp_mapname|yes|no>",
+        ::vote, 1, 2, 0);
+    openCJ\commands_base::addAlias(voteCommand, "v");
 
-    cmd = openCJ\commands_base::registerCommand("maprestart", "Restart the current map",
-                                                ::onCmdRestartMap, 0, 0, 60);
-    openCJ\commands_base::addAlias(cmd, "restartmap");
+    mapRestartAdminLevel = 60;
+    restartCommand = openCJ\commands_base::registerCommand(
+        "maprestart", "Restart the current map", ::onCmdRestartMap, 0, 0, mapRestartAdminLevel);
+    openCJ\commands_base::addAlias(restartCommand, "restartmap");
 
-    level.vote = undefined;               // Will be filled in with spawnStruct
-    level.autoExtendThreshold = (5 * 60); // 5 minutes
+    level.vote = undefined;
+    level.autoExtendThreshold = 5 * 60; // Seconds remaining before an automatic extend vote.
     thread _autoExtendTimeLoop();
 }
 
@@ -56,58 +58,54 @@ voteSingleArg(arg) // Helper for externally calling vote command
     vote(args);
 }
 
-vote(args) //args[0] = map, extend, yes/no
+// Cast a ballot in the active vote, or start a permitted map/extension vote.
+vote(args) // args[0] = map, extend, yes/no
 {
     if(!self openCJ\login::isLoggedIn())
     {
         return;
     }
 
-    if(isValidBool(args[0]) && isDefined(level.vote)) // Yes/no
+    if(isValidBool(args[0]) && isDefined(level.vote))
     {
-        vote = strToBool(args[0]);
-
-        // Don't allow vote to be cast twice
-        if(isDefined(self.vote) && (self.vote == vote))
+        votesYes = strToBool(args[0]);
+        if(isDefined(self.vote) && self.vote == votesYes)
         {
             return;
         }
 
-        self.vote = vote;
+        self.vote = votesYes;
         level _updateVoteCount();
+        return;
     }
-    else
+
+    cooldownSecondsLeft = int(self.canVoteAt - (getTime() / 1000) + 0.5);
+    if(cooldownSecondsLeft > 0 && !openCJ\commands_base::isUberAdminLevel(self.adminLevel))
     {
-        // Vote cooldown
-        canVoteIn = int(self.canVoteAt - (getTime() / 1000) + 0.5);
-        if(canVoteIn > 0 && !openCJ\commands_base::isUberAdminLevel(self.adminLevel))
+        self iprintln("You can vote in another ^1" + cooldownSecondsLeft + "^7 seconds");
+        return;
+    }
+
+    // Do not race a scheduled automatic vote with a player-created vote.
+    if(isDefined(level.isAutoExtendQueued) && level.isAutoExtendQueued)
+    {
+        return;
+    }
+
+    if(args[0] == "map" && isDefined(args[1]))
+    {
+        requestedMapName = toLower(args[1]);
+        if(getCvar("mapname") == requestedMapName)
         {
-            self iprintln("You can vote in another ^1" + canVoteIn + "^7 seconds");
+            self sendLocalChatMessage("You can't vote for the current map", true);
             return;
         }
 
-        // If an auto extend is queued, don't allow player to vote (edge case)
-        if(isDefined(level.isAutoExtendQueued) && level.isAutoExtendQueued)
-        {
-            return;
-        }
-
-        if((args[0] == "map") && isDefined(args[1]))
-        {
-            mapName = toLower(args[1]);
-            if(getCvar("mapname") != mapName)
-            {
-                self thread _doVoteMap(mapName);
-            }
-            else
-            {
-                self sendLocalChatMessage("You can't vote for the current map", true);
-            }
-        }
-        else if(args[0] == "extend")
-        {
-            self thread _doVoteExtend();
-        }
+        self thread _doVoteMap(requestedMapName);
+    }
+    else if(args[0] == "extend")
+    {
+        self thread _doVoteExtend();
     }
 }
 
@@ -126,18 +124,18 @@ onPlayerLogin()
         self _setMapVoteImage();
     }
 
-    // New arrivals wait five minutes before starting a vote.
-    self _setVoteCooldown(5 * 60);
+    newPlayerCooldownSeconds = 5 * 60;
+    self _setVoteCooldown(newPlayerCooldownSeconds);
     self thread menuResponse();
 }
 
-_setVoteCooldown(seconds)
+_setVoteCooldown(cooldownSeconds)
 {
     if (openCJ\commands_base::isUberAdminLevel(self.adminLevel))
     {
-        seconds = 0;
+        cooldownSeconds = 0;
     }
-    self.canVoteAt = (getTime() / 1000) + seconds;
+    self.canVoteAt = (getTime() / 1000) + cooldownSeconds;
 }
 
 menuResponse()
@@ -207,30 +205,29 @@ _setMapVoteImage(image)
     }
 }
 
-_doVoteMap(mapName)
+// Resolve the player's map request before creating any shared vote state.
+_doVoteMap(requestedMapName)
 {
     self endon("disconnect");
 
-    // Only one vote at a time
     if (isDefined(level.vote))
     {
         self iprintln("Another vote is already in progress");
         return;
     }
 
-    map = self _findMapByName(mapName, true);
-    if (!isDefined(map))
+    selectedMapName = self _findMapByName(requestedMapName);
+    if (!isDefined(selectedMapName))
     {
         return;
     }
-    if (map == getCvar("mapname"))
+    if (selectedMapName == getCvar("mapname"))
     {
         self sendLocalChatMessage("You can't vote for the current map", true);
         return;
     }
 
-    // Create the vote object that serves as a hudElem
-    _setupVote(map, "Vote: change map\n  " + map, self);
+    _setupVote(selectedMapName, "Vote: change map\n  " + selectedMapName, self);
 }
 
 _doVoteExtend()
@@ -241,25 +238,27 @@ _doVoteExtend()
     _setupVote(undefined, "Vote: extend time (30m)", self);
 }
 
-_setupVote(mapName, text, playerEnt)
+// Create one shared vote, clear old ballots, and start its timer if still needed.
+_setupVote(mapName, voteTitle, initiatingPlayer)
 {
     // Only one vote at a time
     if (isDefined(level.vote))
     {
-        if (isDefined(playerEnt))
+        if (isDefined(initiatingPlayer))
         {
-            playerEnt iprintln("Another vote is already in progress");
+            initiatingPlayer iprintln("Another vote is already in progress");
         }
         return;
     }
 
-    if (isDefined(playerEnt))
+    if (isDefined(initiatingPlayer))
     {
-        playerEnt _setVoteCooldown(2 * 60);
+        repeatVoteCooldownSeconds = 2 * 60;
+        initiatingPlayer _setVoteCooldown(repeatVoteCooldownSeconds);
     }
 
     level.vote = spawnStruct();
-    level.vote.str = text;
+    level.vote.str = voteTitle;
     if (isDefined(mapName))
     {
         level.vote.map = mapName;
@@ -271,7 +270,8 @@ _setupVote(mapName, text, playerEnt)
     level.vote.mapImage = getMapImage(mapName);
     level.vote.yesCount = 0;
     level.vote.noCount = 0;
-    level.vote.timeLeft = 30; // Seconds
+    voteDurationSeconds = 30;
+    level.vote.timeLeft = voteDurationSeconds;
 
     // Initialize all players' initial votes
     players = getEntArray("player", "classname");
@@ -281,10 +281,10 @@ _setupVote(mapName, text, playerEnt)
     }
 
     // Let everyone know
-    if (isDefined(playerEnt))
+    if (isDefined(initiatingPlayer))
     {
-        iprintln(playerEnt.name + " ^7started a vote");
-        playerEnt.vote = true;
+        iprintln(initiatingPlayer.name + " ^7started a vote");
+        initiatingPlayer.vote = true;
         // Add the player's vote
         level _updateVoteCount();
     }
@@ -300,37 +300,47 @@ _setupVote(mapName, text, playerEnt)
     }
 }
 
-_findMapByName(string, recurse)
+// Exact names take priority; partial names must identify one eligible installed map.
+_findMapByName(searchText)
 {
-    string = toLower(string);
+    searchText = toLower(searchText);
+
     // Exact names also cover maps installed since the catalogue was loaded.
-    if (openCJ\maps::canVoteMap(string, self.adminLevel))
+    if (openCJ\maps::canVoteMap(searchText, self.adminLevel))
     {
-        return string;
+        return searchText;
     }
-    maps = openCJ\maps::voteMaps(self.adminLevel);
-    matches = [];
-    if (string != "")
+
+    eligibleMaps = openCJ\maps::voteMaps(self.adminLevel);
+    matchingMapNames = [];
+    if (searchText != "")
     {
-        for (i = 0; i < maps.size; i++)
+        for (i = 0; i < eligibleMaps.size; i++)
         {
-            if (isSubStr(maps[i]["name"], string))
+            mapName = eligibleMaps[i]["name"];
+            if (isSubStr(mapName, searchText))
             {
-                matches[matches.size] = maps[i]["name"];
+                matchingMapNames[matchingMapNames.size] = mapName;
             }
         }
     }
-    if (matches.size == 1)
+
+    if (matchingMapNames.size == 1)
     {
-        return matches[0];
+        return matchingMapNames[0];
     }
-    if (matches.size > 5)
+
+    // Longer lists do not fit usefully in a chat response.
+    maxListedMatches = 5;
+    if (matchingMapNames.size > maxListedMatches)
     {
-        self sendLocalChatMessage("Too many available maps match (" + matches.size + ")", true);
+        self sendLocalChatMessage(
+            "Too many available maps match (" + matchingMapNames.size + ")", true);
     }
-    else if (matches.size > 1)
+    else if (matchingMapNames.size > 1)
     {
-        self sendLocalChatMessage("Available matches: " + arrayConcat(matches, ", "), true);
+        self sendLocalChatMessage(
+            "Available matches: " + arrayConcat(matchingMapNames, ", "), true);
     }
     else
     {
@@ -462,6 +472,7 @@ _writeVoteCountString()
     self setClientCvar("openCJ_voteCounts", self _getVoteCountString());
 }
 
+// Publish the countdown only while this timer still owns the active vote.
 _monitorVote()
 {
     level endon("vote_finished");

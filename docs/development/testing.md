@@ -401,7 +401,7 @@ Notifications are synthetic and client rendering is not observed.
 ### Voting
 
 The focused voting fixture checks map-pool selection, exact and partial lookup,
-admin cooldowns, end-vote button validation, vote transfers and the closed voting
+admin cooldowns, normal ballot counts, end-vote button validation, vote transfers and the closed voting
 phase. Synthetic disconnect events test listener cancellation; replacement vote
 objects test timer cancellation and ownership after a wait. It uses real engine
 entities and installed maps, but does not run a map transition, physically
