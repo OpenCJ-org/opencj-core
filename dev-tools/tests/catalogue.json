@@ -293,7 +293,8 @@
         "dev-tools/tests/run-demo-timelines-smoke.py",
         "dev-tools/tests/demo-timelines.gsc",
         "dev-tools/tests/demo-selection.gsc",
-        "dev-tools/tests/check-demo-selection.py"
+        "dev-tools/tests/check-demo-selection.py",
+        "dev-tools/tests/gsc_fixture.py"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-demo-lifecycle-205.py",
