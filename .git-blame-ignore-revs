@@ -59,3 +59,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # Narrow gameplay layout; non-brace tokens preserved and HUD fixtures passed.
 8a1858ef86ce78ad6ac4df14d44e9a80c294bacf
+
+# Event/settings layout; non-brace tokens preserved and existing fixtures passed.
+3614573ebe2fa72953275541c5a4fd659cb8c817
