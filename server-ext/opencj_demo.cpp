@@ -45,6 +45,48 @@ void BG_SetConditionValue(int, int, unsigned long long);
 // Max number of demos per map that are available for playback
 #define MAX_NR_DEMOS_PER_MAP            128
 
+// Shared with the GSC demo HUD and persisted recordings.
+enum DemoFrameFlag {
+    DEMO_LEFT = 1,
+    DEMO_RIGHT = 2,
+    DEMO_FORWARD = 4,
+    DEMO_BACK = 8,
+    DEMO_SPRINT_BUTTON = 16,
+    DEMO_JUMP_BUTTON = 32,
+    DEMO_SPRINTING = 64,
+    DEMO_MANTLING = 128,
+    DEMO_LADDER = 256,
+    DEMO_STANDING = 512,
+    DEMO_CROUCHED = 1024,
+    DEMO_PRONE = 2048,
+    DEMO_RPG_WEAPON = 4096,
+    DEMO_GROUNDED = 8192,
+    DEMO_BOUNCE = 16384
+};
+constexpr int DEMO_DIRECTION_MASK = DEMO_LEFT | DEMO_RIGHT | DEMO_FORWARD | DEMO_BACK;
+constexpr int DEMO_ACTIVE_INPUT_MASK = DEMO_DIRECTION_MASK | DEMO_SPRINT_BUTTON |
+                                       DEMO_JUMP_BUTTON | DEMO_SPRINTING |
+                                       DEMO_MANTLING | DEMO_LADDER;
+constexpr int DEMO_FRAME_TIME_MS = 50;
+constexpr float DEMO_FRAMES_PER_SECOND = 20;
+constexpr float DEMO_VELOCITY_SCALE = 4;
+constexpr float DEMO_LADDER_SCALE = 32767;
+constexpr int DEMO_INITIAL_CAPACITY = 1024;
+constexpr int DEMO_MANUAL_HISTORY_LIMIT = 1200;
+constexpr int DEMO_TRANSITION_SCAN_FRAMES = 80;
+constexpr int DEMO_NORMAL_MOVEMENT = 0;
+constexpr int DEMO_WEAPON_LIMIT = 128;
+constexpr int DEMO_WEAPON_READY_STATE = 0;
+constexpr int DEMO_WEAPON_FIRING_STATE = 5;
+constexpr int DEMO_WEAPON_HOLD_TIME_MS = 1000;
+constexpr int DEMO_TELEPORT_TOGGLE = 2;
+constexpr int DEMO_FROZEN_MOVEMENT_FLAG = 0x800;
+constexpr int DEMO_SPECTATOR_INTERPOLATION_FLAG = 2;
+constexpr int DEMO_DISABLED_WEAPON_FLAG = 0x80;
+constexpr int DEMO_MANTLE_MOVEMENT_FLAG = 4;
+constexpr int DEMO_LADDER_MOVEMENT_FLAG = 8;
+constexpr float DEMO_MAX_CONTINUOUS_DISTANCE = 256;
+
 // Magic number to know if a demo is initialized / used for validity checking
 #define DEMO_MAGIC_NUMBER               (uint32_t)0x7fd126ea
 
@@ -148,36 +190,37 @@ static uint16_t demoU16(int value) {
     return std::max(0, std::min(65535, value));
 }
 
-static DemoVisual captureDemoVisual(const playerState_t &ps, bool rpg, int previousEventSequence)
+// Capture viewmodel and movement state, converting damage events to harmless landing motion.
+static DemoVisual captureDemoVisual(const playerState_t &playerState, bool rpg, int previousEventSequence)
 {
-    DemoVisual v = {};
-    v.valid = true;
-    v.weapon = ps.weapon;
-    v.weaponTime = demoU16(ps.weaponTime);
-    v.weaponDelay = demoU16(ps.weaponDelay);
-    v.animation = ps.weapAnim;
-    v.weaponState = ps.weaponstate;
-    v.bobCycle = ps.bobCycle;
-    v.viewHeight = ps.viewHeightCurrent;
-    v.ads = ps.fWeaponPosFrac;
+    DemoVisual visual = {};
+    visual.valid = true;
+    visual.weapon = playerState.weapon;
+    visual.weaponTime = demoU16(playerState.weaponTime);
+    visual.weaponDelay = demoU16(playerState.weaponDelay);
+    visual.animation = playerState.weapAnim;
+    visual.weaponState = playerState.weaponstate;
+    visual.bobCycle = playerState.bobCycle;
+    visual.viewHeight = playerState.viewHeightCurrent;
+    visual.ads = playerState.fWeaponPosFrac;
     for (int i = 0; i < 3; ++i)
     {
-        v.velocity[i] = std::max(-32767, std::min(32767, int(ps.velocity[i] * 4)));
-        v.ladder[i] = std::max(-32767, std::min(32767, int(ps.vLadderVec[i] * 32767)));
+        visual.velocity[i] = std::max(-32767, std::min(32767, int(playerState.velocity[i] * DEMO_VELOCITY_SCALE)));
+        visual.ladder[i] = std::max(-32767, std::min(32767, int(playerState.vLadderVec[i] * DEMO_LADDER_SCALE)));
     }
-    v.sprintElapsed = demoU16(ps.commandTime - ps.sprintState.lastSprintStart);
-    v.mantleTimer = demoU16(ps.mantleState.timer);
-    v.mantleYaw = uint16_t(int(ps.mantleState.yaw * 65536.0f / 360.0f));
-    v.mantleTransition = ps.mantleState.transIndex;
-    v.mantleFlags = ps.mantleState.flags;
+    visual.sprintElapsed = demoU16(playerState.commandTime - playerState.sprintState.lastSprintStart);
+    visual.mantleTimer = demoU16(playerState.mantleState.timer);
+    visual.mantleYaw = uint16_t(int(playerState.mantleState.yaw * 65536.0f / 360.0f));
+    visual.mantleTransition = playerState.mantleState.transIndex;
+    visual.mantleFlags = playerState.mantleState.flags;
     // Only new engine events since the preceding recorded frame. The ring and
     // sequence wrap at 4 and 256 respectively. Never replay fall damage.
-    int count = std::min(4, (ps.eventSequence - previousEventSequence) & 255);
+    int count = std::min(4, (playerState.eventSequence - previousEventSequence) & 255);
     for (int i = count; i > 0; --i)
     {
-        int slot = (ps.eventSequence - i) & 3;
-        int event = ps.events[slot];
-        int impact = ps.eventParms[slot];
+        int slot = (playerState.eventSequence - i) & 3;
+        int event = playerState.events[slot];
+        int impact = playerState.eventParms[slot];
         if (event >= EV_LANDING_PAIN_DEFAULT && event <= EV_LANDING_PAIN_PAINTEDMETAL)
         {
             float minimum = Cvar_VariableValue("bg_fallDamageMinHeight");
@@ -188,19 +231,19 @@ static DemoVisual captureDemoVisual(const playerState_t &ps, bool rpg, int previ
         }
         if (event >= EV_LANDING_DEFAULT && event <= EV_LANDING_PAINTEDMETAL && impact > 0)
         {
-            v.landingEvent = event;
-            v.landingImpact = std::min(24, impact);
+            visual.landingEvent = event;
+            visual.landingImpact = std::min(24, impact);
         }
     }
-    // WEAPON_FIRING is 5. Do not retain ordinary gun/pistol firing animations.
-    if (!rpg && ps.weaponstate == 5)
+    // Do not retain ordinary gun/pistol firing animations.
+    if (!rpg && playerState.weaponstate == DEMO_WEAPON_FIRING_STATE)
     {
-        v.weaponState = 0;
-        v.weaponTime = 0;
-        v.weaponDelay = 0;
-        v.animation = 0;
+        visual.weaponState = DEMO_WEAPON_READY_STATE;
+        visual.weaponTime = 0;
+        visual.weaponDelay = 0;
+        visual.animation = 0;
     }
-    return v;
+    return visual;
 }
 #endif
 
@@ -288,6 +331,7 @@ struct DemoTechniqueState {
     int sectionSize;
 };
 static DemoTechniqueState demoTechnique[MAX_CLIENTS];
+// Transform a borrowed source frame into one viewer-owned sample; never edit the recording.
 static sDemoFrame_t &techniqueFrame(int client, const sDemo_t &demo, int index)
 {
     DemoTechniqueState &state = demoTechnique[client];
@@ -304,34 +348,44 @@ static sDemoFrame_t &techniqueFrame(int client, const sDemo_t &demo, int index)
     {
         return state.frame;
     }
-    auto read = [&](int i) {
-        const sDemoFrame_t &f = demo.pDemoFrames[i];
-        bool excluded = (f.flags & (128 | 256)) != 0;
-        return CJ_DemoInput{int(bool(f.flags & 4)) - int(bool(f.flags & 8)),
-                            int(bool(f.flags & 2)) - int(bool(f.flags & 1)),
-                            bool(f.flags & 8192),
-                            f.loadNow,
+    auto readInput = [&](int i) {
+        const sDemoFrame_t &frame = demo.pDemoFrames[i];
+        bool excluded = (frame.flags & (DEMO_MANTLING | DEMO_LADDER)) != 0;
+        return CJ_DemoInput{int(bool(frame.flags & DEMO_FORWARD)) - int(bool(frame.flags & DEMO_BACK)),
+                            int(bool(frame.flags & DEMO_RIGHT)) - int(bool(frame.flags & DEMO_LEFT)),
+                            bool(frame.flags & DEMO_GROUNDED),
+                            frame.loadNow,
                             excluded,
-                            f.rpgNow};
+                            frame.rpgNow};
     };
     if (state.sectionGeneration != demo.generation || state.sectionSize != demo.size ||
         index < state.section.beginFrame || index >= state.section.endFrame)
     {
-        state.section = CJ_AnalyzeDemoTechnique(demo.size, index, read);
+        state.section = CJ_AnalyzeDemoTechnique(demo.size, index, readInput);
         state.sectionGeneration = demo.generation;
         state.sectionSize = demo.size;
     }
-    CJ_DemoTechnique result = CJ_ApplyDemoTechnique(index, state.mode, read(index), state.section);
+    CJ_DemoTechnique result = CJ_ApplyDemoTechnique(index, state.mode, readInput(index), state.section);
     state.fallback = result.fallback;
-    state.frame.flags = (state.frame.flags & ~15) |
-                        (result.forward > 0   ? 4
-                         : result.forward < 0 ? 8
-                                              : 0) |
-                        (result.right > 0   ? 2
-                         : result.right < 0 ? 1
-                                            : 0);
-    auto camera = [&](int i) {
-        const CJ_DemoInput input = read(i);
+    state.frame.flags &= ~DEMO_DIRECTION_MASK;
+    if (result.forward > 0)
+    {
+        state.frame.flags |= DEMO_FORWARD;
+    }
+    else if (result.forward < 0)
+    {
+        state.frame.flags |= DEMO_BACK;
+    }
+    if (result.right > 0)
+    {
+        state.frame.flags |= DEMO_RIGHT;
+    }
+    else if (result.right < 0)
+    {
+        state.frame.flags |= DEMO_LEFT;
+    }
+    auto readCamera = [&](int i) {
+        const CJ_DemoInput input = readInput(i);
         const bool outside = i < state.section.beginFrame || i >= state.section.endFrame;
         CJ_DemoTechnique view = CJ_ApplyDemoTechnique(i, state.mode, input, state.section);
         // Shot aiming is a short camera-only flick, independent of the general
@@ -340,7 +394,7 @@ static sDemoFrame_t &techniqueFrame(int client, const sDemo_t &demo, int index)
         return CJ_DemoCameraSample{demo.pDemoFrames[i].angles[1], locked ? 0 : view.yawOffset,
                                    input.cut, locked, input.shot};
     };
-    state.frame.angles[1] = std::remainder(CJ_SmoothDemoYaw(demo.size, index, camera), 360.0f);
+    state.frame.angles[1] = std::remainder(CJ_SmoothDemoYaw(demo.size, index, readCamera), 360.0f);
     return state.frame;
 }
 
@@ -350,7 +404,7 @@ void Gsc_Demo_SetTechnique(int client)
         return;
     }
     int mode;
-    if (!stackGetParams("i", &mode) || mode < 0 || mode > 3) {
+    if (!stackGetParams("i", &mode) || mode < CJ_DEMO_ORIGINAL || mode > CJ_DEMO_INVERT) {
         stackPushBool(false);
         return;
     }
@@ -365,12 +419,12 @@ void Gsc_Demo_TechniqueFallback(int client)
     if (rejectInvalidDemoClient(client)) {
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (!hasSelectedDemoFrame(play)) {
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (!hasSelectedDemoFrame(playback)) {
         stackPushBool(false);
         return;
     }
-    techniqueFrame(client, *play.pDemo, play.selectedFrame);
+    techniqueFrame(client, *playback.pDemo, playback.selectedFrame);
     stackPushBool(demoTechnique[client].fallback);
 }
 
@@ -380,12 +434,12 @@ void Gsc_Demo_TechniquePhase(int client)
     if (rejectInvalidDemoClient(client)) {
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (!hasSelectedDemoFrame(play)) {
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (!hasSelectedDemoFrame(playback)) {
         stackPushInt(0);
         return;
     }
-    techniqueFrame(client, *play.pDemo, play.selectedFrame);
+    techniqueFrame(client, *playback.pDemo, playback.selectedFrame);
     const auto &state = demoTechnique[client];
     const auto &section = state.section;
     if (!state.mode || state.fallback || !section.style) {
@@ -393,11 +447,11 @@ void Gsc_Demo_TechniquePhase(int client)
         return;
     }
     int mode = state.mode;
-    if ((mode == 2 || mode == 3) && play.selectedFrame < section.takeoffEndFrame) {
-        mode = 1;
+    if ((mode == CJ_DEMO_HALFBEAT || mode == CJ_DEMO_INVERT) && playback.selectedFrame < section.takeoffEndFrame) {
+        mode = CJ_DEMO_FULLBEAT;
     }
-    stackPushInt((mode << 4) | (section.anchorForward > 0 ? 4 : 8) |
-                 (section.anchorRight > 0 ? 2 : 1));
+    stackPushInt((mode << 4) | (section.anchorForward > 0 ? DEMO_FORWARD : DEMO_BACK) |
+                 (section.anchorRight > 0 ? DEMO_RIGHT : DEMO_LEFT));
 }
 
 void Gsc_Demo_ReadFrame_Checkpoint(int client)
@@ -405,12 +459,12 @@ void Gsc_Demo_ReadFrame_Checkpoint(int client)
     if (rejectInvalidDemoClient(client)) {
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (!hasSelectedDemoFrame(play)) {
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (!hasSelectedDemoFrame(playback)) {
         stackPushUndefined();
         return;
     }
-    stackPushInt(play.pDemo->pDemoFrames[play.selectedFrame].checkpointId);
+    stackPushInt(playback.pDemo->pDemoFrames[playback.selectedFrame].checkpointId);
 }
 
 
@@ -501,7 +555,7 @@ static size_t allocatedDemoBytes()
     return bytes;
 }
 
-static sDemo_t *createDemo(int demoId, int capacity = 1024)
+static sDemo_t *createDemo(int demoId, int capacity = DEMO_INITIAL_CAPACITY)
 {
     if (findDemoById(demoId) != NULL)
     {
@@ -617,7 +671,10 @@ static bool rejectInvalidDemoClient(int clientNum)
 
 static bool Base_Gsc_GetValidDemoId(int *pDemoId, int nrArgsExpected)
 {
-    if (!pDemoId) return false;
+    if (!pDemoId)
+    {
+        return false;
+    }
 
     int nrReceivedArgs = Scr_GetNumParam();
     if (nrReceivedArgs != nrArgsExpected)
@@ -712,7 +769,10 @@ void Gsc_Demo_ClearAllDemos()
 void Gsc_Demo_HasKeyFrames()
 {
     int demoId = -1;
-    if (!Base_Gsc_GetValidDemoId(&demoId, 1)) return;
+    if (!Base_Gsc_GetValidDemoId(&demoId, 1))
+    {
+        return;
+    }
 
     const sDemo_t *pDemo = findDemoById(demoId);
     if (!pDemo)
@@ -729,7 +789,10 @@ void Gsc_Demo_HasKeyFrames()
 void Gsc_Demo_NumberOfFrames()
 {
     int demoId = -1;
-    if (!Base_Gsc_GetValidDemoId(&demoId, 1)) return;
+    if (!Base_Gsc_GetValidDemoId(&demoId, 1))
+    {
+        return;
+    }
 
     const sDemo_t *pDemo = findDemoById(demoId);
     if (!pDemo)
@@ -746,7 +809,10 @@ void Gsc_Demo_NumberOfFrames()
 void Gsc_Demo_NumberOfKeyFrames()
 {
     int demoId = -1;
-    if (!Base_Gsc_GetValidDemoId(&demoId, 1)) return;
+    if (!Base_Gsc_GetValidDemoId(&demoId, 1))
+    {
+        return;
+    }
 
     const sDemo_t *pDemo = findDemoById(demoId);
     if (!pDemo)
@@ -791,7 +857,10 @@ void Gsc_Demo_NumberOfKeyFrames()
 void Gsc_Demo_CreateDemo()
 {
     int demoId = -1;
-    if (!Base_Gsc_GetValidDemoId(&demoId, 1)) return;
+    if (!Base_Gsc_GetValidDemoId(&demoId, 1))
+    {
+        return;
+    }
 
     sDemo_t *pDemo = findDemoById(demoId);
     if (pDemo)
@@ -961,17 +1030,17 @@ void Gsc_Demo_AddFrame()
             stackPushUndefined();
             return;
         }
-        const playerState_t &ps = *SV_GameClientNum(client);
-        bool continuous = pDemo->size && ps.commandTime >= pDemo->captureTime &&
-                          ps.commandTime - pDemo->captureTime <= 100;
-        if (continuous && (ps.eFlags & 2) != pDemo->captureTeleportBit)
+        const playerState_t &playerState = *SV_GameClientNum(client);
+        bool continuous = pDemo->size && playerState.commandTime >= pDemo->captureTime &&
+                          playerState.commandTime - pDemo->captureTime <= 100;
+        if (continuous && (playerState.eFlags & DEMO_TELEPORT_TOGGLE) != pDemo->captureTeleportBit)
         {
             frame.loadNow = true;
         }
-        frame.visual = captureDemoVisual(ps, (flags & 4096) != 0,
+        frame.visual = captureDemoVisual(playerState, (flags & DEMO_RPG_WEAPON) != 0,
                                          continuous && !frame.loadNow ? pDemo->captureEventSequence
-                                                                      : ps.eventSequence);
-        capturedPlayer = &ps;
+                                                                      : playerState.eventSequence);
+        capturedPlayer = &playerState;
     }
 #endif
     if (nrExpectedArgs >= 12)
@@ -988,7 +1057,7 @@ void Gsc_Demo_AddFrame()
         {
             pDemo->captureEventSequence = capturedPlayer->eventSequence;
             pDemo->captureTime = capturedPlayer->commandTime;
-            pDemo->captureTeleportBit = capturedPlayer->eFlags & 2;
+            pDemo->captureTeleportBit = capturedPlayer->eFlags & DEMO_TELEPORT_TOGGLE;
         }
 #endif
         stackPushInt(demoId);
@@ -1002,7 +1071,10 @@ void Gsc_Demo_AddFrame()
 void Gsc_Demo_CompleteDemo()
 {
     int demoId = -1;
-    if (!Base_Gsc_GetValidDemoId(&demoId, 1)) return;
+    if (!Base_Gsc_GetValidDemoId(&demoId, 1))
+    {
+        return;
+    }
 
     sDemo_t *pDemo = findDemoById(demoId);
     if (!pDemo)
@@ -1279,7 +1351,8 @@ static uint32_t getDemoInt(const unsigned char *source, int byteCount)
 
 // Stored OCJ1-5 layouts are little-endian. These offsets and flags are part of
 // existing recordings, not the native struct layout.
-namespace DemoWire {
+namespace DemoWire
+{
 constexpr size_t HEADER_SIZE = 8;
 constexpr size_t FRAME_COUNT = 4;
 constexpr int MAX_FRAMES = 64;
@@ -1299,7 +1372,8 @@ constexpr unsigned FIRST_LANDING_EVENT = 77;
 constexpr unsigned LAST_LANDING_EVENT = 105;
 constexpr unsigned MAX_LANDING_IMPACT = 24;
 
-enum FrameOffset {
+enum FrameOffset
+{
     ORIGIN = 0,
     ANGLES = 12,
     FLAGS = 18,
@@ -1308,7 +1382,8 @@ enum FrameOffset {
     EVENTS = 26
 };
 
-enum VisualOffset {
+enum VisualOffset
+{
     WEAPON_TIME = 0,
     WEAPON_DELAY = 2,
     WEAPON_ANIMATION = 4,
@@ -1325,7 +1400,8 @@ enum VisualOffset {
     MANTLE_FLAGS = 30
 };
 
-enum FrameEvent {
+enum FrameEvent
+{
     SAVE = 1,
     LOAD = 2,
     RPG = 4,
@@ -1337,9 +1413,10 @@ enum FrameEvent {
 };
 
 static_assert(HEADER_SIZE + MAX_FRAMES *
-              (FRAME_SIZE + VISUAL_SIZE + 1 + MAX_WEAPON_NAME + LANDING_SIZE) <= BUFFER_SIZE,
+                                (FRAME_SIZE + VISUAL_SIZE + 1 + MAX_WEAPON_NAME + LANDING_SIZE) <=
+                  BUFFER_SIZE,
               "A complete demo chunk must fit before compression");
-}
+} // namespace DemoWire
 
 static void encodeDemoFrameFields(const sDemoFrame_t &frame, unsigned char *encodedFrame)
 {
@@ -1348,17 +1425,22 @@ static void encodeDemoFrameFields(const sDemoFrame_t &frame, unsigned char *enco
         uint32_t bits;
         memcpy(&bits, &frame.origin[axis], 4);
         putDemoInt(encodedFrame + DemoWire::ORIGIN + axis * 4, bits, 4);
-        putDemoInt(encodedFrame + DemoWire::ANGLES + axis * 2, uint16_t(int(frame.angles[axis] * DemoWire::ANGLE_STEPS_PER_TURN / 360.0f)), 2);
+        putDemoInt(encodedFrame + DemoWire::ANGLES + axis * 2,
+                   uint16_t(int(frame.angles[axis] * DemoWire::ANGLE_STEPS_PER_TURN / 360.0f)), 2);
     }
     putDemoInt(encodedFrame + DemoWire::FLAGS, uint16_t(frame.flags), 2);
     putDemoInt(encodedFrame + DemoWire::FPS, uint16_t(frame.fps), 2);
     putDemoInt(encodedFrame + DemoWire::CHECKPOINT, frame.checkpointId, 4);
-    encodedFrame[DemoWire::EVENTS] = (frame.saveNow ? DemoWire::SAVE : 0) | (frame.loadNow ? DemoWire::LOAD : 0) | (frame.rpgNow ? DemoWire::RPG : 0) |
-            (frame.isKeyFrame ? 0 : DemoWire::FAILED_PATH) | (frame.eleKnown ? DemoWire::ELEVATION_KNOWN : 0) | (frame.eleUsed ? DemoWire::ELEVATION_USED : 0);
+    encodedFrame[DemoWire::EVENTS] =
+        (frame.saveNow ? DemoWire::SAVE : 0) | (frame.loadNow ? DemoWire::LOAD : 0) |
+        (frame.rpgNow ? DemoWire::RPG : 0) | (frame.isKeyFrame ? 0 : DemoWire::FAILED_PATH) |
+        (frame.eleKnown ? DemoWire::ELEVATION_KNOWN : 0) |
+        (frame.eleUsed ? DemoWire::ELEVATION_USED : 0);
 }
 
 // Keep the weapon anchor within each chunk so chunks can load independently.
-struct DemoEncodeBuffer {
+struct DemoEncodeBuffer
+{
     unsigned char bytes[DemoWire::BUFFER_SIZE] = {'O', 'C', 'J', '5'};
     size_t used = DemoWire::HEADER_SIZE;
     uint16_t previousWeapon = 0;
@@ -1373,11 +1455,14 @@ static void encodeDemoVisualFields(const DemoVisual &visual, unsigned char *enco
     putDemoInt(encodedVisual + DemoWire::WEAPON_ANIMATION, visual.animation, 2);
     encodedVisual[DemoWire::WEAPON_STATE] = visual.weaponState;
     encodedVisual[DemoWire::BOB_CYCLE] = visual.bobCycle;
-    putDemoInt(encodedVisual + DemoWire::VIEW_HEIGHT, int(visual.viewHeight * DemoWire::VIEW_HEIGHT_SCALE), 2);
-    encodedVisual[DemoWire::ADS] = std::max(0, std::min(255, int(std::lround(visual.ads * DemoWire::ADS_SCALE))));
+    putDemoInt(encodedVisual + DemoWire::VIEW_HEIGHT,
+               int(visual.viewHeight * DemoWire::VIEW_HEIGHT_SCALE), 2);
+    encodedVisual[DemoWire::ADS] =
+        std::max(0, std::min(255, int(std::lround(visual.ads * DemoWire::ADS_SCALE))));
     for (int axis = 0; axis < 3; ++axis)
     {
-        putDemoInt(encodedVisual + DemoWire::VELOCITY + axis * 2, uint16_t(visual.velocity[axis]), 2);
+        putDemoInt(encodedVisual + DemoWire::VELOCITY + axis * 2, uint16_t(visual.velocity[axis]),
+                   2);
         putDemoInt(encodedVisual + DemoWire::LADDER + axis * 2, uint16_t(visual.ladder[axis]), 2);
     }
     putDemoInt(encodedVisual + DemoWire::SPRINT_ELAPSED, visual.sprintElapsed, 2);
@@ -1445,8 +1530,8 @@ static bool encodeDemoChunk(sDemo_t *demo, int first, int count, std::string &ou
     }
     unsigned char packed[DemoWire::BUFFER_SIZE];
     uLongf packedSize = sizeof(packed);
-    if (compress2(packed, &packedSize, buffer.bytes, buffer.used,
-                  DemoWire::COMPRESSION_LEVEL) != Z_OK)
+    if (compress2(packed, &packedSize, buffer.bytes, buffer.used, DemoWire::COMPRESSION_LEVEL) !=
+        Z_OK)
     {
         return false;
     }
@@ -1454,7 +1539,8 @@ static bool encodeDemoChunk(sDemo_t *demo, int first, int count, std::string &ou
     return true;
 }
 
-static std::string demoHex(const std::string &packed) {
+static std::string demoHex(const std::string &packed)
+{
     const char *digits = "0123456789abcdef";
     std::string hex(packed.size() * 2, '0');
     for (size_t i = 0; i < packed.size(); ++i) {
@@ -1502,7 +1588,8 @@ static int demoHexDigit(char c)
 
 // Borrow the decompressed buffer only while validating a chunk. No frame is
 // published until the complete cursor has been consumed and capacity reserved.
-struct DemoDecodeCursor {
+struct DemoDecodeCursor
+{
     const unsigned char *bytes;
     size_t size;
     char version;
@@ -1529,11 +1616,13 @@ static bool decodeDemoFrameFields(const unsigned char *encodedFrame, char versio
     {
         uint32_t bits = getDemoInt(encodedFrame + DemoWire::ORIGIN + axis * 4, 4);
         memcpy(&frame.origin[axis], &bits, 4);
-        if (!std::isfinite(frame.origin[axis]) || fabs(frame.origin[axis]) > DemoWire::MAX_ORIGIN_COORDINATE)
+        if (!std::isfinite(frame.origin[axis]) ||
+            fabs(frame.origin[axis]) > DemoWire::MAX_ORIGIN_COORDINATE)
         {
             return false;
         }
-        frame.angles[axis] = getDemoInt(encodedFrame + DemoWire::ANGLES + axis * 2, 2) * 360.0f / DemoWire::ANGLE_STEPS_PER_TURN;
+        frame.angles[axis] = getDemoInt(encodedFrame + DemoWire::ANGLES + axis * 2, 2) * 360.0f /
+                             DemoWire::ANGLE_STEPS_PER_TURN;
     }
     frame.flags = getDemoInt(encodedFrame + DemoWire::FLAGS, 2);
     frame.fps = getDemoInt(encodedFrame + DemoWire::FPS, 2);
@@ -1554,7 +1643,8 @@ static void decodeDemoVisualFields(const unsigned char *encodedVisual, DemoVisua
     visual.animation = getDemoInt(encodedVisual + DemoWire::WEAPON_ANIMATION, 2);
     visual.weaponState = encodedVisual[DemoWire::WEAPON_STATE];
     visual.bobCycle = encodedVisual[DemoWire::BOB_CYCLE];
-    visual.viewHeight = int16_t(getDemoInt(encodedVisual + DemoWire::VIEW_HEIGHT, 2)) / DemoWire::VIEW_HEIGHT_SCALE;
+    visual.viewHeight =
+        int16_t(getDemoInt(encodedVisual + DemoWire::VIEW_HEIGHT, 2)) / DemoWire::VIEW_HEIGHT_SCALE;
     visual.ads = encodedVisual[DemoWire::ADS] / DemoWire::ADS_SCALE;
     for (int axis = 0; axis < 3; ++axis)
     {
@@ -1600,7 +1690,8 @@ static bool decodeDemoVisual(DemoDecodeCursor &cursor, unsigned char events, Dem
         {
             return false;
         }
-        cursor.previousWeapon = !strcmp(weaponName, "none") ? 0 : G_GetWeaponIndexForName(weaponName);
+        cursor.previousWeapon =
+            !strcmp(weaponName, "none") ? 0 : G_GetWeaponIndexForName(weaponName);
         cursor.hasWeapon = true;
     }
 #endif
@@ -1742,7 +1833,7 @@ void Gsc_Demo_MarkFailedSince()
 // aiming, stance changes, reloads, RPG shots, or transitions across a load.
 static bool demoIdleTogether(const sDemoFrame_t &a, const sDemoFrame_t &b)
 {
-    if (!(a.flags & 8192) || a.flags != b.flags || (a.flags & 511) ||
+    if (!(a.flags & DEMO_GROUNDED) || a.flags != b.flags || (a.flags & DEMO_ACTIVE_INPUT_MASK) ||
         a.checkpointId != b.checkpointId || a.loadNow || b.loadNow || a.saveNow || b.saveNow ||
         a.rpgNow || b.rpgNow)
     {
@@ -1909,10 +2000,10 @@ void Gsc_Demo_Truncate()
     demo->lastKeyFrame = 0;
     for (int i = 0; i < count; ++i)
     {
-        sDemoFrame_t &f = demo->pDemoFrames[i];
-        f.isKeyFrame = true;
-        f.prevKeyFrame = i ? i - 1 : 0;
-        f.nextKeyFrame = i + 1 < count ? i + 1 : i;
+        sDemoFrame_t &frame = demo->pDemoFrames[i];
+        frame.isKeyFrame = true;
+        frame.prevKeyFrame = i ? i - 1 : 0;
+        frame.nextKeyFrame = i + 1 < count ? i + 1 : i;
         demo->lastKeyFrame = i;
     }
     stackPushInt(count);
@@ -1978,15 +2069,15 @@ void Gsc_Demo_FindSegment()
                 // Show the landing for up to half a second, stopping before
                 // another takeoff, load, or checkpoint transition.
                 int destination = demo->pDemoFrames[i].checkpointId;
-                int grounded = (demo->pDemoFrames[i].flags & 8192) ? 1 : 0;
+                int grounded = (demo->pDemoFrames[i].flags & DEMO_GROUNDED) ? 1 : 0;
                 for (int j = i + 1; grounded > 0 && grounded < 10 && j < demo->size; ++j)
                 {
-                    const auto &f = demo->pDemoFrames[j];
-                    if (!f.isKeyFrame && skipFails)
+                    const auto &frame = demo->pDemoFrames[j];
+                    if (!frame.isKeyFrame && skipFails)
                     {
                         break;
                     }
-                    if (f.loadNow || f.checkpointId != destination || !(f.flags & 8192))
+                    if (frame.loadNow || frame.checkpointId != destination || !(frame.flags & DEMO_GROUNDED))
                     {
                         break;
                     }
@@ -2007,23 +2098,23 @@ void Gsc_Demo_FindSegment()
             {
                 if (demo->pDemoFrames[i].checkpointId == cp &&
                     (!skipFails || demo->pDemoFrames[i].isKeyFrame) &&
-                    (demo->pDemoFrames[i].flags & 8192))
+                    (demo->pDemoFrames[i].flags & DEMO_GROUNDED))
                 {
                     hasGround = true;
                 }
             }
             for (int i = first; i <= last; ++i)
             {
-                const auto &f = demo->pDemoFrames[i];
-                if (f.checkpointId != cp || (skipFails && !f.isKeyFrame) ||
-                    (hasGround && !(f.flags & 8192)))
+                const auto &frame = demo->pDemoFrames[i];
+                if (frame.checkpointId != cp || (skipFails && !frame.isKeyFrame) ||
+                    (hasGround && !(frame.flags & DEMO_GROUNDED)))
                 {
                     continue;
                 }
                 float d = 0;
                 for (int a = 0; a < 3; ++a)
                 {
-                    float x = f.origin[a] - origin[a];
+                    float x = frame.origin[a] - origin[a];
                     d += x * x;
                 }
                 if (d <= nearest)
@@ -2046,22 +2137,22 @@ void Gsc_Demo_FindSegment()
         float distance = nearest;
         for (int i = 0; i < demo->size; ++i)
         {
-            const sDemoFrame_t &f = demo->pDemoFrames[i];
-            if (skipFails && !f.isKeyFrame)
+            const sDemoFrame_t &frame = demo->pDemoFrames[i];
+            if (skipFails && !frame.isKeyFrame)
             {
                 continue;
             }
             float d = 0;
             for (int a = 0; a < 3; ++a)
             {
-                float x = f.origin[a] - origin[a];
+                float x = frame.origin[a] - origin[a];
                 d += x * x;
             }
             if (d < distance)
             {
                 distance = d;
             }
-            if (f.flags & 8192)
+            if (frame.flags & DEMO_GROUNDED)
             {
                 ++grounded;
             }
@@ -2103,13 +2194,13 @@ void Gsc_Demo_FindSegment()
     int frames = 0;
     for (int i = first; i <= last; ++i)
     {
-        const auto &f = demo->pDemoFrames[i];
-        if (skipFails && !f.isKeyFrame)
+        const auto &frame = demo->pDemoFrames[i];
+        if (skipFails && !frame.isKeyFrame)
         {
             continue;
         }
         ++frames;
-        if (f.rpgNow)
+        if (frame.rpgNow)
         {
             ++shots;
         }
@@ -2142,14 +2233,14 @@ void OpenCJ_Demo_ApplyBody(int client)
         return;
     }
     const DemoBody &body = demoPresentedBody[client];
-    playerState_t &ps = *SV_GameClientNum(client);
-    ps.legsAnim = body.legs;
-    ps.torsoAnim = body.torso;
-    ps.legsTimer = 0;
-    ps.torsoTimer = 0;
-    ps.legsAnimDuration = body.legsDuration;
-    ps.torsoAnimDuration = body.torsoDuration;
-    ps.movementDir = body.direction;
+    playerState_t &playerState = *SV_GameClientNum(client);
+    playerState.legsAnim = body.legs;
+    playerState.torsoAnim = body.torso;
+    playerState.legsTimer = 0;
+    playerState.torsoTimer = 0;
+    playerState.legsAnimDuration = body.legsDuration;
+    playerState.torsoAnimDuration = body.torsoDuration;
+    playerState.movementDir = body.direction;
     g_entities[client].s.legsAnim = body.legs;
     g_entities[client].s.torsoAnim = body.torso;
     g_entities[client].s.lerp.u.player.movementDir = body.direction;
@@ -2157,6 +2248,41 @@ void OpenCJ_Demo_ApplyBody(int client)
 }
 
 #ifdef COD4
+// Numeric values follow the stock tables in _bg_animation_mp.asm.
+namespace DemoAnimation
+{
+enum Movement
+{
+    IDLE = 1,
+    IDLE_CROUCHED = 2,
+    IDLE_PRONE = 3,
+    WALK = 4,
+    WALK_CROUCHED = 6,
+    WALK_PRONE = 8,
+    RUN = 10,
+    RUN_CROUCHED = 12,
+    CLIMB_UP = 18,
+    CLIMB_DOWN = 19,
+    SPRINT = 20,
+    MANTLE = 21
+};
+enum Event
+{
+    JUMP = 3,
+    JUMP_BACKWARD = 4,
+    LAND = 5,
+    CROUCH_TO_PRONE = 11,
+    PRONE_TO_CROUCH = 12,
+    STAND_TO_CROUCH = 13,
+    CROUCH_TO_STAND = 14,
+    STAND_TO_PRONE = 15,
+    PRONE_TO_STAND = 16
+};
+constexpr int STRAFING_CONDITION = 8;
+constexpr int INDEX_MASK = 511;
+constexpr int RESTART_BIT = 512;
+} // namespace DemoAnimation
+
 static void applyDemoBodyEvent(DemoBody &body, playerState_t &pose, int event, int frame,
                                int elapsed)
 {
@@ -2166,9 +2292,14 @@ static void applyDemoBodyEvent(DemoBody &body, playerState_t &pose, int event, i
         int duration = BG_AnimScriptEvent(&transition, event, 0, 1);
         // Some stock weapon sets omit direct stand/prone transitions.
         // Their crouch/prone transition still supplies the raising/lowering motion.
-        if (duration <= 0 && (event == 15 || event == 16))
+        if (duration <= 0 &&
+            (event == DemoAnimation::STAND_TO_PRONE || event == DemoAnimation::PRONE_TO_STAND))
         {
-            duration = BG_AnimScriptEvent(&transition, event == 15 ? 11 : 12, 0, 1);
+            duration = BG_AnimScriptEvent(&transition,
+                                          event == DemoAnimation::STAND_TO_PRONE
+                                              ? DemoAnimation::CROUCH_TO_PRONE
+                                              : DemoAnimation::PRONE_TO_CROUCH,
+                                          0, 1);
         }
         body.event = event;
         body.eventFrame = frame;
@@ -2190,153 +2321,234 @@ static void applyDemoBodyEvent(DemoBody &body, playerState_t &pose, int event, i
     }
 }
 
+// Legacy recordings lack velocity. Infer it only between nearby continuous frames.
+static void readDemoBodyVelocity(const sDemo_t &demo, int index, float velocity[3])
+{
+    const sDemoFrame_t &frame = demo.pDemoFrames[index];
+    std::fill(velocity, velocity + 3, 0);
+    if (frame.visual.valid)
+    {
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            velocity[axis] = frame.visual.velocity[axis] / DEMO_VELOCITY_SCALE;
+        }
+        return;
+    }
+    if (index <= 0 || frame.loadNow)
+    {
+        return;
+    }
+    const sDemoFrame_t &previousFrame = demo.pDemoFrames[index - 1];
+    const float dx = frame.origin[0] - previousFrame.origin[0];
+    const float dy = frame.origin[1] - previousFrame.origin[1];
+    if (dx * dx + dy * dy < DEMO_MAX_CONTINUOUS_DISTANCE * DEMO_MAX_CONTINUOUS_DISTANCE)
+    {
+        velocity[0] = dx * DEMO_FRAMES_PER_SECOND;
+        velocity[1] = dy * DEMO_FRAMES_PER_SECOND;
+        velocity[2] = (frame.origin[2] - previousFrame.origin[2]) * DEMO_FRAMES_PER_SECOND;
+    }
+}
+
+// Choose stock locomotion from recorded state, independent of the frozen viewer.
+static int selectDemoBodyMovement(const sDemoFrame_t &frame, float speed, float verticalVelocity,
+                                  bool moving, bool backward, int playerSpeed)
+{
+    const bool crouched = frame.flags & DEMO_CROUCHED;
+    const bool prone = frame.flags & DEMO_PRONE;
+    if (frame.flags & DEMO_LADDER)
+    {
+        return verticalVelocity < 0 ? DemoAnimation::CLIMB_DOWN : DemoAnimation::CLIMB_UP;
+    }
+    if (frame.flags & DEMO_MANTLING)
+    {
+        return DemoAnimation::MANTLE;
+    }
+    if (!moving)
+    {
+        if (prone)
+        {
+            return DemoAnimation::IDLE_PRONE;
+        }
+        return crouched ? DemoAnimation::IDLE_CROUCHED : DemoAnimation::IDLE;
+    }
+
+    const bool walking = speed < std::max(1, playerSpeed) * 0.6f || frame.visual.ads > 0;
+    int movement;
+    if (prone)
+    {
+        movement = DemoAnimation::WALK_PRONE;
+    }
+    else if (crouched)
+    {
+        movement = walking ? DemoAnimation::WALK_CROUCHED : DemoAnimation::RUN_CROUCHED;
+    }
+    else
+    {
+        movement = walking ? DemoAnimation::WALK : DemoAnimation::RUN;
+    }
+    // Each walk/run entry is immediately followed by its backward variant.
+    if (backward)
+    {
+        ++movement;
+    }
+    if (!prone && !crouched && (frame.flags & DEMO_SPRINTING))
+    {
+        movement = DemoAnimation::SPRINT;
+    }
+    return movement;
+}
+
+static int demoStanceTransition(int previousStance, int stance)
+{
+    if (stance == DEMO_PRONE)
+    {
+        return previousStance == DEMO_CROUCHED ? DemoAnimation::CROUCH_TO_PRONE
+                                               : DemoAnimation::STAND_TO_PRONE;
+    }
+    if (previousStance == DEMO_PRONE)
+    {
+        return stance == DEMO_CROUCHED ? DemoAnimation::PRONE_TO_CROUCH
+                                       : DemoAnimation::PRONE_TO_STAND;
+    }
+    return stance == DEMO_CROUCHED ? DemoAnimation::STAND_TO_CROUCH
+                                   : DemoAnimation::CROUCH_TO_STAND;
+}
+
+// Seek/reverse reconstructs a short transition from source-frame time.
+// Stop at loads so an earlier take cannot supply the current body's pose.
+static void applyRecentDemoBodyTransition(DemoBody &body, playerState_t &pose, const sDemo_t &demo,
+                                          int index)
+{
+    for (int frameIndex = index; frameIndex > 0 && index - frameIndex < DEMO_TRANSITION_SCAN_FRAMES;
+         --frameIndex)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[frameIndex];
+        const sDemoFrame_t &previousFrame = demo.pDemoFrames[frameIndex - 1];
+        if (frame.loadNow)
+        {
+            break;
+        }
+        int event = -1;
+        if ((frame.flags & DEMO_GROUNDED) &&
+            !(previousFrame.flags & (DEMO_GROUNDED | DEMO_MANTLING | DEMO_LADDER)))
+        {
+            event = DemoAnimation::LAND;
+        }
+        const int stance = frame.flags & (DEMO_CROUCHED | DEMO_PRONE);
+        const int previousStance = previousFrame.flags & (DEMO_CROUCHED | DEMO_PRONE);
+        if (stance != previousStance)
+        {
+            event = demoStanceTransition(previousStance, stance);
+        }
+        if (event >= 0)
+        {
+            applyDemoBodyEvent(body, pose, event, frameIndex,
+                               (index - frameIndex) * DEMO_FRAME_TIME_MS);
+            break;
+        }
+    }
+}
+
+// Keep the restart toggle unless the final animation changes. Intermediate
+// locomotion selection must not restart a jump/landing loop on every tick.
+static int retainDemoAnimationToggle(int selectedAnimation, int previousAnimation)
+{
+    const int animationIndex = selectedAnimation & DemoAnimation::INDEX_MASK;
+    if (animationIndex == (previousAnimation & DemoAnimation::INDEX_MASK))
+    {
+        return previousAnimation;
+    }
+    return animationIndex |
+           ((previousAnimation ^ DemoAnimation::RESTART_BIT) & DemoAnimation::RESTART_BIT);
+}
+
 static void applyDemoBody(int client, const sDemo_t &demo, int index)
 {
     const sDemoFrame_t &frame = techniqueFrame(client, demo, index);
-    playerState_t &ps = *SV_GameClientNum(client);
+    playerState_t &playerState = *SV_GameClientNum(client);
     DemoBody &body = demoPresentedBody[client];
-    // Older demos never stored body animation indices. Select stock locomotion
-    // from recorded motion, stance and keys, independently of the frozen viewer.
-    // Retain the animation toggle bits across ticks so loops do not restart.
-    playerState_t pose = ps;
+    playerState_t pose = playerState;
     pose.clientNum = client;
-    pose.pm_type = 0;
+    pose.pm_type = DEMO_NORMAL_MOVEMENT;
     pose.legsAnim = body.legs;
     pose.torsoAnim = body.torso;
     pose.legsTimer = 0;
     pose.torsoTimer = 0;
     pose.legsAnimDuration = body.legsDuration;
     pose.torsoAnimDuration = body.torsoDuration;
-    pose.pm_flags = (frame.flags & 2048) ? 1 : (frame.flags & 1024) ? 2 : 0;
-    if (frame.flags & 256)
+    pose.pm_flags = 0;
+    if (frame.flags & DEMO_PRONE)
     {
-        pose.pm_flags |= 8;
+        pose.pm_flags = 1;
+    }
+    else if (frame.flags & DEMO_CROUCHED)
+    {
+        pose.pm_flags = 2;
+    }
+    if (frame.flags & DEMO_LADDER)
+    {
+        pose.pm_flags |= DEMO_LADDER_MOVEMENT_FLAG;
     }
     pose.eFlags &= ~0x300; // Never inherit the viewer's mounted-weapon state.
-    float vx = 0;
-    float vy = 0;
-    float vz = 0;
-    if (frame.visual.valid)
-    {
-        vx = frame.visual.velocity[0] / 4.0f;
-        vy = frame.visual.velocity[1] / 4.0f;
-        vz = frame.visual.velocity[2] / 4.0f;
-    }
-    else if (index > 0 && !frame.loadNow)
-    {
-        const sDemoFrame_t &before = demo.pDemoFrames[index - 1];
-        float dx = frame.origin[0] - before.origin[0];
-        float dy = frame.origin[1] - before.origin[1];
-        if (dx * dx + dy * dy < 256 * 256)
-        {
-            vx = dx * 20;
-            vy = dy * 20;
-            vz = (frame.origin[2] - before.origin[2]) * 20;
-        }
-    }
-    const float speed = std::sqrt(vx * vx + vy * vy);
-    const int forward = ((frame.flags & 4) ? 1 : 0) - ((frame.flags & 8) ? 1 : 0);
-    const int right = ((frame.flags & 2) ? 1 : 0) - ((frame.flags & 1) ? 1 : 0);
+
+    float velocity[3];
+    readDemoBodyVelocity(demo, index, velocity);
+    const float speed = std::sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1]);
+    const int forward = bool(frame.flags & DEMO_FORWARD) - bool(frame.flags & DEMO_BACK);
+    const int right = bool(frame.flags & DEMO_RIGHT) - bool(frame.flags & DEMO_LEFT);
     const bool backward = forward < 0;
-    const bool grounded = frame.flags & 8192;
+    const bool grounded = frame.flags & DEMO_GROUNDED;
     const bool moving = speed > 5 && (forward || right);
-    const bool crouch = frame.flags & 1024;
-    const bool prone = frame.flags & 2048;
-    // Values are the stock animMoveTypesStr order in _bg_animation_mp.asm.
-    int movement = prone ? 3 : crouch ? 2 : 1; // idle, idlecr, idleprone
-    if (frame.flags & 256)
+    const int movement =
+        selectDemoBodyMovement(frame, speed, velocity[2], moving, backward, playerState.speed);
+    int strafeCondition = 0;
+    if (forward == 0)
     {
-        movement = vz < 0 ? 19 : 18; // climb down/up
-    }
-    else if (frame.flags & 128)
-    {
-        movement = 21; // mantle root
-    }
-    else if (moving)
-    {
-        bool walk = speed < std::max(1, ps.speed) * 0.6f || frame.visual.ads > 0;
-        movement = prone ? 8 : crouch ? (walk ? 6 : 12) : (walk ? 4 : 10);
-        if (backward)
+        if (right < 0)
         {
-            ++movement;
+            strafeCondition = 1;
         }
-        if (!prone && !crouch && (frame.flags & 64))
+        else if (right > 0)
         {
-            movement = 20;
+            strafeCondition = 2;
         }
     }
-    pmove_t pm = {};
-    pm.ps = &pose;
+    pmove_t movementState = {};
+    movementState.ps = &pose;
     bgs_s *previousBgs = bgs;
     bgs = &level_bgs;
-    BG_AnimUpdatePlayerStateConditions(&pm);
-    BG_SetConditionValue(client, 8, forward == 0 ? (right < 0 ? 1 : right > 0 ? 2 : 0) : 0);
+    BG_AnimUpdatePlayerStateConditions(&movementState);
+    BG_SetConditionValue(client, DemoAnimation::STRAFING_CONDITION, strafeCondition);
     BG_AnimScriptAnimation(&pose, 0, movement, 0);
-    if (!grounded && !(frame.flags & (128 | 256)))
+    if (!(frame.flags & (DEMO_MANTLING | DEMO_LADDER)))
     {
-        applyDemoBodyEvent(body, pose, backward ? 4 : 3, -1,
-                           0); // Pose only; no jump/physics event.
-    }
-    else if (grounded && !(frame.flags & (128 | 256)))
-    {
-        // Reconstruct short landing/stance transitions by source-frame time,
-        // including when seeking or reversing. Never carry one across a load.
-        for (int i = index; i > 0 && index - i < 80; --i)
+        if (grounded)
         {
-            const auto &now = demo.pDemoFrames[i];
-            const auto &before = demo.pDemoFrames[i - 1];
-            if (now.loadNow)
-            {
-                break;
-            }
-            int event = -1;
-            if ((now.flags & 8192) && !(before.flags & (8192 | 128 | 256)))
-            {
-                event = 5; // land
-            }
-            int stance = now.flags & (1024 | 2048);
-            int oldStance = before.flags & (1024 | 2048);
-            if (stance != oldStance)
-            {
-                if (stance == 2048)
-                {
-                    event = oldStance == 1024 ? 11 : 15;
-                }
-                else if (oldStance == 2048)
-                {
-                    event = stance == 1024 ? 12 : 16;
-                }
-                else
-                {
-                    event = stance == 1024 ? 13 : 14;
-                }
-            }
-            if (event >= 0)
-            {
-                applyDemoBodyEvent(body, pose, event, i, (index - i) * 50);
-                break;
-            }
+            applyRecentDemoBodyTransition(body, pose, demo, index);
+        }
+        else
+        {
+            // Pose only; this cannot emit a jump or run player physics.
+            const int jumpEvent = backward ? DemoAnimation::JUMP_BACKWARD : DemoAnimation::JUMP;
+            applyDemoBodyEvent(body, pose, jumpEvent, -1, 0);
         }
     }
     bgs = previousBgs;
-    // Temporary locomotion selection before a jump/landing must not flip the
-    // restart bit on every tick. Only a real final-animation change toggles it.
-    int legs = pose.legsAnim & 511;
-    int torso = pose.torsoAnim & 511;
-    body.legs = legs == (body.legs & 511) ? body.legs : legs | ((body.legs ^ 512) & 512);
-    body.torso = torso == (body.torso & 511) ? body.torso : torso | ((body.torso ^ 512) & 512);
+
+    body.legs = retainDemoAnimationToggle(pose.legsAnim, body.legs);
+    body.torso = retainDemoAnimationToggle(pose.torsoAnim, body.torso);
     body.valid = true;
     body.legsDuration = pose.legsAnimDuration;
     body.torsoDuration = pose.torsoAnimDuration;
     float direction = 0;
     if (grounded && moving)
     {
-        direction = std::remainder(std::atan2(vy, vx) * 180.0f / 3.14159265f - frame.angles[1] +
-                                       (backward ? 180 : 0),
+        direction = std::remainder(std::atan2(velocity[1], velocity[0]) * 180.0f / 3.14159265f -
+                                       frame.angles[1] + (backward ? 180 : 0),
                                    360.0f);
     }
     body.direction = std::max(-90, std::min(90, int(direction)));
-    // Publish now and reapply at the player-to-entity copy after linked Pmove.
+    // Publish now and reapply after linked Pmove chooses an idle body pose.
     OpenCJ_Demo_ApplyBody(client);
 }
 #endif
@@ -2377,48 +2589,29 @@ void Gsc_Demo_BeginPresentation(int client)
 #endif
 }
 
-void Gsc_Demo_ApplyPresentation(int client)
-{
 #ifdef COD4
-    if (rejectInvalidDemoClient(client))
+// Break interpolation only at a load, a seek, or a discontinuity too large for
+// the recorded speed. This also handles older recordings without load markers.
+static void updateDemoInterpolation(int client, const sDemoPlayback_t &playback,
+                                    const sDemoFrame_t &frame, playerState_t &playerState)
+{
+    const DemoVisual &visual = frame.visual;
+    if (demoPresentedFrame[client] != playback.selectedFrame)
     {
-        return;
-    }
-    sDemoPlayback_t &play = opencj_playback[client];
-    if (!demoReturnVisual[client] || !hasSelectedDemoFrame(play))
-    {
-        stackPushBool(false);
-        return;
-    }
-    const sDemoFrame_t &frame = play.pDemo->pDemoFrames[play.selectedFrame];
-    const DemoVisual &v = frame.visual;
-    if (!v.valid)
-    {
-        applyDemoBody(client, *play.pDemo, play.selectedFrame);
-        stackPushBool(false);
-        return;
-    }
-    playerState_t &ps = *SV_GameClientNum(client);
-    if (v.weapon >= 128)
-    {
-        stackPushBool(false);
-        return;
-    }
-    if (demoPresentedFrame[client] != play.selectedFrame)
-    {
-        bool cut = frame.loadNow || (demoPresentedFrame[client] >= 0 &&
-                                     std::abs(play.selectedFrame - demoPresentedFrame[client]) > 4);
+        bool cut =
+            frame.loadNow || (demoPresentedFrame[client] >= 0 &&
+                              std::abs(playback.selectedFrame - demoPresentedFrame[client]) > 4);
         int previous = demoPresentedFrame[client];
-        if (previous >= 0 && previous < play.pDemo->size)
+        if (previous >= 0 && previous < playback.pDemo->size)
         {
-            const sDemoFrame_t &before = play.pDemo->pDemoFrames[previous];
+            const sDemoFrame_t &before = playback.pDemo->pDemoFrames[previous];
             float distance = 0;
             float speed = 0;
             for (int i = 0; i < 3; ++i)
             {
                 float delta = frame.origin[i] - before.origin[i];
                 distance += delta * delta;
-                float velocity = v.velocity[i] / 4.0f;
+                float velocity = visual.velocity[i] / DEMO_VELOCITY_SCALE;
                 speed += velocity * velocity;
             }
             // Older recordings lack teleport markers. Do not blend map portals
@@ -2427,78 +2620,124 @@ void Gsc_Demo_ApplyPresentation(int client)
         }
         if (cut)
         {
-            ps.eFlags ^= 2; // EF_TELEPORT_BIT: discard interpolation across a cut.
+            playerState.eFlags ^= DEMO_TELEPORT_TOGGLE;
         }
-        demoPresentedFrame[client] = play.selectedFrame;
+        demoPresentedFrame[client] = playback.selectedFrame;
     }
+}
+
+// Restore this temporary inventory and viewmodel state when presentation ends.
+static void applyDemoViewmodel(int client, const DemoVisual &visual, playerState_t &playerState)
+{
     // Match the existing seamless-switch protocol so client prediction does not
     // keep re-equipping the viewer's own weapon. Restore inventory on exit.
-    if (v.weapon)
+    if (visual.weapon)
     {
-        ps.weapons[v.weapon / 32] |= 1u << (v.weapon % 32);
+        playerState.weapons[visual.weapon / 32] |= 1u << (visual.weapon % 32);
     }
-    if (demoPresentedWeapon[client] != v.weapon)
+    if (demoPresentedWeapon[client] != visual.weapon)
     {
-        SV_GameSendServerCommand(client, 1, va("a %u", unsigned(v.weapon)));
-        demoPresentedWeapon[client] = v.weapon;
+        SV_GameSendServerCommand(client, 1, va("a %u", unsigned(visual.weapon)));
+        demoPresentedWeapon[client] = visual.weapon;
     }
     // disableWeapons makes PM_Weapon lower the weapon to "none". Freeze
     // live input instead, and drive the animation directly from the recording.
     // Never feed recorded fire delays/states back into weapon simulation:
     // a delayed RPG shot could otherwise spawn a real missile.
     g_entities[client].client->bFrozen = qtrue;
-    ps.pm_flags |= 0x800;
+    playerState.pm_flags |= DEMO_FROZEN_MOVEMENT_FLAG;
     // Use the client's spectator interpolation path. Local prediction would
     // zero velocity for frozen controls, suppressing recorded weapon bob/sway.
-    ps.otherFlags |= 2;
-    ps.weapFlags &= ~0x80;
+    playerState.otherFlags |= DEMO_SPECTATOR_INTERPOLATION_FLAG;
+    playerState.weapFlags &= ~DEMO_DISABLED_WEAPON_FLAG;
     // Viewmodel rocket tags depend on clip ammo even when animation is driven
     // directly. Supply presentation ammo; the saved inventory is restored on exit.
-    const WeaponDef *weapon = BG_GetWeaponDef(v.weapon);
+    const WeaponDef *weapon = BG_GetWeaponDef(visual.weapon);
     if (weapon)
     {
-        if (weapon->iClipIndex >= 0 &&
-            weapon->iClipIndex < int(sizeof(ps.ammoclip) / sizeof(ps.ammoclip[0])))
+        if (weapon->iClipIndex >= 0 && weapon->iClipIndex < int(sizeof(playerState.ammoclip) /
+                                                                sizeof(playerState.ammoclip[0])))
         {
-            ps.ammoclip[weapon->iClipIndex] = 1;
+            playerState.ammoclip[weapon->iClipIndex] = 1;
         }
         if (weapon->iAmmoIndex >= 0 &&
-            weapon->iAmmoIndex < int(sizeof(ps.ammo) / sizeof(ps.ammo[0])))
+            weapon->iAmmoIndex < int(sizeof(playerState.ammo) / sizeof(playerState.ammo[0])))
         {
-            ps.ammo[weapon->iAmmoIndex] = 1;
+            playerState.ammo[weapon->iAmmoIndex] = 1;
         }
     }
-    ps.weapon = v.weapon;
-    ps.weaponTime = 1000;
-    ps.weaponDelay = 0;
-    ps.weapAnim = v.animation;
-    ps.weaponstate = 0;
-    ps.bobCycle = v.bobCycle;
-    ps.viewHeightCurrent = v.viewHeight;
-    ps.viewHeightTarget = int(v.viewHeight);
-    ps.viewHeightLerpTime = 0;
-    ps.fWeaponPosFrac = v.ads;
-    if (!(frame.flags & 8192) && ps.groundEntityNum != ENTITYNUM_NONE)
+    playerState.weapon = visual.weapon;
+    playerState.weaponTime = DEMO_WEAPON_HOLD_TIME_MS;
+    playerState.weaponDelay = 0;
+    playerState.weapAnim = visual.animation;
+    playerState.weaponstate = DEMO_WEAPON_READY_STATE;
+}
+
+// Apply recorded stance and motion for presentation, without running Pmove.
+static void applyDemoRecordedPose(const sDemoFrame_t &frame, playerState_t &playerState)
+{
+    const DemoVisual &visual = frame.visual;
+    playerState.bobCycle = visual.bobCycle;
+    playerState.viewHeightCurrent = visual.viewHeight;
+    playerState.viewHeightTarget = int(visual.viewHeight);
+    playerState.viewHeightLerpTime = 0;
+    playerState.fWeaponPosFrac = visual.ads;
+    if (!(frame.flags & DEMO_GROUNDED) && playerState.groundEntityNum != ENTITYNUM_NONE)
     {
-        ps.jumpTime = ps.commandTime;
-        ps.jumpOriginZ = frame.origin[2];
+        playerState.jumpTime = playerState.commandTime;
+        playerState.jumpOriginZ = frame.origin[2];
     }
-    ps.groundEntityNum = (frame.flags & 8192) ? ENTITYNUM_WORLD : ENTITYNUM_NONE;
-    ps.pm_flags =
-        (ps.pm_flags & ~12) | ((frame.flags & 128) ? 4 : 0) | ((frame.flags & 256) ? 8 : 0);
+    playerState.groundEntityNum = (frame.flags & DEMO_GROUNDED) ? ENTITYNUM_WORLD : ENTITYNUM_NONE;
+    playerState.pm_flags =
+        (playerState.pm_flags & ~(DEMO_MANTLE_MOVEMENT_FLAG | DEMO_LADDER_MOVEMENT_FLAG)) |
+        ((frame.flags & DEMO_MANTLING) ? DEMO_MANTLE_MOVEMENT_FLAG : 0) |
+        ((frame.flags & DEMO_LADDER) ? DEMO_LADDER_MOVEMENT_FLAG : 0);
     for (int i = 0; i < 3; ++i)
     {
-        ps.velocity[i] = v.velocity[i] / 4.0f;
-        ps.vLadderVec[i] = v.ladder[i] / 32767.0f;
+        playerState.velocity[i] = visual.velocity[i] / DEMO_VELOCITY_SCALE;
+        playerState.vLadderVec[i] = visual.ladder[i] / DEMO_LADDER_SCALE;
     }
-    ps.sprintState.lastSprintStart = ps.commandTime - v.sprintElapsed;
-    ps.sprintState.lastSprintEnd =
-        (frame.flags & 64) ? ps.sprintState.lastSprintStart - 1 : ps.commandTime;
-    ps.mantleState.timer = v.mantleTimer;
-    ps.mantleState.yaw = v.mantleYaw * 360.0f / 65536;
-    ps.mantleState.transIndex = v.mantleTransition;
-    ps.mantleState.flags = v.mantleFlags;
-    applyDemoBody(client, *play.pDemo, play.selectedFrame);
+    playerState.sprintState.lastSprintStart = playerState.commandTime - visual.sprintElapsed;
+    playerState.sprintState.lastSprintEnd = (frame.flags & DEMO_SPRINTING)
+                                                ? playerState.sprintState.lastSprintStart - 1
+                                                : playerState.commandTime;
+    playerState.mantleState.timer = visual.mantleTimer;
+    playerState.mantleState.yaw = visual.mantleYaw * 360.0f / 65536;
+    playerState.mantleState.transIndex = visual.mantleTransition;
+    playerState.mantleState.flags = visual.mantleFlags;
+}
+#endif
+
+void Gsc_Demo_ApplyPresentation(int client)
+{
+#ifdef COD4
+    if (rejectInvalidDemoClient(client))
+    {
+        return;
+    }
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (!demoReturnVisual[client] || !hasSelectedDemoFrame(playback))
+    {
+        stackPushBool(false);
+        return;
+    }
+    const sDemoFrame_t &frame = playback.pDemo->pDemoFrames[playback.selectedFrame];
+    if (!frame.visual.valid)
+    {
+        applyDemoBody(client, *playback.pDemo, playback.selectedFrame);
+        stackPushBool(false);
+        return;
+    }
+    if (frame.visual.weapon >= DEMO_WEAPON_LIMIT)
+    {
+        stackPushBool(false);
+        return;
+    }
+    playerState_t &playerState = *SV_GameClientNum(client);
+    updateDemoInterpolation(client, playback, frame, playerState);
+    applyDemoViewmodel(client, frame.visual, playerState);
+    applyDemoRecordedPose(frame, playerState);
+    applyDemoBody(client, *playback.pDemo, playback.selectedFrame);
     stackPushBool(true);
 #else
     stackPushBool(false);
@@ -2518,26 +2757,26 @@ void Gsc_Demo_SeekCheckpoint(int client)
         stackPushUndefined();
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (!play.pDemo)
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (!playback.pDemo)
     {
         stackPushUndefined();
         return;
     }
     const auto &timeline = demoPlaybackTimeline[client];
-    const sDemoFrame_t *frames = play.pDemo->pDemoFrames;
+    const sDemoFrame_t *frames = playback.pDemo->pDemoFrames;
     if (timeline.empty())
     {
-        int current = play.selectedFrame;
+        int current = playback.selectedFrame;
         int target = current;
         if (direction > 0)
         {
-            while (target + 1 < play.pDemo->size &&
+            while (target + 1 < playback.pDemo->size &&
                    frames[target + 1].checkpointId == frames[current].checkpointId)
             {
                 ++target;
             }
-            if (target + 1 < play.pDemo->size)
+            if (target + 1 < playback.pDemo->size)
             {
                 ++target;
             }
@@ -2560,7 +2799,7 @@ void Gsc_Demo_SeekCheckpoint(int client)
         stackPushInt(target);
         return;
     }
-    int current = int(std::lower_bound(timeline.begin(), timeline.end(), play.selectedFrame) -
+    int current = int(std::lower_bound(timeline.begin(), timeline.end(), playback.selectedFrame) -
                       timeline.begin());
     current = std::min(current, int(timeline.size()) - 1);
     int target = current;
@@ -2603,10 +2842,10 @@ void Gsc_Demo_PlayLanding(int client)
     {
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (demoReturnVisual[client] && hasSelectedDemoFrame(play))
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (demoReturnVisual[client] && hasSelectedDemoFrame(playback))
     {
-        const sDemoFrame_t &frame = play.pDemo->pDemoFrames[play.selectedFrame];
+        const sDemoFrame_t &frame = playback.pDemo->pDemoFrames[playback.selectedFrame];
         if (frame.visual.landingEvent && !frame.loadNow)
         {
             // A normal landing event gives the owner the original camera dip;
@@ -2635,50 +2874,53 @@ void Gsc_Demo_EndPresentation(int client)
     {
         return;
     }
-    playerState_t &ps = *SV_GameClientNum(client);
+    playerState_t &playerState = *SV_GameClientNum(client);
     g_entities[client].client->bFrozen = demoReturnFrozen[client];
-    ps.otherFlags = (ps.otherFlags & ~2) | (saved->otherFlags & 2);
-    ps.pm_flags = (ps.pm_flags & ~0x800) | (saved->pm_flags & 0x800);
-    ps.weapFlags = (ps.weapFlags & ~0x80) | (saved->weapFlags & 0x80);
-    memcpy(ps.weapons, saved->weapons, sizeof(ps.weapons));
-    memcpy(ps.weaponold, saved->weaponold, sizeof(ps.weaponold));
-    memcpy(ps.weaponrechamber, saved->weaponrechamber, sizeof(ps.weaponrechamber));
-    memcpy(ps.ammo, saved->ammo, sizeof(ps.ammo));
-    memcpy(ps.ammoclip, saved->ammoclip, sizeof(ps.ammoclip));
-    ps.weapon = saved->weapon;
-    ps.weaponTime = saved->weaponTime;
-    ps.weaponDelay = saved->weaponDelay;
+    playerState.otherFlags = (playerState.otherFlags & ~DEMO_SPECTATOR_INTERPOLATION_FLAG) |
+                             (saved->otherFlags & DEMO_SPECTATOR_INTERPOLATION_FLAG);
+    playerState.pm_flags = (playerState.pm_flags & ~DEMO_FROZEN_MOVEMENT_FLAG) |
+                           (saved->pm_flags & DEMO_FROZEN_MOVEMENT_FLAG);
+    playerState.weapFlags = (playerState.weapFlags & ~DEMO_DISABLED_WEAPON_FLAG) |
+                            (saved->weapFlags & DEMO_DISABLED_WEAPON_FLAG);
+    memcpy(playerState.weapons, saved->weapons, sizeof(playerState.weapons));
+    memcpy(playerState.weaponold, saved->weaponold, sizeof(playerState.weaponold));
+    memcpy(playerState.weaponrechamber, saved->weaponrechamber, sizeof(playerState.weaponrechamber));
+    memcpy(playerState.ammo, saved->ammo, sizeof(playerState.ammo));
+    memcpy(playerState.ammoclip, saved->ammoclip, sizeof(playerState.ammoclip));
+    playerState.weapon = saved->weapon;
+    playerState.weaponTime = saved->weaponTime;
+    playerState.weaponDelay = saved->weaponDelay;
     SV_GameSendServerCommand(client, 1, va("a %u", saved->weapon));
-    ps.weapAnim = saved->weapAnim;
-    ps.weaponstate = saved->weaponstate;
-    ps.bobCycle = saved->bobCycle;
-    ps.viewHeightCurrent = saved->viewHeightCurrent;
-    ps.viewHeightTarget = saved->viewHeightTarget;
-    ps.viewHeightLerpTime = saved->viewHeightLerpTime;
-    ps.viewHeightLerpTarget = saved->viewHeightLerpTarget;
-    ps.viewHeightLerpDown = saved->viewHeightLerpDown;
-    ps.fWeaponPosFrac = saved->fWeaponPosFrac;
-    ps.pm_flags = (ps.pm_flags & ~12) | (saved->pm_flags & 12);
-    memcpy(ps.velocity, saved->velocity, sizeof(ps.velocity));
-    memcpy(ps.vLadderVec, saved->vLadderVec, sizeof(ps.vLadderVec));
-    int elapsed = ps.commandTime - saved->commandTime;
-    ps.groundEntityNum = saved->groundEntityNum;
-    ps.jumpTime = saved->jumpTime + elapsed;
-    ps.jumpOriginZ = saved->jumpOriginZ;
-    ps.sprintState = saved->sprintState;
-    ps.sprintState.lastSprintStart += elapsed;
-    ps.sprintState.lastSprintEnd += elapsed;
-    ps.mantleState = saved->mantleState;
-    ps.legsAnim = saved->legsAnim;
-    ps.torsoAnim = saved->torsoAnim;
-    ps.legsTimer = saved->legsTimer;
-    ps.torsoTimer = saved->torsoTimer;
-    ps.legsAnimDuration = saved->legsAnimDuration;
-    ps.torsoAnimDuration = saved->torsoAnimDuration;
-    ps.movementDir = saved->movementDir;
-    g_entities[client].s.legsAnim = ps.legsAnim;
-    g_entities[client].s.torsoAnim = ps.torsoAnim;
-    g_entities[client].s.lerp.u.player.movementDir = ps.movementDir;
+    playerState.weapAnim = saved->weapAnim;
+    playerState.weaponstate = saved->weaponstate;
+    playerState.bobCycle = saved->bobCycle;
+    playerState.viewHeightCurrent = saved->viewHeightCurrent;
+    playerState.viewHeightTarget = saved->viewHeightTarget;
+    playerState.viewHeightLerpTime = saved->viewHeightLerpTime;
+    playerState.viewHeightLerpTarget = saved->viewHeightLerpTarget;
+    playerState.viewHeightLerpDown = saved->viewHeightLerpDown;
+    playerState.fWeaponPosFrac = saved->fWeaponPosFrac;
+    playerState.pm_flags = (playerState.pm_flags & ~(DEMO_MANTLE_MOVEMENT_FLAG | DEMO_LADDER_MOVEMENT_FLAG)) | (saved->pm_flags & (DEMO_MANTLE_MOVEMENT_FLAG | DEMO_LADDER_MOVEMENT_FLAG));
+    memcpy(playerState.velocity, saved->velocity, sizeof(playerState.velocity));
+    memcpy(playerState.vLadderVec, saved->vLadderVec, sizeof(playerState.vLadderVec));
+    int elapsed = playerState.commandTime - saved->commandTime;
+    playerState.groundEntityNum = saved->groundEntityNum;
+    playerState.jumpTime = saved->jumpTime + elapsed;
+    playerState.jumpOriginZ = saved->jumpOriginZ;
+    playerState.sprintState = saved->sprintState;
+    playerState.sprintState.lastSprintStart += elapsed;
+    playerState.sprintState.lastSprintEnd += elapsed;
+    playerState.mantleState = saved->mantleState;
+    playerState.legsAnim = saved->legsAnim;
+    playerState.torsoAnim = saved->torsoAnim;
+    playerState.legsTimer = saved->legsTimer;
+    playerState.torsoTimer = saved->torsoTimer;
+    playerState.legsAnimDuration = saved->legsAnimDuration;
+    playerState.torsoAnimDuration = saved->torsoAnimDuration;
+    playerState.movementDir = saved->movementDir;
+    g_entities[client].s.legsAnim = playerState.legsAnim;
+    g_entities[client].s.torsoAnim = playerState.torsoAnim;
+    g_entities[client].s.lerp.u.player.movementDir = playerState.movementDir;
     delete saved;
     demoReturnVisual[client] = nullptr;
     std::vector<int>().swap(demoPlaybackTimeline[client]);
@@ -2692,11 +2934,11 @@ void Gsc_Demo_ReadFrame_Weapon(int client)
     if (rejectInvalidDemoClient(client)) {
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (hasSelectedDemoFrame(play)) {
-        const DemoVisual &v = play.pDemo->pDemoFrames[play.selectedFrame].visual;
-        if (v.valid) {
-            stackPushString(demoWeaponName(v.weapon));
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (hasSelectedDemoFrame(playback)) {
+        const DemoVisual &visual = playback.pDemo->pDemoFrames[playback.selectedFrame].visual;
+        if (visual.valid) {
+            stackPushString(demoWeaponName(visual.weapon));
             return;
         }
     }
@@ -2711,13 +2953,13 @@ void Gsc_Demo_ReadFrame_RPGSound(int client)
     {
         return;
     }
-    const sDemoPlayback_t &play = opencj_playback[client];
-    if (hasSelectedDemoFrame(play))
+    const sDemoPlayback_t &playback = opencj_playback[client];
+    if (hasSelectedDemoFrame(playback))
     {
-        const sDemoFrame_t &f = play.pDemo->pDemoFrames[play.selectedFrame];
-        if (f.visual.valid && f.rpgNow && (f.flags & 4096))
+        const sDemoFrame_t &frame = playback.pDemo->pDemoFrames[playback.selectedFrame];
+        if (frame.visual.valid && frame.rpgNow && (frame.flags & DEMO_RPG_WEAPON))
         {
-            const char *sound = demoFireSound(f.visual.weapon);
+            const char *sound = demoFireSound(frame.visual.weapon);
             if (*sound)
             {
                 stackPushString(sound);
@@ -2798,14 +3040,14 @@ void Gsc_Demo_RangeInfo()
     bool known = true;
     bool ele = false;
     for (int i = first; i <= last; ++i) {
-        const sDemoFrame_t &f = demo->pDemoFrames[i];
-        shots += f.rpgNow;
-        known = known && f.eleKnown;
-        ele = ele || f.eleUsed;
-        if (!(f.flags & 8192)) {
-            if (f.fps != 125 && f.fps != 250 && f.fps != 333) {
+        const sDemoFrame_t &frame = demo->pDemoFrames[i];
+        shots += frame.rpgNow;
+        known = known && frame.eleKnown;
+        ele = ele || frame.eleUsed;
+        if (!(frame.flags & DEMO_GROUNDED)) {
+            if (frame.fps != 125 && frame.fps != 250 && frame.fps != 333) {
                 fps = 2;
-            } else if (f.fps != 125 && fps < 1) {
+            } else if (frame.fps != 125 && fps < 1) {
                 fps = 1;
             } else if (fps < 0) {
                 fps = 0;
@@ -2831,7 +3073,7 @@ void Gsc_Demo_KeepLast()
     }
     stackGetParamInt(1, &count);
     sDemo_t *demo = findDemoById(id);
-    if (!demo || demo->isComplete || count < 1 || count > 1200)
+    if (!demo || demo->isComplete || count < 1 || count > DEMO_MANUAL_HISTORY_LIMIT)
     {
         stackPushUndefined();
         return;
@@ -2846,10 +3088,10 @@ void Gsc_Demo_KeepLast()
         // Manual clips preserve every take, so every frame stays playable.
         for (int i = 0; i < count; ++i)
         {
-            auto &f = demo->pDemoFrames[i];
-            f.isKeyFrame = true;
-            f.prevKeyFrame = std::max(0, i - 1);
-            f.nextKeyFrame = std::min(count - 1, i + 1);
+            auto &frame = demo->pDemoFrames[i];
+            frame.isKeyFrame = true;
+            frame.prevKeyFrame = std::max(0, i - 1);
+            frame.nextKeyFrame = std::min(count - 1, i + 1);
         }
     }
     stackPushInt(removed);

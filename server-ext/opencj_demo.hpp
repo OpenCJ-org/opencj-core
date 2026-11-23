@@ -2,7 +2,7 @@
 #define _OPENCJ_DEMO_HPP_
 
 //==========================================================================
-// Functions that do work for any demo                                        
+// Functions that do work for any demo
 //==========================================================================
 
 void Gsc_Demo_ClearAllDemos();
@@ -15,7 +15,7 @@ void Gsc_Demo_AddFrame();
 void Gsc_Demo_CompleteDemo();
 
 //==========================================================================
-// Functions related to playback & control                                        
+// Functions related to playback & control
 //==========================================================================
 
 void Gsc_Demo_SelectPlaybackDemo(int playerId);
@@ -45,8 +45,6 @@ void Gsc_Demo_PlayLanding(int client);
 void Gsc_Demo_ReadFrame_Weapon(int client);
 void Gsc_Demo_ReadFrame_RPGSound(int client);
 
-#endif // _OPENCJ_DEMO_HPP_
-
 void Gsc_Demo_SeekCheckpoint(int client);
 
 void Gsc_Demo_MarkFailedSince();
@@ -69,8 +67,8 @@ void Gsc_Demo_FPSStats(int client);
 
 struct SqlCompletion;
 long long OpenCJ_Demo_SQLClock();
-bool OpenCJ_Demo_SQLReady(int id,long long deadline);
-void OpenCJ_Demo_SQLStatus(int id,SqlCompletion*);
+bool OpenCJ_Demo_SQLReady(int id, long long deadline);
+void OpenCJ_Demo_SQLStatus(int id, SqlCompletion *completion);
 bool OpenCJ_Demo_SQLTake(int id);
 void OpenCJ_Demo_SQLNewMap();
 void Gsc_Demo_LoadChunks();
@@ -86,3 +84,5 @@ void Gsc_Demo_RangeInfo();
 
 void Gsc_Demo_TechniquePhase(int client);
 void Gsc_Demo_ReadFrame_Checkpoint(int client);
+
+#endif // _OPENCJ_DEMO_HPP_

@@ -12,77 +12,73 @@ static float returnedVector[3];
 static playerState_t playerState;
 static gclient_t gameClient;
 
-extern "C" {
-gentity_t g_entities[MAX_CLIENTS] = {};
-
-playerState_t *SV_GameClientNum(int client)
+extern "C"
 {
-    assert(client == 0);
-    return &playerState;
-}
+    gentity_t g_entities[MAX_CLIENTS] = {};
 
-void SV_GameSendServerCommand(int client, int, const char *)
-{
-    assert(client == 0);
-}
+    playerState_t *SV_GameClientNum(int client)
+    {
+        assert(client == 0);
+        return &playerState;
+    }
 
-WeaponDef *BG_GetWeaponDef(int)
-{
-    return nullptr;
-}
+    void SV_GameSendServerCommand(int client, int, const char *)
+    {
+        assert(client == 0);
+    }
 
-int G_GetWeaponIndexForName(const char *)
-{
-    return 0;
-}
+    WeaponDef *BG_GetWeaponDef(int)
+    {
+        return nullptr;
+    }
 
-void Scr_AddUndefined()
-{
-    returnedUndefined = true;
-}
+    int G_GetWeaponIndexForName(const char *)
+    {
+        return 0;
+    }
 
-void Scr_AddInt(int value)
-{
-    returnedUndefined = false;
-    returnedInteger = value;
-}
+    void Scr_AddUndefined()
+    {
+        returnedUndefined = true;
+    }
 
-void Scr_AddBool(bool value)
-{
-    Scr_AddInt(value);
-}
+    void Scr_AddInt(int value)
+    {
+        returnedUndefined = false;
+        returnedInteger = value;
+    }
 
-void Scr_AddVector(const float *value)
-{
-    returnedUndefined = false;
-    std::copy(value, value + 3, returnedVector);
-}
+    void Scr_AddBool(bool value)
+    {
+        Scr_AddInt(value);
+    }
 
-void Scr_Error(const char *message)
-{
-    std::fprintf(stderr, "Unexpected script error: %s\n", message);
-    std::abort();
-}
+    void Scr_AddVector(const float *value)
+    {
+        returnedUndefined = false;
+        std::copy(value, value + 3, returnedVector);
+    }
 
-char *va(const char *, ...)
-{
-    static char message[] = "invalid client";
-    return message;
-}
+    void Scr_Error(const char *message)
+    {
+        std::fprintf(stderr, "Unexpected script error: %s\n", message);
+        std::abort();
+    }
+
+    char *va(const char *, ...)
+    {
+        static char message[] = "invalid client";
+        return message;
+    }
 }
 
 static void checkFrameReaders(int client, bool expectUndefined)
 {
     using FrameReader = void (*)(int);
     const FrameReader readers[] = {
-        Gsc_Demo_ReadFrame_Origin,
-        Gsc_Demo_ReadFrame_Angles,
-        Gsc_Demo_ReadFrame_SaveNow,
-        Gsc_Demo_ReadFrame_LoadNow,
-        Gsc_Demo_ReadFrame_RPGNow,
-        Gsc_Demo_ReadFrame_FPS,
-        Gsc_Demo_ReadFrame_Flags,
-        Gsc_Demo_ReadFrame_Checkpoint,
+        Gsc_Demo_ReadFrame_Origin,  Gsc_Demo_ReadFrame_Angles,     Gsc_Demo_ReadFrame_SaveNow,
+        Gsc_Demo_ReadFrame_LoadNow, Gsc_Demo_ReadFrame_RPGNow,     Gsc_Demo_ReadFrame_FPS,
+        Gsc_Demo_ReadFrame_Flags,   Gsc_Demo_ReadFrame_Checkpoint,
     };
     for (FrameReader read : readers)
     {
@@ -157,8 +153,8 @@ static std::string legacyChunk(unsigned frameCount)
     putDemoInt(raw.data() + 4, frameCount, 4);
     std::string packed(compressBound(raw.size()), char{});
     uLongf packedSize = packed.size();
-    assert(compress2(reinterpret_cast<unsigned char *>(packed.data()), &packedSize,
-                     raw.data(), raw.size(), 6) == Z_OK);
+    assert(compress2(reinterpret_cast<unsigned char *>(packed.data()), &packedSize, raw.data(),
+                     raw.size(), 6) == Z_OK);
     packed.resize(packedSize);
     return packed;
 }
@@ -222,8 +218,8 @@ static std::string packRawChunk(const std::vector<unsigned char> &raw)
 {
     std::string packed(compressBound(raw.size()), char{});
     uLongf packedSize = packed.size();
-    assert(compress2(reinterpret_cast<unsigned char *>(packed.data()), &packedSize,
-                     raw.data(), raw.size(), 6) == Z_OK);
+    assert(compress2(reinterpret_cast<unsigned char *>(packed.data()), &packedSize, raw.data(),
+                     raw.size(), 6) == Z_OK);
     packed.resize(packedSize);
     return packed;
 }
@@ -231,7 +227,8 @@ static std::string packRawChunk(const std::vector<unsigned char> &raw)
 static std::vector<unsigned char> goldenModernFrame()
 {
     // Literal OCJ5 bytes recorded before the codec readability cleanup.
-    const char *hex = "4f434a35010000000000c03f000000c0000020410040008000c005204d0178563412ff0201030004000506803cff0400f8ff0c00ff7f000001800700080009000a0b046e6f6e654d0c";
+    const char *hex = "4f434a35010000000000c03f000000c0000020410040008000c005204d0178563412ff020103"
+                      "0004000506803cff0400f8ff0c00ff7f000001800700080009000a0b046e6f6e654d0c";
     std::vector<unsigned char> raw;
     for (size_t offset = 0; hex[offset]; offset += 2)
     {
@@ -257,15 +254,14 @@ static void storedFormatsRemainCompatible()
     frame.rpgNow = true;
     frame.eleKnown = true;
     frame.eleUsed = true;
-    frame.visual = {true, 0, 258, 3, 4, 5, 6, 60.5f, 1,
-                    {4, -8, 12}, {32767, 0, -32767}, 7, 8, 9, 10, 11, 77, 12};
+    frame.visual = {true, 0, 258, 3,  4,  5,  6, 60.5f, 1, {4, -8, 12}, {32767, 0, -32767},
+                    7,    8, 9,   10, 11, 77, 12};
     assert(appendDemoFrame(demo, frame));
     std::string encoded;
     assert(encodeDemoChunk(demo, 0, 1, encoded));
     std::vector<unsigned char> raw(8192);
     uLongf rawSize = raw.size();
-    assert(uncompress(raw.data(), &rawSize,
-                      reinterpret_cast<const unsigned char *>(encoded.data()),
+    assert(uncompress(raw.data(), &rawSize, reinterpret_cast<const unsigned char *>(encoded.data()),
                       encoded.size()) == Z_OK);
     raw.resize(rawSize);
     assert(raw == goldenModernFrame());
@@ -285,8 +281,7 @@ static void storedFormatsRemainCompatible()
         sDemo_t *decoded = createDemo(5, 4);
         assert(decoded);
         const std::string packed = packRawChunk(raw);
-        assert(decodeDemoChunk(decoded,
-                               reinterpret_cast<const unsigned char *>(packed.data()),
+        assert(decodeDemoChunk(decoded, reinterpret_cast<const unsigned char *>(packed.data()),
                                packed.size()) == 1);
         const sDemoFrame_t &restored = decoded->pDemoFrames[0];
         assert(restored.origin[0] == 1.5f && restored.origin[1] == -2);
