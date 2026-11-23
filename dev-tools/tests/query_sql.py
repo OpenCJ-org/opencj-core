@@ -29,7 +29,10 @@ def gsc_expression(text, values):
             parts.append(text[start:i].strip())
             start = i + 1
     parts.append(text[start:].strip())
-    return ''.join(json.loads(p) if p.startswith('"') else str(values[p]) for p in parts if p)
+    return ''.join(
+        json.loads(part) if part.startswith('"') else str(values[' '.join(part.split())])
+        for part in parts if part
+    )
 
 
 def query(
@@ -63,12 +66,14 @@ def query(
         return gsc_expression(expr, {'runID': current})
     if kind in ('runs', 'leaderboard'):
         s = s.split('\nfetchUpdatedData()\n', 1)[1]
-    expr = baseline[kind] if before else re.search(r'query = ("SELECT .*?);', s, re.S)[1]
+    expr = baseline[kind] if before else re.search(r'query\s*=\s*("SELECT .*?);', s, re.S)[1]
     values = {
         'sortStr': sort,
+        'sortClause': sort,
         'playerID': player,
         'finishCPIds': cp,
         'checkpointString': cp,
+        'checkpointIDs': cp,
         'openCJ\\mapID::getMapID()': mapid,
         'self getRunStr()': (' AND pr.runID != ' + str(current)) if current else '',
         'self.currentBoard["maxEntriesPerPage"]': limit,
