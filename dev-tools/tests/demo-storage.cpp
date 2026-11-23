@@ -7,6 +7,7 @@
 
 static bool returnedUndefined;
 static int returnedInteger;
+static std::vector<int> scriptArguments;
 static float returnedVector[3];
 
 static playerState_t playerState;
@@ -14,6 +15,22 @@ static gclient_t gameClient;
 
 extern "C"
 {
+int Scr_GetNumParam()
+{
+    return scriptArguments.size();
+}
+
+int Scr_GetInt(unsigned index)
+{
+    return scriptArguments.at(index);
+}
+
+unsigned Scr_GetType(unsigned index)
+{
+    assert(index < scriptArguments.size());
+    return STACK_INT;
+}
+
     gentity_t g_entities[MAX_CLIENTS] = {};
 
     playerState_t *SV_GameClientNum(int client)
@@ -326,6 +343,27 @@ static void storedFormatsRemainCompatible()
     clearDemoById(4);
 }
 
+static void trimmedRecordingRefreshesSelectedSample()
+{
+    constexpr int client = 0;
+    sDemo_t *demo = createDemo(6, 4);
+    assert(demo);
+    sDemoFrame_t frame = {};
+    frame.fps = 333;
+    assert(appendDemoFrame(demo, frame));
+    frame.fps = 125;
+    assert(appendDemoFrame(demo, frame));
+    opencj_playback[client] = {demo, 0};
+    demoTechnique[client] = {};
+    assert(techniqueFrame(client, *demo, 0).fps == 333);
+
+    scriptArguments = {6, 1};
+    Gsc_Demo_KeepLast();
+    assert(!returnedUndefined && returnedInteger == 1);
+    assert(techniqueFrame(client, *demo, 0).fps == 125);
+    clearDemoById(6);
+}
+
 int main()
 {
     emptyAndShortenedPlayback();
@@ -333,5 +371,6 @@ int main()
     rejectedChunkLeavesRecordingUnchanged();
     repeatedPresentationKeepsOriginalState();
     storedFormatsRemainCompatible();
+    trimmedRecordingRefreshesSelectedSample();
     std::puts("DEMO STORAGE PASS bounds, atomic appends, presentation and OCJ1-5 compatibility");
 }

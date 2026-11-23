@@ -283,6 +283,8 @@ typedef struct
     int captureTime;
     int captureTeleportBit;
     unsigned long long generation;
+    // Mutations invalidate viewer samples without changing SQL load ownership.
+    unsigned long long editVersion;
     unsigned pins;
     bool releasePending;
 } sDemo_t;
@@ -323,11 +325,13 @@ struct DemoTechniqueState {
     int mode;
     int index;
     unsigned long long generation;
+    unsigned long long frameVersion;
     bool valid;
     bool fallback;
     sDemoFrame_t frame;
     CJ_DemoSection section;
     unsigned long long sectionGeneration;
+    unsigned long long sectionVersion;
     int sectionSize;
 };
 static DemoTechniqueState demoTechnique[MAX_CLIENTS];
@@ -335,12 +339,14 @@ static DemoTechniqueState demoTechnique[MAX_CLIENTS];
 static sDemoFrame_t &techniqueFrame(int client, const sDemo_t &demo, int index)
 {
     DemoTechniqueState &state = demoTechnique[client];
-    if (state.valid && state.generation == demo.generation && state.index == index)
+    if (state.valid && state.generation == demo.generation && state.frameVersion == demo.editVersion &&
+        state.index == index)
     {
         return state.frame;
     }
     state.frame = demo.pDemoFrames[index];
     state.generation = demo.generation;
+    state.frameVersion = demo.editVersion;
     state.index = index;
     state.valid = true;
     state.fallback = false;
@@ -358,11 +364,13 @@ static sDemoFrame_t &techniqueFrame(int client, const sDemo_t &demo, int index)
                             excluded,
                             frame.rpgNow};
     };
-    if (state.sectionGeneration != demo.generation || state.sectionSize != demo.size ||
+    if (state.sectionGeneration != demo.generation || state.sectionVersion != demo.editVersion ||
+        state.sectionSize != demo.size ||
         index < state.section.beginFrame || index >= state.section.endFrame)
     {
         state.section = CJ_AnalyzeDemoTechnique(demo.size, index, readInput);
         state.sectionGeneration = demo.generation;
+        state.sectionVersion = demo.editVersion;
         state.sectionSize = demo.size;
     }
     CJ_DemoTechnique result = CJ_ApplyDemoTechnique(index, state.mode, readInput(index), state.section);
@@ -649,6 +657,7 @@ static bool appendDemoFrame(sDemo_t *demo, const sDemoFrame_t &frame)
         demo->lastKeyFrame = index;
     }
     demo->size++;
+    ++demo->editVersion;
     demo->currentFrame = index;
     demo->isFirstFrameFilled = true;
     return true;
@@ -1826,6 +1835,7 @@ void Gsc_Demo_MarkFailedSince()
             demo->pDemoFrames[i].prevKeyFrame = last;
         }
     }
+    ++demo->editVersion;
     stackPushInt(demo->size);
 }
 
@@ -2006,6 +2016,7 @@ void Gsc_Demo_Truncate()
         frame.nextKeyFrame = i + 1 < count ? i + 1 : i;
         demo->lastKeyFrame = i;
     }
+    ++demo->editVersion;
     stackPushInt(count);
 }
 
@@ -3083,6 +3094,7 @@ void Gsc_Demo_KeepLast()
     {
         memmove(demo->pDemoFrames, demo->pDemoFrames + removed, count * sizeof(sDemoFrame_t));
         demo->size = count;
+        ++demo->editVersion;
         demo->currentFrame = count - 1;
         demo->lastKeyFrame = count - 1;
         // Manual clips preserve every take, so every frame stays playable.
