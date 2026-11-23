@@ -470,7 +470,7 @@
     {
       "id": "sql-adapter",
       "category": "integration",
-      "description": "Current save ownership, fault handling, native pool and VM behavior.",
+      "description": "Current save ownership, native demo transfers, fault handling, pool and VM behavior.",
       "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod. Optional --engine PATH selects a candidate inside the core checkout.",
       "effects": "Creates/removes a temporary schema, grants and engine; private output.",
       "files": [
@@ -575,7 +575,7 @@
     {
       "id": "demo-storage",
       "category": "integration",
-      "description": "Native demo frame boundaries, extreme seeks and allocation failures.",
+      "description": "Demo frame bounds, atomic appends, presentation ownership, cache refresh and OCJ1-5 format compatibility.",
       "requires": "Initialized CoD4 headers and Compose build image; no game assets or database.",
       "effects": "Temporary build containers and binaries removed after the run; no application services.",
       "files": [

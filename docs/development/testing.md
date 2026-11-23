@@ -47,6 +47,7 @@ to their listed harnesses, not standalone commands.
 | Fresh schema, permissions or backup | `database-bootstrap`, `database-volume` |
 | Challenge routes, shop or finish ranking | `feature-sql`, `notification-sql` |
 | Save ownership or SQL pool | `sql-adapter` |
+| Native demo upload/download or cancellation | `sql-adapter`, `demo-storage` |
 | Demo view receipts | `demo-view-sql` |
 | Demo playback or camera | `demo-engine`, `camera-engine`, `native-unit`, `demo-storage` |
 | Checkpoint editor/contact/HUD | `checkpoint-engine`, `checkpoint-matching`, `focused-gsc` |
@@ -78,6 +79,10 @@ The `sql-adapter` and `run-history-175.py` runners accept `--engine PATH` to tes
 a separate candidate without replacing the deployed executable. The candidate must be inside the
 core checkout so the Compose container can read it. A missing or external path
 is rejected before any fixture resources are created.
+
+The SQL adapter fixture also uploads and downloads a small synthetic clip. It
+checks destroyed/reused native IDs, map teardown, malformed payloads and missing
+chunks without running the capacity benchmark.
 
 The platform support runner accepts the same `--engine PATH` option. Choose one
 fixture variant per run; conflicting variant flags are rejected before creating
