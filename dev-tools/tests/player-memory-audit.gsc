@@ -8,6 +8,8 @@ main()
     openCJ\huds\hudProgressBar::onInit();openCJ\huds\hudRunInfo::onInit();
     openCJ\huds\hudSpeedometer::onInit();openCJ\huds\hudPosition::onInit();
     openCJ\showRecords::onInit();
+    // Decode production frame flags without starting database-backed recording.
+    openCJ\demoRecording::_initConstants();
     level.weapons_rpgs=[];level.weapons_rpgs["default"]="rpg_mp";
     wait 1;
     p=addTestClient();wait .1;
