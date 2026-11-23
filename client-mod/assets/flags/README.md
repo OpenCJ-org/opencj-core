@@ -28,6 +28,11 @@ source/flag_atlas_manifest.json and sibling server-gsc/opencj/flagatlas.gsc.
 Keep all of those outputs together. Existing country order is explicit in the
 provenance file; every change must regenerate the GSC mapping too.
 
+For a private comparison build, select all three destinations with `--output`,
+`--gsc-output` and `--manifest-output`. This keeps both the lookup and manifest
+out of the working source tree. The generator checks the compiled material
+template and image-loader size limit before accepting those formats.
+
 Client builds use the unchanged installed Windows makeMod.py. Stage source/build_client_assets_windows.py in a private _<task>/source folder
 under the selected Mod Tools Mods/opencj/cod4 directory. Stage the HLSL source
 as opencj_flag_atlas.hlsl and the intended cod4 inputs under _<task>/stage.

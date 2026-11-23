@@ -3,24 +3,45 @@ resolve(country)
 {
     if(!isDefined(level.countryAtlasSlots))
     {
-        level.countryAtlasSlots=[];
-        codes=strTok("ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cp cr cu cv cw cx cy cz de dg dj dk dm do dz ec ee eg eh er es et eu fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu ic id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pc pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug um un us uy uz va vc ve vg vi vn vu wf ws xk ye yt za zm zw"," ");
-        for(i=0;i<codes.size;i++)level.countryAtlasSlots[codes[i]]=i;
+        level.countryAtlasSlots = [];
+        countryCodes = strTok(
+            "ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn " +
+            "bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cp cr cu cv cw cx cy " +
+            "cz de dg dj dk dm do dz ec ee eg eh er es et eu fi fj fk fm fo fr ga gb gd ge gf gg " +
+            "gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu ic id ie il im in io iq ir " +
+            "is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly " +
+            "ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng " +
+            "ni nl no np nr nu nz om pa pc pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru " +
+            "rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj " +
+            "tk tl tm tn to tr tt tv tw tz ua ug um un us uy uz va vc ve vg vi vn vu wf ws xk ye " +
+            "yt za zm zw", " ");
+        for(i = 0; i < countryCodes.size; i++)
+        {
+            level.countryAtlasSlots[countryCodes[i]] = i;
+        }
     }
-    code="";
-    if(isDefined(country))code=toLower(country);
-    if(code=="uk")code="gb";
-    result=spawnStruct();
-    result.known=isDefined(level.countryAtlasSlots[code]);
-    if(!result.known)
+    countryCode = "";
+    if(isDefined(country))
     {
-        result.material="default";
-        result.selector=0;
-        return result;
+        countryCode = toLower(country);
     }
-    index=level.countryAtlasSlots[code];
-    page=int(index/36);
-    result.material="opencj_flag_atlas_"+page;
-    result.selector=index-page*36+1;
-    return result;
+    if(countryCode == "uk")
+    {
+        countryCode = "gb";
+    }
+    flag = spawnStruct();
+    flag.known = isDefined(level.countryAtlasSlots[countryCode]);
+    if(!flag.known)
+    {
+        flag.material = "default";
+        flag.selector = 0;
+        return flag;
+    }
+    flagsPerPage = 36;
+    countryIndex = level.countryAtlasSlots[countryCode];
+    pageIndex = int(countryIndex / flagsPerPage);
+    flag.material = "opencj_flag_atlas_" + pageIndex;
+    // Selector zero means no tile; the shader numbers atlas cells from one.
+    flag.selector = countryIndex - pageIndex * flagsPerPage + 1;
+    return flag;
 }
