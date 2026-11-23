@@ -123,3 +123,6 @@ cd92e596cc25372b804813e222c25f02d25d1111
 
 # Gameplay checkpoint layout; tokens and four engine scenarios verified.
 f61418f1b38982e42678877424a3cd26d4a142d1
+
+# Command/menu layout: non-brace tokens preserved; command55 and HUD74 engine checks passed.
+f1b2922eb805bcb7f72d5418dd4324e70ccb792e
