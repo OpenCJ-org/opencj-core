@@ -9,10 +9,10 @@ main()
     openCJ\huds\hudFps::onInit();
     openCJ\huds\hudPosition::onInit();
     openCJ\huds\hudSpectatorList::onInit();
-    keys = getArrayKeys(level.settings);
-    for(i = 0; i < keys.size; i++)
+    settingNames = getArrayKeys(level.settings);
+    for(i = 0; i < settingNames.size; i++)
     {
-        level.settings[keys[i]].sessionOnly = true;
+        level.settings[settingNames[i]].sessionOnly = true;
     }
     wait 1;
     player = addTestClient();
@@ -31,41 +31,56 @@ main()
     player openCJ\huds\base::onPlayerConnect();
     player openCJ\huds\hudFps::onPlayerConnect();
     player openCJ\huds\hudSpectatorList::onPlayerConnected();
-    player openCJ\settings::setSettingByScript("fpshud", "0");
-    check(player.hud["fps"].alpha == 0 && player.testClientDvars["cg_drawfps"] == "0",
+    player verifyFpsPreferences();
+    player verifyPositionRows();
+    player verifySpectatorLimits();
+    finish();
+}
+
+verifyFpsPreferences()
+{
+    self openCJ\settings::setSettingByScript("fpshud", "0");
+    check(self.hud["fps"].alpha == 0 && self.testClientDvars["cg_drawfps"] == "0",
           "Off hides both FPS overlays");
-    player openCJ\settings::setSettingByScript("fpshud", "2");
-    check(player.hud["fps"].alpha == 0 && player.testClientDvars["cg_drawfps"] == "1",
+    self openCJ\settings::setSettingByScript("fpshud", "2");
+    check(self.hud["fps"].alpha == 0 && self.testClientDvars["cg_drawfps"] == "1",
           "Standard enables cg_drawfps 1 only");
-    player openCJ\settings::setSettingByScript("fpshud", "1");
-    check(player.hud["fps"].alpha == 1 && player.testClientDvars["cg_drawfps"] == "0",
+    self openCJ\settings::setSettingByScript("fpshud", "1");
+    check(self.hud["fps"].alpha == 1 && self.testClientDvars["cg_drawfps"] == "0",
           "OpenCJ enables custom overlay only");
-    check(player.hud["fps"].lastText == "250", "OpenCJ displays current FPS");
-    player openCJ\settings::setSettingByScript("fpshud", "2");
-    player openCJ\settings::setSettingByScript("fpshud", "0");
-    check(player.hud["fps"].alpha == 0 && player.testClientDvars["cg_drawfps"] == "0",
+    check(self.hud["fps"].lastText == "250", "OpenCJ displays current FPS");
+    self openCJ\settings::setSettingByScript("fpshud", "2");
+    self openCJ\settings::setSettingByScript("fpshud", "0");
+    check(self.hud["fps"].alpha == 0 && self.testClientDvars["cg_drawfps"] == "0",
           "Standard can switch directly to Off");
     check(openCJ\settings::parseSettingValue(level.settings["fpshud"], "0") == 0 &&
               openCJ\settings::parseSettingValue(level.settings["fpshud"], "1") == 1,
           "old saved FPS preferences retain meanings");
+}
 
-    player openCJ\huds\hudPosition::_createPositionHud();
-    names = [];
-    names[0] = "x";
-    names[1] = "y";
-    names[2] = "z";
-    names[3] = "angle";
-    for(i = 0; i < names.size; i++)
+verifyPositionRows()
+{
+    self openCJ\huds\hudPosition::_createPositionHud();
+    rowNames = [];
+    rowNames[0] = "x";
+    rowNames[1] = "y";
+    rowNames[2] = "z";
+    rowNames[3] = "angle";
+    for(i = 0; i < rowNames.size; i++)
     {
-        hud = player.hudPos[names[i]];
+        hud = self.hudPos[rowNames[i]];
         check(hud.x == 80 && hud.y == 8 + 16 * i && abs(hud.fontscale - 1.4) < 0.001 &&
                   hud.font == "default",
-              "compact position row " + names[i]);
+              "compact position row " + rowNames[i]);
         check(hud.horzalign == "left" && hud.vertalign == "top" && hud.hideWhenInMenu,
               "position shares minimap anchors and menu visibility");
     }
-    player openCJ\huds\hudPosition::_destroyPositionHud();
-    check(!isDefined(player.hudPos), "position HUD cleans up");
+    self openCJ\huds\hudPosition::_destroyPositionHud();
+    check(!isDefined(self.hudPos), "position HUD cleans up");
+}
+
+verifySpectatorLimits()
+{
     check(level.settings["speclisthud"].maxVal == 5, "spectator command capped at five");
     check(!isDefined(openCJ\settings::parseSettingValue(level.settings["speclisthud"], "6")),
           "new spectator limits above five rejected");
@@ -79,25 +94,27 @@ main()
           "legacy default preserved");
     check(openCJ\settings::normalizeStoredValue("unrelated", "8") == "8",
           "unrelated stored settings preserved");
-    specs = [];
+    spectators = [];
     for(i = 0; i < 10; i++)
     {
-        spec = spawnStruct();
-        spec.name = "Spec" + (i + 1);
-        specs[i] = spec;
+        spectator = spawnStruct();
+        spectator.name = "Spec" + (i + 1);
+        spectators[i] = spectator;
     }
-    player.settingValues["speclisthud"] = 5;
-    player openCJ\huds\hudSpectatorList::_updateSpecListHud(specs);
-    text = player.hud["speclist"].lastText;
-    check(isSubStr(text, "Spec5") && !isSubStr(text, "Spec6") && isSubStr(text, "and 5 more"),
+    self.settingValues["speclisthud"] = 5;
+    self openCJ\huds\hudSpectatorList::_updateSpecListHud(spectators);
+    spectatorText = self.hud["speclist"].lastText;
+    check(isSubStr(spectatorText, "Spec5") && !isSubStr(spectatorText, "Spec6")
+          && isSubStr(spectatorText, "and 5 more"),
           "only five names rendered with remaining count");
-    finish();
 }
+
 recordClientCvar(name, value)
 {
     self.testClientDvars[name] = "" + value;
     self setClientCvar(name, value);
 }
+
 check(passed, label)
 {
     level.checks++;
@@ -107,6 +124,7 @@ check(passed, label)
     }
     printf("DISPLAY SELFTEST " + label + ": " + passed + "\n");
 }
+
 finish()
 {
     printf("DISPLAY SELFTEST COMPLETE failures=" + level.failures + " checks=" + level.checks +
