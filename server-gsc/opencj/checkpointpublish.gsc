@@ -57,7 +57,8 @@ publish()
     if (!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")))
     {
         openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        self.cpc.status = "Database commit failed; draft retained";
+        // A missing reply does not prove that COMMIT failed. A retry rechecks the saved layout.
+        self.cpc.status = "Cannot confirm database commit; draft retained. Check the published route.";
         return false;
     }
     return true;

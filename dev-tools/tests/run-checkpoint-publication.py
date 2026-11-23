@@ -2,11 +2,25 @@
 
 import json
 from pathlib import Path
+import re
 
 import gsc_fixture
 from isolated_database import IsolatedDatabase
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def install_commit_observer(home):
+    """Hide a real COMMIT reply only in the fixture copy, leaving its SQL effects intact."""
+    path = home / "mods/opencj/opencj/checkpointpublish.gsc"
+    source, count = re.subn(
+        r"openCJ\\mySQL::mysqlSyncQuery\s*\(",
+        lambda match: r"openCJ\platformTest::publicationQuery(",
+        path.read_text(),
+    )
+    if count == 0:
+        raise RuntimeError("Publication SQL boundary was not found")
+    path.write_text(source)
 
 
 def main():
@@ -28,6 +42,7 @@ def main():
             fixture.database,
         )
         source_hashes, _ = gsc_fixture.prepare_fixture(options, fixture.home, retained_callbacks=())
+        install_commit_observer(fixture.home)
         fixture.write_engine_config()
         result = gsc_fixture.run_prepared_fixture(
             options,

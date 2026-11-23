@@ -18,6 +18,7 @@ main()
     checkUnusedRouteReplacement(editor);
     checkSharedBranches(editor);
     checkLoadedMetadata();
+    checkLostCommitReply(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
            " checks=" + level.publicationChecks + "\n");
 }
@@ -327,4 +328,32 @@ checkLoadedMetadata()
     check(startCheckpoint.heightAbove == 24, "area loader restores the stored height");
     check(isDefined(startCheckpoint.routeInfo) && startCheckpoint.routeInfo.hex == "#123456",
           "area loader attaches the current route color");
+}
+
+// The database commits normally; only its reply to the publisher is hidden.
+checkLostCommitReply(editor)
+{
+    editor.cpc = routeDraft("lost_reply_route");
+    level.hidePublicationCommitReply = true;
+    check(!editor openCJ\checkpointPublish::publish(), "lost commit reply does not claim success");
+    check(isSubStr(editor.cpc.status, "confirm"), "lost commit reply reports an uncertain outcome");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='lost_reply_route'", 4,
+                "lost reply can accompany a completed commit");
+    check(editor openCJ\checkpointPublish::publish(), "retry reconciles the already-published route");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='lost_reply_route'", 4,
+                "retry after a lost commit reply keeps one set of areas");
+    checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='lost_reply_route'", 1,
+                "retry after a lost commit reply keeps one route identity");
+}
+
+publicationQuery(query)
+{
+    result = openCJ\mySQL::mysqlSyncQuery(query);
+    if(query == "COMMIT" && isDefined(level.hidePublicationCommitReply) &&
+       level.hidePublicationCommitReply)
+    {
+        level.hidePublicationCommitReply = false;
+        return undefined;
+    }
+    return result;
 }
