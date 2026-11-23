@@ -185,6 +185,12 @@ def prepare_fixture(options, home):
     (home / "steamclient.so").symlink_to("/game/steamclient.so")
     (home / "plugins").mkdir()
     shutil.copyfile(options.fixture, mod / "opencj/platformtest.gsc")
+    if options.fixture.name == "demo-timelines.gsc":
+        # Timeline scenarios also exercise location selection through this companion fixture.
+        shutil.copyfile(
+            ROOT / "dev-tools/tests/demo-selection.gsc",
+            mod / "opencj/demoselectiontest.gsc",
+        )
     install_observation_hooks(mod, options.fixture.name)
     isolate_callbacks(mod)
     return original_hashes, script_hashes(mod)
@@ -289,7 +295,11 @@ def run_fixture(options, map_name):
             libcod_loaded = has_libcod_mapping(container_name)
             passed = not libcod_loaded
         prefix = options.completion_marker.split(" COMPLETE")[0]
-        summary = [line for line in log.splitlines() if prefix in line]
+        summary = [
+            line
+            for line in log.splitlines()
+            if prefix in line or re.search(r"\bCOMPLETE(?:\s|$)", line)
+        ]
         report = {
             "baseline": options.baseline,
             "map": map_name,

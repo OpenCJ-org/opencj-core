@@ -282,8 +282,8 @@
     {
       "id": "demo-engine",
       "category": "integration",
-      "description": "Demo lifecycle, viewing and timeline fixtures; selection SQL replay.",
-      "requires": "Initialized Compose, matching engine and game/compiled assets. Selection SQL replay also requires a selected disposable current database and captured fixture log.",
+      "description": "Demo lifecycle, viewing and timeline scenarios through one isolated GSC runner; selection SQL replay.",
+      "requires": "Initialized Compose, matching engine and game/compiled assets (mp_killhouse by default). Selection SQL replay also requires a selected disposable current database and captured fixture log.",
       "effects": "Isolated servers and private logs; selection replay uses temporary SQL tables.",
       "files": [
         "dev-tools/tests/run-demo-lifecycle-205.py",
