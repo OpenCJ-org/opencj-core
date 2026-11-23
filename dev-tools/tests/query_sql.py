@@ -6,6 +6,7 @@ import json
 import sys
 import time
 
+TUTORIAL_SAVE_FLAG = 512  # Shared with saveposition.gsc's stored flag layout.
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'server-db/tools'))
 from mysql_session import MySQL
@@ -72,6 +73,10 @@ def query(
         'sortClause': sort,
         'playerID': player,
         'finishCPIds': cp,
+        'finishCheckpointIDs': cp,
+        'pageSize': limit,
+        'pageOffset': offset,
+        'fpsModes': fps,
         'checkpointString': cp,
         'checkpointIDs': cp,
         'openCJ\\mapID::getMapID()': mapid,
@@ -100,6 +105,11 @@ def query(
         ' AND (a.flags & ' + str(bit) + ')<=' + str(bit * value)
         for bit, value in zip((32, 64, 128, 256), mode)
     )
+    # Classic/Standard exclude tutorial saves; the Any category includes them.
+    tutorial_filter = ""
+    if "'hax'" not in fps:
+        tutorial_filter = " AND (a.flags & " + str(TUTORIAL_SAVE_FLAG) + ") = 0"
+    values['getTutorialFilterStr(self.currentBoard["filter"]["fps"])'] = tutorial_filter
     sql = gsc_expression(expr, values)
     if before and stable_ties and kind in ('leaderboard', 'hud'):
         sql = sql.replace('cs.runID, cs.saveCount, (', 'cs.runID, cs.cpID, cs.saveCount, (')

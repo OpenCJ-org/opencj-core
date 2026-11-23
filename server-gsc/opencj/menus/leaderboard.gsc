@@ -60,80 +60,21 @@ _onLBSortSettingChange(newSortStr)
     return true;
 }
 
-// TODO: fetch and process 'your' best finished run as well
-
+// Publish only a completed board read; missing routes produce an empty board.
 fetchUpdatedData()
 {
-    // In order to obtain run data per route, we first need to check what checkpoint ID(s) match the finish checkpoint(s) for the selected route
-    routeIdx = self.currentBoard["filter"]["route"] - 1;
-
-    // Debug information might still be useful for now
+    routeIndex = self.currentBoard["filter"]["route"] - 1;
     routeName = undefined;
-    if (self.currentBoard["routes"].size > routeIdx)
+    if (routeIndex >= 0 && routeIndex < self.currentBoard["routes"].size)
     {
-        routeName = self.currentBoard["routes"][routeIdx];
+        routeName = self.currentBoard["routes"][routeIndex];
     }
-    else
-    {
-        printf("WARNING: route for idx: " + routeIdx + " is not available. Have:\n");
-        for (i = 0; i < self.currentBoard["routes"].size; i++)
-        {
-            printf("route[" + i + "] = " + self.currentBoard["routes"][i] + "\n"); // Debug
-        }
-    }
-
-    finishCPIds = getEndCheckpointIdsForRoute(routeName);
+    finishCheckpointIDs = getEndCheckpointIdsForRoute(routeName);
 
     rows = [];
-    if (isDefined(finishCPIds))
+    if (isDefined(finishCheckpointIDs))
     {
-        // Based on player's current filter (ele, any %, tas, fps) and sorting (time, rpg, loads, date), asc/desc criteria:
-        // - grab up to 10 rows (leaderboard pages show 10)
-        // the information we need is stored across multiple tables as follows:
-        // - checkPointStatistics has explosiveJumps, loadCount, timePlayed, and all filters (any%, ele, tas, fps)
-        // - playerRuns has runID that we can use to match a playerID which in turn gives us the playername
-        // - playerRuns has finishTimestamp which we can use as date
-        // - playerInformation has playerName
-        // the more difficult part of the query is the ROW_NUMBER() with PARTITION and rowNr = 1, which is used to make sure we only obtain one run per playerID
-        sortStr = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
-        // Rank narrow indexed rows; fetch names/details only for this page.
-        // Exact ties use the oldest run, then checkpoint ID, consistently with finish ranking.
-        query =
-            "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.finishTimeStamp, r.FPSMode, r.ele, r.anyPct, r.hb, r.hardTAS, a.runID FROM (" +
-            "SELECT COUNT(*) OVER() AS totalNr, a.* FROM (" +
-            "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, cs.runID, cs.cpID, cs.saveCount, (" +
-            "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY " + sortStr +
-            ", cs.runID ASC, cs.cpID ASC)) AS rn " +
-            "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID " +
-            "WHERE cs.cpID IN " + finishCPIds + " AND pr.finishcpID IS NOT NULL" +
-            " AND pr.finishTimeStamp IS NOT NULL" +
-            " AND pr.ele <= " + self.currentBoard["filter"]["ele"] +
-            " AND pr.anyPct <= " + self.currentBoard["filter"]["any"] +
-            " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
-            " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] + " AND pr.tutorial = 0" +
-            " AND pr.FPSMode IN " +
-            openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
-            ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" + " LIMIT " +
-            self.currentBoard["maxEntriesPerPage"] + " OFFSET " +
-            openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"],
-                                                       self.currentBoard["maxEntriesPerPage"]) +
-            ") a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
-            "INNER JOIN (SELECT runID,FPSMode,ele,anyPct,hb,hardTAS FROM playerRuns) r ON r.runID = a.runID " +
-            "ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC";
-
-        // Example output (pretend there are 10 rows instead of 2 though):
-        // -----------------------------------------------------------------------------------------------------------------------------|
-        // | totalNr | playerName    | timePlayed | explosiveJumps | loadCount | finishTimeStamp     | FPSMode | ele | anyPct | hardTAS |
-        // |----------------------------------------------------------------------------------------------------------------------------|
-        // | 13      | 3xP' Rextrus  | 416800     | 0              | 38        | 2022-09-04 08:22:12 | all     | 0   | 0      | 0       |
-        // |---------|---------------|------------|----------------|-----------|---------------------|---------|-----|--------|---------|
-        // | 13      | Styx|Ridgepig | 657000     | 1              | 69        | 2022-09-04 09:53:58 | all     | 0   | 0      | 0       |
-        // |---------|---------------|------------|----------------|-----------|---------------------|---------|-----|--------|---------|
-        // | ....
-
-        // Might remain useful for now to print the query
-        printf("Leaderboard query:\n" + query + "\n"); // Debug
-
+        query = self buildLeaderboardQuery(finishCheckpointIDs);
         rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "board");
         if (!isDefined(rows))
         {
@@ -141,56 +82,127 @@ fetchUpdatedData()
         }
     }
 
-    self.currentBoard["demoRunIDs"] = [];
-    self.currentBoard["cols"] = []; // Hope this clears the previously used memory
+    self publishLeaderboardRows(rows);
+}
 
-    if (isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
+// Rank narrow indexed rows before loading names and details for the visible page.
+// Equal scores keep the oldest run, then checkpoint ID, matching finish ranking.
+buildLeaderboardQuery(finishCheckpointIDs)
+{
+    sortClause = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
+    pageSize = self.currentBoard["maxEntriesPerPage"];
+    pageOffset = openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], pageSize);
+    fpsModes = openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]);
+
+    query = "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount,"
+                + " a.finishTimeStamp, r.FPSMode, r.ele, r.anyPct, r.hb, r.hardTAS, a.runID "
+            + "FROM ("
+                + "SELECT COUNT(*) OVER() AS totalNr, a.* "
+                + "FROM ("
+                    + "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount,"
+                        + " pr.finishTimeStamp, cs.runID, cs.cpID, cs.saveCount, ("
+                        + "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY " + sortClause
+                            + ", cs.runID ASC, cs.cpID ASC)) AS rn "
+                    + "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) "
+                    + "STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID "
+                    + "WHERE cs.cpID IN " + finishCheckpointIDs
+                        + " AND pr.finishcpID IS NOT NULL"
+                        + " AND pr.finishTimeStamp IS NOT NULL"
+                        + " AND pr.ele <= " + self.currentBoard["filter"]["ele"]
+                        + " AND pr.anyPct <= " + self.currentBoard["filter"]["any"]
+                        + " AND pr.hb <= " + self.currentBoard["filter"]["hb"]
+                        + " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"]
+                        + " AND pr.tutorial = 0"
+                        + " AND pr.FPSMode IN " + fpsModes
+                + ") a "
+                + "WHERE a.rn = 1 "
+                + "ORDER BY " + sortClause + ", a.runID ASC, a.cpID ASC"
+                + " LIMIT " + pageSize
+                + " OFFSET " + pageOffset
+            + ") a "
+            + "INNER JOIN playerDisplayNames b ON a.playerID = b.playerID "
+            + "INNER JOIN (SELECT runID, FPSMode, ele, anyPct, hb, hardTAS FROM playerRuns) r"
+                + " ON r.runID = a.runID "
+            + "ORDER BY " + sortClause + ", a.runID ASC, a.cpID ASC";
+    return query;
+}
+
+// Replace the full page, including empty slots and the run IDs used by demo buttons.
+publishLeaderboardRows(rows)
+{
+    totalEntriesColumn = 0;
+    runIDColumn = 11;
+    self.currentBoard["demoRunIDs"] = [];
+    self.currentBoard["cols"] = [];
+    self.currentBoard["nrTotalEntries"] = 0;
+    self.currentBoard["nrEntriesThisPage"] = 0;
+    if (rows.size > 0 && isDefined(rows[0][totalEntriesColumn]))
     {
-        self.currentBoard["nrTotalEntries"] = int(rows[0][0]); // totalNr
+        self.currentBoard["nrTotalEntries"] = int(rows[0][totalEntriesColumn]);
         self.currentBoard["nrEntriesThisPage"] = rows.size;
     }
-    else
-    {
-        self.currentBoard["nrTotalEntries"] = 0;
-        self.currentBoard["nrEntriesThisPage"] = 0;
-    }
 
-    // Now that the data is there, we need to fill in the values into the local variables
-    firstItemOnPage = openCJ\menus\board_base::getAbsFirstItemNrCurrentPage(
+    firstItemNumber = openCJ\menus\board_base::getAbsFirstItemNrCurrentPage(
         self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
-    for (i = 0; i < self.currentBoard["maxEntriesPerPage"]; i++)
+    for (rowIndex = 0; rowIndex < self.currentBoard["maxEntriesPerPage"]; rowIndex++)
     {
-        if (i < self.currentBoard["nrEntriesThisPage"])
+        if (rowIndex < self.currentBoard["nrEntriesThisPage"])
         {
-            self.currentBoard["demoRunIDs"][i] = int(rows[i][11]);
-            self.currentBoard["cols"][i]["nr"] = (i + firstItemOnPage);
-            self.currentBoard["cols"][i]["name"] = "^7" + rows[i][1] + "^7"; // playerName
-            self.currentBoard["cols"][i]["time"] = int(rows[i][2]);
-            self.currentBoard["cols"][i]["rpgs"] = int(rows[i][3]);
-            self.currentBoard["cols"][i]["loads"] = int(rows[i][4]);
-            self.currentBoard["cols"][i]["date"] = rows[i][5];
-            self.currentBoard["cols"][i]["fps"] =
-                openCJ\menus\board_base::dbFPSToFullName(rows[i][6]);
-            self.currentBoard["cols"][i]["ele"] = xOrEmpty(int(rows[i][7]));
-            self.currentBoard["cols"][i]["any"] = xOrEmpty(int(rows[i][8]));
-            self.currentBoard["cols"][i]["hb"] = xOrEmpty(int(rows[i][9]));
-            self.currentBoard["cols"][i]["tas"] = xOrEmpty(int(rows[i][10]));
+            row = rows[rowIndex];
+            self.currentBoard["demoRunIDs"][rowIndex] = int(row[runIDColumn]);
+            self.currentBoard["cols"][rowIndex] = leaderboardColumns(row, firstItemNumber + rowIndex);
         }
         else
         {
-            self.currentBoard["cols"][i]["nr"] = -1;
-            self.currentBoard["cols"][i]["name"] = "";
-            self.currentBoard["cols"][i]["time"] = 0;
-            self.currentBoard["cols"][i]["rpgs"] = 0;
-            self.currentBoard["cols"][i]["loads"] = 0;
-            self.currentBoard["cols"][i]["date"] = "";
-            self.currentBoard["cols"][i]["fps"] = "";
-            self.currentBoard["cols"][i]["ele"] = false;
-            self.currentBoard["cols"][i]["any"] = false;
-            self.currentBoard["cols"][i]["hb"] = false;
-            self.currentBoard["cols"][i]["tas"] = false;
+            self.currentBoard["cols"][rowIndex] = emptyLeaderboardColumns();
         }
     }
+}
+
+// Decode the SELECT list once at the database boundary.
+leaderboardColumns(row, itemNumber)
+{
+    playerNameColumn = 1;
+    timePlayedColumn = 2;
+    explosiveJumpsColumn = 3;
+    loadsColumn = 4;
+    finishDateColumn = 5;
+    fpsModeColumn = 6;
+    elevateColumn = 7;
+    anyPercentColumn = 8;
+    halfbeatColumn = 9;
+    hardTASColumn = 10;
+
+    columns = [];
+    columns["nr"] = itemNumber;
+    columns["name"] = "^7" + row[playerNameColumn] + "^7";
+    columns["time"] = int(row[timePlayedColumn]);
+    columns["rpgs"] = int(row[explosiveJumpsColumn]);
+    columns["loads"] = int(row[loadsColumn]);
+    columns["date"] = row[finishDateColumn];
+    columns["fps"] = openCJ\menus\board_base::dbFPSToFullName(row[fpsModeColumn]);
+    columns["ele"] = xOrEmpty(int(row[elevateColumn]));
+    columns["any"] = xOrEmpty(int(row[anyPercentColumn]));
+    columns["hb"] = xOrEmpty(int(row[halfbeatColumn]));
+    columns["tas"] = xOrEmpty(int(row[hardTASColumn]));
+    return columns;
+}
+
+emptyLeaderboardColumns()
+{
+    columns = [];
+    columns["nr"] = -1;
+    columns["name"] = "";
+    columns["time"] = 0;
+    columns["rpgs"] = 0;
+    columns["loads"] = 0;
+    columns["date"] = "";
+    columns["fps"] = "";
+    columns["ele"] = false;
+    columns["any"] = false;
+    columns["hb"] = false;
+    columns["tas"] = false;
+    return columns;
 }
 
 getSortStr(col, order) // Also used by showRecords.gsc for top-right records sorting

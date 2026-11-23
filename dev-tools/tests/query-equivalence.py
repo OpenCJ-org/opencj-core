@@ -24,7 +24,7 @@ def verify(d):
     checks = 0
     began = time.monotonic()
     schemas = {
-        'playerRuns': "runID INT PRIMARY KEY,playerID INT,mapID INT,finishcpID INT,finishTimeStamp DATETIME,archived INT,timePlayed INT,loadCount INT,saveCount INT,startTimeStamp DATETIME,FPSMode VARCHAR(3),ele INT,anyPct INT,hb INT,hardTAS INT",
+        'playerRuns': "runID INT PRIMARY KEY,playerID INT,mapID INT,finishcpID INT,finishTimeStamp DATETIME,archived INT,timePlayed INT,loadCount INT,saveCount INT,startTimeStamp DATETIME,FPSMode VARCHAR(3),ele INT,anyPct INT,hb INT,hardTAS INT,tutorial INT",
         'playerSaves': "runID INT,saveNumber INT,explosiveJumps INT,FPSMode VARCHAR(3),flags INT, UNIQUE(runID,saveNumber)",
         'runLabels': "runID INT PRIMARY KEY,runLabel VARCHAR(100)",
         'checkpointStatistics': "runID INT,cpID INT,timePlayed INT,explosiveJumps INT,loadCount INT,saveCount INT,UNIQUE(runID,cpID),INDEX checkpoint_time(cpID,timePlayed,explosiveJumps,runID,loadCount,saveCount)",
@@ -52,6 +52,7 @@ def verify(d):
             stamp,
             fps,
             *mask,
+            0,  # The historical equivalence corpus contains competitive runs only.
         ]
         # Independent invalid finish fields, archived runs, no save, other map/owner.
         if i in (5, 6):

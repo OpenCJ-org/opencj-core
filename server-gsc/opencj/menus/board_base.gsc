@@ -273,90 +273,80 @@ onMenuResponse()
 
 /// ===================================================== Update functions =====================================================
 
+// Fetch a current board page, then publish its pagination, sorting and row values.
 updateBoard()
 {
-    sqlToken = self openCJ\mySQL::beginMenuRead("board");
-    if (!self openCJ\mySQL::menuReadCurrent(sqlToken))
-    {
-        return;
-    }
-    // Gets values and puts them in self vars
-    updated = self [[self.currentBoard["updateFunc"]]] ();
-    if (isDefined(updated) && !updated)
+    requestToken = self openCJ\mySQL::beginMenuRead("board");
+    if (!self openCJ\mySQL::menuReadCurrent(requestToken))
     {
         return;
     }
 
-    // Update all dvars
-    self.currentBoard["page"]["max"] =
-        max(1, ceil(self.currentBoard["nrTotalEntries"] / self.currentBoard["maxEntriesPerPage"]));
+    updateSucceeded = self [[self.currentBoard["updateFunc"]]]();
+    if (isDefined(updateSucceeded) && !updateSucceeded)
+    {
+        return;
+    }
 
-    // Update page text dvars after updating board
-    self setClientCvar(level.boardsDvarPrefix + "pagetxt",
-                       self.currentBoard["page"]["cur"] + "/" + self.currentBoard["page"]["max"]);
-    self setClientCvar(level.boardsDvarPrefix + "page", self.currentBoard["page"]["cur"]);
-    self setClientCvar(level.boardsDvarPrefix + "pagemax", self.currentBoard["page"]["max"]);
+    pageSize = self.currentBoard["maxEntriesPerPage"];
+    pageCount = max(1, ceil(self.currentBoard["nrTotalEntries"] / pageSize));
+    currentPage = self.currentBoard["page"]["cur"];
+    self.currentBoard["page"]["max"] = pageCount;
+    self setClientCvar(level.boardsDvarPrefix + "pagetxt", currentPage + "/" + pageCount);
+    self setClientCvar(level.boardsDvarPrefix + "page", currentPage);
+    self setClientCvar(level.boardsDvarPrefix + "pagemax", pageCount);
 
-    // Update sorting dvars
-    // First, clear all previous sorting dvars
+    // Clear the old sort marker before setting the current column.
     self setClientCvar(level.boardsDvarPrefix + "sort_time", 0);
     self setClientCvar(level.boardsDvarPrefix + "sort_rpgs", 0);
     self setClientCvar(level.boardsDvarPrefix + "sort_loads", 0);
     self setClientCvar(level.boardsDvarPrefix + "sort_date", 0);
-
     self setClientCvar(level.boardsDvarPrefix + "sort_" + self.currentBoard["sortBy"],
                        self.currentBoard["sort"]);
 
-    // And now the actual board data
-    keys = getArrayKeys(
-        self.currentBoard
-            ["cols"]
-            [0]); // Although empty when i >= self.currentBoard["nrEntriesThisPage"], can still be used for getArrayKeys
-    dvars = [];
-    dvars["count"] = self.currentBoard["nrEntriesThisPage"];
-    for (j = 0; j < keys.size; j++)
+    clientValues = self buildBoardClientValues();
+    clientKeys = getArrayKeys(clientValues);
+    for (i = 0; i < clientKeys.size; i++)
     {
-        key = keys[j];
-        dvars[key] = "";
-        for (i = 0; i < self.currentBoard["nrEntriesThisPage"]; i++)
+        key = clientKeys[i];
+        self setClientCvar(level.boardsDvarPrefix + key, clientValues[key]);
+    }
+}
+
+// Join visible rows into menu columns without changing their stored numeric values.
+buildBoardClientValues()
+{
+    // Row zero keeps the column keys even when the page contains no results.
+    columnKeys = getArrayKeys(self.currentBoard["cols"][0]);
+    clientValues = [];
+    clientValues["count"] = self.currentBoard["nrEntriesThisPage"];
+    for (columnIndex = 0; columnIndex < columnKeys.size; columnIndex++)
+    {
+        columnKey = columnKeys[columnIndex];
+        clientValues[columnKey] = "";
+        for (rowIndex = 0; rowIndex < self.currentBoard["nrEntriesThisPage"]; rowIndex++)
         {
-            val = self.currentBoard["cols"][i][key];
-
-            // Special conversion(s) without updating the original
-            if (key == "time")
+            displayValue = self.currentBoard["cols"][rowIndex][columnKey];
+            if (columnKey == "time")
             {
-                val = timeToString(
-                    int((val / 1000) +
-                        0.5)); // Round the time and convert it to a nicely readable string
+                roundedSeconds = int((displayValue / 1000) + 0.5);
+                displayValue = timeToString(roundedSeconds);
             }
-            /*
-            else if (key == "date")
-            {
-                val = convertDate(val);
-            }
-            */
-
-            dvars[key] += val + "\n";
+            clientValues[columnKey] += displayValue + "\n";
         }
     }
 
-    // One material per row; clear unused slots after paging or tightening filters.
-    for (i = 0; i < self.currentBoard["maxEntriesPerPage"]; i++)
+    // Clear unused icon slots after paging or tightening filters.
+    for (rowIndex = 0; rowIndex < self.currentBoard["maxEntriesPerPage"]; rowIndex++)
     {
-        icon = "";
-        if (i < self.currentBoard["nrEntriesThisPage"])
+        fpsIcon = "";
+        if (rowIndex < self.currentBoard["nrEntriesThisPage"])
         {
-            icon = fpsNameToIcon(self.currentBoard["cols"][i]["fps"]);
+            fpsIcon = fpsNameToIcon(self.currentBoard["cols"][rowIndex]["fps"]);
         }
-        dvars["fps_icon" + (i + 1)] = icon;
+        clientValues["fps_icon" + (rowIndex + 1)] = fpsIcon;
     }
-
-    // Update client dvars with above determined values
-    keys = getArrayKeys(dvars);
-    for (i = 0; i < keys.size; i++)
-    {
-        self setClientCvar(level.boardsDvarPrefix + keys[i], dvars[keys[i]]);
-    }
+    return clientValues;
 }
 
 updateRoutes()

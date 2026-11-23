@@ -411,7 +411,7 @@ disconnect a client, render the menu or write to the database.
 
 The focused boards fixture executes production row decoding and demo-button
 handling with synthetic SQL results. It checks totals, pages, column meanings,
-empty versus failed reads, FPS labels and selected demo IDs. Fixture-only
+empty versus failed reads, FPS labels, client column values and selected demo IDs. Fixture-only
 boundaries supply SQL rows and record playback requests; no database or demo
 playback starts. Query-equivalence tests separately execute generated SQL.
 Client rendering and physical disconnects are not observed.

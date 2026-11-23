@@ -65,6 +65,10 @@ leaderboardRow()
 // Replace only the SQL boundary; row conversion still runs in production code.
 boardQuery(query, menu)
 {
+    if(!isDefined(self.fixtureQuery))
+    {
+        printf("BOARDS SQL " + query + "\n");
+    }
     self.fixtureQuery = query;
     self.fixtureQueryMenu = menu;
     return self.fixtureRows;
@@ -98,6 +102,15 @@ verifyLeaderboardRows()
     check(self.currentBoard["cols"][9]["nr"] == -1 && self.currentBoard["cols"][9]["name"] == "",
           "unused menu slots are cleared");
     check(self.fixtureQueryMenu == "board", "leaderboard query uses board ownership");
+
+    clientValues = self openCJ\menus\board_base::buildBoardClientValues();
+    check(clientValues["time"] == "00:02:03\n", "client time column rounds milliseconds to seconds");
+    check(clientValues["name"] == "^7Fixture Player^7\n" && clientValues["count"] == 1,
+          "client columns contain only the visible rows");
+    check(clientValues["fps_icon1"] == "opencj_icon_fps_standard" &&
+          clientValues["fps_icon10"] == "", "unused client icon slots are cleared");
+    check(self.currentBoard["cols"][0]["time"] == 123456,
+          "client time formatting leaves the source milliseconds intact");
 }
 
 verifyFailedReadPreservesBoard()
@@ -112,6 +125,9 @@ verifyFailedReadPreservesBoard()
     self openCJ\menus\leaderboard::fetchUpdatedData();
     check(self.currentBoard["nrTotalEntries"] == 0 && self.currentBoard["nrEntriesThisPage"] == 0 &&
           self.currentBoard["demoRunIDs"].size == 0, "successful empty query clears results and demo IDs");
+    clientValues = self openCJ\menus\board_base::buildBoardClientValues();
+    check(clientValues["count"] == 0 && clientValues["name"] == "" &&
+          clientValues["fps_icon1"] == "", "empty board clears its client columns and icons");
 }
 
 verifyDemoButtons()
