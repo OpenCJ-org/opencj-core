@@ -85,6 +85,10 @@ bool sqlPoolTake(int jobId, MYSQL_RES **result, SqlCompletion *completion);
 // take; cancellation, consumption or shutdown can release it.
 bool sqlPoolPeek(int jobId, MYSQL_RES **result, SqlCompletion *completion);
 
+// A native owner may cancel its exact read without changing its scheduling policy.
+// Active work keeps its connection until the worker finishes. Writes are rejected.
+bool sqlPoolCancelRead(int id, SqlCompletionHandling completionHandling);
+
 // Only scoped menu reads are cancelled. Retain exposes a cancelled completion;
 // Discard releases it once its worker stops. Accepted writes are not cancelled.
 void sqlPoolCancel(const char *scope, SqlScopeMatch scopeMatch,

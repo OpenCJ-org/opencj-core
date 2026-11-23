@@ -587,6 +587,58 @@ bool sqlPoolTake(int id, MYSQL_RES **result, SqlCompletion *completion) {
     return found;
 }
 
+// The caller holds the pool lock. An active worker retains its connection and
+// result ownership until completion; queued work can be released immediately.
+static void cancelJob(Job *job, bool discardCompletion) {
+    job->cancelled = true;
+    job->discardCompletion = discardCompletion;
+    if(job->state == JOB_QUEUED) {
+        finishJob(job, SQL_CANCELLED, 0);
+    } else if(job->state == JOB_COMPLETE) {
+        if(job->result) {
+            mysql_free_result(job->result);
+            job->result = NULL;
+        }
+        if(job->completion.outcome != SQL_CANCELLED) {
+            if(job->completion.outcome == SQL_OK) {
+                stats.succeeded--;
+            } else {
+                stats.failed--;
+                if(job->completion.outcome == SQL_UNKNOWN) {
+                    stats.unknown--;
+                }
+                if(job->completion.outcome == SQL_EXPIRED) {
+                    stats.expired--;
+                }
+            }
+            stats.cancelled++;
+        }
+        job->completion.outcome = SQL_CANCELLED;
+        if(discardCompletion) {
+            stats.completed--;
+            unlinkJob(job);
+        }
+    }
+}
+
+bool sqlPoolCancelRead(int id, SqlCompletionHandling completionHandling) {
+    pthread_mutex_lock(&mutex);
+    bool cancelled = false;
+    for(Job *job = head; job; job = job->next) {
+        if(job->id != id) {
+            continue;
+        }
+        if(job->policy == SQL_READ || job->policy == SQL_MENU) {
+            cancelJob(job, completionHandling == SqlCompletionHandling::Discard);
+            cancelled = true;
+        }
+        break;
+    }
+    pthread_cond_broadcast(&changed);
+    pthread_mutex_unlock(&mutex);
+    return cancelled;
+}
+
 // Cancel only menu reads: accepted writes must still settle. Never close a
 // connection from this thread while its worker is using the MySQL client.
 void sqlPoolCancel(const char *scope, SqlScopeMatch scopeMatch,
@@ -604,35 +656,7 @@ void sqlPoolCancel(const char *scope, SqlScopeMatch scopeMatch,
         if(!match) {
             continue;
         }
-        pendingJob->cancelled = true;
-        pendingJob->discardCompletion = discardCompletion;
-        if(pendingJob->state == JOB_QUEUED) {
-            finishJob(pendingJob, SQL_CANCELLED, 0);
-        } else if(pendingJob->state == JOB_COMPLETE) {
-            if(pendingJob->result) {
-                mysql_free_result(pendingJob->result);
-                pendingJob->result = NULL;
-            }
-            if(pendingJob->completion.outcome != SQL_CANCELLED) {
-                if(pendingJob->completion.outcome == SQL_OK) {
-                    stats.succeeded--;
-                } else {
-                    stats.failed--;
-                    if(pendingJob->completion.outcome == SQL_UNKNOWN) {
-                        stats.unknown--;
-                    }
-                    if(pendingJob->completion.outcome == SQL_EXPIRED) {
-                        stats.expired--;
-                    }
-                }
-                stats.cancelled++;
-            }
-            pendingJob->completion.outcome = SQL_CANCELLED;
-            if(discardCompletion) {
-                stats.completed--;
-                unlinkJob(pendingJob);
-            }
-        }
+        cancelJob(pendingJob, discardCompletion);
     }
     pthread_cond_broadcast(&changed);
     pthread_mutex_unlock(&mutex);

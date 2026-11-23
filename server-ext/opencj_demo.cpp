@@ -496,6 +496,8 @@ static sDemo_t *findDemoById(int demoId)
     return pDemo;
 }
 
+static void cancelDemoLoads(const sDemo_t &demo);
+
 static void clearDemoById(int demoId)
 {
     auto it = opencj_demoIdToIdx.find(demoId);
@@ -511,6 +513,7 @@ static void clearDemoById(int demoId)
             return;
         }
 
+        cancelDemoLoads(*pDemo);
         printf("Clearing demo with pointer %p\n", pDemo);
         if (pDemo->pDemoFrames)
         {
@@ -3223,7 +3226,6 @@ struct DemoSQLRead {
     int error;
     unsigned long long generation;
     bool done;
-    bool abandoned;
 };
 static std::map<int,DemoSQLRead> demoSQLReads;
 long long OpenCJ_Demo_SQLClock() {
@@ -3254,7 +3256,7 @@ void Gsc_Demo_LoadChunks() {
         clip ? "demoClipChunks" : "demoChunks", clip ? "clipID" : "runID", storedId, first);
     int id = sqlPoolSubmit(query, true, SQL_READ, "", "", 10000);
     if (id > 0) {
-        demoSQLReads[id] = {nativeId, first, 0, demo->generation, false, false};
+        demoSQLReads[id] = {nativeId, first, 0, demo->generation, false};
     }
     stackPushInt(id);
 }
@@ -3273,14 +3275,6 @@ bool OpenCJ_Demo_SQLReady(int id, long long deadline) {
     auto d = opencj_demoIdToIdx.find(read.nativeId);
     bool missing =
         d == opencj_demoIdToIdx.end() || opencj_demos[d->second].generation != read.generation;
-    if (read.abandoned) {
-        sqlPoolTake(id, &result, &c);
-        if (result) {
-            mysql_free_result(result);
-        }
-        demoSQLReads.erase(it);
-        return false;
-    }
     if (missing) {
         read.error = SQL_CANCELLED;
         read.done = true;
@@ -3355,12 +3349,24 @@ bool OpenCJ_Demo_SQLTake(int id) {
     return true;
 }
 
-void OpenCJ_Demo_SQLNewMap() {
-    // Old loaders have no remaining GSC waiter. Drain their native results as
-    // they finish, without decoding into a reused demo ID on the next map.
-    for (auto &entry : demoSQLReads) {
-        entry.second.abandoned = true;
+// A destroyed recording may still have a script waiter. Retain cancellation
+// until that waiter consumes it, and never decode into a reused native ID.
+static void cancelDemoLoads(const sDemo_t &demo) {
+    for(const auto &entry : demoSQLReads) {
+        const DemoSQLRead &read = entry.second;
+        if(read.nativeId == demo.id && read.generation == demo.generation) {
+            sqlPoolCancelRead(entry.first, SqlCompletionHandling::Retain);
+        }
     }
+}
+
+void OpenCJ_Demo_SQLNewMap() {
+    // Map teardown has no remaining script waiters. The pool still owns active
+    // connections until their workers stop; this main-thread bookkeeping can go now.
+    for(const auto &entry : demoSQLReads) {
+        sqlPoolCancelRead(entry.first, SqlCompletionHandling::Discard);
+    }
+    demoSQLReads.clear();
 }
 
 void Gsc_Demo_UploadChunk() {

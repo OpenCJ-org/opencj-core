@@ -219,6 +219,42 @@ static void verifyMapCancellation() {
           "map transition retains workers without leaking completed tasks");
 }
 
+// Exact cancellation is for owned reads, without putting them in the menu quota.
+static void verifyOwnedReadCancellation() {
+    int active = submitQuery("SELECT SLEEP(0.15)", SQL_READ, "owned-read");
+    waitForRunningJobs(1);
+    int queued = submitQuery("SELECT 42", SQL_READ, "owned-read");
+    check(sqlPoolCancelRead(queued, SqlCompletionHandling::Retain),
+          "owned queued read accepts cancellation");
+    check(takeReply(queued).completion.outcome == SQL_CANCELLED,
+          "owned queued read returns cancelled instead of executing");
+    check(sqlPoolCancelRead(active, SqlCompletionHandling::Retain),
+          "owned running read accepts cancellation");
+    Reply cancelled = takeReply(active);
+    check(cancelled.completion.outcome == SQL_CANCELLED && cancelled.rows.empty(),
+          "running read drops its result after its worker finishes");
+
+    int completed = submitQuery("SELECT 43");
+    long long deadlineMs = nowMs() + COMPLETION_TIMEOUT_MS;
+    SqlCompletion completion;
+    while(!sqlPoolStatus(completed, &completion) && nowMs() < deadlineMs) {
+        usleep(POLL_INTERVAL_US);
+    }
+    check(sqlPoolStatus(completed, &completion), "owned completed read is ready");
+    check(sqlPoolCancelRead(completed, SqlCompletionHandling::Discard),
+          "owned completed read releases its result");
+    check(!sqlPoolStatus(completed, &completion), "discarded read leaves no completion");
+
+    int write = submitQuery("INSERT INTO adapter_probe(value) VALUES(987654)", SQL_WRITE);
+    check(!sqlPoolCancelRead(write, SqlCompletionHandling::Discard),
+          "read cancellation refuses accepted writes");
+    check(takeReply(write).completion.outcome == SQL_OK, "refused cancellation leaves write intact");
+    check(queryScalar("SELECT COUNT(*) FROM adapter_probe WHERE value=987654") == 1,
+          "accepted write still executes once");
+    check(!sqlPoolCancelRead(-1, SqlCompletionHandling::Discard),
+          "unknown read cancellation is harmless");
+}
+
 static void verifyDisconnectCancellation() {
     int disconnected = submitQuery("SELECT SLEEP(0.2),1", SQL_MENU, "", "p:8:board");
     sqlPoolCancel("p:8:", SqlScopeMatch::Prefix, SqlCompletionHandling::Discard);
@@ -306,6 +342,8 @@ int main(int argc, char **argv) {
         verifyMapCancellation();
 
         verifyDisconnectCancellation();
+
+        verifyOwnedReadCancellation();
 
         verifyFairScheduling();
 

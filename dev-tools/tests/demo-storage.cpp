@@ -1,6 +1,7 @@
 // Exercise native demo storage and GSC return values without a game server.
 #include "../../server-ext/opencj_demo.cpp"
 #include <cassert>
+#include <cstdarg>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -10,11 +11,52 @@ static int returnedInteger;
 static std::vector<int> scriptArguments;
 static float returnedVector[3];
 
+struct TestSqlJob
+{
+    int policy;
+    bool cancelled = false;
+    bool discarded = false;
+};
+static std::map<int, TestSqlJob> testSqlJobs;
+static int nextTestSqlId = 1;
+
+int sqlPoolSubmit(const char *, bool, int policy, const char *, const char *, int)
+{
+    const int id = nextTestSqlId++;
+    testSqlJobs[id] = {policy};
+    return id;
+}
+
+bool sqlPoolCancelRead(int id, SqlCompletionHandling handling)
+{
+    const auto found = testSqlJobs.find(id);
+    if (found == testSqlJobs.end())
+    {
+        return false;
+    }
+    found->second.cancelled = true;
+    found->second.discarded = handling == SqlCompletionHandling::Discard;
+    return true;
+}
+
 static playerState_t playerState;
 static gclient_t gameClient;
 
 extern "C"
 {
+int Scr_GetMultipleValues(const char *format, ...)
+{
+    assert(std::strcmp(format, "iiii") == 0 && scriptArguments.size() == 4);
+    va_list values;
+    va_start(values, format);
+    for (int value : scriptArguments)
+    {
+        *va_arg(values, int *) = value;
+    }
+    va_end(values);
+    return 1;
+}
+
 int Scr_GetNumParam()
 {
     return scriptArguments.size();
@@ -364,6 +406,34 @@ static void trimmedRecordingRefreshesSelectedSample()
     clearDemoById(6);
 }
 
+static void obsoleteDemoLoadsAreCancelled()
+{
+    sDemo_t *demo = createDemo(7, 4);
+    assert(demo);
+    scriptArguments = {7, 100, 0, 0};
+    Gsc_Demo_LoadChunks();
+    const int firstRead = returnedInteger;
+    assert(firstRead > 0 && demoSQLReads.count(firstRead) == 1);
+    assert(testSqlJobs.at(firstRead).policy == SQL_READ);
+
+    clearDemoById(7);
+    assert(testSqlJobs.at(firstRead).cancelled && !testSqlJobs.at(firstRead).discarded);
+    assert(demoSQLReads.count(firstRead) == 1);
+
+    // Reusing a native ID must not make its old read belong to the new demo.
+    demo = createDemo(7, 4);
+    assert(demo);
+    Gsc_Demo_LoadChunks();
+    const int secondRead = returnedInteger;
+    assert(secondRead != firstRead && !testSqlJobs.at(secondRead).cancelled);
+    OpenCJ_Demo_SQLNewMap();
+    assert(testSqlJobs.at(firstRead).discarded && testSqlJobs.at(secondRead).discarded);
+    assert(demoSQLReads.empty());
+    clearDemoById(7);
+    assert(testSqlJobs.at(secondRead).discarded);
+    testSqlJobs.clear();
+}
+
 int main()
 {
     emptyAndShortenedPlayback();
@@ -372,5 +442,6 @@ int main()
     repeatedPresentationKeepsOriginalState();
     storedFormatsRemainCompatible();
     trimmedRecordingRefreshesSelectedSample();
+    obsoleteDemoLoadsAreCancelled();
     std::puts("DEMO STORAGE PASS bounds, atomic appends, presentation and OCJ1-5 compatibility");
 }
