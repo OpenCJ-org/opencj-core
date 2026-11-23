@@ -5,6 +5,7 @@ main() // Threaded
     self openCJ\notifications::onDisconnect();
     self openCJ\halfBeat::disableCorrection();
     self openCJ\mySQL::cancelMenuReads();
+    self openCJ\country::cancelLookup();
     self openCJ\mapBoost::cancel();
     self openCJ\scoreboard::onPlayerDisconnected();
     self openCJ\events\spawnPlayer::cancelPendingSpawn();

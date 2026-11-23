@@ -47,6 +47,7 @@ run(player, otherPlayer)
     clipPublicationChecks(player);
     shopMenuChecks(player);
     shopEquipmentChecks(player);
+    countryLookupChecks(player);
     demoTransferChecks();
     stats = mysql_async_stats();
     check(stats[0] == 4 && stats[4] == 0, "four workers and no uncollected GSC jobs");
@@ -528,4 +529,88 @@ awaitEquipmentBlocker(job)
 {
     openCJ\mySQL::awaitNative(job);
     level.shopEquipmentBlockersDone++;
+}
+
+// Disconnect must stop queued reads and reject replies that already reached delivery.
+countryLookupChecks(player)
+{
+    player verifyQueuedCountryCancellation();
+
+    player openCJ\country::onPlayerConnect();
+    player.country_reason = "lookup_pending";
+    level.history192DelayedQuery = "SELECT geoIPLookupCode(";
+    level.history192HoldReply = true;
+    player thread openCJ\country::_countryQuery();
+    player waittill("history192_result_ready");
+    player openCJ\mySQL::cancelMenuReads();
+    player notify("history192_release_result");
+    wait 0.1;
+    check(player.country_reason != "lookup_pending",
+          "closing a menu leaves the connection's country lookup active");
+
+    player openCJ\country::onPlayerConnect();
+    player.country_reason = "lookup_pending";
+    player thread openCJ\country::_countryQuery();
+    player waittill("history192_result_ready");
+    player openCJ\country::cancelLookup();
+    player.country_reason = "connection_closed";
+    player notify("history192_release_result");
+    wait 0.1;
+    check(player.country_reason == "connection_closed",
+          "cancelled country reply cannot overwrite newer connection state");
+    level.history192DelayedQuery = undefined;
+    level.history192HoldReply = false;
+}
+
+verifyQueuedCountryCancellation()
+{
+    workerCount = level.sqlConstants.workerCount;
+    level.countryBlockersDone = 0;
+    // Progress jobs can occupy the worker reserved for saves as well as the read workers.
+    for(i = 0; i < workerCount; i++)
+    {
+        jobID = mysql_async_submit("SELECT SLEEP(1)", level.sqlConstants.policyProgress,
+                                  "", "", level.sqlConstants.defaultQueueWaitMs, true);
+        check(isDefined(jobID) && jobID > 0, "country cancellation blocker admitted");
+        thread awaitCountryBlocker(jobID);
+    }
+    stats = mysql_async_stats();
+    for(attempt = 0; attempt < 10; attempt++)
+    {
+        stats = mysql_async_stats();
+        if(stats[2] == workerCount)
+        {
+            break;
+        }
+        wait 0.05;
+    }
+    runningWorkers = stats[2];
+    check(runningWorkers == workerCount, "country blockers occupy all workers");
+
+    self openCJ\country::onPlayerConnect();
+    self.country_reason = "lookup_pending";
+    self thread openCJ\country::_countryQuery();
+    wait 0.05;
+    stats = mysql_async_stats();
+    queuedJobs = stats[1];
+    check(queuedJobs == 1, "country lookup waits in the native queue");
+    self openCJ\country::cancelLookup();
+    wait 0.1;
+    stats = mysql_async_stats();
+    queuedJobs = stats[1];
+    check(queuedJobs == 0, "disconnect removes queued country work before a worker is free");
+
+    for(attempt = 0; attempt < 40 && level.countryBlockersDone < workerCount; attempt++)
+    {
+        wait 0.05;
+    }
+    wait 0.1;
+    check(level.countryBlockersDone == workerCount, "country cancellation releases all blocker results");
+    check(self.country_reason == "lookup_pending", "cancelled queued lookup never applies a country");
+}
+
+awaitCountryBlocker(jobID)
+{
+    level waittill("mysqlQueryDone" + jobID, rows, completion);
+    level.countryBlockersDone++;
 }

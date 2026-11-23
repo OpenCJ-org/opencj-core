@@ -5,6 +5,7 @@ onPlayerConnect()
     self.country_connectMessageShown = false;
     self.country = "??";
     self.country_reason = "not_logged_in";
+    self.country_lookupCancelled = false;
 }
 
 // Connecting/download-only clients do not query GeoIP or announce themselves.
@@ -42,6 +43,10 @@ onPlayerLogin()
 _countryQuery()
 {
     self endon("disconnect");
+    if(self.country_lookupCancelled)
+    {
+        return;
+    }
     ipv4Address = self getIP();
     if(!isDefined(ipv4Address) || ipv4Address == "")
     {
@@ -58,8 +63,15 @@ _countryQuery()
                   escapedIPv4 + "'), NULL))";
     queueWaitMs = 5000;
     retainRows = true;
-    lookupResult = self openCJ\mySQL::_request(lookupQuery, level.sqlConstants.policyRead, "", "",
-                                               queueWaitMs, retainRows);
+    // The cancellable-read policy also serves connection work. Its own scope keeps
+    // closing a menu from cancelling a lookup that the scoreboard still needs.
+    scope = "country:" + self getEntityNumber();
+    lookupResult = self openCJ\mySQL::_request(
+        lookupQuery, level.sqlConstants.policyMenu, "", scope, queueWaitMs, retainRows);
+    if(self.country_lookupCancelled)
+    {
+        return;
+    }
     if(!isDefined(lookupResult))
     {
         self lookupFailed("query_unavailable");
@@ -130,4 +142,13 @@ getCountry()
         return "??";
     }
     return self.country;
+}
+
+// Remove queued work on disconnect. A running read keeps its worker-owned
+// connection until it returns within the pool's read deadline; discard its reply.
+cancelLookup()
+{
+    self.country_lookupCancelled = true;
+    mysql_async_cancel("country:" + self getEntityNumber(), level.sqlConstants.scopeExact,
+                       level.sqlConstants.retainCompletion);
 }
