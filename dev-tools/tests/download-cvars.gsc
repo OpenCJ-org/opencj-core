@@ -1,4 +1,4 @@
-// #200: test production initialization and the initial client systeminfo.
+// Exercise production initialization and the initial client systeminfo.
 main()
 {
     level.downloadChecks = 0;
@@ -6,49 +6,71 @@ main()
     wait 1;
     check(level.downloadInitRan, "production initialization ran before accepting players");
     check(level.downloadConnections == 0, "settings available before any player connects");
-    verify();
+    verifyPublishedSettings();
     check(getCvarInt("sv_allowDownload") == 0, "server file delivery remains disabled");
     check(getCvarInt("sv_wwwDownload") == 0, "server HTTP delivery remains disabled");
     check(getCvar("sv_wwwBaseURL") == "", "no HTTP URL configured");
-    if(getCvarInt("opencj_download_test_stage") == 0 && !level.downloadFailures)
+
+    initialStage = 0;
+    restartedStage = 1;
+    if(getCvarInt("opencj_download_test_stage") == initialStage && !level.downloadFailures)
     {
-        printf("DOWNLOAD TEST STAGE COMPLETE 0 checks=" + level.downloadChecks + "\n");
-        setCvar("opencj_download_test_stage", 1);
+        printf("DOWNLOAD TEST STAGE COMPLETE 0 failures=0 checks=" + level.downloadChecks + "\n");
+        setCvar("opencj_download_test_stage", restartedStage);
         exec("map_restart");
         return;
     }
-    printf("DOWNLOAD TEST COMPLETE failures=" + level.downloadFailures + " checks=" + level.downloadChecks + "\n");
+    printf("DOWNLOAD TEST COMPLETE failures=" + level.downloadFailures +
+           " checks=" + level.downloadChecks + "\n");
 }
 
-verify()
+// Configstring publication happens outside the script catch-up loop; wait for it.
+verifyPublishedSettings()
 {
     check(getCvarInt("cl_allowDownload") == 1, "disabled allowDownload overridden");
     check(getCvarInt("cl_wwwDownload") == 1, "disabled wwwDownload overridden");
-    // Publication runs in SV_PreFrame, outside the script catch-up loop.
-    info = "";
-    for(attempt = 0; attempt < 100; attempt++)
+    systeminfoConfigstring = 1;
+    maxPublicationAttempts = 100;
+    publicationPollSeconds = 0.05;
+    systeminfo = "";
+    for(attempt = 0; attempt < maxPublicationAttempts; attempt++)
     {
-        info = getConfigStringByIndex(1);
-        if(value(info, "cl_allowdownload") == "1" &&
-           value(info, "cl_wwwdownload") == "1") break;
-        wait 0.05;
+        systeminfo = getConfigStringByIndex(systeminfoConfigstring);
+        if(systeminfoValue(systeminfo, "cl_allowdownload") == "1" &&
+           systeminfoValue(systeminfo, "cl_wwwdownload") == "1")
+        {
+            break;
+        }
+        wait publicationPollSeconds;
     }
-    check(value(info, "cl_allowdownload") == "1", "initial systeminfo enables downloads");
-    check(value(info, "cl_wwwdownload") == "1", "initial systeminfo enables HTTP");
+    check(systeminfoValue(systeminfo, "cl_allowdownload") == "1", "initial systeminfo enables downloads");
+    check(systeminfoValue(systeminfo, "cl_wwwdownload") == "1", "initial systeminfo enables HTTP");
 }
 
-value(info, key)
+systeminfoValue(systeminfo, key)
 {
-    if(!isDefined(info)) return "";
-    parts = strTok(info, "\\");
-    for(i = 0; i + 1 < parts.size; i += 2)
-        if(toLower(parts[i]) == key) return parts[i + 1];
+    if(!isDefined(systeminfo))
+    {
+        return "";
+    }
+    fields = strTok(systeminfo, "\\");
+    // Systeminfo stores alternating key/value fields; a trailing key has no value.
+    for(i = 0; i + 1 < fields.size; i += 2)
+    {
+        if(toLower(fields[i]) == key)
+        {
+            return fields[i + 1];
+        }
+    }
     return "";
 }
 
-check(ok, label)
+check(condition, message)
 {
     level.downloadChecks++;
-    if(!ok) level.downloadFailures++;
-    printf("DOWNLOAD TEST " + ok + ": " + label + "\n");
+    if(!condition)
+    {
+        level.downloadFailures++;
+    }
+    printf("DOWNLOAD TEST " + condition + ": " + message + "\n");
 }

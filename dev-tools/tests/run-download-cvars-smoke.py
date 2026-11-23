@@ -1,129 +1,134 @@
-"""#200: run production CoD4 initialization before any client in an isolated server.
-Checks initial systeminfo and restart behavior without configuring file hosting.
+"""Check production download settings before clients and after a real map restart.
+
+Only the isolated server's client defaults change; file hosting remains disabled.
 """
 
-from pathlib import Path
 import argparse
+import hashlib
 import json
-import shutil
+from pathlib import Path
 import subprocess
-import time
+from textwrap import dedent
 import uuid
 
-ROOT = Path(__file__).resolve().parents[2]
-parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--cvars-revision", help="Optional Git revision for a negative baseline")
-parser.add_argument("--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun")
-parser.add_argument("--scripts", type=Path, default=ROOT / "server-gsc")
-args = parser.parse_args()
-tag = "download-cvars-" + uuid.uuid4().hex[:8]
-home = ROOT / "dev-tools/local" / tag
-mod = home / "mods/opencj"
-mod.mkdir(parents=True)
-# Production includes resolve unchanged; test callbacks omit account/DB startup.
-for folder in ("opencj", "maps"):
-    shutil.copytree(args.scripts / folder, mod / folder)
-if args.cvars_revision:
-    path = "server-gsc/opencj/cvars.gsc"
-    probe = subprocess.run(
-        ["git", "cat-file", "-e", args.cvars_revision + ":" + path], cwd=ROOT, capture_output=True
-    )
-    if probe.returncode:
-        path = "opencj/cvars.gsc"  # Original component history predates the import.
-    source = subprocess.check_output(
-        ["git", "show", args.cvars_revision + ":" + path], cwd=ROOT, text=True
-    )
-    (mod / "opencj/cvars.gsc").write_text(source)
-for name in ("mod.ff", "z_opencj.iwd"):
-    (mod / name).symlink_to("/mod-assets/" + name)
-(home / "plugins").mkdir()
+import gsc_fixture
 
-(home / "steamclient.so").symlink_to("/game/steamclient.so")
-shutil.copyfile(ROOT / "dev-tools/tests/download-cvars.gsc", mod / "opencj/downloadcvarstest.gsc")
-(mod / "maps/mp/gametypes/cj.gsc").write_text('main() { level.script = getCvar("mapname"); }\n')
-(mod / "maps/mp/gametypes/_callbacksetup.gsc").write_text(
-    'CodeCallback_StartGameType()\n{\n'
-    '    level.downloadConnections = 0;\n'
-    '    openCJ\\cvars::onInit();\n'
-    '    level.downloadInitRan = true;\n'
-    '    thread openCJ\\downloadCvarsTest::main();\n}\n'
-    'CodeCallback_PlayerConnect() { level.downloadConnections++; }\n'
-    + "\n".join(
-        "CodeCallback_" + name + "() {}"
-        for name in ["PlayerDisconnect", "PlayerDamage", "PlayerKilled", "PlayerLastStand"]
-    )
-)
-(mod / "maps/mp/mp_killhouse.gsc").write_text("main() {}\n")
-name = "opencj-" + tag
-cmd = [
-    "docker",
-    "compose",
-    "run",
-    "-d",
-    "--no-deps",
-    "--name",
-    name,
-    "--workdir",
-    "/workspace/" + str(home.relative_to(ROOT)),
-    "server",
-    args.binary,
-]
-for key, val in [
-    ("fs_basepath", "/game"),
-    ("fs_homepath", "/workspace/dev-tools/local/" + tag),
-    ("fs_game", "mods/opencj"),
-    ("dedicated", "2"),
-    ("net_port", "28971"),
-    ("sv_maxclients", "1"),
-    ("sv_authorizemode", "0"),
-    ("com_hunkMegs", "1024"),
-    ("developer", "1"),
-    ("g_gametype", "cj"),
-    ("cl_allowDownload", "0"),
-    ("cl_wwwDownload", "0"),
-    ("sv_allowDownload", "0"),
-    ("sv_wwwDownload", "0"),
-    ("sv_wwwBaseURL", ""),
-]:
-    cmd += ["+set", key, val]
-cmd += ["+map", "mp_killhouse"]
-errors = ["script compile error", "script runtime error", "DOWNLOAD TEST 0:"]
-try:
-    subprocess.run(cmd, cwd=ROOT / "dev-tools", check=True, capture_output=True)
-    log = ""
-    for _ in range(40):
-        time.sleep(1)
-        r = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
-        log = r.stdout + r.stderr
-        if any(e in log for e in errors) or "DOWNLOAD TEST COMPLETE" in log:
-            break
-    print("\n".join(l for l in log.splitlines() if "DOWNLOAD TEST" in l), flush=True)
-    for error in errors[:2]:
-        if error in log:
-            start = log.index(error)
-            print(log[start : start + 800], flush=True)
-    passed = (
-        "DOWNLOAD TEST COMPLETE failures=0" in log
-        and "DOWNLOAD TEST STAGE COMPLETE 0" in log
-        and not any(e in log for e in errors)
-    )
-    checks = sum(l.startswith("DOWNLOAD TEST 1:") for l in log.splitlines())
-    (home / "result.json").write_text(
-        json.dumps(
-            {
-                "passed": passed,
-                "checks": checks,
-                "cvarsRevision": args.cvars_revision,
-                "coverage": "Server initialization/systeminfo before clients and after restart.",
-            },
-            indent=2,
+ROOT = Path(__file__).resolve().parents[2]
+GIT_TIMEOUT_SECONDS = 30
+
+
+def historical_cvars(revision):
+    """Accept a commit, then find the script before or after the core import."""
+    commit = subprocess.check_output(
+        ["git", "rev-parse", "--verify", "--end-of-options", revision + "^{commit}"],
+        cwd=ROOT,
+        text=True,
+        timeout=GIT_TIMEOUT_SECONDS,
+    ).strip()
+    for path in ("server-gsc/opencj/cvars.gsc", "opencj/cvars.gsc"):
+        object_name = commit + ":" + path
+        exists = subprocess.run(
+            ["git", "cat-file", "-e", object_name],
+            cwd=ROOT,
+            capture_output=True,
+            timeout=GIT_TIMEOUT_SECONDS,
         )
-        + "\n"
+        if exists.returncode == 0:
+            source = subprocess.check_output(
+                ["git", "show", object_name], cwd=ROOT, text=True, timeout=GIT_TIMEOUT_SECONDS
+            )
+            return commit, source
+    raise ValueError("The selected revision does not contain the cvar script.")
+
+
+def parse_options():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cvars-revision", help="Optional Git commit for a negative baseline")
+    parser.add_argument("--binary", default="cod4x-server/bin/cod4x18_dedrun")
+    parser.add_argument("--scripts", type=Path, default=ROOT / "server-gsc")
+    options = parser.parse_args()
+    options.maps = ["mp_killhouse"]
+    options.fixture = ROOT / "dev-tools/tests/download-cvars.gsc"
+    options.completion_marker = "DOWNLOAD TEST COMPLETE"
+    options.baseline = False
+    return gsc_fixture.validate_options(parser, options)
+
+
+def install_startup_callbacks(home):
+    """Run the real cvar initializer before the fixture, with no account/DB callbacks."""
+    mod = home / "mods/opencj"
+    (mod / "maps/mp/gametypes/cj.gsc").write_text(dedent(r"""
+        main()
+        {
+            level.script = getCvar("mapname");
+        }
+    """).lstrip())
+    callbacks = dedent(r"""
+        CodeCallback_StartGameType()
+        {
+            level.downloadConnections = 0;
+            openCJ\cvars::onInit();
+            level.downloadInitRan = true;
+            thread openCJ\platformTest::main();
+        }
+
+        CodeCallback_PlayerConnect()
+        {
+            level.downloadConnections++;
+        }
+    """).lstrip()
+    for name in ("PlayerDisconnect", "PlayerDamage", "PlayerKilled", "PlayerLastStand"):
+        callbacks += "\nCodeCallback_" + name + "()\n{\n}\n"
+    (mod / "maps/mp/gametypes/_callbacksetup.gsc").write_text(callbacks)
+    (mod / "maps/mp/mp_killhouse.gsc").write_text("main()\n{\n}\n")
+
+
+def main():
+    options = parse_options()
+    cvars_commit = None
+    cvars_source = None
+    if options.cvars_revision:
+        cvars_commit, cvars_source = historical_cvars(options.cvars_revision)
+
+    home = ROOT / "dev-tools/local" / ("download-cvars-" + uuid.uuid4().hex[:8])
+    source_hashes, _ = gsc_fixture.prepare_fixture(options, home, retained_callbacks=())
+    install_startup_callbacks(home)
+    cvars_path = home / "mods/opencj/opencj/cvars.gsc"
+    if cvars_source is not None:
+        cvars_path.write_text(cvars_source)
+    selection = {
+        "cvarsRevision": cvars_commit,
+        "cvarsSha256": hashlib.sha256(cvars_path.read_bytes()).hexdigest(),
+    }
+    (home / "source-selection.json").write_text(json.dumps(selection, indent=2) + "\n")
+
+    report = gsc_fixture.run_prepared_fixture(
+        options,
+        home,
+        "mp_killhouse",
+        source_hashes,
+        extra_completion_markers=("DOWNLOAD TEST STAGE COMPLETE 0",),
+        extra_settings={
+            "sv_maxclients": "1",
+            "cl_allowDownload": "0",
+            "cl_wwwDownload": "0",
+            "sv_allowDownload": "0",
+            "sv_wwwDownload": "0",
+            "sv_wwwBaseURL": "",
+        },
     )
-    assert passed, "Download-cvar regression failed; inspect " + str(home / "console.log")
-    print("PASS:", checks, "checks", flush=True)
-finally:
-    r = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
-    (home / "console.log").write_text(r.stdout + r.stderr)
-    subprocess.run(["docker", "rm", "-f", name], capture_output=True)
-    print("Evidence:", home, flush=True)
+    checks = sum(line.startswith("DOWNLOAD TEST 1:") for line in report["summary"])
+    if checks == 0:
+        raise RuntimeError("Download fixture completed without executing a check.")
+    report.update(
+        checks=checks,
+        **selection,
+        coverage="Production initialization/systeminfo before clients and after map_restart.",
+    )
+    (home / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    print("PASS:", checks, "checks across both initializations", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -430,3 +430,12 @@ current queries on 300 repeatable competitive corpora. Tutorial rows are exclude
 from historical equivalence because the frozen queries predate that feature.
 The runners require the capacity suite's disposable database/schema; their
 fixture tables and output must never be directed at gameplay data.
+
+### Download initialization
+
+The download-cvar smoke test uses the shared isolated-engine preparation and
+binary/script selection. It executes the real cvar initializer before any client
+connects, verifies systeminfo publication, then repeats the checks after a real
+map restart. Both stages are required. Server file/HTTP hosting stays disabled.
+An optional cvar-script revision records its resolved commit and file hash for
+historical comparisons; it changes only the fixture copy.
