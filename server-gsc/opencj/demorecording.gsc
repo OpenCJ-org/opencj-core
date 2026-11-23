@@ -2,6 +2,7 @@
 
 onInit()
 {
+    _initConstants();
     // Do not enable recording against an unmigrated database.
     level.demoStorageReady =
         isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT runID FROM demoRuns LIMIT 0"));
@@ -9,7 +10,11 @@ onInit()
     if(level.demoStorageReady)
     {
         schema = openCJ\mySQL::mysqlSyncQuery(
-            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='demoPublications'),EXISTS(SELECT 1 FROM information_schema.routines WHERE routine_schema=DATABASE() AND routine_name='publishDemo' AND routine_type='PROCEDURE')");
+            "SELECT EXISTS(" + "SELECT 1 FROM information_schema.tables" +
+            " WHERE table_schema=DATABASE() AND table_name='demoPublications')," +
+            "EXISTS(SELECT 1 FROM information_schema.routines" +
+            " WHERE routine_schema=DATABASE() AND routine_name='publishDemo'" +
+            " AND routine_type='PROCEDURE')");
         level.demoPublicationReady = isDefined(schema) && schema.size == 1 &&
                                      int(schema[0][0]) == 1 && int(schema[0][1]) == 1;
     }
@@ -20,6 +25,34 @@ onInit()
         level thread openCJ\mySQL::mysqlAsyncQueryNosave(
             "DELETE FROM demoRuns WHERE ready=0 AND createdAt < NOW() - INTERVAL 7 DAY");
     }
+}
+
+// Values are stored in demo frame flags and SQL mode masks. Keep them in sync
+// with DemoFrameFlag in opencj_demo.cpp and existing recordings.
+_initConstants()
+{
+    level.demoFlags = spawnStruct();
+    level.demoFlags.left = 1;
+    level.demoFlags.right = 2;
+    level.demoFlags.forward = 4;
+    level.demoFlags.back = 8;
+    level.demoFlags.sprintButton = 16;
+    level.demoFlags.jump = 32;
+    level.demoFlags.sprinting = 64;
+    level.demoFlags.mantling = 128;
+    level.demoFlags.ladder = 256;
+    level.demoFlags.standing = 512;
+    level.demoFlags.crouched = 1024;
+    level.demoFlags.prone = 2048;
+    level.demoFlags.rpg = 4096;
+    level.demoFlags.onGround = 8192;
+    level.demoFlags.bounce = 16384;
+
+    level.demoModes = spawnStruct();
+    level.demoModes.anyPercent = 1;
+    level.demoModes.elevators = 2;
+    level.demoModes.halfbeat = 4;
+    level.demoModes.hardTAS = 8;
 }
 
 onConnect()
@@ -39,21 +72,21 @@ onRunStarted()
     {
         return;
     }
-    id = self openCJ\playerRuns::getRunID();
-    if(!isDefined(id) || isDefined(self.demoRecordings["" + id]))
+    runID = self openCJ\playerRuns::getRunID();
+    if(!isDefined(runID) || isDefined(self.demoRecordings["" + runID]))
     {
         return;
     }
-    rec = spawnStruct();
-    rec.id = id;
-    rec.saves = [];
-    rec.failed = false;
-    rec.finishing = false;
-    rec.lastTick = -1;
-    self.demoRecordings["" + id] = rec;
-    if(createDemo(id) != id)
+    recording = spawnStruct();
+    recording.id = runID;
+    recording.saves = [];
+    recording.failed = false;
+    recording.finishing = false;
+    recording.lastTick = -1;
+    self.demoRecordings["" + runID] = recording;
+    if(createDemo(runID) != runID)
     {
-        rec.failed = true;
+        recording.failed = true;
     }
     else
     {
@@ -70,10 +103,11 @@ current()
     return self.demoRecordings["" + self openCJ\playerRuns::getRunID()];
 }
 
+// Sample a live run once per server tick; forced samples still respect pause and edit state.
 capture(force)
 {
-    rec = self current();
-    if(!isDefined(rec) || rec.failed || rec.finishing ||
+    recording = self current();
+    if(!isDefined(recording) || recording.failed || recording.finishing ||
        (isDefined(self.playerRuns_runFinishing) && self.playerRuns_runFinishing) ||
        self openCJ\demos::isPlayingDemo() || self openCJ\checkpointCreation::isEditing())
     {
@@ -92,79 +126,81 @@ capture(force)
     if(!isDefined(force) || !force)
     {
         if(self openCJ\playerRuns::isRunFinished() || !self openCJ\playTime::isActivelyPlaying() ||
-           rec.lastTick == getTime())
+           recording.lastTick == getTime())
         {
             return;
         }
     }
-    cp = self openCJ\checkpoints::getCurrentCheckpoint();
-    cpID = 0;
-    if(isDefined(cp))
+    checkpoint = self openCJ\checkpoints::getCurrentCheckpoint();
+    checkpointID = 0;
+    if(isDefined(checkpoint))
     {
-        if(isDefined(cp.bigBrother))
+        if(isDefined(checkpoint.bigBrother))
         {
-            cp = cp.bigBrother;
+            checkpoint = checkpoint.bigBrother;
         }
-        if(isDefined(cp.id))
+        if(isDefined(checkpoint.id))
         {
-            cpID = cp.id;
+            checkpointID = checkpoint.id;
         }
     }
-    fps = self openCJ\fps::getCurrentFPS();
-    rpg = isDefined(self.eventQueue["rpg"]);
-    if(!isDefined(addFrameToDemo(rec.id, self.origin, self getPlayerAngles(), 1, self frameFlags(),
-                                 0, int(isDefined(rec.loaded) && rec.loaded), int(rpg), int(fps),
-                                 cpID, self getEntityNumber())))
+    framesPerSecond = self openCJ\fps::getCurrentFPS();
+    firedRPG = isDefined(self.eventQueue["rpg"]);
+    if(!isDefined(
+           addFrameToDemo(recording.id, self.origin, self getPlayerAngles(), 1, self frameFlags(),
+                          0, int(isDefined(recording.loaded) && recording.loaded), int(firedRPG),
+                          int(framesPerSecond), checkpointID, self getEntityNumber())))
     {
-        rec.failed = true;
-        destroyDemo(rec.id);
+        recording.failed = true;
+        destroyDemo(recording.id);
         self sendLocalChatMessage(
             "Demo recording stopped: memory limit reached. Your run is unaffected.", true);
         return;
     }
-    rec.lastTick = getTime();
-    rec.loaded = false;
+    recording.lastTick = getTime();
+    recording.loaded = false;
 }
 
-onSaved(saveNum)
+onSaved(saveNumber)
 {
-    rec = self current();
-    if(!isDefined(rec) || rec.failed || rec.finishing)
+    recording = self current();
+    if(!isDefined(recording) || recording.failed || recording.finishing)
     {
         return;
     }
     self capture();
-    if(rec.failed)
+    if(recording.failed)
     {
         return;
     }
-    rec.saves["" + saveNum] = numberOfDemoFrames(rec.id);
+    recording.saves["" + saveNumber] = numberOfDemoFrames(recording.id);
 }
 
-onLoaded(saveNum)
+// Retain failed attempts for playback, but invalidate saves beyond the restored frame.
+onLoaded(saveNumber)
 {
-    rec = self current();
-    if(!isDefined(rec) || rec.failed || rec.finishing)
+    recording = self current();
+    if(!isDefined(recording) || recording.failed || recording.finishing)
     {
         return;
     }
-    count = rec.saves["" + saveNum];
-    if(!isDefined(count) || !isDefined(demoMarkFailedSince(rec.id, count)))
+    frameCount = recording.saves["" + saveNumber];
+    if(!isDefined(frameCount) || !isDefined(demoMarkFailedSince(recording.id, frameCount)))
     {
-        rec.failed = true;
-        destroyDemo(rec.id);
+        recording.failed = true;
+        destroyDemo(recording.id);
         return;
     }
-    keys = getArrayKeys(rec.saves);
+    keys = getArrayKeys(recording.saves);
     for(i = 0; i < keys.size; i++)
     {
-        if(rec.saves[keys[i]] > count)
+        if(recording.saves[keys[i]] > frameCount)
         {
-            rec.saves[keys[i]] = undefined;
+            recording.saves[keys[i]] = undefined;
         }
     }
-    rec.lastTick = -1;
-    rec.loaded = true;
+    recording.lastTick = -1;
+    recording.loaded = true;
 }
 
 onDisconnect()
@@ -176,10 +212,10 @@ onDisconnect()
     keys = getArrayKeys(self.demoRecordings);
     for(i = 0; i < keys.size; i++)
     {
-        rec = self.demoRecordings[keys[i]];
-        if(!rec.failed && !rec.finishing)
+        recording = self.demoRecordings[keys[i]];
+        if(!recording.failed && !recording.finishing)
         {
-            destroyDemo(rec.id);
+            destroyDemo(recording.id);
         }
     }
     self.demoRecordings = [];
@@ -187,25 +223,21 @@ onDisconnect()
 
 onRunFinished()
 {
-    rec = self current();
-    if(!isDefined(rec) || rec.failed || rec.finishing)
+    recording = self current();
+    if(!isDefined(recording) || recording.failed || recording.finishing)
     {
         return;
     }
     // A recording can only exist here if the run's mode changed after it began
     if(self openCJ\tutorial::isTutorialRun())
     {
-        self discard(rec.id);
+        self discard(recording.id);
         return;
     }
-    if(rec.failed)
-    {
-        return;
-    }
-    rec.finishing = true;
-    rec.saves = []; // No further rewind/save lookup is possible for a finished run.
-    completeDemo(rec.id);
-    level thread persist(rec.id);
+    recording.finishing = true;
+    recording.saves = []; // No further rewind/save lookup is possible for a finished run.
+    completeDemo(recording.id);
+    level thread persist(recording.id);
 }
 
 frameFlags()
@@ -213,76 +245,76 @@ frameFlags()
     flags = 0;
     if(self leftButtonPressed())
     {
-        flags |= 1;
+        flags |= level.demoFlags.left;
     }
     if(self rightButtonPressed())
     {
-        flags |= 2;
+        flags |= level.demoFlags.right;
     }
     if(self forwardButtonPressed())
     {
-        flags |= 4;
+        flags |= level.demoFlags.forward;
     }
     if(self backButtonPressed())
     {
-        flags |= 8;
+        flags |= level.demoFlags.back;
     }
     if(self sprintButtonPressed())
     {
-        flags |= 16;
+        flags |= level.demoFlags.sprintButton;
     }
     if(self jumpButtonPressed())
     {
-        flags |= 32;
+        flags |= level.demoFlags.jump;
     }
     if(self isSprinting())
     {
-        flags |= 64;
+        flags |= level.demoFlags.sprinting;
     }
     if(self isMantling())
     {
-        flags |= 128;
+        flags |= level.demoFlags.mantling;
     }
     if(self isOnLadder())
     {
-        flags |= 256;
+        flags |= level.demoFlags.ladder;
     }
     stance = self getStance();
     if(stance == "stand")
     {
-        flags |= 512;
+        flags |= level.demoFlags.standing;
     }
     else if(stance == "duck" || stance == "crouch")
     {
-        flags |= 1024;
+        flags |= level.demoFlags.crouched;
     }
     else
     {
-        flags |= 2048;
+        flags |= level.demoFlags.prone;
     }
     if(openCJ\weapons::isRPG(self getCurrentWeapon()))
     {
-        flags |= 4096;
+        flags |= level.demoFlags.rpg;
     }
     if(self isOnGround())
     {
-        flags |= 8192;
+        flags |= level.demoFlags.onGround;
     }
     if(isDefined(self.eventQueue["bounced"]))
     {
-        flags |= 16384;
+        flags |= level.demoFlags.bounce;
     }
     return flags;
 }
 
 // Runs completed in this connection alone reach here; resumed historical runs
 // have no in-memory recording. SQL holds only complete candidate payloads.
-persist(id)
+persist(runID)
 {
-    count = numberOfDemoFrames(id);
-    if(!isDefined(count) || count < 2)
+    frameCount = numberOfDemoFrames(runID);
+    if(!isDefined(frameCount) || frameCount < 2)
     {
-        destroyDemo(id);
+        destroyDemo(runID);
         return;
     }
     if(!isDefined(level.demoPersisting))
@@ -290,54 +322,72 @@ persist(id)
         level.demoPersisting = 0;
     }
     level.demoPersisting++;
-    query =
-        "INSERT INTO demoRuns(runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount) SELECT r.runID,r.mapID,c.finishRouteID,r.FPSMode,r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS,s.timePlayed,s.explosiveJumps," +
-        count +
-        " FROM playerRuns r JOIN checkpoints c ON c.cpID=r.finishcpID JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID WHERE r.runID=" +
-        id + " AND r.finishTimeStamp IS NOT NULL";
-    ok = isDefined(openCJ\mySQL::mysqlAsyncBackground(query, "demo:" + id));
-    for(first = 0; ok && first < count; first += 64)
+    uploaded = uploadCandidate(runID, frameCount);
+    published = uploaded;
+    if(uploaded)
     {
-        length = count - first;
-        if(length > 64)
-        {
-            length = 64;
-        }
-        ok = isDefined(
-            openCJ\mySQL::awaitNative(demoUploadChunk(id, id, 0, first, length, int(first / 64))));
+        published = promote(runID);
     }
-    if(ok)
+    if(!isDefined(published))
     {
-        ok = promote(id);
-    }
-    if(!isDefined(ok))
-    {
-        printf("OpenCJ: demo publication outcome uncertain for run " + id +
+        printf("OpenCJ: demo publication outcome uncertain for run " + runID +
                "; candidate retained for reconciliation.\n");
     }
-    else if(!ok)
+    else if(!published)
     {
-        printf("OpenCJ: demo publication failed for run " + id +
+        printf("OpenCJ: demo publication failed for run " + runID +
                "; leaderboard result retained.\n");
         // Only our unpublished candidate can be removed here.
         openCJ\mySQL::mysqlAsyncBackground(
-            "DELETE FROM demoRuns WHERE runID=" + id + " AND ready=0", "demo:" + id);
+            "DELETE FROM demoRuns WHERE runID=" + runID + " AND ready=0", "demo:" + runID);
     }
     level.demoPersisting--;
-    destroyDemo(id);
+    destroyDemo(runID);
+}
+
+// Persist metadata first, then bounded chunks. Only promote() makes a complete candidate visible.
+uploadCandidate(runID, frameCount)
+{
+    query = "INSERT INTO demoRuns(" +
+            "runID,mapID,routeID,FPSMode,modeMask,timePlayed,explosiveJumps,frameCount)" +
+            " SELECT r.runID,r.mapID,c.finishRouteID,r.FPSMode," +
+            "r.anyPct+2*r.ele+4*r.hb+8*r.hardTAS," + "s.timePlayed,s.explosiveJumps," + frameCount +
+            " FROM playerRuns r" + " JOIN checkpoints c ON c.cpID=r.finishcpID" +
+            " JOIN checkpointStatistics s ON s.runID=r.runID AND s.cpID=r.finishcpID" +
+            " WHERE r.runID=" + runID + " AND r.finishTimeStamp IS NOT NULL";
+    uploaded = isDefined(openCJ\mySQL::mysqlAsyncBackground(query, "demo:" + runID));
+    framesPerChunk = 64; // Matches the stored chunk index and native transfer limits.
+    runStorage = 0;      // demoUploadChunk: 0 is a run; 1 is a clip.
+    for(firstFrame = 0; uploaded && firstFrame < frameCount; firstFrame += framesPerChunk)
+    {
+        chunkFrames = frameCount - firstFrame;
+        if(chunkFrames > framesPerChunk)
+        {
+            chunkFrames = framesPerChunk;
+        }
+        chunkIndex = int(firstFrame / framesPerChunk);
+        transferID = demoUploadChunk(runID, runID, runStorage, firstFrame, chunkFrames, chunkIndex);
+        uploaded = isDefined(openCJ\mySQL::awaitNative(transferID));
+    }
+    return uploaded;
 }
 
 // A stored procedure owns the entire transaction on one worker connection.
 // One publication lane avoids tying up several workers on the same map lock;
 // the database lock also serializes publishers on separate game servers.
-promote(id)
+promote(runID)
 {
     uncertain = false;
-    for(attempt = 0; attempt < 3; attempt++)
+    maxAttempts = 3;
+    lockWaitTimeoutError = 1205;
+    deadlockError = 1213;
+    retryDelaySeconds = 0.05;
+    for(attempt = 0; attempt < maxAttempts; attempt++)
     {
-        result = openCJ\mySQL::_request("CALL publishDemo(" + id + ")", 2, "demo-publication", "",
-                                        30000, true);
-        if(result.status == 0)
+        result = openCJ\mySQL::_request("CALL publishDemo(" + runID + ")",
+                                        level.sqlConstants.policyBackground, "demo-publication", "",
+                                        level.sqlConstants.backgroundQueueWaitMs, true);
+        if(result.status == level.sqlConstants.outcomeOK)
         {
             if(isDefined(result.rows) && result.rows.size == 1 && result.rows[0].size == 2)
             {
@@ -345,14 +395,15 @@ promote(id)
             }
             return undefined; // A malformed receipt cannot justify deletion.
         }
-        if(result.status == 3)
+        if(result.status == level.sqlConstants.outcomeUnknown)
         {
             uncertain = true;
             // A lost reply may follow a successful commit, including a loser
             // whose payload was removed. Its durable receipt survives cleanup.
-            receipt = openCJ\mySQL::_request("SELECT runID FROM demoPublications WHERE runID=" + id,
-                                             1, "", "", 10000, true);
-            if(receipt.status != 0 || !isDefined(receipt.rows))
+            receipt = openCJ\mySQL::_request(
+                "SELECT runID FROM demoPublications WHERE runID=" + runID,
+                level.sqlConstants.policyRead, "", "", level.sqlConstants.defaultQueueWaitMs, true);
+            if(receipt.status != level.sqlConstants.outcomeOK || !isDefined(receipt.rows))
             {
                 return undefined;
             }
@@ -363,7 +414,8 @@ promote(id)
             // Replaying is safe: the procedure rechecks the receipt under the
             // map lock, including if the first call has not finished yet.
         }
-        else if(result.status != 1 || (result.error != 1205 && result.error != 1213))
+        else if(result.status != level.sqlConstants.outcomeError ||
+                (result.error != lockWaitTimeoutError && result.error != deadlockError))
         {
             if(uncertain)
             {
@@ -371,9 +423,9 @@ promote(id)
             }
             return false;
         }
-        if(attempt < 2)
+        if(attempt + 1 < maxAttempts)
         {
-            wait 0.05 * (attempt + 1);
+            wait retryDelaySeconds *(attempt + 1);
         }
     }
     if(uncertain)
@@ -383,34 +435,36 @@ promote(id)
     return false;
 }
 
-isBetter(kind, time, rpgs, oldTime, oldRpgs)
+isBetter(kind, elapsedTime, rpgJumpCount, previousElapsedTime, previousRPGJumpCount)
 {
     if(kind == "lowrpg")
     {
-        return rpgs < oldRpgs || (rpgs == oldRpgs && time < oldTime);
+        return rpgJumpCount < previousRPGJumpCount ||
+               (rpgJumpCount == previousRPGJumpCount && elapsedTime < previousElapsedTime);
     }
     if(kind == "walkthrough")
     {
-        return time < oldTime;
+        return elapsedTime < previousElapsedTime;
     }
-    return time < oldTime || (time == oldTime && rpgs < oldRpgs);
+    return elapsedTime < previousElapsedTime ||
+           (elapsedTime == previousElapsedTime && rpgJumpCount < previousRPGJumpCount);
 }
 
 // An explicitly abandoned run cannot be resumed through the runs menu.
-discard(id)
+discard(runID)
 {
-    if(!isDefined(id) || !isDefined(self.demoRecordings))
+    if(!isDefined(runID) || !isDefined(self.demoRecordings))
     {
         return;
     }
-    rec = self.demoRecordings["" + id];
-    if(!isDefined(rec))
+    recording = self.demoRecordings["" + runID];
+    if(!isDefined(recording))
     {
         return;
     }
-    if(!rec.failed && !rec.finishing)
+    if(!recording.failed && !recording.finishing)
     {
-        destroyDemo(id);
+        destroyDemo(runID);
     }
-    self.demoRecordings["" + id] = undefined;
+    self.demoRecordings["" + runID] = undefined;
 }

@@ -4,6 +4,7 @@
 // fills the engine's precache list before this large fixture can start.
 main()
 {
+    openCJ\demoRecording::_initConstants();
     openCJ\settings::onInit();
     openCJ\commands_base::onInit();
     level.failures = 0;

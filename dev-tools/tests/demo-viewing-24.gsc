@@ -2,6 +2,7 @@
 // Isolated synthetic clients and in-memory demos. No database initialization.
 main()
 {
+    openCJ\demoRecording::_initConstants();
     level.lifecycleChecks=0;level.lifecycleFailures=0;
     openCJ\settings::onInit();openCJ\commands_base::onInit();
     openCJ\settings::addSettingBool("sharehistory",true,"History sharing");

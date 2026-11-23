@@ -46,6 +46,8 @@ _initConstants()
     level.sqlConstants.policyMenu = 3;
     level.sqlConstants.policyWrite = 4;
     level.sqlConstants.outcomeOK = 0;
+    level.sqlConstants.outcomeError = 1;
+    level.sqlConstants.outcomeUnknown = 3;
     level.sqlConstants.outcomeCancelled = 5;
     level.sqlConstants.outcomeInvalid = 7;
     level.sqlConstants.scopeExact = 0;

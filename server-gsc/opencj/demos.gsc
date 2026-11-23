@@ -789,38 +789,38 @@ _getDemoFrame(nrFramesToSkip, shouldSkipFails)
     frame.rpgNow = self readPlaybackFrame_rpgNow();
     flags = self readPlaybackFrame_flags();
 
-    frame.left = (flags & 1) != 0;
-    frame.right = (flags & 2) != 0;
-    frame.forward = (flags & 4) != 0;
-    frame.back = (flags & 8) != 0;
-    frame.sprint = (flags & 16) != 0;
-    frame.jump = (flags & 32) != 0;
+    frame.left = (flags & level.demoFlags.left) != 0;
+    frame.right = (flags & level.demoFlags.right) != 0;
+    frame.forward = (flags & level.demoFlags.forward) != 0;
+    frame.back = (flags & level.demoFlags.back) != 0;
+    frame.sprint = (flags & level.demoFlags.sprintButton) != 0;
+    frame.jump = (flags & level.demoFlags.jump) != 0;
 
     frame.state = "none";
-    if((flags & 128) != 0)
+    if((flags & level.demoFlags.mantling) != 0)
     {
         frame.state = "mantling";
     }
-    else if((flags & 256) != 0)
+    else if((flags & level.demoFlags.ladder) != 0)
     {
         frame.state = "ladder";
     }
-    else if((flags & 64) != 0)
+    else if((flags & level.demoFlags.sprinting) != 0)
     {
         frame.state = "sprinting";
     }
 
-    frame.stance = "stand"; // 512
-    if((flags & 1024) != 0)
+    frame.stance = "stand";
+    if((flags & level.demoFlags.crouched) != 0)
     {
         frame.stance = "crouch";
     }
-    else if((flags & 2048) != 0)
+    else if((flags & level.demoFlags.prone) != 0)
     {
         frame.stance = "prone";
     }
 
-    if((flags & 4096) != 0)
+    if((flags & level.demoFlags.rpg) != 0)
     {
         frame.weapon = "rpg";
     }
@@ -828,8 +828,8 @@ _getDemoFrame(nrFramesToSkip, shouldSkipFails)
     {
         frame.weapon = "default";
     }
-    frame.onGround = (flags & 8192) != 0;
-    frame.bounce = (flags & 16384) != 0;
+    frame.onGround = (flags & level.demoFlags.onGround) != 0;
+    frame.bounce = (flags & level.demoFlags.bounce) != 0;
 
     frame.FPS = self readPlaybackFrame_FPS();
     frame.number = newFrame;
@@ -1777,19 +1777,19 @@ updateTechniqueLabel()
 runModeLabel(fps, mask)
 {
     text = fps + " FPS | CP";
-    if(mask & 1)
+    if(mask & level.demoModes.anyPercent)
     {
         text = fps + " FPS | Any%";
     }
-    if(mask & 2)
+    if(mask & level.demoModes.elevators)
     {
         text += " / Ele";
     }
-    if(mask & 4)
+    if(mask & level.demoModes.halfbeat)
     {
         text += " / HB";
     }
-    if(mask & 8)
+    if(mask & level.demoModes.hardTAS)
     {
         text += " / TAS";
     }
