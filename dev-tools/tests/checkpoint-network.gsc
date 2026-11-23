@@ -19,6 +19,7 @@ main()
         checkSharedOpeningColor(editor);
         checkDamagedSectionPreservation(editor);
         checkMissingOpening(editor, network);
+        checkEditingCommands(editor);
     }
     printf("NETWORK SELFTEST COMPLETE failures=" + level.networkFailures +
            " checks=" + level.networkChecks + "\n");
@@ -85,7 +86,7 @@ createNetwork(editor)
     check(isDefined(loaded) && loaded.revision == 1, "read persisted network revision");
     check(openCJ\checkpointNetwork::members(loaded, "net_opening").size == 2,
           "both routes own the shared opening");
-    editor.cpc = editor openCJ\checkpointNetwork::readSection("net_a");
+    editor openEditor("net_a");
     editor.cpc.network = loaded;
     return loaded;
 }
@@ -220,4 +221,145 @@ checkSharedOpeningColor(editor)
                 "shared opening runtime color follows the draft");
     checkScalar("SELECT colorRGB FROM checkpointSectionColors WHERE sectionName='net_opening'",
                 11259375, "shared section metadata uses the same color");
+}
+
+// Drive actual split/merge/rename commands. Only HUD reopening and graph refresh are observed.
+checkEditingCommands(editor)
+{
+    arguments = prepareSplitApproaches(editor);
+    if (!isDefined(arguments))
+    {
+        return;
+    }
+    if (!checkMergeAndSplit(editor, arguments))
+    {
+        return;
+    }
+    if (!checkRejoin(editor, arguments))
+    {
+        return;
+    }
+    checkRouteRename(editor);
+}
+
+prepareSplitApproaches(editor)
+{
+    editor.login_playerID = 2;
+    editor.cpc = sectionDraft("edit_opening", 1000, false);
+    check(editor openCJ\checkpointNetwork::writeSection("edit_opening", editor.cpc),
+          "save editable opening");
+    arguments = [];
+    arguments[0] = "split";
+    arguments[1] = "edit_easy";
+    arguments[2] = "edit_hard";
+    if (!check(editor openCJ\checkpointNetwork::split(arguments), "split creates two route approaches"))
+    {
+        return undefined;
+    }
+    network = editor openCJ\checkpointNetwork::load();
+    check(editor.cpc.route == "edit_easy" && network.paths.size == 2,
+          "split opens the first route and persists both paths");
+    check(editor openCJ\checkpointNetwork::writeSection("edit_easy", sectionDraft("edit_easy", 3000, false)),
+          "save first separate approach");
+    check(editor openCJ\checkpointNetwork::writeSection("edit_hard", sectionDraft("edit_hard", 4000, false)),
+          "save second separate approach");
+    editor openEditor("edit_easy");
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(row(5000, false));
+    return arguments;
+}
+
+checkMergeAndSplit(editor, arguments)
+{
+    arguments[0] = "merge";
+    if (!check(editor openCJ\checkpointNetwork::merge(arguments), "merge creates one shared continuation"))
+    {
+        return false;
+    }
+    sharedName = editor.cpc.route;
+    check(editor.cpc.rows.size == 0 && editor.cpc.draft.points.size == 4,
+          "merge retains the detected landing as a pending shared checkpoint");
+    editor.cpc.rows[0] = openCJ\checkpointCreation::_encode(editor.cpc.draft);
+    editor.cpc.rows[1] = row(5200, false);
+    editor.cpc.rows[2] = row(5400, true);
+    editor.cpc.selected = 0;
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(editor.cpc.rows[0]);
+    check(editor openCJ\checkpointNetwork::writeSection(sharedName, editor.cpc),
+          "save shared continuation with finish");
+    arguments[0] = "split";
+    if (!check(editor openCJ\checkpointNetwork::split(arguments), "split selected shared landing preserves continuation"))
+    {
+        return false;
+    }
+    network = editor openCJ\checkpointNetwork::load();
+    retainedSections = network.paths["edit_easy"].sections;
+    retainedTail = editor openCJ\checkpointNetwork::readSection(retainedSections[retainedSections.size - 1]);
+    check(retainedTail.rows.size == 2 &&
+          openCJ\checkpointCreation::_decode(retainedTail.rows[1]).finish,
+          "first route retains its original finish");
+    check(editor.cpc.rows.size == 0, "second route starts a new approach after the shared landing");
+    editor.cpc.rows[0] = row(5100, false);
+    editor.cpc.selected = 1;
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(row(5200, false));
+    check(editor openCJ\checkpointNetwork::writeSection(editor.cpc.route, editor.cpc),
+          "save an incoming approach to the existing continuation");
+    return true;
+}
+
+checkRejoin(editor, arguments)
+{
+    arguments[0] = "merge";
+    if (!check(editor openCJ\checkpointNetwork::merge(arguments), "merge rejoins the existing continuation"))
+    {
+        return false;
+    }
+    check(editor.cpc.rows.size == 2 && editor.cpc.selected == 0 &&
+          openCJ\checkpointCreation::_decode(editor.cpc.rows[1]).finish,
+          "rejoin preserves existing checkpoints and finish");
+    check(isDefined(editor.cpc.restoreOrigin), "rejoin queues editor travel to the joining landing");
+    check(editor openCJ\checkpointPublish::publish(), "edited network publishes its split and merged routes");
+    return true;
+}
+
+checkRouteRename(editor)
+{
+    routeRows = openCJ\mySQL::mysqlSyncQuery("SELECT routeID FROM routes WHERE routeName='edit_hard'");
+    if (!check(isDefined(routeRows) && routeRows.size == 1, "published route has a stable identity"))
+    {
+        return;
+    }
+    routeId = int(routeRows[0][0]);
+    check(editor openCJ\checkpointNetwork::rename("edit_hard", "edit_steep"),
+          "rename updates network files and database together");
+    network = editor openCJ\checkpointNetwork::load();
+    check(isDefined(network.paths["edit_steep"]) && !isDefined(network.paths["edit_hard"]),
+          "renamed route is the active manifest entry");
+    checkScalar("SELECT routeID FROM routes WHERE routeName='edit_steep'", routeId,
+                "rename preserves route identity");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='edit_steep'", 6,
+                "rename preserves the route's checkpoint areas");
+    oldPath = editor openCJ\checkpointNetwork::basePath() + "edit_hard";
+    check(!FS_TestFile(oldPath + ".a") && !FS_TestFile(oldPath + ".b") &&
+          (FS_TestFile(oldPath + ".renamed.a") || FS_TestFile(oldPath + ".renamed.b")),
+          "rename retains an explicit recovery snapshot outside active draft names");
+}
+
+closeEditor()
+{
+    self.cpc = undefined;
+}
+
+openEditor(routeName)
+{
+    sectionName = self openCJ\checkpointNetwork::resolve(routeName);
+    self.cpc = self openCJ\checkpointNetwork::readSection(sectionName);
+    // _read returns serialized content; _start normally supplies this editor identity.
+    self.cpc.route = sectionName;
+    self.cpc.path = self openCJ\checkpointNetwork::basePath() + sectionName;
+    self.cpc.network = self openCJ\checkpointNetwork::load();
+    self.cpc.testing = false;
+}
+
+recordActivation()
+{
+    level.networkActivationObserved = true;
 }

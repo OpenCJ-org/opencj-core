@@ -241,4 +241,7 @@ python3 -B dev-tools/tests/run-checkpoint-publication.py --fixture dev-tools/tes
 
 This exercises shared-section publication, repeated publication, pending-edit
 rejection, alternating-manifest recovery, damaged snapshot preservation and a
-missing opening. It uses the same owned schema/account and isolated file tree.
+missing opening. It also drives split, merge, rejoin and rename through real
+section files and SQL. Fixture-only hooks observe editor reopening, navigation
+and graph-refresh calls; they do not replace the persistence or command logic.
+It uses the same owned schema/account and isolated file tree.

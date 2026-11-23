@@ -23,6 +23,22 @@ def install_commit_observer(home, script_name):
     path.write_text(source)
 
 
+def install_network_navigation_observers(home):
+    """Keep real files/SQL while replacing HUD and player-navigation side effects."""
+    path = home / "mods/opencj/opencj/checkpointnetwork.gsc"
+    source = path.read_text()
+    replacements = (
+        (r"openCJ\\checkpointCreation::_close\s*\(", r"openCJ\platformTest::closeEditor("),
+        (r"openCJ\\checkpointCreation::_start\s*\(", r"openCJ\platformTest::openEditor("),
+        (r"openCJ\\checkpointPublish::activate\s*\(", r"openCJ\platformTest::recordActivation("),
+    )
+    for pattern, replacement in replacements:
+        source, count = re.subn(pattern, lambda match: replacement, source)
+        if count == 0:
+            raise RuntimeError("Network navigation boundary was not found: " + pattern)
+    path.write_text(source)
+
+
 def main():
     options = gsc_fixture.parse_options(
         default_fixture=ROOT / "dev-tools/tests/checkpoint-publication.gsc",
@@ -37,7 +53,8 @@ def main():
         fixture.query_database(
             """
             INSERT INTO mapids(mapID,mapname) VALUES(1,'mp_killhouse');
-            INSERT INTO playerInformation(playerID,playerName) VALUES(1,'RouteFixture');
+            INSERT INTO playerInformation(playerID,playerName)
+            VALUES(1,'RouteFixture'),(2,'EditorFixture');
             """,
             fixture.database,
         )
@@ -46,6 +63,7 @@ def main():
             install_commit_observer(fixture.home, "checkpointpublish.gsc")
         elif options.fixture.name == "checkpoint-network.gsc":
             install_commit_observer(fixture.home, "checkpointnetwork.gsc")
+            install_network_navigation_observers(fixture.home)
         fixture.write_engine_config()
         result = gsc_fixture.run_prepared_fixture(
             options,
