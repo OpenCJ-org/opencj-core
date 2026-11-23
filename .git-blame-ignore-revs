@@ -40,3 +40,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # Native SQL adapter layout; optimized 32-bit object unchanged.
 69cb50c79a1d27c9254b091637c7c38e8b5232d1
+
+# Player, map and visibility helper layout; optimized objects unchanged.
+7145877fa54a778079456934b9f8fda476d9619b
