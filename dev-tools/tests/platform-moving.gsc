@@ -84,6 +84,15 @@ main()
     check(openCJ\checkpointMoving::valid(missing) != "", "missing entity fails validation");
     check(!(player openCJ\checkpointMoving::touches(missing, true, platform)),
           "missing entity never awards checkpoint");
+    incompleteCheckpoint = openCJ\checkpointCreation::_empty();
+    incompleteCheckpoint.platformRef = key;
+    incompleteCheckpoint.finish = true;
+    incompleteRows = [];
+    incompleteRows[0] = openCJ\checkpointCreation::_encode(incompleteCheckpoint);
+    check(isDefined(openCJ\checkpointCreation::_decode(incompleteRows[0])),
+          "unfinished moving draft still decodes for editing");
+    check(openCJ\checkpointPublish::validationError(incompleteRows) != "",
+          "publication rejects moving draft without stored geometry");
     checkReferenceCacheCapacity(key, platform);
     printf("BRUSH SELFTEST COMPLETE failures=" + level.brushFailures + "\n");
 }

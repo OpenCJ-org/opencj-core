@@ -73,7 +73,8 @@ validationError(rows)
     for (i = 0; i < rows.size; i++)
     {
         cp = openCJ\checkpointCreation::_decode(rows[i]);
-        if (!isDefined(cp) || openCJ\checkpointMoving::valid(cp) != "")
+        // Empty polygons are valid unfinished drafts, but publication needs a stored center.
+        if (!isDefined(cp) || cp.points.size == 0 || openCJ\checkpointMoving::valid(cp) != "")
         {
             return "Every checkpoint needs valid confirmed geometry";
         }
