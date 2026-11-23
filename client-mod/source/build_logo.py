@@ -3,35 +3,37 @@
 from pathlib import Path
 import hashlib
 import io
-import json
-import struct
+
 from PIL import Image
 
+from iwi_texture import IWI_FORMAT_DXT5, encode_iwi, mipmaps
+
 ROOT = Path(__file__).resolve().parents[1]
+TEXTURE_SIZE_PX = 1024
+DDS_HEADER_BYTES = 128
+DDS_FOURCC_OFFSET = 84
 
 
 def build():
+    """Encode every DXT5 mip before replacing the branding texture."""
     source = ROOT / "assets/branding/opencj-logo-clean.png"
-    image = Image.open(source).convert("RGBA").resize((1024, 1024), Image.Resampling.LANCZOS)
-    image.save(ROOT / "source/texture_source/opencj_logo_nobg.tga")
-    levels = [image]
-    while levels[-1].width > 1 or levels[-1].height > 1:
-        q = levels[-1]
-        levels.append(
-            q.resize((max(1, q.width // 2), max(1, q.height // 2)), Image.Resampling.LANCZOS)
+    with Image.open(source) as original:
+        image = original.convert("RGBA").resize(
+            (TEXTURE_SIZE_PX, TEXTURE_SIZE_PX), Image.Resampling.LANCZOS
         )
-    encoded = []
-    for level in levels:
+    encoded_mips = []
+    for mip_image in mipmaps(image):
         output = io.BytesIO()
-        level.save(output, format="DDS", pixel_format="DXT5")
+        mip_image.save(output, format="DDS", pixel_format="DXT5")
         dds = output.getvalue()
-        assert dds[84:88] == b"DXT5"
-        encoded.append(dds[128:])
-    header = b"IWi" + bytes([6, 13, 0]) + struct.pack("<HHH", 1024, 1024, 1)
-    header += struct.pack("<4I", *[28 + sum(len(x) for x in encoded[i:]) for i in range(4)])
-    data = header + b"".join(reversed(encoded))
-    (ROOT / "cod4/images/opencj_logo_nobg.iwi").write_bytes(data)
-    print("Prepared cleaned OpenCJ logo", hashlib.sha256(data).hexdigest())
+        # IWI stores only the compressed pixels; its own header replaces the DDS header.
+        if dds[DDS_FOURCC_OFFSET : DDS_FOURCC_OFFSET + 4] != b"DXT5":
+            raise ValueError("The image encoder did not produce DXT5")
+        encoded_mips.append(dds[DDS_HEADER_BYTES:])
+    texture_bytes = encode_iwi(image.width, image.height, encoded_mips, IWI_FORMAT_DXT5)
+    image.save(ROOT / "source/texture_source/opencj_logo_nobg.tga")
+    (ROOT / "cod4/images/opencj_logo_nobg.iwi").write_bytes(texture_bytes)
+    print("Prepared cleaned OpenCJ logo", hashlib.sha256(texture_bytes).hexdigest())
 
 
 if __name__ == "__main__":

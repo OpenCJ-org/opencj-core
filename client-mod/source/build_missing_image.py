@@ -6,31 +6,27 @@ dimensions, flags and mip chain. Intentional branding has its own image.
 
 from pathlib import Path
 import hashlib
-import struct
+
 from PIL import Image
 
+from iwi_texture import IWI_FORMAT_RGBA, encode_iwi, mipmaps
+
 ROOT = Path(__file__).resolve().parents[1]
+TEXTURE_SIZE_PX = 1024
 
 
 def build():
+    """Render the fallback artwork and retain the existing lossless texture layout."""
     source = ROOT / "assets/map-replacements/mp_bouncer_training/missing-picture.png"
-    image = Image.open(source).convert("RGBA").resize((1024, 1024), Image.Resampling.LANCZOS)
-    image.save(ROOT / "source/texture_source/default.tga")
-    levels = [image]
-    while levels[-1].width > 1 or levels[-1].height > 1:
-        previous = levels[-1]
-        levels.append(
-            previous.resize(
-                (max(1, previous.width // 2), max(1, previous.height // 2)),
-                Image.Resampling.LANCZOS,
-            )
+    with Image.open(source) as original:
+        image = original.convert("RGBA").resize(
+            (TEXTURE_SIZE_PX, TEXTURE_SIZE_PX), Image.Resampling.LANCZOS
         )
-    encoded = [level.tobytes("raw", "BGRA") for level in levels]
-    header = b"IWi" + bytes([6, 1, 0]) + struct.pack("<HHH", 1024, 1024, 1)
-    header += struct.pack("<4I", *[28 + sum(len(part) for part in encoded[i:]) for i in range(4)])
-    data = header + b"".join(reversed(encoded))
-    (ROOT / "cod4/images/default.iwi").write_bytes(data)
-    print("Prepared engine missing-image fallback", hashlib.sha256(data).hexdigest())
+    encoded_mips = [mip.tobytes("raw", "BGRA") for mip in mipmaps(image)]
+    texture_bytes = encode_iwi(image.width, image.height, encoded_mips, IWI_FORMAT_RGBA)
+    image.save(ROOT / "source/texture_source/default.tga")
+    (ROOT / "cod4/images/default.iwi").write_bytes(texture_bytes)
+    print("Prepared engine missing-image fallback", hashlib.sha256(texture_bytes).hexdigest())
 
 
 if __name__ == "__main__":

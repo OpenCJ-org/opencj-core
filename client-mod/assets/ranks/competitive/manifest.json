@@ -16,8 +16,12 @@
       "bytes": 1456
     },
     "source/build_competitive_icon.py": {
-      "sha256": "4c8642cc0134f364764a4b34054cf2cbfccf4e312e72927795a72451e9ec5698",
-      "bytes": 1655
+      "sha256": "5e79a9992fc38529911534191e83a2a4514e140406f990027675f6ff6b7e0f01",
+      "bytes": 2408
+    },
+    "source/iwi_texture.py": {
+      "sha256": "3d46916aefefb6f13d757d51144e5eca7e98e9783e53f50951d874b2fb6cf797",
+      "bytes": 1322
     },
     "assets/ranks/competitive/competitive.png": {
       "sha256": "42da2ba6a2f5eef0c41c3fbe62b9502acd30840f81689f4304896b739fb2ab36",
