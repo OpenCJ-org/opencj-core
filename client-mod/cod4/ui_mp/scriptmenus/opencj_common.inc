@@ -538,21 +538,57 @@
 
 // Shared exit control, matching the existing shop's red X.
 #define OPENCJ_CLOSE_BUTTON(_name, _action, _x, _y) \
-    itemDef { \
+    itemDef \
+    { \
         name _name \
         rect DEFAULT_RECT(_x _y 26 22) \
-        type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED \
-        backcolor .5 .04 .04 .9 forecolor .92 .96 .97 1 \
-        text "X" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER \
+        type ITEM_TYPE_BUTTON \
+        style WINDOW_STYLE_FILLED \
+        backcolor .5 .04 .04 .9 \
+        forecolor .92 .96 .97 1 \
+        text "X" \
+        textfont UI_FONT_NORMAL \
+        textscale .21 \
+        textalign ITEM_ALIGN_MIDDLE_CENTER \
         visible 1 \
-        mouseEnter { setitemcolor _name backcolor .08 .38 .44 1; } \
-        mouseExit { setitemcolor _name backcolor .5 .04 .04 .9; } \
-        action { play "mouse_click"; _action; } \
+        mouseEnter \
+        { \
+            setitemcolor _name backcolor .08 .38 .44 1; \
+        } \
+        mouseExit \
+        { \
+            setitemcolor _name backcolor .5 .04 .04 .9; \
+        } \
+        action \
+        { \
+            play "mouse_click"; \
+            _action; \
+        } \
     }
 
 // Mode artwork uses 16:20 proportions; the separate rail denotes filter state.
 #define MODE_FILTER_RECT_WHEN(_name, _shader, _stateColor, _iconColor, _visibility, orgX, orgY, sizeX, sizeY) \
-    itemDef { name _name rect DEFAULT_RECT(((sizeX-sizeY*0.8)/2) 0 (sizeY*0.8) sizeY) origin orgX orgY style WINDOW_STYLE_SHADER background _shader type ITEM_TYPE_BUTTON forecolor _iconColor visible when(_visibility) action { scriptMenuResponse "click_"#_name; play "mouse_click"; } mouseEnter { play "mouse_over"; } } \
+    itemDef \
+    { \
+        name _name \
+        rect DEFAULT_RECT(((sizeX - sizeY * 0.8) / 2) 0 (sizeY * 0.8) sizeY) \
+        origin orgX orgY \
+        style WINDOW_STYLE_SHADER \
+        background _shader \
+        type ITEM_TYPE_BUTTON \
+        forecolor _iconColor \
+        visible when (_visibility) \
+        action \
+        { \
+            scriptMenuResponse "click_"#_name; \
+            play "mouse_click"; \
+        } \
+        mouseEnter \
+        { \
+            play "mouse_over"; \
+        } \
+    } \
+ \
     itemDef \
     { \
         name mode_filter_state \
@@ -560,6 +596,6 @@
         origin orgX orgY \
         style WINDOW_STYLE_FILLED \
         backcolor _stateColor \
-        visible when( _visibility ) \
+        visible when (_visibility) \
         decoration \
     }

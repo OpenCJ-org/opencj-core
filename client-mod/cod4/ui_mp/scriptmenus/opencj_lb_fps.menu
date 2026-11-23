@@ -3,11 +3,78 @@
 #include "ui_mp/scriptmenus/opencj_board_filters.inc"
 
 #define FPS_CHOICE(_name, _response, _title, _detail, _selected, _y) \
-    itemDef { name _name rect DEFAULT_RECT(208 _y 172 32) type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED backcolor .105 .15 .18 1 visible 1 mouseEnter { setitemcolor _name backcolor .22 .27 .31 1; play "mouse_over"; } mouseExit { setitemcolor _name backcolor .105 .15 .18 1; } action { play "mouse_click"; scriptMenuResponse _response; close self; } } \
-    itemDef { rect DEFAULT_RECT(208 _y 2 32) style WINDOW_STYLE_FILLED backcolor .85 .9 .93 1 visible when(_selected) decoration } \
-    itemDef { rect DEFAULT_RECT(217 (_y+3) 110 13) type ITEM_TYPE_TEXT text _title textfont UI_FONT_NORMAL textscale .20 textalign ITEM_ALIGN_MIDDLE_LEFT forecolor WHITE_COLOR visible 1 decoration } \
-    itemDef { rect DEFAULT_RECT(217 (_y+17) 156 11) type ITEM_TYPE_TEXT text _detail textfont UI_FONT_NORMAL textscale .14 textalign ITEM_ALIGN_MIDDLE_LEFT forecolor .78 .83 .87 1 visible 1 decoration } \
-    itemDef { rect DEFAULT_RECT(338 (_y+4) 38 11) type ITEM_TYPE_TEXT text "Selected" textfont UI_FONT_NORMAL textscale .12 textalign ITEM_ALIGN_MIDDLE_RIGHT forecolor .9 .94 .96 1 visible when(_selected) decoration }
+    itemDef \
+    { \
+        name _name \
+        rect DEFAULT_RECT(208 _y 172 32) \
+        type ITEM_TYPE_BUTTON \
+        style WINDOW_STYLE_FILLED \
+        backcolor .105 .15 .18 1 \
+        visible 1 \
+        mouseEnter \
+        { \
+            setitemcolor _name backcolor .22 .27 .31 1; \
+            play "mouse_over"; \
+        } \
+        mouseExit \
+        { \
+            setitemcolor _name backcolor .105 .15 .18 1; \
+        } \
+        action \
+        { \
+            play "mouse_click"; \
+            scriptMenuResponse _response; \
+            close self; \
+        } \
+    } \
+ \
+    itemDef \
+    { \
+        rect DEFAULT_RECT(208 _y 2 32) \
+        style WINDOW_STYLE_FILLED \
+        backcolor .85 .9 .93 1 \
+        visible when (_selected) \
+        decoration \
+    } \
+ \
+    itemDef \
+    { \
+        rect DEFAULT_RECT(217 (_y + 3) 110 13) \
+        type ITEM_TYPE_TEXT \
+        text _title \
+        textfont UI_FONT_NORMAL \
+        textscale .20 \
+        textalign ITEM_ALIGN_MIDDLE_LEFT \
+        forecolor WHITE_COLOR \
+        visible 1 \
+        decoration \
+    } \
+ \
+    itemDef \
+    { \
+        rect DEFAULT_RECT(217 (_y + 17) 156 11) \
+        type ITEM_TYPE_TEXT \
+        text _detail \
+        textfont UI_FONT_NORMAL \
+        textscale .14 \
+        textalign ITEM_ALIGN_MIDDLE_LEFT \
+        forecolor .78 .83 .87 1 \
+        visible 1 \
+        decoration \
+    } \
+ \
+    itemDef \
+    { \
+        rect DEFAULT_RECT(338 (_y + 4) 38 11) \
+        type ITEM_TYPE_TEXT \
+        text "Selected" \
+        textfont UI_FONT_NORMAL \
+        textscale .12 \
+        textalign ITEM_ALIGN_MIDDLE_RIGHT \
+        forecolor .9 .94 .96 1 \
+        visible when (_selected) \
+        decoration \
+    }
 
 {
     menuDef
@@ -17,17 +84,100 @@
         focuscolor 1 1 1 1
         style WINDOW_STYLE_EMPTY
         popup
-        onEsc { close self; }
+        onEsc
+        {
+            close self;
+        }
         // Invisible, non-overlapping dismiss areas consume outside clicks without changing the filter.
-        itemDef { name fps_dismiss_top rect DEFAULT_RECT(0 0 640 165) type ITEM_TYPE_BUTTON style WINDOW_STYLE_EMPTY visible 1 action { close self; } }
-        itemDef { name fps_dismiss_bottom rect DEFAULT_RECT(0 305 640 175) type ITEM_TYPE_BUTTON style WINDOW_STYLE_EMPTY visible 1 action { close self; } }
-        itemDef { name fps_dismiss_left rect DEFAULT_RECT(0 165 200 140) type ITEM_TYPE_BUTTON style WINDOW_STYLE_EMPTY visible 1 action { close self; } }
-        itemDef { name fps_dismiss_right rect DEFAULT_RECT(388 165 252 140) type ITEM_TYPE_BUTTON style WINDOW_STYLE_EMPTY visible 1 action { close self; } }
-        itemDef { rect DEFAULT_RECT(200 165 188 140) style WINDOW_STYLE_FILLED backcolor .055 .075 .095 1 visible 1 decoration }
+        itemDef
+        {
+            name fps_dismiss_top
+            rect DEFAULT_RECT(0 0 640 165)
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_EMPTY
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+        itemDef
+        {
+            name fps_dismiss_bottom
+            rect DEFAULT_RECT(0 305 640 175)
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_EMPTY
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+        itemDef
+        {
+            name fps_dismiss_left
+            rect DEFAULT_RECT(0 165 200 140)
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_EMPTY
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+        itemDef
+        {
+            name fps_dismiss_right
+            rect DEFAULT_RECT(388 165 252 140)
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_EMPTY
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+        itemDef
+        {
+            rect DEFAULT_RECT(200 165 188 140)
+            style WINDOW_STYLE_FILLED
+            backcolor .055 .075 .095 1
+            visible 1
+            decoration
+        }
         BOARD_LABEL(fps_title, "FPS filter", 210, 172, 142, 17, .23, WHITE_COLOR)
-        itemDef { name fps_close rect DEFAULT_RECT(366 172 14 14) type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED backcolor .16 .21 .25 1 text "X" textfont UI_FONT_NORMAL textscale .17 textalign ITEM_ALIGN_MIDDLE_CENTER forecolor WHITE_COLOR visible 1 mouseEnter { setitemcolor fps_close backcolor .24 .32 .37 1; } mouseExit { setitemcolor fps_close backcolor .16 .21 .25 1; } action { play "mouse_click"; close self; } }
-        FPS_CHOICE(fps_classic, "click_fps_125", "Classic", "125 FPS", (dvarString("opencj_ui_board_fpsselected") == "Classic"), 196)
-        FPS_CHOICE(fps_standard, "click_fps_mix", "Standard", "125 / 250 / 333 FPS", (dvarString("opencj_ui_board_fpsselected") == "Standard"), 232)
-        FPS_CHOICE(fps_any, "click_fps_all", "Any FPS", "All FPS categories", (dvarString("opencj_ui_board_fpsselected") == "Any"), 268)
+        itemDef
+        {
+            name fps_close
+            rect DEFAULT_RECT(366 172 14 14)
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            backcolor .16 .21 .25 1
+            text "X"
+            textfont UI_FONT_NORMAL
+            textscale .17
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            forecolor WHITE_COLOR
+            visible 1
+            mouseEnter
+            {
+                setitemcolor fps_close backcolor .24 .32 .37 1;
+            }
+            mouseExit
+            {
+                setitemcolor fps_close backcolor .16 .21 .25 1;
+            }
+            action
+            {
+                play "mouse_click";
+                close self;
+            }
+        }
+        FPS_CHOICE(fps_classic, "click_fps_125",
+            "Classic", "125 FPS", (dvarString("opencj_ui_board_fpsselected") == "Classic"), 196)
+        FPS_CHOICE(fps_standard, "click_fps_mix",
+            "Standard", "125 / 250 / 333 FPS", (dvarString("opencj_ui_board_fpsselected") == "Standard"), 232)
+        FPS_CHOICE(fps_any, "click_fps_all",
+            "Any FPS", "All FPS categories", (dvarString("opencj_ui_board_fpsselected") == "Any"), 268)
     }
 }

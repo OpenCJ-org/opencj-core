@@ -6,30 +6,108 @@
     {
         name opencj_exitconfirm
         rect DEFAULT_RECT(0 0 FULLSCREEN_X FULLSCREEN_Y)
-        style WINDOW_STYLE_EMPTY focuscolor WHITE_COLOR popup
-        onOpen { setFocus exit_cancel; }
-        onEsc { close self; }
-        FIXED_RECT(0 0 0 .55, 0, 0, 640, 480)
-        // Consume outside clicks so they cannot activate the menu underneath.
-        itemDef { name dismiss_top rect DEFAULT_RECT(0 0 640 174) type ITEM_TYPE_BUTTON visible 1 action { close self; } }
-        itemDef { name dismiss_bottom rect DEFAULT_RECT(0 306 640 174) type ITEM_TYPE_BUTTON visible 1 action { close self; } }
-        itemDef { name dismiss_left rect DEFAULT_RECT(0 174 178 132) type ITEM_TYPE_BUTTON visible 1 action { close self; } }
-        itemDef { name dismiss_right rect DEFAULT_RECT(462 174 178 132) type ITEM_TYPE_BUTTON visible 1 action { close self; } }
-        FIXED_RECT(.025 .045 .052 1, 178, 174, 284, 132)
-        FIXED_RECT(HIGHLIGHT_COLOR, 178, 174, 284, 2)
-        FIXED_RECT_TXT(1, "Leave this server?", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, .32, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, WHITE_COLOR, 196, 188, 248, 28)
-        FIXED_RECT_TXT(1, "You will disconnect from the current game.", UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL, .22, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, LIGHTGREY_COLOR, 196, 222, 248, 22)
-        BUTTON_RECT_TXT_ACTION_BG(exit_cancel, "Cancel", play "mouse_click"; close self, .10 .19 .22 1, WHITE_COLOR, UI_FONT_NORMAL, .24, 252, 264, 90, 24)
+        style WINDOW_STYLE_EMPTY
+        focuscolor WHITE_COLOR
+        popup
+        onOpen
+        {
+            setFocus exit_cancel;
+        }
+        onEsc
+        {
+            close self;
+        }
+        FIXED_RECT(0 0 0 .55, 0, 0, 640, 480) // Consume outside clicks so they cannot activate the menu underneath.
         itemDef
         {
-            name exit_confirm rect DEFAULT_RECT(354 264 90 24)
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED
-            backcolor .28 .065 .07 1 forecolor 1 .65 .65 1
-            text "Exit" textfont UI_FONT_NORMAL textscale .24
-            textalign ITEM_ALIGN_MIDDLE_CENTER visible 1
-            mouseEnter { setitemcolor exit_confirm backcolor .55 .10 .12 1; play "mouse_over"; }
-            mouseExit { setitemcolor exit_confirm backcolor .28 .065 .07 1; }
-            action { play "mouse_click"; execnow "bind TAB +scores"; execnow "set opencj_sb_held 0"; execnow "setu opencj_sb_active 0"; exec "disconnect"; }
+            name dismiss_top
+            rect DEFAULT_RECT(0 0 640 174)
+            type ITEM_TYPE_BUTTON
+            visible 1
+            action
+            {
+                close self;
+            }
         }
+
+        itemDef
+        {
+            name dismiss_bottom
+            rect DEFAULT_RECT(0 306 640 174)
+            type ITEM_TYPE_BUTTON
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+
+        itemDef
+        {
+            name dismiss_left
+            rect DEFAULT_RECT(0 174 178 132)
+            type ITEM_TYPE_BUTTON
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+
+        itemDef
+        {
+            name dismiss_right
+            rect DEFAULT_RECT(462 174 178 132)
+            type ITEM_TYPE_BUTTON
+            visible 1
+            action
+            {
+                close self;
+            }
+        }
+
+        FIXED_RECT(.025 .045 .052 1, 178, 174, 284, 132)
+        FIXED_RECT(HIGHLIGHT_COLOR, 178, 174, 284, 2)
+        FIXED_RECT_TXT(1, "Leave this server?",
+            UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL,
+            .32, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, WHITE_COLOR, 196, 188, 248, 28)
+        FIXED_RECT_TXT(1, "You will disconnect from the current game.",
+            UI_FONT_NORMAL, ITEM_TEXTSTYLE_NORMAL,
+            .22, ITEM_ALIGN_MIDDLE_LEFT, 0, 0, NO_COLOR, LIGHTGREY_COLOR, 196, 222, 248, 22)
+        BUTTON_RECT_TXT_ACTION_BG(exit_cancel, "Cancel", play "mouse_click";
+        close self, .10 .19 .22 1, WHITE_COLOR, UI_FONT_NORMAL, .24, 252, 264, 90, 24)
+        itemDef
+        {
+            name exit_confirm
+            rect DEFAULT_RECT(354 264 90 24)
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            backcolor .28 .065 .07 1
+            forecolor 1 .65 .65 1
+            text "Exit"
+            textfont UI_FONT_NORMAL
+            textscale .24
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            visible 1
+            mouseEnter
+            {
+                setitemcolor exit_confirm backcolor .55 .10 .12 1;
+                play "mouse_over";
+            }
+            mouseExit
+            {
+                setitemcolor exit_confirm backcolor .28 .065 .07 1;
+            }
+            action
+            {
+                play "mouse_click";
+                execnow "bind TAB +scores";
+                execnow "set opencj_sb_held 0";
+                execnow "setu opencj_sb_active 0";
+                exec "disconnect";
+            }
+        }
+
     }
+
 }

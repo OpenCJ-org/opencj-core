@@ -171,7 +171,8 @@
     {
         name "Vote"
         fullScreen MENU_FALSE
-        visible	when ( dvarString("openCJ_voteHeaderString") != "" && !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+        visible when (dvarString("openCJ_voteHeaderString") != ""
+            && !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString(createfx) != "on"));
         rect 0 0 0 0 HORIZONTAL_ALIGN_RIGHT VERTICAL_ALIGN_BOTTOM
         itemDef
         {
@@ -258,7 +259,7 @@
         name "Compass_old"
         rect 0 0 125 125 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
         fullScreen 0
-        visible when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString(createfx) != "on") );
+        visible when (!inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString(createfx) != "on"));
         itemDef
         {
             name "minimapBG"
@@ -269,7 +270,7 @@
             border 1
             bordersize 1
             bordercolor 0.62 0.67 0.66 0.38
-            visible when ( !selecting_location() );
+            visible when (!selecting_location());
             decoration
         }
         itemDef
@@ -280,7 +281,7 @@
             forecolor 1 1 1 1
             background "compass_map_default"
             ownerdraw CG_PLAYER_COMPASS_MAP
-            visible when ( !selecting_location() );
+            visible when (!selecting_location());
             decoration
         }
         itemDef
@@ -291,7 +292,7 @@
             forecolor 1 1 1 1
             background "objective_line"
             ownerdraw CG_PLAYER_COMPASS_POINTERS
-            visible when ( !selecting_location() );
+            visible when (!selecting_location());
             decoration
         }
         itemDef
@@ -301,7 +302,7 @@
             origin OCJ_MAP_ORIGIN
             forecolor 1 1 1 1
             ownerdraw CG_PLAYER_COMPASS_FRIENDS
-            visible when ( !selecting_location() );
+            visible when (!selecting_location());
             decoration
         }
         itemDef
@@ -311,7 +312,7 @@
             origin OCJ_MAP_ORIGIN
             forecolor 1 1 1 1
             ownerdraw CG_PLAYER_COMPASS_ENEMIES
-            visible when ( !selecting_location() );
+            visible when (!selecting_location());
             decoration
         }
         itemDef
@@ -322,7 +323,7 @@
             forecolor 1 1 1 1
             background "compassping_player"
             ownerdraw CG_PLAYER_COMPASS_PLAYER
-            visible when ( !selecting_location() );
+            visible when (!selecting_location());
             decoration
         }
     }

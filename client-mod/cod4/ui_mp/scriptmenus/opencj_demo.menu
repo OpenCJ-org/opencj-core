@@ -11,248 +11,648 @@
         style WINDOW_STYLE_EMPTY
         focuscolor 1 1 1 1
         allowedBinding "openscriptmenu cj load"
-        onOpen { setdvar opencj_demo_hint ""; scriptMenuResponse "opened"; }
-        onEsc { scriptMenuResponse "stop"; close self; }
+        onOpen
+        {
+            setdvar opencj_demo_hint "";
+            scriptMenuResponse "opened";
+        }
+        onEsc
+        {
+            scriptMenuResponse "stop";
+            close self;
+        }
         itemDef
         {
             name toolbar
             rect 0 443 640 37 HORIZONTAL_ALIGN_FULLSCREEN VERTICAL_ALIGN_FULLSCREEN
-            style WINDOW_STYLE_FILLED backcolor 0 0 0 0.82 visible 1 decoration
+            style WINDOW_STYLE_FILLED
+            backcolor 0 0 0 0.82
+            visible 1
+            decoration
         }
+
         itemDef
         {
             name status
             rect 96 450.5 116 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_TEXT dvar "opencj_demo_status"
-            textfont UI_FONT_NORMAL textscale 0.20 textalign ITEM_ALIGN_LEFT textaligny 10
-            forecolor 1 1 1 1 visible 1 decoration
+            type ITEM_TYPE_TEXT
+            dvar "opencj_demo_status"
+            textfont UI_FONT_NORMAL
+            textscale 0.20
+            textalign ITEM_ALIGN_LEFT
+            textaligny 10
+            forecolor 1 1 1 1
+            visible 1
+            decoration
         }
+
         itemDef
         {
             name checkpoint
             rect 96 464.5 116 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_TEXT dvar "opencj_demo_checkpoint"
-            textfont UI_FONT_NORMAL textscale .18 textalign ITEM_ALIGN_LEFT textaligny 10
-            forecolor .8 .85 .9 1 visible 1 decoration
+            type ITEM_TYPE_TEXT
+            dvar "opencj_demo_checkpoint"
+            textfont UI_FONT_NORMAL
+            textscale .18
+            textalign ITEM_ALIGN_LEFT
+            textaligny 10
+            forecolor .8 .85 .9 1
+            visible 1
+            decoration
         }
+
         itemDef
         {
             name previous
             rect 8 449.5 24 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
             visible when (dvarInt("opencj_demo_checkpointed"))
-            mouseEnter { setitemcolor previous backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Previous checkpoint"; }
-            mouseExit { setitemcolor previous backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "previous"; }
+            mouseEnter
+            {
+                setitemcolor previous backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Previous checkpoint";
+            }
+            mouseExit
+            {
+                setitemcolor previous backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "previous";
+            }
         }
+
         itemDef
         {
             name previous_disabled
             rect 8 449.5 24 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_TEXT style WINDOW_STYLE_FILLED backcolor .05 .07 .09 .6
-            forecolor .4 .45 .48 1 visible when (!dvarInt("opencj_demo_checkpointed")) decoration
+            type ITEM_TYPE_TEXT
+            style WINDOW_STYLE_FILLED
+            backcolor .05 .07 .09 .6
+            forecolor .4 .45 .48 1
+            visible when (!dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name next
             rect 64 449.5 24 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
             visible when (dvarInt("opencj_demo_checkpointed"))
-            mouseEnter { setitemcolor next backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Next checkpoint"; }
-            mouseExit { setitemcolor next backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "next"; }
+            mouseEnter
+            {
+                setitemcolor next backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Next checkpoint";
+            }
+            mouseExit
+            {
+                setitemcolor next backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "next";
+            }
         }
+
         itemDef
         {
             name next_disabled
             rect 64 449.5 24 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_TEXT style WINDOW_STYLE_FILLED backcolor .05 .07 .09 .6
-            forecolor .4 .45 .48 1 visible when (!dvarInt("opencj_demo_checkpointed")) decoration
+            type ITEM_TYPE_TEXT
+            style WINDOW_STYLE_FILLED
+            backcolor .05 .07 .09 .6
+            forecolor .4 .45 .48 1
+            visible when (!dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name pause
             rect 36 449.5 24 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
             visible when (!dvarInt("opencj_demo_paused"))
-            mouseEnter { setitemcolor pause backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Pause playback"; }
-            mouseExit { setitemcolor pause backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "pause"; }
+            mouseEnter
+            {
+                setitemcolor pause backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Pause playback";
+            }
+            mouseExit
+            {
+                setitemcolor pause backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "pause";
+            }
         }
+
         itemDef
         {
             name resume
             rect 36 449.5 24 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
             visible when (dvarInt("opencj_demo_paused"))
-            mouseEnter { setitemcolor resume backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Resume playback"; }
-            mouseExit { setitemcolor resume backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "resume"; }
+            mouseEnter
+            {
+                setitemcolor resume backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Resume playback";
+            }
+            mouseExit
+            {
+                setitemcolor resume backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "resume";
+            }
         }
+
         itemDef
         {
             name direction_forward
             rect 216 449.5 60 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .07 .24 .13 .9 forecolor 1 1 1 1
-            text "Forward >" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .07 .24 .13 .9
+            forecolor 1 1 1 1
+            text "Forward >"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (!dvarInt("opencj_demo_reverse"))
-            mouseEnter { setitemcolor direction_forward backcolor .10 .34 .19 1; setdvar opencj_demo_hint "Direction: forward. Click to reverse."; }
-            mouseExit { setitemcolor direction_forward backcolor .07 .24 .13 .9; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "direction"; }
+            mouseEnter
+            {
+                setitemcolor direction_forward backcolor .10 .34 .19 1;
+                setdvar opencj_demo_hint "Direction: forward. Click to reverse.";
+            }
+            mouseExit
+            {
+                setitemcolor direction_forward backcolor .07 .24 .13 .9;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "direction";
+            }
         }
+
         itemDef
         {
             name direction_reverse
             rect 216 449.5 60 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .30 .09 .09 .9 forecolor 1 1 1 1
-            text "< Reverse" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .30 .09 .09 .9
+            forecolor 1 1 1 1
+            text "< Reverse"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarInt("opencj_demo_reverse"))
-            mouseEnter { setitemcolor direction_reverse backcolor .43 .13 .13 1; setdvar opencj_demo_hint "Direction: reverse. Click to play forward."; }
-            mouseExit { setitemcolor direction_reverse backcolor .30 .09 .09 .9; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "direction"; }
+            mouseEnter
+            {
+                setitemcolor direction_reverse backcolor .43 .13 .13 1;
+                setdvar opencj_demo_hint "Direction: reverse. Click to play forward.";
+            }
+            mouseExit
+            {
+                setitemcolor direction_reverse backcolor .30 .09 .09 .9;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "direction";
+            }
         }
+
         itemDef
         {
             name speed_slowest
             rect 282 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-            text "Slowest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
+            text "Slowest"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") != 0.25)
-            mouseEnter { setitemcolor speed_slowest backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Slowest: 0.25x"; }
-            mouseExit { setitemcolor speed_slowest backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_0.25"; }
+            mouseEnter
+            {
+                setitemcolor speed_slowest backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Slowest: 0.25x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_slowest backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_0.25";
+            }
         }
+
         itemDef
         {
             name speed_slowest_selected
             rect 282 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
-            text "Slowest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .3 .85 .9 1
+            backcolor .08 .34 .38 .95
+            forecolor 1 1 1 1
+            text "Slowest"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") == 0.25)
-            mouseEnter { setitemcolor speed_slowest_selected backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Slowest: 0.25x"; }
-            mouseExit { setitemcolor speed_slowest_selected backcolor .08 .34 .38 .95; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_0.25"; }
+            mouseEnter
+            {
+                setitemcolor speed_slowest_selected backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Slowest: 0.25x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_slowest_selected backcolor .08 .34 .38 .95;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_0.25";
+            }
         }
+
         itemDef
         {
             name speed_slow
             rect 331 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-            text "Slow" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
+            text "Slow"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") != 0.5)
-            mouseEnter { setitemcolor speed_slow backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Slow: 0.5x"; }
-            mouseExit { setitemcolor speed_slow backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_0.5"; }
+            mouseEnter
+            {
+                setitemcolor speed_slow backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Slow: 0.5x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_slow backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_0.5";
+            }
         }
+
         itemDef
         {
             name speed_slow_selected
             rect 331 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
-            text "Slow" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .3 .85 .9 1
+            backcolor .08 .34 .38 .95
+            forecolor 1 1 1 1
+            text "Slow"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") == 0.5)
-            mouseEnter { setitemcolor speed_slow_selected backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Slow: 0.5x"; }
-            mouseExit { setitemcolor speed_slow_selected backcolor .08 .34 .38 .95; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_0.5"; }
+            mouseEnter
+            {
+                setitemcolor speed_slow_selected backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Slow: 0.5x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_slow_selected backcolor .08 .34 .38 .95;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_0.5";
+            }
         }
+
         itemDef
         {
             name speed_normal
             rect 374 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-            text "Normal" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
+            text "Normal"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") != 1)
-            mouseEnter { setitemcolor speed_normal backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Normal: 1x (default)"; }
-            mouseExit { setitemcolor speed_normal backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_1"; }
+            mouseEnter
+            {
+                setitemcolor speed_normal backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Normal: 1x (default)";
+            }
+            mouseExit
+            {
+                setitemcolor speed_normal backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_1";
+            }
         }
+
         itemDef
         {
             name speed_normal_selected
             rect 374 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
-            text "Normal" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .3 .85 .9 1
+            backcolor .08 .34 .38 .95
+            forecolor 1 1 1 1
+            text "Normal"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") == 1)
-            mouseEnter { setitemcolor speed_normal_selected backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Normal: 1x (default)"; }
-            mouseExit { setitemcolor speed_normal_selected backcolor .08 .34 .38 .95; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_1"; }
+            mouseEnter
+            {
+                setitemcolor speed_normal_selected backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Normal: 1x (default)";
+            }
+            mouseExit
+            {
+                setitemcolor speed_normal_selected backcolor .08 .34 .38 .95;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_1";
+            }
         }
+
         itemDef
         {
             name speed_fast
             rect 423 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-            text "Fast" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
+            text "Fast"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") != 2)
-            mouseEnter { setitemcolor speed_fast backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Fast: 2x"; }
-            mouseExit { setitemcolor speed_fast backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_2"; }
+            mouseEnter
+            {
+                setitemcolor speed_fast backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Fast: 2x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_fast backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_2";
+            }
         }
+
         itemDef
         {
             name speed_fast_selected
             rect 423 449.5 40 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
-            text "Fast" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .3 .85 .9 1
+            backcolor .08 .34 .38 .95
+            forecolor 1 1 1 1
+            text "Fast"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") == 2)
-            mouseEnter { setitemcolor speed_fast_selected backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Fast: 2x"; }
-            mouseExit { setitemcolor speed_fast_selected backcolor .08 .34 .38 .95; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_2"; }
+            mouseEnter
+            {
+                setitemcolor speed_fast_selected backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Fast: 2x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_fast_selected backcolor .08 .34 .38 .95;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_2";
+            }
         }
+
         itemDef
         {
             name speed_fastest
             rect 466 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .22 .3 .34 1 backcolor .08 .12 .15 .85 forecolor 1 1 1 1
-            text "Fastest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .22 .3 .34 1
+            backcolor .08 .12 .15 .85
+            forecolor 1 1 1 1
+            text "Fastest"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") != 4)
-            mouseEnter { setitemcolor speed_fastest backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Fastest: 4x"; }
-            mouseExit { setitemcolor speed_fastest backcolor .08 .12 .15 .85; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_4"; }
+            mouseEnter
+            {
+                setitemcolor speed_fastest backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Fastest: 4x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_fastest backcolor .08 .12 .15 .85;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_4";
+            }
         }
+
         itemDef
         {
             name speed_fastest_selected
             rect 466 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .3 .85 .9 1 backcolor .08 .34 .38 .95 forecolor 1 1 1 1
-            text "Fastest" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .3 .85 .9 1
+            backcolor .08 .34 .38 .95
+            forecolor 1 1 1 1
+            text "Fastest"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible when (dvarFloat("opencj_demo_speed") == 4)
-            mouseEnter { setitemcolor speed_fastest_selected backcolor .15 .38 .43 1; setdvar opencj_demo_hint "Fastest: 4x"; }
-            mouseExit { setitemcolor speed_fastest_selected backcolor .08 .34 .38 .95; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "speed_4"; }
+            mouseEnter
+            {
+                setitemcolor speed_fastest_selected backcolor .15 .38 .43 1;
+                setdvar opencj_demo_hint "Fastest: 4x";
+            }
+            mouseExit
+            {
+                setitemcolor speed_fastest_selected backcolor .08 .34 .38 .95;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "speed_4";
+            }
         }
+
         itemDef
         {
             name exit
             rect 606 450.5 26 22 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED
-            backcolor .5 .04 .04 .9 forecolor .92 .96 .97 1
-            text "X" textfont UI_FONT_NORMAL textscale .21 textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -0.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            backcolor .5 .04 .04 .9
+            forecolor .92 .96 .97 1
+            text "X"
+            textfont UI_FONT_NORMAL
+            textscale .21
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -0.5
             visible 1
-            mouseEnter { setitemcolor exit backcolor .08 .38 .44 1; setdvar opencj_demo_hint "Exit demo and return to your run"; }
-            mouseExit { setitemcolor exit backcolor .5 .04 .04 .9; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "stop"; close self; }
+            mouseEnter
+            {
+                setitemcolor exit backcolor .08 .38 .44 1;
+                setdvar opencj_demo_hint "Exit demo and return to your run";
+            }
+            mouseExit
+            {
+                setitemcolor exit backcolor .5 .04 .04 .9;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "stop";
+                close self;
+            }
         }
+
         // Visible artwork is centered, including texture padding and the renderer offset.
         // Existing arrows contain a small white triangle inside a padded texture;
         // stop/pause bars use a matching visible height. Do not recenter raw rects.
@@ -260,109 +660,191 @@
         {
             name previous_bar
             rect 15.5 458.5 2 8 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_FILLED backcolor 1 1 1 1 forecolor 1 1 1 1
-            visible when (dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_FILLED
+            backcolor 1 1 1 1
+            forecolor 1 1 1 1
+            visible when (dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name previous_arrow
             rect 17.5 456.5 12 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_SHADER background "opencj_icon_leftarrow" forecolor 1 1 1 1
-            visible when (dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_SHADER
+            background "opencj_icon_leftarrow"
+            forecolor 1 1 1 1
+            visible when (dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name previous_bar_disabled
             rect 15.5 458.5 2 8 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_FILLED backcolor .4 .45 .48 1 forecolor .4 .45 .48 1
-            visible when (!dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_FILLED
+            backcolor .4 .45 .48 1
+            forecolor .4 .45 .48 1
+            visible when (!dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name previous_arrow_disabled
             rect 17.5 456.5 12 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_SHADER background "opencj_icon_leftarrow" forecolor .4 .45 .48 1
-            visible when (!dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_SHADER
+            background "opencj_icon_leftarrow"
+            forecolor .4 .45 .48 1
+            visible when (!dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name next_bar
             rect 80.5 458.5 2 8 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_FILLED backcolor 1 1 1 1 forecolor 1 1 1 1
-            visible when (dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_FILLED
+            backcolor 1 1 1 1
+            forecolor 1 1 1 1
+            visible when (dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name next_arrow
             rect 68.5 456.5 12 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_SHADER background "opencj_icon_rightarrow" forecolor 1 1 1 1
-            visible when (dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_SHADER
+            background "opencj_icon_rightarrow"
+            forecolor 1 1 1 1
+            visible when (dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name next_bar_disabled
             rect 80.5 458.5 2 8 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_FILLED backcolor .4 .45 .48 1 forecolor .4 .45 .48 1
-            visible when (!dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_FILLED
+            backcolor .4 .45 .48 1
+            forecolor .4 .45 .48 1
+            visible when (!dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name next_arrow_disabled
             rect 68.5 456.5 12 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_SHADER background "opencj_icon_rightarrow" forecolor .4 .45 .48 1
-            visible when (!dvarInt("opencj_demo_checkpointed")) decoration
+            style WINDOW_STYLE_SHADER
+            background "opencj_icon_rightarrow"
+            forecolor .4 .45 .48 1
+            visible when (!dvarInt("opencj_demo_checkpointed"))
+            decoration
         }
+
         itemDef
         {
             name pause_bar_left
             rect 45 458.5 3 8 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_FILLED backcolor 1 1 1 1 forecolor 1 1 1 1
-            visible when (!dvarInt("opencj_demo_paused")) decoration
+            style WINDOW_STYLE_FILLED
+            backcolor 1 1 1 1
+            forecolor 1 1 1 1
+            visible when (!dvarInt("opencj_demo_paused"))
+            decoration
         }
+
         itemDef
         {
             name pause_bar_right
             rect 50 458.5 3 8 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_FILLED backcolor 1 1 1 1 forecolor 1 1 1 1
-            visible when (!dvarInt("opencj_demo_paused")) decoration
+            style WINDOW_STYLE_FILLED
+            backcolor 1 1 1 1
+            forecolor 1 1 1 1
+            visible when (!dvarInt("opencj_demo_paused"))
+            decoration
         }
+
         itemDef
         {
             name resume_arrow
             rect 43 456.5 12 12 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            style WINDOW_STYLE_SHADER background "opencj_icon_rightarrow" forecolor 1 1 1 1
-            visible when (dvarInt("opencj_demo_paused")) decoration
+            style WINDOW_STYLE_SHADER
+            background "opencj_icon_rightarrow"
+            forecolor 1 1 1 1
+            visible when (dvarInt("opencj_demo_paused"))
+            decoration
         }
+
         // Optional hover explanation; never occupies toolbar space or hides controls.
         itemDef
         {
             name hint
-            rect 0 0 348 18 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT origin 284 423
-            type ITEM_TYPE_TEXT style WINDOW_STYLE_FILLED backcolor 0 0 0 .85
-            dvar "opencj_demo_hint" textfont UI_FONT_NORMAL textscale .20 textalign ITEM_ALIGN_MIDDLE_CENTER
-            forecolor .8 .9 .92 1 visible when (dvarString("opencj_demo_hint") != "") decoration
+            rect 0 0 348 18 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
+            origin 284 423
+            type ITEM_TYPE_TEXT
+            style WINDOW_STYLE_FILLED
+            backcolor 0 0 0 .85
+            dvar "opencj_demo_hint"
+            textfont UI_FONT_NORMAL
+            textscale .20
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            forecolor .8 .9 .92 1
+            visible when (dvarString("opencj_demo_hint") != "")
+            decoration
         }
 
         itemDef
         {
             name technique
             rect 536 449.5 46 24 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_BUTTON style WINDOW_STYLE_FILLED border WINDOW_BORDER_FULL bordersize 1
-            bordercolor .48 .29 .6 1 backcolor .20 .10 .28 .9 forecolor 1 1 1 1
-            dvar "opencj_demo_technique" textfont UI_FONT_NORMAL textscale .19
-            textalign ITEM_ALIGN_MIDDLE_CENTER textalignx -1 textaligny -1.5
+            type ITEM_TYPE_BUTTON
+            style WINDOW_STYLE_FILLED
+            border WINDOW_BORDER_FULL
+            bordersize 1
+            bordercolor .48 .29 .6 1
+            backcolor .20 .10 .28 .9
+            forecolor 1 1 1 1
+            dvar "opencj_demo_technique"
+            textfont UI_FONT_NORMAL
+            textscale .19
+            textalign ITEM_ALIGN_MIDDLE_CENTER
+            textalignx -1
+            textaligny -1.5
             visible 1
-            mouseEnter { setitemcolor technique backcolor .36 .20 .48 1; setdvar opencj_demo_hint "Switch viewing technique"; }
-            mouseExit { setitemcolor technique backcolor .20 .10 .28 .9; setdvar opencj_demo_hint ""; }
-            action { play "mouse_click"; scriptMenuResponse "technique"; }
+            mouseEnter
+            {
+                setitemcolor technique backcolor .36 .20 .48 1;
+                setdvar opencj_demo_hint "Switch viewing technique";
+            }
+            mouseExit
+            {
+                setitemcolor technique backcolor .20 .10 .28 .9;
+                setdvar opencj_demo_hint "";
+            }
+            action
+            {
+                play "mouse_click";
+                scriptMenuResponse "technique";
+            }
         }
+
         itemDef
         {
             name technique_original
             rect 96 423 180 18 HORIZONTAL_ALIGN_DEFAULT VERTICAL_ALIGN_DEFAULT
-            type ITEM_TYPE_TEXT text "Original section" textfont UI_FONT_NORMAL textscale .18
-            textalign ITEM_ALIGN_RIGHT textaligny 13 forecolor 1 .8 .45 1
-            visible when (dvarInt("opencj_demo_technique_original")) decoration
+            type ITEM_TYPE_TEXT
+            text "Original section"
+            textfont UI_FONT_NORMAL
+            textscale .18
+            textalign ITEM_ALIGN_RIGHT
+            textaligny 13
+            forecolor 1 .8 .45 1
+            visible when (dvarInt("opencj_demo_technique_original"))
+            decoration
         }
+
     }
+
 }

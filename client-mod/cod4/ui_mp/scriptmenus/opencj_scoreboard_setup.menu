@@ -1,12 +1,14 @@
 #include "ui/menudef.h"
 #include "ui_mp/scriptmenus/opencj_scoreboard_setup.inc"
 {
- menuDef {
-  name "opencj_scoreboard_setup"
-  rect 0 0 640 480
-  onOpen {
-   OPENCJ_SETUP_SCOREBOARD(execNow)
-   close opencj_scoreboard_setup;
-  }
- }
+    menuDef
+    {
+        name "opencj_scoreboard_setup"
+        rect 0 0 640 480
+        onOpen
+        {
+            OPENCJ_SETUP_SCOREBOARD(execNow) close opencj_scoreboard_setup;
+        }
+    }
+
 }
