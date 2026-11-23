@@ -161,7 +161,8 @@ _writeSequentialRoute()
     {
         if (self unchangedPublished(entries, existing))
         {
-            return true;
+            // Geometry equality does not imply that the selected route color is unchanged.
+            return self _writeRouteColor(int(existing[0][0]));
         }
         migration = self openCJ\checkpointMigration::prepare(entries, existing);
         if (!isDefined(migration))
@@ -306,20 +307,34 @@ _writeSequentialRoute()
             }
         }
     }
-    hex = self.cpc.routeHex;
-    if (!isDefined(hex))
+    return self _writeRouteColor(ids[0]);
+}
+
+// Save presentation metadata even when geometry did not require a migration.
+_writeRouteColor(startCheckpointId)
+{
+    routeHex = self.cpc.routeHex;
+    if (!isDefined(routeHex))
     {
-        hex = openCJ\checkpointCreation::defaultRouteColor(self.cpc.route);
+        routeHex = openCJ\checkpointCreation::defaultRouteColor(self.cpc.route);
     }
-    color = openCJ\checkpointCreation::routeRGB(hex);
+    color = openCJ\checkpointCreation::routeRGB(routeHex);
     if (!isDefined(color))
     {
         return self _fail("Invalid route color; draft retained");
     }
-    packed = int(color[0] * 255 + 0.5) * 65536 + int(color[1] * 255 + 0.5) * 256 +
-             int(color[2] * 255 + 0.5);
-    if (!isDefined(openCJ\mySQL::mysqlSyncQuery("UPDATE routes SET cpID=" + ids[0] + ",colorRGB=" +
-                                               packed + " WHERE routeID=" + routeID)))
+    maximumColorChannel = 255;
+    redByteMultiplier = 65536;
+    greenByteMultiplier = 256;
+    packedColor = int(color[0] * maximumColorChannel + 0.5) * redByteMultiplier +
+                  int(color[1] * maximumColorChannel + 0.5) * greenByteMultiplier +
+                  int(color[2] * maximumColorChannel + 0.5);
+    result = openCJ\mySQL::mysqlSyncQuery(
+        "UPDATE routes " +
+        "SET cpID=" + startCheckpointId + ",colorRGB=" + packedColor +
+        " WHERE mapID=" + openCJ\mapID::getMapID() +
+        " AND routeName=" + openCJ\util::dbStr(self.cpc.route));
+    if (!isDefined(result))
     {
         return self _fail("Failed to store route color; transaction rolled back");
     }

@@ -79,6 +79,17 @@ checkInitialPublication(editor)
     checkScalar("SELECT COUNT(*) FROM checkpoints", 4, "repeated publication does not duplicate IDs");
     checkScalar("SELECT COUNT(*) FROM checkpointConnections", 4,
                 "repeated publication does not duplicate connections");
+
+    editor.cpc.routeHex = "#654321";
+    check(editor openCJ\checkpointPublish::publish(), "color-only publication succeeds");
+    checkScalar("SELECT colorRGB FROM routes WHERE routeName='fixture_route'", 6636321,
+                "color-only edit reaches the published route");
+    checkScalar("SELECT COUNT(*) FROM checkpoints", 4, "color-only edit keeps checkpoint IDs");
+    editor.cpc.routeHex = "invalid";
+    check(!editor openCJ\checkpointPublish::publish(), "invalid color is rejected on an unchanged route");
+    checkScalar("SELECT colorRGB FROM routes WHERE routeName='fixture_route'", 6636321,
+                "rejected color keeps the previously published value");
+    editor.cpc.routeHex = "#654321";
 }
 
 // Completed results retain their references; interrupted runs are archived after graph edits.
