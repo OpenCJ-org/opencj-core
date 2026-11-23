@@ -46,3 +46,7 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # Demo/clip GSC: complete control bodies braced, other tokens preserved; VM checks passed.
 347c0fea9e07ac18b230d1c18b96ad1d05ec7ab1
+
+# Demo fixtures: complete-body braces and layout; other code tokens preserved.
+# Verified with lifecycle, viewing, timeline and selection engine checks.
+1937498a4439a10cd02b01dafa2e23aaa53fe1f1
