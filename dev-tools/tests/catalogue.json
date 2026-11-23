@@ -470,7 +470,7 @@
     {
       "id": "sql-adapter",
       "category": "integration",
-      "description": "Current save ownership, native demo transfers, fault handling, pool and VM behavior.",
+      "description": "Current save ownership, native demo transfers, fault handling, pool and VM behavior. Legacy long-query assembly, SQL NULL and overflow rejection.",
       "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod. Optional --engine PATH selects a candidate inside the core checkout.",
       "effects": "Creates/removes a temporary schema, grants and engine; private output.",
       "files": [

@@ -42,6 +42,7 @@ run(player, otherPlayer)
     result = openCJ\mySQL::_request("SELECT 1", 1, "", "", 10000, true);
     check(result.status == 0 && result.rows[0][0] == "1",
           "GSC receives successful rowset and outcome");
+    longQueryBuilderChecks();
     demoTransferChecks();
     stats = mysql_async_stats();
     check(stats[0] == 4 && stats[4] == 0, "four workers and no uncollected GSC jobs");
@@ -74,6 +75,58 @@ render(label, delay, menu)
 check(value, label)
 {
     openCJ\history192Test::check(value, label);
+}
+
+// A failed append must never submit a partial query through the legacy builder API.
+longQueryBuilderChecks()
+{
+    builder = mysql_setup_longquery();
+    check(builder > 0, "long-query builder allocated");
+    if(builder <= 0)
+    {
+        return;
+    }
+    check(mysql_append_longquery(builder, "SELECT "),
+          "long-query builder accepts a first fragment");
+    check(mysql_append_longquery(builder, "7, NULL"),
+          "long-query builder accepts a second fragment");
+    rows = openCJ\mySQL::mysqlAsyncLongQueryExecuteSave(builder);
+    check(isDefined(rows) && rows.size == 1 && rows[0][0] == "7"
+          && !isDefined(rows[0][1]), "long-query execution preserves values and SQL NULL");
+
+    builder = mysql_setup_longquery();
+    check(builder > 0 && mysql_free_longquery(builder),
+          "unused long-query builder can be released");
+
+    builder = mysql_setup_longquery();
+    check(builder > 0, "limit-test builder allocated");
+    if(builder <= 0)
+    {
+        return;
+    }
+    // The production query limit is 10 KiB. Small fragments stay within GSC strings.
+    queryLimitBytes = 10 * 1024;
+    fragment = "0123456789";
+    acceptedAll = true;
+    for(offset = 0; offset < queryLimitBytes - 10; offset += 10)
+    {
+        if(!mysql_append_longquery(builder, fragment))
+        {
+            acceptedAll = false;
+        }
+    }
+    check(acceptedAll, "long-query builder accepts fragments below its limit");
+    rejected = false;
+    for(attempt = 0; attempt < 3; attempt++)
+    {
+        if(!mysql_append_longquery(builder, fragment))
+        {
+            rejected = true;
+        }
+    }
+    check(rejected, "long-query builder rejects overflow");
+    check(!isDefined(mysql_async_execute_longquery(builder, true)),
+          "overflowed builder is consumed without submitting partial SQL");
 }
 
 // Use the disposable fixture's synthetic owner/map. No live recording is read.
