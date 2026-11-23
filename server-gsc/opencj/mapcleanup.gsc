@@ -13,7 +13,6 @@ onInit()
     else
     {
         _removeTurrets();
-        //_showClassnames();
     }
 }
 
@@ -62,22 +61,13 @@ _removeTurrets()
     }
 }
 
-_showClassnames()
-{
-    ents = getEntArray();
-    for(i = 0; i < ents.size; i++)
-    {
-        if(isDefined(ents[i].className))
-        {
-            printf(ents[i].className + "\n");
-        }
-    }
-}
+
 // Map main() may start its ambient track after the gametype callback. Stop it
 // after initialization, without muting player weapons, footsteps or UI sounds.
 _stopMapAmbient()
 {
-    wait 0.05;
+    initializationDelaySeconds = 0.05;
+    wait initializationDelaySeconds;
     ambientStop();
     _normalizeMapHints();
 }
@@ -86,33 +76,45 @@ _stopMapAmbient()
 // Configstrings 277..308 are CoD4's 32 hint slots (G_GetHintStringIndex).
 _normalizeMapHints()
 {
-    repaired = 0;
-    for(i = 277; i < 309; i++)
+    firstHintConfigstring = 277;
+    hintSlotCount = 32;
+    repairedHintCount = 0;
+    for(hintIndex = 0; hintIndex < hintSlotCount; hintIndex++)
     {
-        hint = sv_getconfigstring(i);
-        fixed = _literalMapHint(hint);
-        if(fixed != hint)
+        configstringIndex = firstHintConfigstring + hintIndex;
+        hintText = sv_getconfigstring(configstringIndex);
+        normalizedText = _literalMapHint(hintText);
+        if(normalizedText != hintText)
         {
-            setConfigStringByIndex(i, fixed);
-            repaired++;
+            setConfigStringByIndex(configstringIndex, normalizedText);
+            repairedHintCount++;
         }
     }
-    if(repaired)
+    if(repairedHintCount)
     {
-        printf("OpenCJ: normalized " + repaired + " literal map hint(s).\n");
+        printf("OpenCJ: normalized " + repairedHintCount + " literal map hint(s).\n");
     }
 }
 
+// Add a literal-text marker to prose while preserving localization keys and already marked text.
 _literalMapHint(hint)
 {
-    if(hint == "" || (!isSubStr(hint, " ") && getSubStr(hint, 0, 1) != "^"))
+    if(hint == "")
     {
         return hint;
     }
-    literal = getSubStr(constructMessage("x"), 0, 1);
-    localized = getSubStr(constructMessage("x", &"PLATFORM_USE"), 2, 3);
-    // Preserve proper literal/localized mixtures and avoid adding markers twice.
-    if(isSubStr(hint, literal) || isSubStr(hint, localized))
+    looksLikePlainKey = !isSubStr(hint, " ") && getSubStr(hint, 0, 1) != "^";
+    if(looksLikePlainKey)
+    {
+        return hint;
+    }
+
+    // Derive the engine's control markers from known messages instead of hard-coding bytes.
+    literalProbe = constructMessage("x");
+    mixedProbe = constructMessage("x", &"PLATFORM_USE");
+    literalMarker = getSubStr(literalProbe, 0, 1);
+    localizedMarker = getSubStr(mixedProbe, literalProbe.size, literalProbe.size + 1);
+    if(isSubStr(hint, literalMarker) || isSubStr(hint, localizedMarker))
     {
         return hint;
     }
