@@ -6,8 +6,9 @@ onInit()
     level.progressBarHeight = 10;
     level.progressBarMinWidth = 1; // Lower than this and it will default to its normal size
     level.progressBarOffsetX = 0;
-    level.progressBarOffsetY = 482; // Needs a +2 otherwise there is a gap under it, for whatever reason
-    if (getCodVersion() == 2)
+    level.progressBarOffsetY =
+        482; // Needs a +2 otherwise there is a gap under it, for whatever reason
+    if(getCodVersion() == 2)
     {
         level.progressBarOffsetY += 5;
     }
@@ -36,10 +37,11 @@ onSpawnSpectator()
     self _hideProgressBar();
 }
 
-onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, psOffsetTime, deathAnimDuration)
+onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, psOffsetTime,
+               deathAnimDuration)
 {
     self _hideProgressBar();
-    //todo: hide for spectating clients too
+    // todo: hide for spectating clients too
 }
 
 onRunFinished(cp)
@@ -76,9 +78,11 @@ _createProgressBar()
 {
     // A fixed full-width track and the existing independently sized fill.
     self.progressBarTrack = self _createLayer(-1);
-    self.progressBarTrack setShader(level.progressBarShader, level.progressBarMaxValue, level.progressBarHeight);
+    self.progressBarTrack setShader(level.progressBarShader, level.progressBarMaxValue,
+                                    level.progressBarHeight);
     self.progressBar = self _createLayer(0);
-    self.progressBar setShader(level.progressBarShader, level.progressBarMinWidth, level.progressBarHeight);
+    self.progressBar setShader(level.progressBarShader, level.progressBarMinWidth,
+                               level.progressBarHeight);
     self.prevProgress = 0;
 }
 
@@ -102,21 +106,26 @@ _createLayer(sort)
 
 _updateProgressBar(onFinish, checkpointPassed)
 {
-    if(self openCJ\demos::isPlayingDemo())return;
+    if(self openCJ\demos::isPlayingDemo())
+    {
+        return;
+    }
     // Replace both sides of a pending pulse when the run state changes.
     self notify("progressBarUpdated");
     self.progressBar fadeOverTime(0.05);
     self.progressBarTrack fadeOverTime(0.05);
     self.progressBarTrack.alpha = 0;
-    if (self openCJ\checkpointCreation::isEditing())
+    if(self openCJ\checkpointCreation::isEditing())
     {
-        self.progressBar setShader(level.progressBarShader, level.progressBarMaxValue, level.progressBarHeight);
+        self.progressBar setShader(level.progressBarShader, level.progressBarMaxValue,
+                                   level.progressBarHeight);
         self.progressBar.color = (0, 0.8, 1);
         self.progressBar.alpha = 0.4;
         self.prevProgress = level.progressBarMaxValue;
         return;
     }
-    if(!self openCJ\playerRuns::hasRunID() || self openCJ\playerRuns::isRunPaused() || self openCJ\cheating::isCheating())
+    if(!self openCJ\playerRuns::hasRunID() || self openCJ\playerRuns::isRunPaused() ||
+       self openCJ\cheating::isCheating())
     {
         progress = level.progressBarMaxValue;
         self.progressBar setShader(level.progressBarShader, progress, level.progressBarHeight);
@@ -133,7 +142,9 @@ _updateProgressBar(onFinish, checkpointPassed)
             self thread _flashCheckpoint(true);
         }
         else
+        {
             self.progressBar setShader(level.progressBarShader, progress, level.progressBarHeight);
+        }
     }
     else if(self openCJ\anyPct::hasAnyPct())
     {
@@ -150,17 +161,28 @@ _updateProgressBar(onFinish, checkpointPassed)
             passed = openCJ\checkpoints::getPassedCheckpointCount(checkpoint);
             remaining = openCJ\checkpoints::getRemainingCheckpointCount(checkpoint);
             total = passed + remaining;
-            if(total > 0)progress = int((passed / total) * level.progressBarMaxValue);
+            if(total > 0)
+            {
+                progress = int((passed / total) * level.progressBarMaxValue);
+            }
         }
         // Before the first checkpoint, the gray track represents zero progress.
-        if(progress < 0)progress = 0;
-        if(progress > level.progressBarMaxValue)progress = level.progressBarMaxValue;
+        if(progress < 0)
+        {
+            progress = 0;
+        }
+        if(progress > level.progressBarMaxValue)
+        {
+            progress = level.progressBarMaxValue;
+        }
         self _showProgressBar(progress);
         if(progress > 0)
         {
             self _scaleProgress(progress);
             if(isDefined(checkpointPassed) && checkpointPassed && progress > self.prevProgress)
+            {
                 self thread _flashCheckpoint(false);
+            }
         }
     }
     self.prevProgress = progress;
@@ -170,7 +192,8 @@ _scaleProgress(progress)
 {
     start = int(max(level.progressBarMinWidth, self.prevProgress));
     self.progressBar setShader(level.progressBarShader, start, level.progressBarHeight);
-    self.progressBar scaleOverTime(level.progressBarScaleDuration, progress, level.progressBarHeight);
+    self.progressBar scaleOverTime(level.progressBarScaleDuration, progress,
+                                   level.progressBarHeight);
 }
 
 _flashCheckpoint(finished)
@@ -214,5 +237,8 @@ _showProgressBar(progress)
     self.progressBarTrack.alpha = level.progressBarTrackAlpha;
     self.progressBar.color = level.progressBarFillColor;
     self.progressBar.alpha = 0;
-    if(progress > 0)self.progressBar.alpha = level.progressBarFillAlpha;
+    if(progress > 0)
+    {
+        self.progressBar.alpha = level.progressBarFillAlpha;
+    }
 }
