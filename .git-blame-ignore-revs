@@ -37,3 +37,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # 2026 demo lifecycle layout; optimized 32-bit object unchanged.
 7dd8d16920a5a3250f569201f41fbeba152bd0f7
+
+# Native SQL adapter layout; optimized 32-bit object unchanged.
+69cb50c79a1d27c9254b091637c7c38e8b5232d1
