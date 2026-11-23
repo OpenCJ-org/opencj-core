@@ -43,42 +43,29 @@ handleRestoreRun(str)
     self closeMenu();
 }
 
+// Keep the previous page when its owned database read fails or is cancelled.
 fetchUpdatedData()
 {
-    // In order to obtain run data per route, we first need to check what checkpoint ID(s) match the finish checkpoint(s) for the selected route
-    routeIdx = self.currentBoard["filter"]["route"] - 1;
-
-    // Debug information might still be useful for now
-    routeName = undefined;
-    if (self.currentBoard["routes"].size > routeIdx)
+    query = self buildRunsQuery();
+    rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "board");
+    if (!isDefined(rows))
     {
-        routeName = self.currentBoard["routes"][routeIdx];
-    }
-    else
-    {
-        printf("WARNING: route for idx: " + routeIdx + " is not available. Have:\n");
-        for (i = 0; i < self.currentBoard["routes"].size; i++)
-        {
-            printf("route[" + i + "] = " + self.currentBoard["routes"][i] + "\n"); // Debug
-        }
+        return false;
     }
 
-    routeCPIds = getNonEndCheckpointIdsForRoute(routeName);
+    self publishRunRows(rows);
+}
+
+// Select each owner's latest save before filtering its mode and FPS.
+// An older matching save must never replace the current position of that run.
+buildRunsQuery()
+{
     playerID = self openCJ\login::getPlayerID();
+    sortClause = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
+    pageSize = self.currentBoard["maxEntriesPerPage"];
+    pageOffset = openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], pageSize);
+    fpsModes = openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]);
 
-    // TODO: for now the routes filtering is not working until we have a route<->cp mapping table
-
-    // Based on player's current filter (ele, any %, tas, fps) and sorting (time, rpg, loads, date), asc/desc criteria:
-    // - grab up to 10 rows (runsboard pages show 10)
-    // the information we need is stored across multiple tables as follows:
-    // - checkPointStatistics has explosiveJumps, loadCount, timePlayed, and all filters (any%, ele, tas, fps)
-    // - playerRuns has runID, mapID
-    // - playerRuns has finishTimeStamp which we can use to verify the run isn't finished yet
-    // - playerRuns has startTimeStamp which we can use as run date/age
-    // - runLabels contains the run labels
-    sortStr = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
-    // Select the owner's latest save first; mode/FPS filters below must apply
-    // to that save, never to an older matching position in the same run.
     query = "SELECT COUNT(*) OVER() AS totalNr, a.runID, rl.runLabel, a.timePlayed, " +
                 "a.explosiveJumps, a.loadCount, a.startTimeStamp, a.FPSMode, a.flags " +
             "FROM (" +
@@ -101,113 +88,99 @@ fetchUpdatedData()
             "WHERE a.rn = 1 AND a.playerID = " + playerID +
                 getFilterStr(self.currentBoard["filter"]["ele"], self.currentBoard["filter"]["any"], self.currentBoard["filter"]["hb"], self.currentBoard["filter"]["tas"]) +
                 " AND a.FPSMode IN " +
-                openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
+                fpsModes +
                 getTutorialFilterStr(self.currentBoard["filter"]["fps"]) +
-            " ORDER BY " + sortStr +
-            " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
-            " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
+            " ORDER BY " + sortClause +
+            " LIMIT " + pageSize +
+            " OFFSET " + pageOffset;
+    return query;
+}
 
-    // Example output (pretend there are 10 rows instead of 2 though):
-    // ----------------------------------------------------------------------------------------------------------------------|
-    // | totalNr | runID   | runLabel      | timePlayed | explosiveJumps | loadCount | startTimeStamp      | FPSMode | flags |
-    // |---------------------------------------------------------------------------------------------------------------------|
-    // | 13      | 1234    | imbadlol      | 416800     | 0              | 38        | 2022-09-04 08:22:12 | all     | 192   |
-    // |---------|---------|---------------|------------|----------------|-----------|---------------------|---------|-------|
-    // | 13      | 1446    | norpg run     | 657000     | 1              | 69        | 2022-09-04 09:53:58 | all     | 8     |
-    // |---------|---------|---------------|------------|----------------|-----------|---------------------|---------|-------|
-    // | ....
-
-    // Might remain useful for now to print the query
-    printf("Runsboard query:\n" + query + "\n"); // Debug
-
-    rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "board");
-    if (!isDefined(rows))
+// Replace the complete page so unused slots cannot retain a previous restore ID.
+publishRunRows(rows)
+{
+    totalEntriesColumn = 0;
+    self.currentBoard["cols"] = [];
+    self.currentBoard["nrTotalEntries"] = 0;
+    self.currentBoard["nrEntriesThisPage"] = 0;
+    if (rows.size > 0 && isDefined(rows[0][totalEntriesColumn]))
     {
-        return false;
-    }
-
-    self.currentBoard["cols"] = []; // Hope this clears the previously used memory
-
-    if (isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]))
-    {
-        self.currentBoard["nrTotalEntries"] = int(rows[0][0]); // totalNr
+        self.currentBoard["nrTotalEntries"] = int(rows[0][totalEntriesColumn]);
         self.currentBoard["nrEntriesThisPage"] = rows.size;
     }
-    else
-    {
-        self.currentBoard["nrTotalEntries"] = 0;
-        self.currentBoard["nrEntriesThisPage"] = 0;
-    }
 
-    // Now that the data is there, we need to fill in the values into the local variables
-    for (i = 0; i < self.currentBoard["maxEntriesPerPage"]; i++)
+    for (rowIndex = 0; rowIndex < self.currentBoard["maxEntriesPerPage"]; rowIndex++)
     {
-        if (i < self.currentBoard["nrEntriesThisPage"])
+        if (rowIndex < self.currentBoard["nrEntriesThisPage"])
         {
-            self.currentBoard["cols"][i]["nr"] = int(rows[i][1]); // runID
-            name = rows[i][2];
-            isTutorialRun = (int(rows[i][8]) & level.saveFlags[level.saveFlagName_tutorial]) != 0;
-            if (!isDefined(name) || (name == ""))
-            {
-                name = "(Unnamed run)";
-            }
-            if (isTutorialRun)
-            {
-                name = "^5[Tutorial]^7 " + name;
-            }
-            self.currentBoard["cols"][i]["name"] = "^7" + name + "^7"; // runLabel
-            self.currentBoard["cols"][i]["time"] = int(rows[i][3]);
-            self.currentBoard["cols"][i]["rpgs"] = int(rows[i][4]);
-            self.currentBoard["cols"][i]["loads"] = int(rows[i][5]);
-            self.currentBoard["cols"][i]["date"] = rows[i][6]; // startTimeStamp
-            self.currentBoard["cols"][i]["fps"] = openCJ\menus\board_base::dbFPSToFullName(rows[i][7]);
-            // The server picked a tutorial run's FPS, so its badge replaces the FPS category
-            if (isTutorialRun)
-            {
-                self.currentBoard["cols"][i]["fps"] = "Tutorial";
-            }
-
-            eleVal = int(rows[i][8]) & level.saveFlags[level.saveFlagName_usedEle];
-            anyVal = int(rows[i][8]) & level.saveFlags[level.saveFlagName_anyPct];
-            hbVal  = int(rows[i][8]) & level.saveFlags[level.saveFlagName_allowHalfbeat];
-            TASVal = int(rows[i][8]) & level.saveFlags[level.saveFlagName_hardTAS];
-            self.currentBoard["cols"][i]["ele"] = xOrEmpty(eleVal);
-            self.currentBoard["cols"][i]["any"] = xOrEmpty(anyVal);
-            self.currentBoard["cols"][i]["hb"] = xOrEmpty(hbVal);
-            self.currentBoard["cols"][i]["tas"] = xOrEmpty(TASVal);
+            self.currentBoard["cols"][rowIndex] = runColumns(rows[rowIndex]);
         }
         else
         {
-            self.currentBoard["cols"][i]["nr"] = -1;
-            self.currentBoard["cols"][i]["name"] = "";
-            self.currentBoard["cols"][i]["time"] = 0;
-            self.currentBoard["cols"][i]["rpgs"] = 0;
-            self.currentBoard["cols"][i]["loads"] = 0;
-            self.currentBoard["cols"][i]["date"] = "";
-            self.currentBoard["cols"][i]["fps"] = "";
-            self.currentBoard["cols"][i]["ele"] = false;
-            self.currentBoard["cols"][i]["any"] = false;
-            self.currentBoard["cols"][i]["hb"] = false;
-            self.currentBoard["cols"][i]["tas"] = false;
+            self.currentBoard["cols"][rowIndex] = emptyRunColumns();
         }
     }
 }
 
-getNonEndCheckpointIdsForRoute(routeName)
+// Decode the SELECT list once, including the independent saved mode flags.
+runColumns(row)
 {
-    return undefined;
-
-    // TODO: implement route filtering with long queries
-
-
-    /*
-    checkpoints = openCJ\checkpoints::getCheckpointsForRoute(routeName);
-    if (!isDefined(checkpoints))
+    runIDColumn = 1;
+    labelColumn = 2;
+    timePlayedColumn = 3;
+    explosiveJumpsColumn = 4;
+    loadsColumn = 5;
+    startDateColumn = 6;
+    fpsModeColumn = 7;
+    flagsColumn = 8;
+    flags = int(row[flagsColumn]);
+    isTutorialRun = (flags & level.saveFlags[level.saveFlagName_tutorial]) != 0;
+    label = row[labelColumn];
+    if (!isDefined(label) || label == "")
     {
-        printf("WARNING: no checkpoints for specific route: " + routeName + ", using all checkpoints\n");
-        checkpoints = openCJ\checkpoints::getAllCheckpoints();
+        label = "(Unnamed run)";
     }
-    */
+    if (isTutorialRun)
+    {
+        label = "^5[Tutorial]^7 " + label;
+    }
+
+    columns = [];
+    columns["nr"] = int(row[runIDColumn]);
+    columns["name"] = "^7" + label + "^7";
+    columns["time"] = int(row[timePlayedColumn]);
+    columns["rpgs"] = int(row[explosiveJumpsColumn]);
+    columns["loads"] = int(row[loadsColumn]);
+    columns["date"] = row[startDateColumn];
+    columns["fps"] = openCJ\menus\board_base::dbFPSToFullName(row[fpsModeColumn]);
+    // The server chose tutorial FPS, so show that category instead of a competitive mode.
+    if (isTutorialRun)
+    {
+        columns["fps"] = "Tutorial";
+    }
+
+    columns["ele"] = xOrEmpty(flags & level.saveFlags[level.saveFlagName_usedEle]);
+    columns["any"] = xOrEmpty(flags & level.saveFlags[level.saveFlagName_anyPct]);
+    columns["hb"] = xOrEmpty(flags & level.saveFlags[level.saveFlagName_allowHalfbeat]);
+    columns["tas"] = xOrEmpty(flags & level.saveFlags[level.saveFlagName_hardTAS]);
+    return columns;
+}
+
+emptyRunColumns()
+{
+    columns = [];
+    columns["nr"] = -1;
+    columns["name"] = "";
+    columns["time"] = 0;
+    columns["rpgs"] = 0;
+    columns["loads"] = 0;
+    columns["date"] = "";
+    columns["fps"] = "";
+    columns["ele"] = false;
+    columns["any"] = false;
+    columns["hb"] = false;
+    columns["tas"] = false;
+    return columns;
 }
 
 getRunStr()

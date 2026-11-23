@@ -3,6 +3,7 @@ main()
     level.failures = 0;
     level.checks = 0;
     openCJ\mySQL::_initConstants();
+    openCJ\savePosition::onInit();
     wait 1;
     player = addTestClient();
     check(isDefined(player), "board client connects");
@@ -15,6 +16,7 @@ main()
         player verifyDemoButtons();
         player verifyBoardListener();
         verifyFPSLabels();
+        player verifyRunRows();
     }
     printf("BOARDS COMPLETE failures=" + level.failures + " checks=" + level.checks + "\n");
 }
@@ -68,6 +70,11 @@ boardQuery(query, menu)
     if(!isDefined(self.fixtureQuery))
     {
         printf("BOARDS SQL " + query + "\n");
+    }
+    if(self.currentMenu == "opencj_runsboard" && !isDefined(self.fixtureRunsQuery))
+    {
+        printf("BOARDS RUNS SQL " + query + "\n");
+        self.fixtureRunsQuery = query;
     }
     self.fixtureQuery = query;
     self.fixtureQueryMenu = menu;
@@ -193,4 +200,77 @@ check(condition, message)
         level.failures++;
     }
     printf("BOARDS CHECK " + int(condition) + ": " + message + "\n");
+}
+
+// Match the database SELECT order while keeping distinct values for every field.
+runRow(runID, label, flags)
+{
+    row = [];
+    row[0] = "13"; // Total unfinished runs.
+    row[1] = runID;
+    row[2] = label;
+    row[3] = "123456"; // Played milliseconds.
+    row[4] = "2"; // Explosive jumps.
+    row[5] = "3"; // Loads.
+    row[6] = "2026-01-02 03:04:05";
+    row[7] = "125";
+    row[8] = flags;
+    return row;
+}
+
+verifyRunRows()
+{
+    self prepareBoard();
+    self.currentMenu = "opencj_runsboard";
+    self.currentBoard["updateFunc"] = openCJ\menus\runsboard::fetchUpdatedData;
+    self.login_playerID = 7;
+    level.mapid_mapID = 1;
+    self.fixtureRows[0] = runRow("901", "Fixture run", 160); // Elevate and halfbeat.
+    self.fixtureRows[1] = runRow("902", "", 832); // Tutorial, any percent and hard TAS.
+    self openCJ\menus\board_base::updateBoard();
+
+    check(self.currentBoard["nrTotalEntries"] == 13 && self.currentBoard["nrEntriesThisPage"] == 2,
+          "run query total and visible count remain distinct");
+    check(self.currentBoard["page"]["max"] == 2, "run total determines maximum page");
+    check(self.currentBoard["cols"][0]["nr"] == 901 && self.currentBoard["cols"][1]["nr"] == 902,
+          "restore columns contain run IDs rather than page item numbers");
+    check(self.currentBoard["cols"][0]["name"] == "^7Fixture run^7",
+          "named run keeps surrounding color reset");
+    check(self.currentBoard["cols"][1]["name"] == "^7^5[Tutorial]^7 (Unnamed run)^7",
+          "unnamed tutorial run receives its badge and fallback label");
+    check(self.currentBoard["cols"][0]["time"] == 123456
+          && self.currentBoard["cols"][0]["rpgs"] == 2
+          && self.currentBoard["cols"][0]["loads"] == 3, "run numeric columns decode separately");
+    check(self.currentBoard["cols"][0]["date"] == "2026-01-02 03:04:05",
+          "run start date survives conversion");
+    check(self.currentBoard["cols"][0]["fps"] == "Classic"
+          && self.currentBoard["cols"][1]["fps"] == "Tutorial",
+          "tutorial badge replaces the server-chosen FPS category");
+    check(self.currentBoard["cols"][0]["ele"] == "X"
+          && self.currentBoard["cols"][0]["hb"] == "X"
+          && self.currentBoard["cols"][0]["any"] == "^7"
+          && self.currentBoard["cols"][0]["tas"] == "^7",
+          "ordinary run flags decode independently");
+    check(self.currentBoard["cols"][1]["ele"] == "^7"
+          && self.currentBoard["cols"][1]["hb"] == "^7"
+          && self.currentBoard["cols"][1]["any"] == "X"
+          && self.currentBoard["cols"][1]["tas"] == "X",
+          "tutorial run retains its other classifications");
+    check(self.currentBoard["cols"][9]["nr"] == -1 && self.currentBoard["cols"][9]["name"] == "",
+          "unused run slots are cleared");
+    check(self.fixtureQueryMenu == "board", "run query uses board ownership");
+
+    self.fixtureRows = undefined;
+    result = self openCJ\menus\runsboard::fetchUpdatedData();
+    check(isDefined(result) && !result, "unavailable run read reports failure");
+    check(self.currentBoard["nrTotalEntries"] == 13 && self.currentBoard["cols"][0]["nr"] == 901,
+          "unavailable run read keeps the last published page");
+
+    self.fixtureRows = [];
+    self openCJ\menus\runsboard::fetchUpdatedData();
+    check(self.currentBoard["nrTotalEntries"] == 0 && self.currentBoard["nrEntriesThisPage"] == 0,
+          "successful empty run read clears counts");
+    check(self.currentBoard["cols"][0]["nr"] == -1
+          && self.currentBoard["cols"][0]["fps"] == "",
+          "successful empty run read clears restore IDs and badges");
 }

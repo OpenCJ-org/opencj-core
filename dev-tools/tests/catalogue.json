@@ -609,7 +609,7 @@
     {
       "id": "focused-gsc",
       "category": "integration",
-      "description": "Checkpoint contact/landing selection and bounded ancestor traversal, panel states, bounded indicators/travel, moving-marker cancellation and draft validation; client startup, graphics menu, HUD, native-helper and numeric-input boundary, save-history, map-hint, route catalogue, map-pool and map-browser, voting lifecycle, leaderboard decoding and demo-selection regressions.",
+      "description": "Checkpoint contact/landing selection and bounded ancestor traversal, panel states, bounded indicators/travel, moving-marker cancellation and draft validation; client startup, graphics menu, HUD, native-helper and numeric-input boundary, save-history, map-hint, route catalogue, map-pool and map-browser, voting lifecycle, leaderboard and unfinished-run decoding, tutorial badges and demo-selection regressions.",
       "requires": "Initialized Compose, current engine, licensed game/compiled mod; each command selects its fixture and completion marker. Checkpoint contact requires mp_futile_fixed; other listed fixtures use mp_killhouse.",
       "effects": "Isolated servers and synthetic clients; private logs/drafts, no gameplay database.",
       "files": [

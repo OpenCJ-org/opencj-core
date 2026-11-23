@@ -265,14 +265,22 @@ def install_observation_hooks(mod, fixture_name):
     }
     if fixture_name not in hooks:
         return
-    relative_path, replacements = hooks[fixture_name]
-    path = mod / relative_path
-    source = path.read_text()
-    for pattern, replacement in replacements:
-        source, count = re.subn(pattern, lambda match: replacement, source)
-        if count == 0:
-            raise RuntimeError("Fixture observation boundary was not found: " + pattern)
-    path.write_text(source)
+    targets = [hooks[fixture_name]]
+    if fixture_name == "boards.gsc":
+        targets.append(
+            (
+                "opencj/menus/runsboard.gsc",
+                ((r"openCJ\\mySQL::mysqlAsyncMenuQuery\s*\(", r"openCJ\platformTest::boardQuery("),),
+            )
+        )
+    for relative_path, replacements in targets:
+        path = mod / relative_path
+        source = path.read_text()
+        for pattern, replacement in replacements:
+            source, count = re.subn(pattern, lambda match: replacement, source)
+            if count == 0:
+                raise RuntimeError("Fixture observation boundary was not found: " + pattern)
+        path.write_text(source)
 
 
 def isolate_callbacks(mod, retained_callbacks):
