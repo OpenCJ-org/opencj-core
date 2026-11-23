@@ -1,151 +1,150 @@
 #include openCJ\util;
 
-reset(route)
+// Rebuild a standalone draft from active geometry only after saving its recovery copies.
+reset(routeName)
 {
-    if(!openCJ\checkpointCreation::_validName(route) || self.sessionState != "playing" ||
+    if(!openCJ\checkpointCreation::_validName(routeName) || self.sessionState != "playing" ||
        self openCJ\demos::isPlayingDemo())
     {
         return self fail("Spawn first, then use !cpc reset <route>.");
     }
     // Validate existence before saving, closing or changing any draft.
-    if(!isDefined(level.routeEnders[route]) || !isDefined(level.checkpointRoutes[route]))
+    if(!isDefined(level.routeEnders[routeName]) || !isDefined(level.checkpointRoutes[routeName]))
     {
-        return self fail("No active finalized route named " + route + "; draft unchanged.");
+        return self fail("No active finalized route named " + routeName + "; draft unchanged.");
     }
-    base = self openCJ\checkpointNetwork::basePath();
+    draftBasePath = self openCJ\checkpointNetwork::basePath();
     // Shared sections need a network-wide reset; never silently detach or edit other routes.
-    if(FS_TestFile(base + "network.a") || FS_TestFile(base + "network.b"))
+    if(FS_TestFile(draftBasePath + "network.a") || FS_TestFile(draftBasePath + "network.b"))
     {
         return self fail("Reset of shared network drafts is not supported; all drafts kept.");
     }
-    ids = openCJ\mySQL::mysqlSyncQuery(
-        "SELECT cpID FROM checkpointAreas WHERE mapID=" + openCJ\mapID::getMapID() +
-        " AND draftName=" + dbStr(route) + " ORDER BY ordinal");
-    if(!isDefined(ids) || !ids.size)
+    checkpointIdRows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT cpID " +
+        "FROM checkpointAreas " +
+        "WHERE mapID=" + openCJ\mapID::getMapID() +
+        " AND draftName=" + dbStr(routeName) +
+        " ORDER BY ordinal");
+    if(!isDefined(checkpointIdRows) || !checkpointIdRows.size)
     {
         return self fail("Finalized route has no editable CPC areas; draft unchanged.");
     }
     checkpoints = [];
-    for(i = 0; i < ids.size; i++)
+    for(i = 0; i < checkpointIdRows.size; i++)
     {
-        checkpoints[i] = openCJ\checkpoints::getCheckpointByID(int(ids[i][0]));
+        checkpointId = int(checkpointIdRows[i][0]);
+        checkpoints[i] = openCJ\checkpoints::getCheckpointByID(checkpointId);
     }
-    rows = rowsFromActive(checkpoints, route);
-    if(!isDefined(rows))
+    restoredRows = rowsFromActive(checkpoints, routeName);
+    if(!isDefined(restoredRows))
     {
         return self fail("Cannot safely reconstruct this finalized route; draft unchanged.");
     }
-    path = base + route;
+    draftPath = draftBasePath + routeName;
     if(self openCJ\checkpointCreation::isEditing() && !self openCJ\checkpointCreation::_save())
     {
         return self fail("Could not save current draft; reset cancelled.");
     }
-    a = openCJ\checkpointCreation::_read(path + ".a", route);
-    b = openCJ\checkpointCreation::_read(path + ".b", route);
-    previous = a;
-    if(isDefined(b) && (!isDefined(a) || b.revision > a.revision))
+    snapshotA = openCJ\checkpointCreation::_read(draftPath + ".a", routeName);
+    snapshotB = openCJ\checkpointCreation::_read(draftPath + ".b", routeName);
+    latestSnapshot = snapshotA;
+    if(isDefined(snapshotB) && (!isDefined(snapshotA) || snapshotB.revision > snapshotA.revision))
     {
-        previous = b;
+        latestSnapshot = snapshotB;
     }
-    if(isDefined(previous) && isDefined(previous.sharedRoute))
+    if(isDefined(latestSnapshot) && isDefined(latestSnapshot.sharedRoute))
     {
         return self fail("Shared branch draft kept; reset requires a standalone route.");
     }
-    revision = 0;
-    if(isDefined(previous))
+    previousRevision = 0;
+    if(isDefined(latestSnapshot))
     {
-        revision = previous.revision;
+        previousRevision = latestSnapshot.revision;
     }
-    backup = backupDraft(path, revision);
-    if(!isDefined(backup))
+    backupPath = backupDraft(draftPath, previousRevision);
+    if(!isDefined(backupPath))
     {
         return self fail("Could not back up the draft; reset cancelled.");
     }
-    replacement = spawnStruct();
-    replacement.route = route;
-    replacement.path = path;
-    replacement.rows = rows;
-    replacement.selected = rows.size;
-    replacement.draft = openCJ\checkpointCreation::_empty();
-    replacement.revision = revision;
-    replacement.routeHex = level.checkpointRoutes[route].hex;
-    if(isDefined(previous))
+    replacementDraft = spawnStruct();
+    replacementDraft.route = routeName;
+    replacementDraft.path = draftPath;
+    replacementDraft.rows = restoredRows;
+    replacementDraft.selected = restoredRows.size;
+    replacementDraft.draft = openCJ\checkpointCreation::_empty();
+    replacementDraft.revision = previousRevision;
+    replacementDraft.routeHex = level.checkpointRoutes[routeName].hex;
+    if(isDefined(latestSnapshot))
     {
-        replacement.savedPosition = previous.savedPosition;
+        replacementDraft.savedPosition = latestSnapshot.savedPosition;
     }
-    old = self.cpc;
-    self.cpc = replacement;
-    ok = self openCJ\checkpointCreation::_save();
-    self.cpc = old;
-    if(!ok)
+    // The writer uses self.cpc; restore the current editor even if writing fails.
+    activeDraft = self.cpc;
+    self.cpc = replacementDraft;
+    savedReplacement = self openCJ\checkpointCreation::_save();
+    self.cpc = activeDraft;
+    if(!savedReplacement)
     {
-        return self fail("Could not write restored draft; backup retained at " + backup);
+        return self fail("Could not write restored draft; backup retained at " + backupPath);
     }
-    if(isDefined(old))
+    if(isDefined(activeDraft))
     {
         self openCJ\checkpointCreation::_close();
     }
-    self openCJ\checkpointCreation::_start(route, replacement.routeHex);
-    self sendLocalChatMessage("Reset " + route + " draft to " + rows.size +
-                              " finalized checkpoints. Previous draft backup: " + backup);
+    self openCJ\checkpointCreation::_start(routeName, replacementDraft.routeHex);
+    self sendLocalChatMessage("Reset " + routeName + " draft to " + restoredRows.size +
+                              " finalized checkpoints. Previous draft backup: " + backupPath);
     return true;
 }
 
 // Preserve the active geometry and requirements, grouping alternative areas
 // back into a single logical checkpoint. No database writes are performed.
-rowsFromActive(checkpoints, route)
+rowsFromActive(checkpoints, routeName)
 {
+    maximumAlternativeAreas = 7;
+    maximumLogicalCheckpoints = 256;
     if(!isDefined(checkpoints) || !checkpoints.size)
     {
         return undefined;
     }
     groups = [];
-    indexes = [];
+    groupIndexById = [];
     for(i = 0; i < checkpoints.size; i++)
     {
-        cp = checkpoints[i];
-        if(!isDefined(cp) || !isDefined(cp.area) ||
-           (!openCJ\checkpointMoving::isMoving(cp) &&
-            openCJ\checkpointArea::validate(cp.area) != ""))
+        checkpoint = checkpoints[i];
+        if(!isDefined(checkpoint) || !isDefined(checkpoint.area) ||
+           (!openCJ\checkpointMoving::isMoving(checkpoint) &&
+            openCJ\checkpointArea::validate(checkpoint.area) != ""))
         {
             return undefined;
         }
-        if(isDefined(cp.ender) && cp.ender != route)
+        if(isDefined(checkpoint.ender) && checkpoint.ender != routeName)
         {
             return undefined;
         }
-        if(isDefined(cp.bigBrother))
+        if(isDefined(checkpoint.bigBrother))
         {
-            index = indexes[cp.bigBrother.id];
-            if(!isDefined(index) || groups[index].alternatives.size >= 7)
+            groupIndex = groupIndexById[checkpoint.bigBrother.id];
+            if(!isDefined(groupIndex) ||
+               groups[groupIndex].alternatives.size >= maximumAlternativeAreas)
             {
                 return undefined;
             }
-            group = groups[index];
-            if(!openCJ\checkpointHeight::same(group, cp) || group.finish != isDefined(cp.ender) ||
-               group.double != cp.allowDoubleRPG || group.onGround != cp.onGround ||
-               group.allowSave != cp.allowSave || group.allowEle != cp.isEleAllowed)
+            group = groups[groupIndex];
+            if(!sameRequirements(group, checkpoint))
             {
                 return undefined;
             }
-            group.alternatives[group.alternatives.size] = cp.area;
+            group.alternatives[group.alternatives.size] = checkpoint.area;
         }
         else
         {
-            if(groups.size >= 256 || isDefined(indexes[cp.id]))
+            if(groups.size >= maximumLogicalCheckpoints || isDefined(groupIndexById[checkpoint.id]))
             {
                 return undefined;
             }
-            group = openCJ\checkpointCreation::_empty();
-            group.points = cp.area;
-            group.platformRef = cp.platformRef;
-            group.heightAbove = openCJ\checkpointHeight::above(cp);
-            group.finish = isDefined(cp.ender);
-            group.double = cp.allowDoubleRPG;
-            group.onGround = cp.onGround;
-            group.allowSave = cp.allowSave;
-            group.allowEle = cp.isEleAllowed;
-            indexes[cp.id] = groups.size;
+            group = draftFromActive(checkpoint);
+            groupIndexById[checkpoint.id] = groups.size;
             groups[groups.size] = group;
         }
     }
@@ -161,62 +160,94 @@ rowsFromActive(checkpoints, route)
     return rows;
 }
 
-backupDraft(path, revision)
+// Alternative areas share the same finish, movement and save requirements.
+sameRequirements(group, checkpoint)
 {
-    backup = "";
-    for(i = 0; i < 10000; i++)
+    if(!openCJ\checkpointHeight::same(group, checkpoint) ||
+       group.finish != isDefined(checkpoint.ender) || group.double != checkpoint.allowDoubleRPG ||
+       group.onGround != checkpoint.onGround || group.allowSave != checkpoint.allowSave ||
+       group.allowEle != checkpoint.isEleAllowed)
     {
-        backup = path + ".before-reset-" + revision + "-" + i;
-        if(!FS_TestFile(backup + ".a") && !FS_TestFile(backup + ".b"))
+        return false;
+    }
+    return true;
+}
+
+// Decode active checkpoint fields into the editable draft representation.
+draftFromActive(checkpoint)
+{
+    group = openCJ\checkpointCreation::_empty();
+    group.points = checkpoint.area;
+    group.platformRef = checkpoint.platformRef;
+    group.heightAbove = openCJ\checkpointHeight::above(checkpoint);
+    group.finish = isDefined(checkpoint.ender);
+    group.double = checkpoint.allowDoubleRPG;
+    group.onGround = checkpoint.onGround;
+    group.allowSave = checkpoint.allowSave;
+    group.allowEle = checkpoint.isEleAllowed;
+    return group;
+}
+
+// Keep both alternating snapshots without overwriting any earlier reset backup.
+backupDraft(draftPath, draftRevision)
+{
+    maximumBackupNames = 10000;
+    backupPath = "";
+    for(candidateIndex = 0; candidateIndex < maximumBackupNames; candidateIndex++)
+    {
+        backupPath = draftPath + ".before-reset-" + draftRevision + "-" + candidateIndex;
+        if(!FS_TestFile(backupPath + ".a") && !FS_TestFile(backupPath + ".b"))
         {
             break;
         }
     }
-    if(i == 10000)
+    if(candidateIndex == maximumBackupNames)
     {
         return undefined;
     }
-    if(!copySnapshot(path + ".a", backup + ".a") || !copySnapshot(path + ".b", backup + ".b"))
+    if(!copySnapshot(draftPath + ".a", backupPath + ".a") ||
+       !copySnapshot(draftPath + ".b", backupPath + ".b"))
     {
         return undefined;
     }
-    return backup;
+    return backupPath;
 }
 
-copySnapshot(source, destination)
+// A missing slot is normal; an existing slot must be copied completely.
+copySnapshot(sourcePath, destinationPath)
 {
-    if(!FS_TestFile(source))
+    if(!FS_TestFile(sourcePath))
     {
         return true;
     }
-    input = FS_FOpen(source, "read");
-    if(!input)
+    inputFile = FS_FOpen(sourcePath, "read");
+    if(!inputFile)
     {
         return false;
     }
-    output = FS_FOpen(destination, "write");
-    if(!output)
+    outputFile = FS_FOpen(destinationPath, "write");
+    if(!outputFile)
     {
-        FS_FClose(input);
+        FS_FClose(inputFile);
         return false;
     }
-    ok = true;
+    copied = true;
     for(;;)
     {
-        line = FS_ReadLine(input);
+        line = FS_ReadLine(inputFile);
         if(!isDefined(line))
         {
             break;
         }
-        if(!FS_WriteLine(output, line))
+        if(!FS_WriteLine(outputFile, line))
         {
-            ok = false;
+            copied = false;
             break;
         }
     }
-    FS_FClose(input);
-    FS_FClose(output);
-    return ok;
+    FS_FClose(inputFile);
+    FS_FClose(outputFile);
+    return copied;
 }
 
 fail(message)
