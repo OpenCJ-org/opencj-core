@@ -13,6 +13,7 @@ main()
     precacheMenu("opencj_demo");precacheMenu("opencj_clipedit");precacheMenu("opencj_clips");
     precacheItem("rpg_mp");
     level.demoCache=[];level.menu["ingame"]="opencj_ingame";
+    cacheOwnershipChecks();
     wait 1;
     p=addTestClient();follower=addTestClient();wait .2;
     check(isDefined(p) && isDefined(follower),"two isolated clients");
@@ -122,4 +123,54 @@ check(ok,label)
 {
     level.lifecycleChecks++;
     if(!isDefined(ok) || !ok){level.lifecycleFailures++;printf("DEMO LIFECYCLE FAIL "+label+"\n");}
+}
+
+
+// Releasing one viewer must preserve shared work; the final release cancels its native owner.
+cacheOwnershipChecks()
+{
+    demoID = 205001;
+    key = "" + demoID;
+    oldEntry = spawnStruct();
+    oldEntry.refs = 2;
+    oldEntry.loading = true;
+    oldEntry.ready = false;
+    oldEntry.cancelled = false;
+    oldEntry.nativeCreated = true;
+    level.demoCache[key] = oldEntry;
+    check(createDemo(demoID) == demoID, "cache cancellation fixture owns a native recording");
+
+    openCJ\demos::releaseCache(demoID);
+    check(oldEntry.refs == 1 && !oldEntry.cancelled
+          && isDefined(numberOfDemoFrames(demoID)), "another viewer preserves a shared load");
+    openCJ\demos::releaseCache(demoID);
+    cancelled = oldEntry.cancelled;
+    check(cancelled, "last viewer cancels the loading cache entry");
+    check(!isDefined(level.demoCache[key]) && !isDefined(numberOfDemoFrames(demoID)),
+          "last viewer releases cache and native ownership");
+
+    check(createDemo(demoID) == demoID, "replacement native recording can reuse the ID");
+    addFrameToDemo(demoID, (1, 2, 3), (0, 0, 0), 1, 0, 0, 0, 0, 333);
+    replacement = spawnStruct();
+    replacement.refs = 1;
+    replacement.loading = false;
+    replacement.ready = true;
+    level.demoCache[key] = replacement;
+    openCJ\demos::_loadCache(demoID, 2, oldEntry);
+    check(numberOfDemoFrames(demoID) == 1 && level.demoCache[key] == replacement,
+          "obsolete loader cannot replace a newer recording with the same ID");
+    openCJ\demos::releaseCache(demoID, oldEntry);
+    check(replacement.refs == 1 && numberOfDemoFrames(demoID) == 1,
+          "late cache release cannot affect a replacement entry");
+
+    owner = spawnStruct();
+    owner.demoPendingId = demoID;
+    owner.demoPendingCache = replacement;
+    owner openCJ\demos::releasePending(oldEntry);
+    check(isDefined(owner.demoPendingId) && owner.demoPendingCache == replacement
+          && replacement.refs == 1, "late cleanup cannot release a newer pending request");
+
+    openCJ\demos::releaseCache(demoID);
+    destroyDemo(demoID);
+    level.demoCache[key] = undefined;
 }

@@ -275,7 +275,9 @@ selectCandidate(rows, location, kind)
         {
             self releaseSelection();
             self.demoSelectionId = id;
+            self.demoSelectionCache = self.demoPendingCache;
             self.demoPendingId = undefined;
+            self.demoPendingCache = undefined;
             best = spawnStruct();
             best.id = id;
             best.range = range;
@@ -292,44 +294,62 @@ selectCandidate(rows, location, kind)
     return best;
 }
 
-acquireCache(id, expected)
+// Each pending viewer holds this exact entry, so a reused run ID cannot inherit old work.
+acquireCache(runID, expectedFrames)
 {
-    key = "" + id;
-    load = false;
-    if(!isDefined(level.demoCache[key]))
+    key = "" + runID;
+    startLoading = !isDefined(level.demoCache[key]);
+    if(startLoading)
     {
         cache = spawnStruct();
         cache.loading = true;
         cache.ready = false;
+        cache.cancelled = false;
+        cache.nativeCreated = false;
         cache.refs = 0;
         level.demoCache[key] = cache;
-        load = true;
     }
     cache = level.demoCache[key];
     cache.refs++;
-    self.demoPendingId = id;
-    if(load)
+    self.demoPendingId = runID;
+    self.demoPendingCache = cache;
+    if(startLoading)
     {
-        level thread _loadCache(id, expected);
+        level thread _loadCache(runID, expectedFrames, cache);
     }
     while(cache.loading)
     {
+        if(!self ownsPendingCache(runID, cache))
+        {
+            return false;
+        }
         wait 0.05;
+    }
+    if(!self ownsPendingCache(runID, cache))
+    {
+        return false;
     }
     if(!cache.ready)
     {
-        self releasePending();
+        self releasePending(cache);
         return false;
     }
     return true;
+}
+
+ownsPendingCache(runID, cache)
+{
+    return isDefined(self.demoPendingId) && self.demoPendingId == runID &&
+           isDefined(self.demoPendingCache) && self.demoPendingCache == cache;
 }
 
 releaseSelection()
 {
     if(isDefined(self.demoSelectionId))
     {
-        releaseCache(self.demoSelectionId);
+        releaseCache(self.demoSelectionId, self.demoSelectionCache);
         self.demoSelectionId = undefined;
+        self.demoSelectionCache = undefined;
     }
 }
 
@@ -411,13 +431,19 @@ playRun(id, full, kind, selectedRange)
         }
     }
     // Start outside a client-command / movement callback.
+    pendingCache = self.demoPendingCache;
     waittillframeend;
+    if(!self ownsPendingCache(id, pendingCache))
+    {
+        return;
+    }
     if(!self canWatch())
     {
         self releasePending();
         return;
     }
     self.demoPendingId = undefined;
+    self.demoPendingCache = undefined;
     self.demoAuthor = meta[0][3];
     if(!isDefined(self.demoAuthor) || self.demoAuthor == "")
     {
@@ -493,54 +519,72 @@ leaderboardKind(isWalkthrough)
     return "speedrun";
 }
 
-_loadCache(id, expected)
+// Load shared chunks until complete or until the last viewer releases this entry.
+_loadCache(runID, expectedFrames, cache)
 {
-    cache = level.demoCache["" + id];
-    created = createDemo(id);
-    ok = created == id;
-    if(ok)
+    if(cache.cancelled)
     {
-        // Bound result size while amortizing the 50ms async database poll.
-        // Each query already yields; another wait after decoding doubles latency.
-        chunk = 0;
-        while(ok && numberOfDemoFrames(id) < expected)
+        return;
+    }
+    createdID = createDemo(runID);
+    loaded = createdID == runID;
+    cache.nativeCreated = loaded;
+    if(loaded)
+    {
+        // Each bounded query already yields. Do not add another frame wait after decoding.
+        nextChunk = 0;
+        while(loaded && numberOfDemoFrames(runID) < expectedFrames)
         {
-            rows = openCJ\mySQL::awaitNative(demoLoadChunks(id, id, 0, chunk));
-            ok = isDefined(rows) && rows.size > 0 && rows[0][0] > chunk;
-            if(ok)
+            rows = openCJ\mySQL::awaitNative(demoLoadChunks(runID, runID, 0, nextChunk));
+            // Cancellation destroys the old native owner. The same run ID may now belong
+            // to a newer request, so this loader must not read, finish, or destroy it.
+            if(cache.cancelled)
             {
-                chunk = rows[0][0];
+                return;
+            }
+            loaded = isDefined(rows) && rows.size > 0 && rows[0][0] > nextChunk;
+            if(loaded)
+            {
+                nextChunk = rows[0][0];
             }
         }
-        if(ok)
+        if(loaded)
         {
-            ok = numberOfDemoFrames(id) == expected;
+            loaded = numberOfDemoFrames(runID) == expectedFrames;
         }
-        if(ok)
+        if(loaded)
         {
-            completeDemo(id);
+            completeDemo(runID);
         }
         else
         {
-            destroyDemo(id);
+            destroyDemo(runID);
+            cache.nativeCreated = false;
         }
     }
-    cache.ready = ok;
+    cache.ready = loaded;
     cache.loading = false;
-    if(!ok)
+    if(!loaded)
     {
-        printf("OpenCJ: failed to load demo " + id + ".\n");
+        printf("OpenCJ: failed to load demo " + runID + ".\n");
     }
     if(cache.refs == 0)
     {
-        releaseCache(id);
+        releaseCache(runID, cache);
     }
 }
 
-releaseCache(id)
+// The final viewer also stops queued native reads; active SQL retains its connection
+// until the worker finishes, then discards the cancelled result.
+releaseCache(runID, expectedCache)
 {
-    cache = level.demoCache["" + id];
+    key = "" + runID;
+    cache = level.demoCache[key];
     if(!isDefined(cache))
+    {
+        return;
+    }
+    if(isDefined(expectedCache) && cache != expectedCache)
     {
         return;
     }
@@ -548,14 +592,21 @@ releaseCache(id)
     {
         cache.refs--;
     }
-    if(cache.refs == 0 && !cache.loading)
+    if(cache.refs > 0)
     {
-        if(cache.ready)
-        {
-            destroyDemo(id);
-        }
-        level.demoCache["" + id] = undefined;
+        return;
     }
+
+    ownsNative = cache.ready || (isDefined(cache.nativeCreated) && cache.nativeCreated);
+    cache.cancelled = true;
+    cache.loading = false;
+    cache.ready = false;
+    if(ownsNative)
+    {
+        destroyDemo(runID);
+    }
+    cache.nativeCreated = false;
+    level.demoCache[key] = undefined;
 }
 
 startDemo(demoID)
@@ -1043,13 +1094,20 @@ onDisconnect()
     }
 }
 
-releasePending()
+releasePending(expectedCache)
 {
-    if(isDefined(self.demoPendingId))
+    if(!isDefined(self.demoPendingId))
     {
-        releaseCache(self.demoPendingId);
-        self.demoPendingId = undefined;
+        return;
     }
+    if(isDefined(expectedCache) &&
+       (!isDefined(self.demoPendingCache) || self.demoPendingCache != expectedCache))
+    {
+        return;
+    }
+    releaseCache(self.demoPendingId, self.demoPendingCache);
+    self.demoPendingId = undefined;
+    self.demoPendingCache = undefined;
 }
 
 cancelRequest()
@@ -1839,9 +1897,10 @@ viewHistory(args)
     cache.refs = 1;
     level.demoCache["" + id] = cache;
     self.demoPendingId = id;
+    self.demoPendingCache = cache;
     author = source.name;
     waittillframeend;
-    if(!isDefined(self.demoPendingId) || self.demoPendingId != id)
+    if(!self ownsPendingCache(id, cache))
     {
         return;
     }
@@ -1852,6 +1911,7 @@ viewHistory(args)
         return;
     }
     self.demoPendingId = undefined;
+    self.demoPendingCache = undefined;
     self.demoHistorySource = source;
     self.demoAuthor = author;
     self.demoKind = "history";

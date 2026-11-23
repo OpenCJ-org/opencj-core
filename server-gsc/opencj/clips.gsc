@@ -712,10 +712,11 @@ play(id, preview)
     cache.refs = 1;
     level.demoCache["" + native] = cache;
     self.demoPendingId = native;
+    self.demoPendingCache = cache;
     while(ok && numberOfDemoFrames(native) < expected)
     {
         data = self openCJ\mySQL::awaitNative(demoLoadChunks(native, id, 1, chunk));
-        if(!isDefined(self.demoPendingId) || self.demoPendingId != native)
+        if(!self openCJ\demos::ownsPendingCache(native, cache))
         {
             return;
         }
@@ -742,11 +743,12 @@ play(id, preview)
     self.demoCheckpointed = false;
     self.demoStyle = 0;
     waittillframeend;
-    if(!isDefined(self.demoPendingId) || self.demoPendingId != native)
+    if(!self openCJ\demos::ownsPendingCache(native, cache))
     {
         return;
     }
     self.demoPendingId = undefined;
+    self.demoPendingCache = undefined;
     if(preview)
     {
         self.clipPreview = id;
