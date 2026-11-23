@@ -46,6 +46,8 @@ to their listed harnesses, not standalone commands.
 | GeoIP parsing and import | `geoip-unit`, `geoip-database`, `geoip-engine` |
 | Fresh schema, permissions or backup | `database-bootstrap`, `database-volume` |
 | Challenge routes, shop or finish ranking | `feature-sql`, `notification-sql` |
+| Challenge catalogue keys, ranks and progress | `focused-gsc` |
+| Notification and finish-sound lifetimes | `notifications-engine` |
 | Save ownership or SQL pool | `sql-adapter` |
 | Native demo upload/download or cancellation | `sql-adapter`, `demo-storage` |
 | Demo view receipts | `demo-view-sql` |
@@ -120,12 +122,27 @@ focused fixtures. The save-history native fixture checks invalid inputs, non-pla
 calls and stale selections without a database. HUD observation wrappers are
 installed only in the fixture copy.
 
+The focused `challenge-state.gsc` fixture executes catalogue definitions,
+rank boundaries, progress labels and mode-icon selection without a database.
+Permanent challenge keys are checked through the produced definitions, so source
+formatting and helper layout do not affect that contract.
+
 The scoreboard connection runner exercises the production connection hook in
 an otherwise isolated engine callback, then verifies the connecting, joined
 and disconnected snapshots. Its shared harness accepts `--binary` and
 `--scripts`. The focused `scoreboard-points.gsc` fixture separately checks
 stable point ordering and every team split across the supported scroll range.
 These VM tests do not verify human-client rendering.
+
+The notification engine group uses the shared GSC runner's `--binary` and
+`--scripts` inputs and requires `mp_killhouse`. It copies only schema and routines
+from the selected Compose database into a separate disposable MySQL container.
+Its synthetic runs exercise exact record categories, preference persistence,
+late replies, completion-sound delivery and HUD cleanup for 32 players. Set `OPENCJ_TEST_ASSET_DIR` to a
+directory inside the checkout to select an explicit `mod.ff` and `z_opencj.iwd`;
+otherwise it uses the installation's compiled assets. Temporary credentials and
+containers are removed after success or failure. This engine check does not
+establish how the effect looks or sounds in a human game client.
 
 The GeoIP engine fixture exercises atlas selectors, login announcements and
 country fallback behavior without a database. It defaults to the complete
@@ -177,13 +194,3 @@ records, not through the current test entry point.
 Report exactly which groups ran, which inputs/builds they used, and what remains
 unverified. Passing a listed command once does not establish that other groups
 pass or that future changes preserve the result.
-
-The notification engine group uses the shared GSC runner's `--binary` and
-`--scripts` inputs and requires `mp_killhouse`. It copies only schema and routines
-from the selected Compose database into a separate disposable MySQL container.
-Its synthetic runs exercise exact record categories, preference persistence,
-late replies, completion-sound delivery and HUD cleanup for 32 players. Set `OPENCJ_TEST_ASSET_DIR` to a
-directory inside the checkout to select an explicit `mod.ff` and `z_opencj.iwd`;
-otherwise it uses the installation's compiled assets. Temporary credentials and
-containers are removed after success or failure. This engine check does not
-establish how the effect looks or sounds in a human game client.

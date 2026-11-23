@@ -118,12 +118,11 @@
     {
       "id": "notification-sql",
       "category": "integration",
-      "description": "Exact-category record SQL cases; owns the synthetic-run/CTE helper shared with finish ranking.",
+      "description": "Exact-category record SQL cases using shared synthetic run fixtures.",
       "requires": "Selected disposable Compose database with current schema.",
       "effects": "Connection-local read-only CTE fixtures using the runtime account.",
       "files": [
-        "dev-tools/tests/record-notices-72.py",
-        "dev-tools/tests/sql_run_fixture.py"
+        "dev-tools/tests/record-notices-72.py"
       ],
       "commands": [
         "python3 -B dev-tools/tests/record-notices-72.py"
@@ -528,11 +527,12 @@
     {
       "id": "shared-support",
       "category": "support",
-      "description": "Compose prerequisite resolution shared by integration runners.",
-      "requires": "Imported by a runner after its installation is selected.",
-      "effects": "Resolves the selected installation; not a standalone test.",
+      "description": "Compose prerequisite resolution and synthetic run/CTE fixtures shared by integration runners.",
+      "requires": "Imported helpers; database operations require a selected disposable installation.",
+      "effects": "No work at import. Helpers resolve Compose prerequisites or construct and explicitly execute synthetic SQL scenarios.",
       "files": [
-        "dev-tools/tests/compose_environment.py"
+        "dev-tools/tests/compose_environment.py",
+        "dev-tools/tests/sql_run_fixture.py"
       ],
       "commands": []
     },
@@ -555,7 +555,8 @@
         "dev-tools/tests/progress-bar.gsc",
         "dev-tools/tests/scoreboard-points.gsc",
         "dev-tools/tests/save-history-native.gsc",
-        "dev-tools/tests/save-position.gsc"
+        "dev-tools/tests/save-position.gsc",
+        "dev-tools/tests/challenge-state.gsc"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_futile_fixed --fixture dev-tools/tests/checkpoint-contact.gsc --completion-marker \"CHECKPOINT CONTACT COMPLETE\"",
@@ -570,7 +571,8 @@
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/progress-bar.gsc --completion-marker \"PROGRESS BAR COMPLETE\"",
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/scoreboard-points.gsc --completion-marker \"SCOREBOARD POINTS COMPLETE\"",
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/save-history-native.gsc --completion-marker \"SAVE HISTORY NATIVE COMPLETE\"",
-        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/save-position.gsc --completion-marker \"SAVE POSITION COMPLETE\""
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/save-position.gsc --completion-marker \"SAVE POSITION COMPLETE\"",
+        "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/challenge-state.gsc --completion-marker \"CHALLENGE STATE COMPLETE\""
       ]
     },
     {
