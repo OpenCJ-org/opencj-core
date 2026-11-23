@@ -41,6 +41,7 @@ keep = {
     'playerruns': {
         'restoreRun', 'setRunIDAndInstanceNumber', 'getRunID',
         'getRunInstanceNumber', 'hasRunID', 'isRunFinished',
+        '_canAccessRuns', '_invalidatePendingCreation',
     },
     'historysave': None,
 }

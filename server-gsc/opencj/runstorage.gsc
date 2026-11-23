@@ -1,20 +1,23 @@
 // Shared result handling for position and checkpoint writes.
-isCurrent(runID, instance)
+isCurrent(runID, instanceNumber)
 {
-    return self openCJ\playerRuns::hasRunID() && self openCJ\playerRuns::getRunID() == runID &&
-           self openCJ\playerRuns::getRunInstanceNumber() == instance;
+    return self openCJ\playerRuns::hasRunID() &&
+           self openCJ\playerRuns::getRunID() == runID &&
+           self openCJ\playerRuns::getRunInstanceNumber() == instanceNumber;
 }
 
-resultMessage(runID, instance, rows, subject)
+// Explain a failed write only while it still belongs to the player's current run.
+resultMessage(runID, instanceNumber, rows, subject)
 {
-    if(!self isCurrent(runID, instance))
+    if(!self isCurrent(runID, instanceNumber))
     {
         return "";
     }
-    failure = "Database error while saving " + subject + ".";
+
+    databaseFailure = "Database error while saving " + subject + ".";
     if(!isDefined(rows) || rows.size == 0 || !isDefined(rows[0]))
     {
-        return failure;
+        return databaseFailure;
     }
     if(isDefined(rows[0][0]))
     {
@@ -22,23 +25,29 @@ resultMessage(runID, instance, rows, subject)
     }
 
     // NULL from a guarded routine can mean missing data, not just a takeover.
-    owner = self openCJ\mySQL::mysqlAsyncRead("SELECT instanceNumber FROM playerRuns WHERE runID=" +
-                                              runID);
-    if(!self isCurrent(runID, instance))
+    ownerRows = self openCJ\mySQL::mysqlAsyncRead(
+        "SELECT instanceNumber"
+        + " FROM playerRuns"
+        + " WHERE runID = " + runID);
+    if(!self isCurrent(runID, instanceNumber))
     {
         return "";
     }
-    if(!isDefined(owner))
+    if(!isDefined(ownerRows))
     {
-        return failure;
+        return databaseFailure;
     }
-    if(owner.size == 0)
+    if(ownerRows.size == 0)
     {
         return "This run no longer exists. Start a new run.";
     }
-    if(isDefined(owner[0][0]) && int(owner[0][0]) != instance)
+    if(isDefined(ownerRows[0][0]))
     {
-        return "This run was resumed in another session. Start a new run to continue saving here.";
+        currentInstanceNumber = int(ownerRows[0][0]);
+        if(currentInstanceNumber != instanceNumber)
+        {
+            return "This run was resumed in another session. Start a new run to continue saving here.";
+        }
     }
-    return failure;
+    return databaseFailure;
 }

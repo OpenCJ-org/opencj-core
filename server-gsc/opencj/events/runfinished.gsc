@@ -1,21 +1,22 @@
 #include openCJ\util;
 
-main(cp, tOffset, route)
+// Store checkpoint and finish data before announcing the completed run.
+main(checkpoint, timeOffsetMs, routeName)
 {
     self endon("disconnect");
     self endon("spawned");
     if(self openCJ\playerRuns::isRunPaused())
     {
         self iprintln("^5Finished while paused");
-        self openCJ\checkpointPointers::onRunFinished(cp);
+        self openCJ\checkpointPointers::onRunFinished(checkpoint);
         return;
     }
     if(!self openCJ\playerRuns::hasRunID() || self openCJ\cheating::isCheating())
     {
         return;
     }
-    cpID = openCJ\checkpoints::getCheckpointID(cp);
-    if(!isDefined(cpID))
+    checkpointID = openCJ\checkpoints::getCheckpointID(checkpoint);
+    if(!isDefined(checkpointID))
     {
         return;
     }
@@ -25,16 +26,16 @@ main(cp, tOffset, route)
     runID = self openCJ\playerRuns::getRunID();
     instanceNumber = self openCJ\playerRuns::getRunInstanceNumber();
     filters = self openCJ\playerRuns::finishSettings();
-    category = openCJ\recordNotices::category(
+    categoryLabel = openCJ\recordNotices::category(
         self openCJ\fps::getCurrentFPSMode(), self openCJ\elevate::hasUsedEle(),
         self openCJ\anyPct::hasAnyPct(), self openCJ\halfBeat::isHalfBeatAllowed(),
         self openCJ\tas::hasHardTAS());
-    finishedRPGs = self openCJ\statistics::getExplosiveJumps();
-    self openCJ\playTime::setTimePlayed(self openCJ\playTime::getTimePlayed() + tOffset);
-    timePlayed = self openCJ\playTime::getTimePlayed();
-    self openCJ\playTime::onRunFinished(cp);
+    explosiveJumpCount = self openCJ\statistics::getExplosiveJumps();
+    self openCJ\playTime::setTimePlayed(self openCJ\playTime::getTimePlayed() + timeOffsetMs);
+    timePlayedMs = self openCJ\playTime::getTimePlayed();
+    self openCJ\playTime::onRunFinished(checkpoint);
     // Finish statistics must exist before the run becomes leaderboard-visible.
-    if(!self openCJ\checkpoints::storeCheckpointPassed(runID, cpID, timePlayed))
+    if(!self openCJ\checkpoints::storeCheckpointPassed(runID, checkpointID, timePlayedMs))
     {
         return;
     }
@@ -43,7 +44,7 @@ main(cp, tOffset, route)
     {
         return;
     }
-    if(!self openCJ\playerRuns::onRunFinished(cp, filters))
+    if(!self openCJ\playerRuns::onRunFinished(checkpoint, filters))
     {
         return;
     }
@@ -52,18 +53,18 @@ main(cp, tOffset, route)
     self thread openCJ\finishSounds::onRunFinished(runID);
     self thread openCJ\challenges::awardRun(runID);
     self openCJ\demoRecording::onRunFinished();
-    if(!isDefined(route))
+    if(!isDefined(routeName))
     {
-        route = "<unknown route>";
+        routeName = "<unknown route>";
     }
-    timeStr = formatTimeString(timePlayed, false);
-    iprintln(self.name + "^7 finished " + route + " [" + category + "] in ^2" + timeStr + "^7 (" +
-             finishedRPGs + " RPGs)");
+    formattedTime = formatTimeString(timePlayedMs, false);
+    iprintln(self.name + "^7 finished " + routeName + " [" + categoryLabel + "] in ^2" +
+             formattedTime + "^7 (" + explosiveJumpCount + " RPGs)");
     self thread openCJ\recordNotices::onRunFinished(runID);
-    self thread openCJ\discord::onRunFinished(runID, timeStr, route);
-    self openCJ\checkpointPointers::onRunFinished(cp);
-    self openCJ\showRecords::onRunFinished(cp);
-    self openCJ\huds\hudProgressBar::onRunFinished(cp);
+    self thread openCJ\discord::onRunFinished(runID, formattedTime, routeName);
+    self openCJ\checkpointPointers::onRunFinished(checkpoint);
+    self openCJ\showRecords::onRunFinished(checkpoint);
+    self openCJ\huds\hudProgressBar::onRunFinished(checkpoint);
     self openCJ\statistics::onRunFinished();
     self openCJ\elevate::onRunFinished();
 }
