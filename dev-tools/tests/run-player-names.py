@@ -1,245 +1,285 @@
-"""Verify preferred names and regular-name policy in a disposable DB/engine."""
+"""Verify preferred names and regular-name policy with private disposable resources."""
 
-from compose_environment import database_container
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 import json
+import os
+from pathlib import Path
 import re
-import shutil
+import secrets
 import subprocess
-import time
+import sys
 import uuid
 
+from compose_environment import database_container
+import gsc_fixture
+
 ROOT = Path(__file__).resolve().parents[2]
-tag = "player-names-" + uuid.uuid4().hex[:8]
-database = "opencj_verify_names_" + tag.rsplit("-", 1)[1] + "_cod4"
-assert re.fullmatch(r"opencj_verify_names_[0-9a-f]{8}_cod4", database)
-home = ROOT / "dev-tools/local" / tag
-mod = home / "mods/opencj"
-mod.mkdir(parents=True)
-container = "opencj-" + tag
-created = granted = started = False
-secrets = []
-report = {"productionWrites": False, "checks": 0, "failures": 0}
+PREFERRED_COOLDOWN_SECONDS = 60 * 60
+# Separate CLI queries may cross several clock ticks during the cooldown checks.
+QUERY_TIMING_ALLOWANCE_SECONDS = 10
+sys.path.insert(0, str(ROOT / "server-db/tools"))
+from mysql_session import MySQL
 
 
-def db(query, target=None):
-    cmd = [
-        "docker",
-        "exec",
-        "-i",
-        database_container(),
-        "sh",
-        "-c",
-        'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root "$@"',
-        "names103",
-    ]
-    if target:
-        assert target == database
-        cmd.append(target)
-    p = subprocess.run(cmd, input=query, text=True, capture_output=True)
-    if p.returncode:
-        f = home / "sql-error.txt"
-        f.write_text(p.stderr)
-        f.chmod(0o600)
-        raise RuntimeError("SQL test failed; inspect restricted " + str(f))
-    return p.stdout.strip()
+class PlayerNameVerification:
+    """Own the synthetic schema, account, configuration and isolated engine fixture."""
 
+    def __init__(self, options):
+        self.options = options
+        self.database_container = database_container()
+        suffix = uuid.uuid4().hex[:8]
+        self.database = "opencj_verify_names_" + suffix + "_cod4"
+        self.account = "names_fixture_" + suffix
+        self.password = secrets.token_urlsafe(32)
+        self.home = ROOT / "dev-tools/local" / ("player-names-" + suffix)
+        self.config = self.home / "mods/opencj/names-fixture.cfg"
+        self.owns_database_resources = False
+        self.report = {"productionWrites": False, "checks": 0, "failures": 0}
 
-def check(ok, label):
-    report["checks"] += 1
-    if not ok:
-        report["failures"] += 1
-    print("NAME SQL CHECK " + str(int(bool(ok))) + ": " + label, flush=True)
+    def query_database(self, query, target=None):
+        if target is not None and target != self.database:
+            raise ValueError("Player-name fixture can query only its own schema")
+        try:
+            with MySQL(self.database_container, target or "mysql") as database:
+                return database.query(query, timeout=60)
+        except Exception as error:
+            path = self.home / "sql-error.txt"
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "w") as stream:
+                stream.write(str(error).replace(self.password, "<redacted>"))
+            raise RuntimeError("SQL fixture failed; see private sql-error.txt") from None
 
-
-def redact(text):
-    for value in secrets:
-        if value:
-            text = text.replace(value, "<redacted>")
-    return text
-
-
-try:
-    assert (
-        db("SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='" + database + "';")
-        == "0"
-    )
-    dump = subprocess.run(
-        [
-            "docker",
-            "exec",
-            database_container(),
-            "sh",
-            "-c",
-            'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root --no-data --routines --triggers --skip-comments --skip-lock-tables --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4',
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert dump.returncode == 0 and not re.search(r"^INSERT INTO", dump.stdout, re.M)
-    db("CREATE DATABASE " + database + " CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
-    created = True
-    db(dump.stdout.replace("openCJ_cod4", database), database)
-    db((ROOT / "server-db/migrations/017-preferred-names.sql").read_text(), database)
-    db("GRANT ALL PRIVILEGES ON " + database + ".* TO 'opencj'@'%';")
-    granted = True
-    db(
-        "INSERT INTO playerInformation(playerID,playerName,adminLevel) VALUES(1,'FixtureOne',0),(2,'FixtureTwo',0),(3,'Moderator',40),(4,'RaceOne',0),(5,'RaceTwo',0);",
-        database,
-    )
-    # Only harmless synthetic tokens are used in fixtures and test logs.
-    db(
-        "INSERT INTO nameModerationRules(nameHash,normalizedLength,matchMode,source) VALUES(SHA2(normalizeModeratedName('FixtureToken'),256),LENGTH(normalizeModeratedName('FixtureToken')),'contains','test');"
-        "INSERT INTO nameModerationExceptions SELECT ruleID,SHA2(normalizeModeratedName('OkFixtureToken'),256) FROM nameModerationRules WHERE source='test';",
-        database,
-    )
-    call = lambda pid, value: db(
-        "SELECT setPreferredName(" + str(pid) + "," + value + ");", database
-    )
-    check(call(1, "'RecordName'") == "0", "first preferred name accepted")
-    check(call(2, "'recordname'") == "-3", "case-insensitive unique constraint")
-    check(call(1, "'RecordName'") == "-1", "no-op does not consume cooldown")
-    check(int(call(1, "'NextName'")) >= 3590, "second change requires one hour")
-    check(int(call(1, "NULL")) >= 3590, "reset shares cooldown")
-    check(call(2, "'^1Color'") == "-2", "database rejects color codes")
-    check(call(2, "'FixtureToken'") == "-5", "database rechecks private moderation")
-    check(call(2, "'1234567890123456'") == "-2", "database enforces visible name length")
-    check(
-        db("SELECT normalizeModeratedName('^1F1x.tuure Token');", database) == "fixturetoken",
-        "normalization semantics",
-    )
-    check(
-        db(
-            "SELECT blockedNameRule('xF1x.tuureTokenx')>0,blockedNameRule('OkFixtureToken');",
-            database,
+    def prepare_database(self):
+        schema_count = self.query_database(
+            "SELECT COUNT(*) FROM information_schema.SCHEMATA"
+            f" WHERE SCHEMA_NAME='{self.database}';"
         )
-        == "1\t0",
-        "obfuscation and exception",
-    )
-    db(
-        "UPDATE playerNamePreferences SET changedAt=UTC_TIMESTAMP(6)-INTERVAL 3600 SECOND WHERE playerID=1;",
-        database,
-    )
-    check(call(1, "'NextName'") == "0", "one-hour boundary allows change")
-    check(call(2, "'RecordName'") == "0", "released preferred name becomes available")
-    check(
-        db("SELECT resetPreferredNameByModerator(1,2);", database) == "-6",
-        "ordinary account cannot moderate",
-    )
-    check(
-        db("SELECT resetPreferredNameByModerator(3,2);", database) == "0",
-        "moderator reset succeeds",
-    )
-    check(int(call(2, "'Immediate'")) >= 3590, "moderator reset starts cooldown")
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda pid: call(pid, "'RaceHandle'"), [4, 5]))
-    check(sorted(results) == ["-3", "0"], "concurrent claim has exactly one winner")
-    check(
-        db("SELECT COUNT(*) FROM playerNamePreferences WHERE preferredName='RaceHandle';", database)
-        == "1",
-        "unique name survives concurrent requests",
-    )
-    # Reset only disposable fixture state for the engine-side command tests.
-    db("DELETE FROM playerNamePreferences;", database)
-    for folder in ("opencj", "maps"):
-        shutil.copytree(ROOT / "server-gsc" / folder, mod / folder)
-    for asset in ("mod.ff", "z_opencj.iwd"):
-        (mod / asset).symlink_to("/mod-assets/" + asset)
-    (home / "plugins").mkdir()
-    (home / "steamclient.so").symlink_to("/game/steamclient.so")
-    shutil.copyfile(ROOT / "dev-tools/tests/player-names.gsc", mod / "opencj/names103test.gsc")
-    (mod / "maps/mp/gametypes/cj.gsc").write_text('main() { level.script=getCvar("mapname"); }\n')
-    (mod / "maps/mp/gametypes/_callbacksetup.gsc").write_text(
-        'CodeCallback_StartGameType() { thread openCJ\\names103Test::main(); }\n'
-        + "\n".join(
-            "CodeCallback_" + x + "() {}"
-            for x in [
-                "PlayerConnect",
-                "PlayerDisconnect",
-                "PlayerDamage",
-                "PlayerKilled",
-                "PlayerLastStand",
-                "UserInfoChanged",
-                "MovementState",
-            ]
+        account_count = self.query_database(
+            f"SELECT COUNT(*) FROM mysql.user WHERE User='{self.account}' AND Host='%';"
         )
+        if schema_count != "0" or account_count != "0":
+            raise RuntimeError("Player-name fixture identities already exist")
+        dump = subprocess.run(
+            [
+                "docker",
+                "exec",
+                self.database_container,
+                "sh",
+                "-c",
+                'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -u root'
+                " --no-data --routines --triggers --skip-comments --skip-lock-tables"
+                " --no-tablespaces --set-gtid-purged=OFF --column-statistics=0 openCJ_cod4",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if dump.returncode or re.search(r"^INSERT INTO", dump.stdout, re.M):
+            raise RuntimeError("Expected a schema-only fixture export")
+        # The fresh names were checked above; cleanup also covers a lost CREATE reply.
+        self.owns_database_resources = True
+        self.query_database(
+            f"CREATE DATABASE {self.database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+        )
+        self.query_database(dump.stdout.replace("openCJ_cod4", self.database), self.database)
+        self.query_database(
+            f"CREATE USER '{self.account}'@'%' IDENTIFIED BY '{self.password}';"
+            f" GRANT ALL PRIVILEGES ON {self.database}.* TO '{self.account}'@'%';"
+        )
+
+    def check(self, condition, scenario):
+        self.report["checks"] += 1
+        if not condition:
+            self.report["failures"] += 1
+        print("NAME SQL CHECK " + str(int(bool(condition))) + ": " + scenario, flush=True)
+
+    def set_preferred_name(self, player_id, preferred_name_sql):
+        return self.query_database(
+            f"SELECT setPreferredName({player_id},{preferred_name_sql});", self.database
+        )
+
+    def claim_race_name(self, player_id):
+        return self.set_preferred_name(player_id, "'RaceHandle'")
+
+    def seed_players_and_rules(self):
+        """Keep all policy terms and account records synthetic inside the fixture."""
+        self.query_database(
+            """
+            INSERT INTO playerInformation(playerID,playerName,adminLevel) VALUES
+                (1,'FixtureOne',0),
+                (2,'FixtureTwo',0),
+                (3,'Moderator',40),
+                (4,'RaceOne',0),
+                (5,'RaceTwo',0);
+            """,
+            self.database,
+        )
+        self.query_database(
+            """
+            INSERT INTO nameModerationRules(
+                nameHash,normalizedLength,matchMode,source
+            ) VALUES(
+                SHA2(normalizeModeratedName('FixtureToken'),256),
+                LENGTH(normalizeModeratedName('FixtureToken')),'contains','test'
+            );
+            INSERT INTO nameModerationExceptions
+            SELECT ruleID,SHA2(normalizeModeratedName('OkFixtureToken'),256)
+            FROM nameModerationRules WHERE source='test';
+            """,
+            self.database,
+        )
+
+    def verify_claims_and_policy(self):
+        minimum_remaining_seconds = PREFERRED_COOLDOWN_SECONDS - QUERY_TIMING_ALLOWANCE_SECONDS
+        self.check(
+            self.set_preferred_name(1, "'RecordName'") == "0", "first preferred name accepted"
+        )
+        self.check(
+            self.set_preferred_name(2, "'recordname'") == "-3", "case-insensitive unique constraint"
+        )
+        self.check(
+            self.set_preferred_name(1, "'RecordName'") == "-1", "no-op does not consume cooldown"
+        )
+        self.check(
+            int(self.set_preferred_name(1, "'NextName'")) >= minimum_remaining_seconds,
+            "second change requires one hour",
+        )
+        self.check(
+            int(self.set_preferred_name(1, "NULL")) >= minimum_remaining_seconds,
+            "reset shares cooldown",
+        )
+        self.check(self.set_preferred_name(2, "'^1Color'") == "-2", "database rejects color codes")
+        self.check(
+            self.set_preferred_name(2, "'FixtureToken'") == "-5",
+            "database rechecks private moderation",
+        )
+        self.check(
+            self.set_preferred_name(2, "'1234567890123456'") == "-2",
+            "database enforces visible name length",
+        )
+        self.check(
+            self.query_database(
+                "SELECT normalizeModeratedName('^1F1x.tuure Token');", self.database
+            )
+            == "fixturetoken",
+            "normalization semantics",
+        )
+        self.check(
+            self.query_database(
+                "SELECT blockedNameRule('xF1x.tuureTokenx')>0,blockedNameRule('OkFixtureToken');",
+                self.database,
+            )
+            == "1\t0",
+            "obfuscation and exception",
+        )
+
+    def verify_cooldown_and_moderation(self):
+        self.query_database(
+            f"""
+            UPDATE playerNamePreferences
+            SET changedAt=UTC_TIMESTAMP(6)-INTERVAL {PREFERRED_COOLDOWN_SECONDS} SECOND
+            WHERE playerID=1;
+            """,
+            self.database,
+        )
+        self.check(
+            self.set_preferred_name(1, "'NextName'") == "0", "one-hour boundary allows change"
+        )
+        self.check(
+            self.set_preferred_name(2, "'RecordName'") == "0",
+            "released preferred name becomes available",
+        )
+        self.check(
+            self.query_database("SELECT resetPreferredNameByModerator(1,2);", self.database)
+            == "-6",
+            "ordinary account cannot moderate",
+        )
+        self.check(
+            self.query_database("SELECT resetPreferredNameByModerator(3,2);", self.database) == "0",
+            "moderator reset succeeds",
+        )
+        minimum_remaining_seconds = PREFERRED_COOLDOWN_SECONDS - QUERY_TIMING_ALLOWANCE_SECONDS
+        self.check(
+            int(self.set_preferred_name(2, "'Immediate'")) >= minimum_remaining_seconds,
+            "moderator reset starts cooldown",
+        )
+
+    def verify_concurrent_claims(self):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(self.claim_race_name, (4, 5)))
+        self.check(sorted(results) == ["-3", "0"], "concurrent claim has exactly one winner")
+        self.check(
+            self.query_database(
+                "SELECT COUNT(*) FROM playerNamePreferences WHERE preferredName='RaceHandle';",
+                self.database,
+            )
+            == "1",
+            "unique name survives concurrent requests",
+        )
+
+    def verify_sql(self):
+        self.seed_players_and_rules()
+        self.verify_claims_and_policy()
+        self.verify_cooldown_and_moderation()
+        self.verify_concurrent_claims()
+
+    def prepare_engine(self):
+        self.query_database("DELETE FROM playerNamePreferences;", self.database)
+        source_hashes, _ = gsc_fixture.prepare_fixture(
+            self.options, self.home, retained_callbacks=()
+        )
+        settings = {
+            "db_host": "db",
+            "db_user": self.account,
+            "db_pass": self.password,
+            "db_base": self.database[:-1],
+            "db_port": "3306",
+        }
+        descriptor = os.open(self.config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as stream:
+            for key, value in settings.items():
+                stream.write(f'set {key} "{value}"\n')
+        return source_hashes
+
+    def execute(self):
+        self.home.mkdir(mode=0o700)
+        try:
+            self.prepare_database()
+            self.verify_sql()
+            if self.report["failures"]:
+                raise RuntimeError("Player-name SQL scenarios failed")
+            source_hashes = self.prepare_engine()
+            engine = gsc_fixture.run_prepared_fixture(
+                self.options,
+                self.home,
+                "mp_killhouse",
+                source_hashes,
+                extra_settings={"sv_maxclients": "2"},
+                config_files=(self.config.name,),
+            )
+            self.report["engine"] = engine
+            (self.home / "result.json").write_text(json.dumps(self.report, indent=2) + "\n")
+        finally:
+            try:
+                if self.owns_database_resources:
+                    self.query_database(
+                        f"DROP DATABASE IF EXISTS {self.database};"
+                        f" DROP USER IF EXISTS '{self.account}'@'%';"
+                    )
+            finally:
+                self.config.unlink(missing_ok=True)
+            print("Evidence: " + str(self.home), flush=True)
+
+
+def main():
+    options = gsc_fixture.parse_options(
+        default_fixture=ROOT / "dev-tools/tests/player-names.gsc",
+        completion_marker="NAME SELFTEST COMPLETE",
     )
-    (mod / "maps/mp/mp_killhouse.gsc").write_text("main() {}\n")
-    cfg = (ROOT / "dev-tools/local/runtime/mods/opencj/opencj-dev.cfg").read_text()
-    lines = [line for line in cfg.splitlines() if re.match(r"\s*set(?:a)?\s+db_", line)]
-    for line in lines:
-        match = re.match(r'\s*set(?:a)?\s+db_pass\s+"([^"]*)"', line)
-        if match:
-            secrets.append(match[1])
-    lines = [
-        re.sub(r"(db_base\s+).*", lambda m: m[1] + '"' + database[:-1] + '"', line)
-        for line in lines
-    ]
-    private = mod / "names103.cfg"
-    private.write_text("\n".join(lines) + "\n")
-    private.chmod(0o600)
-    args = [
-        "docker",
-        "compose",
-        "run",
-        "-d",
-        "--no-deps",
-        "--name",
-        container,
-        "--workdir",
-        "/workspace/" + str(home.relative_to(ROOT)),
-        "server",
-        "/workspace/cod4x-server/bin/cod4x18_dedrun",
-    ]
-    for k, v in [
-        ("fs_basepath", "/game"),
-        ("fs_homepath", "/workspace/dev-tools/local/" + tag),
-        ("fs_game", "mods/opencj"),
-        ("dedicated", "2"),
-        ("net_port", "28973"),
-        ("sv_maxclients", "2"),
-        ("sv_authorizemode", "0"),
-        ("com_hunkMegs", "1024"),
-        ("developer", "1"),
-        ("g_gametype", "cj"),
-    ]:
-        args += ["+set", k, v]
-    args += ["+exec", "names103.cfg", "+map", "mp_killhouse"]
-    subprocess.run(args, cwd=ROOT / "dev-tools", check=True, capture_output=True)
-    started = True
-    for _ in range(40):
-        time.sleep(1)
-        p = subprocess.run(["docker", "logs", container], capture_output=True, text=True)
-        log = redact(p.stdout + p.stderr)
-        if any(
-            x in log
-            for x in ("NAME SELFTEST COMPLETE", "script compile error", "script runtime error")
-        ):
-            break
-    (home / "console.log").write_text(log)
-    for line in log.splitlines():
-        if "NAME SELFTEST" in line:
-            print(line, flush=True)
-    error = re.search(r"script (?:compile|runtime) error", log)
-    if error:
-        print(log[error.start() : error.start() + 1200], flush=True)
-    assert "NAME SELFTEST COMPLETE failures=0" in log and not error, home
-    assert report["failures"] == 0, report
-    report["engineSummary"] = next(l for l in log.splitlines() if "NAME SELFTEST COMPLETE" in l)
-    report["nativeSha256"] = hashlib.sha256(
-        (ROOT / "cod4x-server/bin/cod4x18_dedrun").read_bytes()
-    ).hexdigest()
-    (home / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-finally:
-    if started:
-        subprocess.run(["docker", "rm", "-f", container], capture_output=True)
-    if granted:
-        db("REVOKE ALL PRIVILEGES ON " + database + ".* FROM 'opencj'@'%';")
-    if created:
-        db("DROP DATABASE " + database + ";")
-    for secret in (mod / "names103.cfg",):
-        if secret.exists():
-            secret.unlink()
-    print("Evidence:", home, flush=True)
+    if options.maps != ["mp_killhouse"]:
+        raise ValueError("Player-name scenarios require their mp_killhouse fixture")
+    PlayerNameVerification(options).execute()
+
+
+if __name__ == "__main__":
+    main()

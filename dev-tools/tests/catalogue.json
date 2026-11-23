@@ -380,7 +380,7 @@
       "category": "integration",
       "description": "Preferred names and regular-name policy.",
       "requires": "Selected disposable current database, matching engine and game/compiled assets.",
-      "effects": "Disposable database/engine fixture and synthetic names; private evidence.",
+      "effects": "Copies schema only; creates/removes its own schema, account and private config; runs an isolated engine with synthetic names.",
       "files": [
         "dev-tools/tests/run-player-names.py",
         "dev-tools/tests/player-names.gsc"
