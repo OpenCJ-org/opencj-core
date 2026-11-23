@@ -36,7 +36,10 @@ template and image-loader size limit before accepting those formats.
 Client builds use the unchanged installed Windows makeMod.py. Stage source/build_client_assets_windows.py in a private _<task>/source folder
 under the selected Mod Tools Mods/opencj/cod4 directory. Stage the HLSL source
 as opencj_flag_atlas.hlsl and the intended cod4 inputs under _<task>/stage.
-Include license files. Preserve the installation's custom files and avoid
+Include the required license files. The helper validates the selected installation,
+staged folders and shader source before creating build output. It compiles both
+shader profiles before replacing the private lookup and checks existing notices
+before appending missing ones. Preserve the installation's custom files and avoid
 mixing unrelated unfinished assets into the staged build.
 
 Run the helper with Windows Python; --mod-tools and --game-dir must identify an
