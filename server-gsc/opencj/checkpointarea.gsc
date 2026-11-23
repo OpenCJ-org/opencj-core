@@ -5,61 +5,66 @@
 // and convexity, so interior/duplicate corners cannot silently expand the area.
 orderCorners(points)
 {
-    ordered = [];
+    orderedPoints = [];
     if(points.size < 3)
     {
         for(i = 0; i < points.size; i++)
         {
-            ordered[i] = points[i];
+            orderedPoints[i] = points[i];
         }
-        return ordered;
+        return orderedPoints;
     }
-    center = (0, 0, 0);
+    centroid = (0, 0, 0);
     for(i = 0; i < points.size; i++)
     {
-        center += points[i];
+        centroid += points[i];
     }
-    center = vectorScale(center, 1.0 / points.size);
-    angles = [];
+    centroid = vectorScale(centroid, 1.0 / points.size);
+    cornerAngles = [];
     for(i = 0; i < points.size; i++)
     {
-        direction = points[i] - center;
-        angle = vectorToAngles((direction[0], direction[1], 0))[1];
-        j = ordered.size;
-        while(j > 0 && angles[j - 1] > angle)
+        direction = points[i] - centroid;
+        cornerAngle = vectorToAngles((direction[0], direction[1], 0))[1];
+        insertionIndex = orderedPoints.size;
+        while(insertionIndex > 0 && cornerAngles[insertionIndex - 1] > cornerAngle)
         {
-            ordered[j] = ordered[j - 1];
-            angles[j] = angles[j - 1];
-            j--;
+            orderedPoints[insertionIndex] = orderedPoints[insertionIndex - 1];
+            cornerAngles[insertionIndex] = cornerAngles[insertionIndex - 1];
+            insertionIndex--;
         }
-        ordered[j] = points[i];
-        angles[j] = angle;
+        orderedPoints[insertionIndex] = points[i];
+        cornerAngles[insertionIndex] = cornerAngle;
     }
-    return ordered;
+    return orderedPoints;
 }
 
+// Reject nonplanar or nonconvex outlines; the native detector uses the same limits.
 validate(points)
 {
-    if (points.size < 3 || points.size > 8)
+    maximumCorners = 8;
+    minimumWalkableNormalZ = 0.7;
+    planarityTolerance = 0.25;
+    minimumEdgeLengthSquared = 0.0001;
+    if (points.size < 3 || points.size > maximumCorners)
     {
         return "Select 3 to 8 corners around the perimeter";
     }
     normal = planeNormal(points);
-    if (normal[2] < 0.7)
+    if (normal[2] < minimumWalkableNormalZ)
     {
         return "Select a walkable landing plane";
     }
     winding = 0;
     for (i = 0; i < points.size; i++)
     {
-        a = points[i];
-        b = points[(i + 1) % points.size];
-        if (abs(vectorDot(a - points[0], normal)) > 0.25)
+        edgeStart = points[i];
+        edgeEnd = points[(i + 1) % points.size];
+        if (abs(vectorDot(edgeStart - points[0], normal)) > planarityTolerance)
         {
             return "All corners must lie on the same plane";
         }
         // Match native detection: reject numerical duplicates, not sub-unit ledges.
-        if (distanceSquared(a, b) < 0.0001)
+        if (distanceSquared(edgeStart, edgeEnd) < minimumEdgeLengthSquared)
         {
             return "Two corners are too close together";
         }
@@ -71,28 +76,32 @@ validate(points)
             {
                 continue;
             }
-            cross = _cross(a, b, points[j]);
-            if (abs(cross) <= edgeTolerance(a, b))
+            signedCrossProduct = _cross(edgeStart, edgeEnd, points[j]);
+            if (abs(signedCrossProduct) <= edgeTolerance(edgeStart, edgeEnd))
             {
                 return "Corners must form a convex area without straight-line duplicates";
             }
-            sign = 1;
-            if (cross < 0)
+            cornerSide = 1;
+            if (signedCrossProduct < 0)
             {
-                sign = -1;
+                cornerSide = -1;
             }
-            if (winding != 0 && winding != sign)
+            if (winding != 0 && winding != cornerSide)
             {
                 return "Corners cross or form a concave area; select them around the perimeter";
             }
-            winding = sign;
+            winding = cornerSide;
         }
     }
     return "";
 }
 
+// Check the center against the polygon and its vertical contact allowance.
 contains(points, origin, grounded, requireGround, heightAbove)
 {
+    minimumWalkableNormalZ = 0.7;
+    lowerContactTolerance = 2;
+    upperContactTolerance = 4;
     if (!isDefined(heightAbove))
     {
         heightAbove = 0;
@@ -106,33 +115,34 @@ contains(points, origin, grounded, requireGround, heightAbove)
         return false;
     }
     normal = planeNormal(points);
-    if (normal[2] < 0.7)
+    if (normal[2] < minimumWalkableNormalZ)
     {
         return false;
     }
-    height = vectorDot(origin - points[0], normal) / normal[2];
-    if (height < -2 || height > 4 + supportOffset(points) + heightAbove)
+    heightAbovePlane = vectorDot(origin - points[0], normal) / normal[2];
+    if (heightAbovePlane < 0 - lowerContactTolerance ||
+       heightAbovePlane > upperContactTolerance + supportOffset(points) + heightAbove)
     {
         return false;
     }
-    side = 0;
+    polygonSide = 0;
     for (i = 0; i < points.size; i++)
     {
-        cross = _cross(points[i], points[(i + 1) % points.size], origin);
-        if (abs(cross) <= edgeTolerance(points[i], points[(i + 1) % points.size]))
+        signedCrossProduct = _cross(points[i], points[(i + 1) % points.size], origin);
+        if (abs(signedCrossProduct) <= edgeTolerance(points[i], points[(i + 1) % points.size]))
         {
             continue;
         }
-        sign = 1;
-        if (cross < 0)
+        edgeSide = 1;
+        if (signedCrossProduct < 0)
         {
-            sign = -1;
+            edgeSide = -1;
         }
-        if (side != 0 && side != sign)
+        if (polygonSide != 0 && polygonSide != edgeSide)
         {
             return false;
         }
-        side = sign;
+        polygonSide = edgeSide;
     }
     return true;
 }
@@ -142,6 +152,11 @@ contains(points, origin, grounded, requireGround, heightAbove)
 // player contact tests use the 15-unit collision footprint.
 touchesPlayer(points, origin, grounded, requireGround, heightAbove)
 {
+    playerContactRadius = 15;
+    minimumWalkableNormalZ = 0.7;
+    minimumEdgeLengthSquared = 0.0001;
+    lowerContactTolerance = 2;
+    upperContactTolerance = 4;
     if (!isDefined(heightAbove))
     {
         heightAbove = 0;
@@ -159,41 +174,44 @@ touchesPlayer(points, origin, grounded, requireGround, heightAbove)
         return true;
     }
     normal = planeNormal(points);
-    if (normal[2] < 0.7)
+    if (normal[2] < minimumWalkableNormalZ)
     {
         return false;
     }
     for (i = 0; i < points.size; i++)
     {
-        a = points[i];
-        b = points[(i + 1) % points.size];
-        dx = b[0] - a[0];
-        dy = b[1] - a[1];
-        lengthSquared = dx * dx + dy * dy;
-        if (lengthSquared < 0.0001)
+        edgeStart = points[i];
+        edgeEnd = points[(i + 1) % points.size];
+        edgeDeltaX = edgeEnd[0] - edgeStart[0];
+        edgeDeltaY = edgeEnd[1] - edgeStart[1];
+        edgeLengthSquared = edgeDeltaX * edgeDeltaX + edgeDeltaY * edgeDeltaY;
+        if (edgeLengthSquared < minimumEdgeLengthSquared)
         {
             continue;
         }
-        t = ((origin[0] - a[0]) * dx + (origin[1] - a[1]) * dy) / lengthSquared;
-        if (t < 0)
+        nearestPointFraction =
+            ((origin[0] - edgeStart[0]) * edgeDeltaX + (origin[1] - edgeStart[1]) * edgeDeltaY) /
+            edgeLengthSquared;
+        if (nearestPointFraction < 0)
         {
-            t = 0;
+            nearestPointFraction = 0;
         }
-        if (t > 1)
+        if (nearestPointFraction > 1)
         {
-            t = 1;
+            nearestPointFraction = 1;
         }
-        nearest = a + vectorScale(b - a, t);
-        x = origin[0] - nearest[0];
-        y = origin[1] - nearest[1];
+        nearestPoint = edgeStart + vectorScale(edgeEnd - edgeStart, nearestPointFraction);
+        x = origin[0] - nearestPoint[0];
+        y = origin[1] - nearestPoint[1];
         // Segment distance also rounds corners instead of extending each edge
         // independently, which would award checkpoints beyond the footprint.
-        if (x * x + y * y > 225)
+        if (x * x + y * y > playerContactRadius * playerContactRadius)
         {
             continue;
         }
-        height = origin[2] - nearest[2];
-        if (height >= -2 && height <= 4 + supportOffset(points) + heightAbove)
+        heightAboveEdge = origin[2] - nearestPoint[2];
+        if (heightAboveEdge >= 0 - lowerContactTolerance &&
+           heightAboveEdge <= upperContactTolerance + supportOffset(points) + heightAbove)
         {
             return true;
         }
@@ -222,11 +240,13 @@ planeNormal(points)
     return normal;
 }
 
-// The player's 15-unit capsule rests above the plane at its center on a slope.
+// The player's capsule rests above the plane at its center on a slope.
+// Callers must establish a walkable plane before dividing by its vertical normal.
 supportOffset(points)
 {
+    playerContactRadius = 15;
     normal = planeNormal(points);
-    return 15 * (1 / normal[2] - 1);
+    return playerContactRadius * (1 / normal[2] - 1);
 }
 
 _cross(a, b, p)
@@ -251,27 +271,31 @@ encode(points)
 
 decode(text)
 {
+    maximumCorners = 8;
+    mapCoordinateLimit = 131072;
     points = [];
-    parts = strTok(text, ";");
-    if (parts.size > 8)
+    pointStrings = strTok(text, ";");
+    if (pointStrings.size > maximumCorners)
     {
         return undefined;
     }
-    for (i = 0; i < parts.size; i++)
+    for (i = 0; i < pointStrings.size; i++)
     {
-        xyz = strTok(parts[i], ",");
-        if (xyz.size != 3)
+        coordinateStrings = strTok(pointStrings[i], ",");
+        if (coordinateStrings.size != 3)
         {
             return undefined;
         }
         for (j = 0; j < 3; j++)
         {
-            if (!isValidFloat(xyz[j]) || abs(float(xyz[j])) > 131072)
+            if (!isValidFloat(coordinateStrings[j]) ||
+               abs(float(coordinateStrings[j])) > mapCoordinateLimit)
             {
                 return undefined;
             }
         }
-        points[i] = (float(xyz[0]), float(xyz[1]), float(xyz[2]));
+        points[i] =
+            (float(coordinateStrings[0]), float(coordinateStrings[1]), float(coordinateStrings[2]));
     }
     return points;
 }
@@ -280,5 +304,6 @@ decode(text)
 // so tiny checkpoint edges do not acquire a larger containment allowance.
 edgeTolerance(a, b)
 {
-    return 0.0001 * distance((a[0], a[1], 0), (b[0], b[1], 0));
+    edgeDistanceTolerance = 0.0001;
+    return edgeDistanceTolerance * distance((a[0], a[1], 0), (b[0], b[1], 0));
 }

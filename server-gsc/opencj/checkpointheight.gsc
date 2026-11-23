@@ -1,230 +1,236 @@
 #include openCJ\util;
 
-above(cp)
+above(checkpoint)
 {
-    if (isDefined(cp.heightAbove))
+    if (isDefined(checkpoint.heightAbove))
     {
-        return cp.heightAbove;
+        return checkpoint.heightAbove;
     }
     return 0;
 }
-same(a, b)
+
+same(firstCheckpoint, secondCheckpoint)
 {
-    return above(a) == above(b);
+    return above(firstCheckpoint) == above(secondCheckpoint);
 }
+
 valid(value)
 {
-    return value >= 0 && value <= 16384;
+    maximumHeightOffset = 16384;
+    return value >= 0 && value <= maximumHeightOffset;
 }
 
 // A curved manual selection becomes a horizontal footprint at its lowest corner.
 // Planar sloped selections retain their original plane.
-flatten(cp)
+flatten(checkpoint)
 {
-    if(cp.points.size < 4 ||
-       openCJ\checkpointArea::validate(cp.points) != "All corners must lie on the same plane")
+    if(checkpoint.points.size < 4 || openCJ\checkpointArea::validate(checkpoint.points) !=
+                                         "All corners must lie on the same plane")
     {
         return false;
     }
-    low = cp.points[0][2];
-    high = low;
-    for(i = 1; i < cp.points.size; i++)
+    lowestCornerZ = checkpoint.points[0][2];
+    highestCornerZ = lowestCornerZ;
+    for(i = 1; i < checkpoint.points.size; i++)
     {
-        low = min(low, cp.points[i][2]);
-        high = max(high, cp.points[i][2]);
+        lowestCornerZ = min(lowestCornerZ, checkpoint.points[i][2]);
+        highestCornerZ = max(highestCornerZ, checkpoint.points[i][2]);
     }
-    for(i = 0; i < cp.points.size; i++)
+    for(i = 0; i < checkpoint.points.size; i++)
     {
-        cp.points[i] = (cp.points[i][0], cp.points[i][1], low);
+        checkpoint.points[i] = (checkpoint.points[i][0], checkpoint.points[i][1], lowestCornerZ);
     }
-    cp.heightAbove = max(above(cp), high - low);
+    checkpoint.heightAbove = max(above(checkpoint), highestCornerZ - lowestCornerZ);
     return true;
 }
 
-planeZ(points, p)
+// The caller must validate a walkable plane before solving its height at XY.
+planeZ(points, position)
 {
-    n = openCJ\checkpointArea::planeNormal(points);
-    return points[0][2] - (n[0] * (p[0] - points[0][0]) + n[1] * (p[1] - points[0][1])) / n[2];
+    normal = openCJ\checkpointArea::planeNormal(points);
+    return points[0][2] -
+           (normal[0] * (position[0] - points[0][0]) + normal[1] * (position[1] - points[0][1])) /
+               normal[2];
 }
-lower(points, cp, p)
+
+lower(points, position)
 {
-    return planeZ(points, p) - 2;
+    lowerContactTolerance = 2;
+    return planeZ(points, position) - lowerContactTolerance;
 }
-upper(points, cp, p)
+
+upper(points, checkpoint, position)
 {
-    return planeZ(points, p) + 4 + openCJ\checkpointArea::supportOffset(points) + above(cp);
+    upperContactTolerance = 4;
+    return planeZ(points, position) + upperContactTolerance +
+           openCJ\checkpointArea::supportOffset(points) + above(checkpoint);
 }
 
 // Clip an XY polygon against a linear inequality evaluated at its vertices.
 clipValues(points, values)
 {
-    out = [];
+    clippedPoints = [];
     for(i = 0; i < points.size; i++)
     {
-        j = (i + 1) % points.size;
-        a = values[i];
-        b = values[j];
-        if(a >= 0)
+        nextIndex = (i + 1) % points.size;
+        currentValue = values[i];
+        nextValue = values[nextIndex];
+        if(currentValue >= 0)
         {
-            out[out.size] = points[i];
+            clippedPoints[clippedPoints.size] = points[i];
         }
-        if((a < 0 && b > 0) || (a > 0 && b < 0))
+        if((currentValue < 0 && nextValue > 0) || (currentValue > 0 && nextValue < 0))
         {
-            out[out.size] = points[i] + vectorScale(points[j] - points[i], a / (a - b));
+            intersectionFraction = currentValue / (currentValue - nextValue);
+            clippedPoints[clippedPoints.size] =
+                points[i] + vectorScale(points[nextIndex] - points[i], intersectionFraction);
         }
     }
-    return out;
+    return clippedPoints;
 }
+
 xyArea(points)
 {
-    sum = 0;
+    signedDoubleArea = 0;
     for(i = 1; i < points.size - 1; i++)
     {
-        sum += openCJ\checkpointArea::_cross(points[0], points[i], points[i + 1]);
+        signedDoubleArea += openCJ\checkpointArea::_cross(points[0], points[i], points[i + 1]);
     }
-    return abs(sum) * 0.5;
+    return abs(signedDoubleArea) * 0.5;
 }
 
 // Intersection of two vertical prisms, including tilted upper/lower planes.
 // Unlike centre sampling this also detects narrow crossing strips and containment.
-overlap(a, ap, b, bp)
+overlap(firstCheckpoint, firstPoints, secondCheckpoint, secondPoints)
 {
-    if(ap.size < 3 || bp.size < 3)
+    minimumOverlapArea = 0.0001;
+    if(firstPoints.size < 3 || secondPoints.size < 3)
     {
         return false;
     }
+    if(!boundsOverlap(firstPoints, secondPoints))
+    {
+        return false;
+    }
+    if(openCJ\checkpointArea::validate(firstPoints) != "" ||
+       openCJ\checkpointArea::validate(secondPoints) != "")
+    {
+        return false;
+    }
+
+    intersection = clipFootprints(firstPoints, secondPoints);
+    intersection =
+        clipHeights(intersection, firstCheckpoint, firstPoints, secondCheckpoint, secondPoints);
+    return intersection.size >= 3 && xyArea(intersection) > minimumOverlapArea;
+}
+
+boundsOverlap(firstPoints, secondPoints)
+{
     // Cheap bounds discard unrelated platforms before polygon clipping.
     for(axis = 0; axis < 2; axis++)
     {
-        amin = ap[0][axis];
-        amax = amin;
-        bmin = bp[0][axis];
-        bmax = bmin;
-        for(i = 1; i < ap.size; i++)
+        firstMin = firstPoints[0][axis];
+        firstMax = firstMin;
+        secondMin = secondPoints[0][axis];
+        secondMax = secondMin;
+        for(i = 1; i < firstPoints.size; i++)
         {
-            amin = min(amin, ap[i][axis]);
-            amax = max(amax, ap[i][axis]);
+            firstMin = min(firstMin, firstPoints[i][axis]);
+            firstMax = max(firstMax, firstPoints[i][axis]);
         }
-        for(i = 1; i < bp.size; i++)
+        for(i = 1; i < secondPoints.size; i++)
         {
-            bmin = min(bmin, bp[i][axis]);
-            bmax = max(bmax, bp[i][axis]);
+            secondMin = min(secondMin, secondPoints[i][axis]);
+            secondMax = max(secondMax, secondPoints[i][axis]);
         }
-        if(amax <= bmin || bmax <= amin)
-        {
-            return false;
-        }
-    }
-    if(openCJ\checkpointArea::validate(ap) != "" || openCJ\checkpointArea::validate(bp) != "")
-    {
-        return false;
-    }
-    poly = ap;
-    winding = 1;
-    if(openCJ\checkpointArea::_cross(bp[0], bp[1], bp[2]) < 0)
-    {
-        winding = -1;
-    }
-    for(e = 0; e < bp.size && poly.size >= 3; e++)
-    {
-        values = [];
-        for(i = 0; i < poly.size; i++)
-        {
-            values[i] =
-                winding * openCJ\checkpointArea::_cross(bp[e], bp[(e + 1) % bp.size], poly[i]);
-        }
-        poly = clipValues(poly, values);
-    }
-    for(side = 0; side < 2 && poly.size >= 3; side++)
-    {
-        values = [];
-        for(i = 0; i < poly.size; i++)
-        {
-            if(side == 0)
-            {
-                values[i] = upper(ap, a, poly[i]) - lower(bp, b, poly[i]) - 0.001;
-            }
-            else
-            {
-                values[i] = upper(bp, b, poly[i]) - lower(ap, a, poly[i]) - 0.001;
-            }
-        }
-        poly = clipValues(poly, values);
-    }
-    return poly.size >= 3 && xyArea(poly) > 0.0001;
-}
-areas(cp)
-{
-    result = [];
-    if(isDefined(cp.points))
-    {
-        result[0] = cp.points;
-    }
-    else if(isDefined(cp.area))
-    {
-        result[0] = cp.area;
-    }
-    if(isDefined(cp.alternatives))
-    {
-        for(i = 0; i < cp.alternatives.size; i++)
-        {
-            result[result.size] = cp.alternatives[i];
-        }
-    }
-    return result;
-}
-groupsOverlap(a, b)
-{
-    aa = areas(a);
-    bb = areas(b);
-    for(i = 0; i < aa.size; i++)
-    {
-        for(j = 0; j < bb.size; j++)
-        {
-            if(overlap(a, aa[i], b, bb[j]))
-            {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-sameArea(a, b)
-{
-    if(a.size != b.size)
-    {
-        return false;
-    }
-    for(i = 0; i < a.size; i++)
-    {
-        found = false;
-        for(j = 0; j < b.size; j++)
-        {
-            if(distanceSquared(a[i], b[j]) < 0.0001)
-            {
-                found = true;
-            }
-        }
-        if(!found)
+        if(firstMax <= secondMin || secondMax <= firstMin)
         {
             return false;
         }
     }
     return true;
 }
-isSelectedCopy(cp, selected)
+
+// Clip against every edge of the second convex footprint, in either winding.
+clipFootprints(firstPoints, secondPoints)
 {
-    if(!isDefined(selected))
+    intersection = firstPoints;
+    winding = 1;
+    if(openCJ\checkpointArea::_cross(secondPoints[0], secondPoints[1], secondPoints[2]) < 0)
     {
-        return false;
+        winding = -1;
     }
-    a = areas(cp);
-    b = areas(selected);
-    for(i = 0; i < a.size; i++)
+    for(edgeIndex = 0; edgeIndex < secondPoints.size && intersection.size >= 3; edgeIndex++)
     {
-        for(j = 0; j < b.size; j++)
+        values = [];
+        for(i = 0; i < intersection.size; i++)
         {
-            if(sameArea(a[i], b[j]))
+            values[i] =
+                winding * openCJ\checkpointArea::_cross(
+                              secondPoints[edgeIndex],
+                              secondPoints[(edgeIndex + 1) % secondPoints.size], intersection[i]);
+        }
+        intersection = clipValues(intersection, values);
+    }
+    return intersection;
+}
+
+// Keep only XY positions where both vertical ranges share positive height.
+// Touching upper/lower faces alone must not block neighboring checkpoints.
+clipHeights(intersection, firstCheckpoint, firstPoints, secondCheckpoint, secondPoints)
+{
+    heightOverlapTolerance = 0.001;
+    for(side = 0; side < 2 && intersection.size >= 3; side++)
+    {
+        values = [];
+        for(i = 0; i < intersection.size; i++)
+        {
+            if(side == 0)
+            {
+                values[i] = upper(firstPoints, firstCheckpoint, intersection[i]) -
+                            lower(secondPoints, intersection[i]) - heightOverlapTolerance;
+            }
+            else
+            {
+                values[i] = upper(secondPoints, secondCheckpoint, intersection[i]) -
+                            lower(firstPoints, intersection[i]) - heightOverlapTolerance;
+            }
+        }
+        intersection = clipValues(intersection, values);
+    }
+    return intersection;
+}
+
+areas(checkpoint)
+{
+    result = [];
+    if(isDefined(checkpoint.points))
+    {
+        result[0] = checkpoint.points;
+    }
+    else if(isDefined(checkpoint.area))
+    {
+        result[0] = checkpoint.area;
+    }
+    if(isDefined(checkpoint.alternatives))
+    {
+        for(i = 0; i < checkpoint.alternatives.size; i++)
+        {
+            result[result.size] = checkpoint.alternatives[i];
+        }
+    }
+    return result;
+}
+
+groupsOverlap(firstCheckpoint, secondCheckpoint)
+{
+    firstAreas = areas(firstCheckpoint);
+    secondAreas = areas(secondCheckpoint);
+    for(i = 0; i < firstAreas.size; i++)
+    {
+        for(j = 0; j < secondAreas.size; j++)
+        {
+            if(overlap(firstCheckpoint, firstAreas[i], secondCheckpoint, secondAreas[j]))
             {
                 return true;
             }
@@ -233,99 +239,162 @@ isSelectedCopy(cp, selected)
     return false;
 }
 
+sameArea(firstPoints, secondPoints)
+{
+    matchingCornerDistanceSquared = 0.0001;
+    if(firstPoints.size != secondPoints.size)
+    {
+        return false;
+    }
+    for(i = 0; i < firstPoints.size; i++)
+    {
+        foundMatchingCorner = false;
+        for(j = 0; j < secondPoints.size; j++)
+        {
+            if(distanceSquared(firstPoints[i], secondPoints[j]) < matchingCornerDistanceSquared)
+            {
+                foundMatchingCorner = true;
+            }
+        }
+        if(!foundMatchingCorner)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+isSelectedCopy(checkpoint, selectedCheckpoint)
+{
+    if(!isDefined(selectedCheckpoint))
+    {
+        return false;
+    }
+    candidateAreas = areas(checkpoint);
+    selectedAreas = areas(selectedCheckpoint);
+    for(i = 0; i < candidateAreas.size; i++)
+    {
+        for(j = 0; j < selectedAreas.size; j++)
+        {
+            if(sameArea(candidateAreas[i], selectedAreas[j]))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Report the first conflicting checkpoint while excluding the selected original.
 conflict(candidate)
 {
-    selected = undefined;
+    selectedCheckpoint = undefined;
     if(self.cpc.selected < self.cpc.rows.size)
     {
-        selected = openCJ\checkpointCreation::_decode(self.cpc.rows[self.cpc.selected]);
+        selectedCheckpoint = openCJ\checkpointCreation::_decode(self.cpc.rows[self.cpc.selected]);
     }
     for(i = 0; i < self.cpc.rows.size; i++)
     {
         if(i != self.cpc.selected)
         {
-            other = openCJ\checkpointCreation::_decode(self.cpc.rows[i]);
-            if(groupsOverlap(candidate, other))
+            otherCheckpoint = openCJ\checkpointCreation::_decode(self.cpc.rows[i]);
+            if(groupsOverlap(candidate, otherCheckpoint))
             {
                 return "checkpoint " + (i + 1) + " in " + self.cpc.route;
             }
         }
     }
-    // Check this account's other saved drafts, including their pending selection.
-    prefix = self openCJ\login::getPlayerID() + "_" + getCvar("mapname") + "_";
-    files =
-        opencjScanDir(getCvar("fs_homepath") + "/" + getCvar("fs_game") + "/checkpoints/drafts");
-    names = [];
-    if(isDefined(files))
+    draftConflict = self otherDraftConflict(candidate, selectedCheckpoint);
+    if(draftConflict != "")
     {
-        for(i = 0; i < files.size; i++)
+        return draftConflict;
+    }
+    return publishedConflict(candidate, selectedCheckpoint);
+}
+
+// Include pending selections in this account's other saved route drafts.
+otherDraftConflict(candidate, selectedCheckpoint)
+{
+    draftPrefix = self openCJ\login::getPlayerID() + "_" + getCvar("mapname") + "_";
+    draftFiles =
+        opencjScanDir(getCvar("fs_homepath") + "/" + getCvar("fs_game") + "/checkpoints/drafts");
+    routeNames = [];
+    if(isDefined(draftFiles))
+    {
+        for(i = 0; i < draftFiles.size; i++)
         {
-            name = openCJ\checkpointList::draftName(files[i], prefix);
-            if(isDefined(name) && name != self.cpc.route)
+            routeName = openCJ\checkpointList::draftName(draftFiles[i], draftPrefix);
+            if(isDefined(routeName) && routeName != self.cpc.route)
             {
-                names[name] = true;
+                routeNames[routeName] = true;
             }
         }
     }
-    keys = getArrayKeys(names);
-    for(k = 0; k < keys.size; k++)
+    routeNamesToCheck = getArrayKeys(routeNames);
+    for(k = 0; k < routeNamesToCheck.size; k++)
     {
-        part = self openCJ\checkpointNetwork::readSection(keys[k]);
-        if(!isDefined(part))
+        section = self openCJ\checkpointNetwork::readSection(routeNamesToCheck[k]);
+        if(!isDefined(section))
         {
             continue;
         }
-        for(i = 0; i <= part.rows.size; i++)
+        for(i = 0; i <= section.rows.size; i++)
         {
-            if(i < part.rows.size)
+            if(i < section.rows.size)
             {
-                other = openCJ\checkpointCreation::_decode(part.rows[i]);
+                otherCheckpoint = openCJ\checkpointCreation::_decode(section.rows[i]);
             }
             else
             {
-                other = part.draft;
+                otherCheckpoint = section.draft;
             }
-            if(!isDefined(other) || isSelectedCopy(other, selected))
+            if(!isDefined(otherCheckpoint) || isSelectedCopy(otherCheckpoint, selectedCheckpoint))
             {
                 continue;
             }
-            if(groupsOverlap(candidate, other))
+            if(groupsOverlap(candidate, otherCheckpoint))
             {
-                return "checkpoint " + (i + 1) + " in draft " + keys[k];
+                return "checkpoint " + (i + 1) + " in draft " + routeNamesToCheck[k];
             }
         }
     }
+    return "";
+}
+
+// Published radius checkpoints predate polygons; protect their full bounding volume.
+publishedConflict(candidate, selectedCheckpoint)
+{
     if(isDefined(level.checkpoints_checkpoints))
     {
         for(i = 0; i < level.checkpoints_checkpoints.size; i++)
         {
-            other = level.checkpoints_checkpoints[i];
-            if(!isDefined(other) || isSelectedCopy(other, selected))
+            otherCheckpoint = level.checkpoints_checkpoints[i];
+            if(!isDefined(otherCheckpoint) || isSelectedCopy(otherCheckpoint, selectedCheckpoint))
             {
                 continue;
             }
-            if(groupsOverlap(candidate, other))
+            if(groupsOverlap(candidate, otherCheckpoint))
             {
-                return "published checkpoint #" + other.id;
+                return "published checkpoint #" + otherCheckpoint.id;
             }
             // Old radius checkpoints have no polygon; conservatively protect their bounds.
-            if(!isDefined(other.area) && isDefined(other.radius))
+            if(!isDefined(otherCheckpoint.area) && isDefined(otherCheckpoint.radius))
             {
-                legacy = openCJ\checkpointCreation::_empty();
-                r = other.radius;
-                p = other.origin;
-                legacy.points[0] = p + (0 - r, 0 - r, 0);
-                legacy.points[1] = p + (r, 0 - r, 0);
-                legacy.points[2] = p + (r, r, 0);
-                legacy.points[3] = p + (0 - r, r, 0);
-                legacy.heightAbove = 2 * r;
-                for(j = 0; j < legacy.points.size; j++)
+                legacyBounds = openCJ\checkpointCreation::_empty();
+                radius = otherCheckpoint.radius;
+                origin = otherCheckpoint.origin;
+                legacyBounds.points[0] = origin + (0 - radius, 0 - radius, 0);
+                legacyBounds.points[1] = origin + (radius, 0 - radius, 0);
+                legacyBounds.points[2] = origin + (radius, radius, 0);
+                legacyBounds.points[3] = origin + (0 - radius, radius, 0);
+                legacyBounds.heightAbove = 2 * radius;
+                for(j = 0; j < legacyBounds.points.size; j++)
                 {
-                    legacy.points[j] -= (0, 0, r);
+                    legacyBounds.points[j] -= (0, 0, radius);
                 }
-                if(groupsOverlap(candidate, legacy))
+                if(groupsOverlap(candidate, legacyBounds))
                 {
-                    return "legacy checkpoint #" + other.id;
+                    return "legacy checkpoint #" + otherCheckpoint.id;
                 }
             }
         }
@@ -333,35 +402,37 @@ conflict(candidate)
     return "";
 }
 
+// Check an independent proposal before replacing the editable checkpoint.
 edit(action)
 {
+    heightStep = 4;
     if(action == "height" && isDefined(self.cpc.heightTarget))
     {
         self.cpc.heightTarget = undefined;
         return;
     }
-    cp = self.cpc.draft;
-    if(openCJ\checkpointMoving::isMoving(cp))
+    checkpoint = self.cpc.draft;
+    if(openCJ\checkpointMoving::isMoving(checkpoint))
     {
         self.cpc.status = "Whole moving platforms do not use height offsets";
         return;
     }
-    candidate = openCJ\checkpointCreation::_decode(openCJ\checkpointCreation::_encode(cp));
+    candidate = openCJ\checkpointCreation::_decode(openCJ\checkpointCreation::_encode(checkpoint));
     if(flatten(candidate))
     {
-        error = self conflict(candidate);
-        if(error != "")
+        conflictingCheckpoint = self conflict(candidate);
+        if(conflictingCheckpoint != "")
         {
-            self.cpc.status = "Height unchanged: overlaps " + error;
+            self.cpc.status = "Height unchanged: overlaps " + conflictingCheckpoint;
             self sendLocalChatMessage(self.cpc.status, true);
             return;
         }
         self.cpc.draft = candidate;
-        cp = candidate;
+        checkpoint = candidate;
         self sendLocalChatMessage(
             "Using the lowest corner as the base; Upper covers the selected corner heights.");
     }
-    if(openCJ\checkpointArea::validate(cp.points) != "")
+    if(openCJ\checkpointArea::validate(checkpoint.points) != "")
     {
         self.cpc.status = "Select at least three valid corners before editing height";
         return;
@@ -371,32 +442,32 @@ edit(action)
         self.cpc.heightTarget = "upper";
         return;
     }
-    value = above(cp);
+    requestedHeight = above(checkpoint);
     if(action == "heightup")
     {
-        value += 4;
+        requestedHeight += heightStep;
     }
     else if(action == "heightdown")
     {
-        value = max(0, value - 4);
+        requestedHeight = max(0, requestedHeight - heightStep);
     }
     else
     {
-        value = self.cpc.heightRequestValue;
+        requestedHeight = self.cpc.heightRequestValue;
     }
-    if(!valid(value))
+    if(!valid(requestedHeight))
     {
         self.cpc.status = "Height offset must be between 0 and 16384 units";
         return;
     }
-    candidate = openCJ\checkpointCreation::_decode(openCJ\checkpointCreation::_encode(cp));
-    candidate.heightAbove = value;
-    if(value > above(cp))
+    candidate = openCJ\checkpointCreation::_decode(openCJ\checkpointCreation::_encode(checkpoint));
+    candidate.heightAbove = requestedHeight;
+    if(requestedHeight > above(checkpoint))
     {
-        error = self conflict(candidate);
-        if(error != "")
+        conflictingCheckpoint = self conflict(candidate);
+        if(conflictingCheckpoint != "")
         {
-            self.cpc.status = "Height unchanged: overlaps " + error;
+            self.cpc.status = "Height unchanged: overlaps " + conflictingCheckpoint;
             self sendLocalChatMessage(self.cpc.status, true);
             return;
         }
