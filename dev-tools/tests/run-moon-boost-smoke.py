@@ -1,72 +1,69 @@
-"""Isolated native bot regression: live movement, production lifecycle handlers,
-fixture account/UI/database dependencies. Never connects to the real database."""
+"""Exercise real movement and lifecycle handlers with isolated account/UI services.
+
+The fixture uses native clients on mp_to_the_moon and never connects to gameplay SQL.
+Its original boost loop is retained only as a movement comparison.
+"""
 
 from pathlib import Path
-import shutil
-import subprocess
-import time
-import uuid
 import re
-import json
+import uuid
 
-root = Path(__file__).resolve().parents[2]
-tag = 'moon-boost-' + uuid.uuid4().hex[:8]
-home = root / 'dev-tools/local' / tag
-mod = home / 'mods/opencj'
-mod.mkdir(parents=True)
-for name in ['opencj', 'maps']:
-    shutil.copytree(root / 'server-gsc' / name, mod / name)
-for name in ['mod.ff', 'z_opencj.iwd']:
-    (mod / name).symlink_to('/mod-assets/' + name)
-(home / 'usermaps').symlink_to('/game/usermaps')
-(home / 'plugins').mkdir()
+from gsc_fixture import parse_options
+from gsc_fixture import prepare_fixture
+from gsc_fixture import run_prepared_fixture
 
-(home / 'steamclient.so').symlink_to('/game/steamclient.so')
-# Replace only service dependencies in this isolated copy. Keep the complete
-# production handlers for actual loads, spectator/spawn, and run restoration.
-keep = {
-    'mapboost': None,
-    'events/loadposition': {'main'},
-    'events/spawnspectator': {'main'},
-    'events/spawnplayer': {'main', 'cancelPendingSpawn'},
-    'events/eventhandler': {'onLoadPositionRequest'},
-    'events/playerkilled': {'main'},
-    'noclip': {'hasNoclip', 'enableNoclip', 'disableNoclip'},
-    'checkpointcreation': {
-        'isEditing',
-        'processTravelRequests',
-        'loadPosition',
-        'rememberPosition',
+ROOT = Path(__file__).resolve().parents[2]
+TEST_MAP = "mp_to_the_moon"
+COMPLETION_TIMEOUT_SECONDS = 70
+
+# Keep the complete handlers under test; replace only their account, UI, and SQL dependencies.
+RETAINED_FUNCTIONS = {
+    "mapboost": None,
+    "platformtest": None,
+    "events/loadposition": {"main"},
+    "events/spawnspectator": {"main"},
+    "events/spawnplayer": {"main", "cancelPendingSpawn"},
+    "events/eventhandler": {"onLoadPositionRequest"},
+    "events/playerkilled": {"main"},
+    "noclip": {"hasNoclip", "enableNoclip", "disableNoclip"},
+    "checkpointcreation": {
+        "isEditing",
+        "processTravelRequests",
+        "loadPosition",
+        "rememberPosition",
     },
-    'playerruns': {
-        'restoreRun', 'setRunIDAndInstanceNumber', 'getRunID',
-        'getRunInstanceNumber', 'hasRunID', 'isRunFinished',
-        '_canAccessRuns', '_invalidatePendingCreation',
+    "playerruns": {
+        "restoreRun",
+        "setRunIDAndInstanceNumber",
+        "getRunID",
+        "getRunInstanceNumber",
+        "hasRunID",
+        "isRunFinished",
+        "_canAccessRuns",
+        "_invalidatePendingCreation",
     },
-    'historysave': None,
+    "historysave": None,
 }
-custom = {
-    ('playerruns', 'archiveRun'): 'self.testArchivedRunID = runID; return;',
-    ('login', 'isLoggedIn'): 'return true;',
-    ('settings', 'areSettingsLoaded'): 'return true;',
-    ('settings', 'getSetting'): 'return false;',
-    ('shop', 'loadEquipment'): 'return self openCJ\\moonBoostTest::loadEquipmentForTest();',
-    ('fpsregistration', 'canStart'): 'return true;',
-    ('mapid', 'hasMapID'): 'return true;',
-    ('util', 'isPlayerReady'): 'return true;',
-    ('noclip', 'hasNoclip'): 'return self.noclip;',
-    ('demos', 'isPlayingDemo'): 'return self.playingDemo;',
-    ('saveposition', 'getSavedPosition'): 'return self.testSaves[backwardsAmount];',
-    ('saveposition', 'canLoadError'): 'return int(self.testNoSaves);',
-    ('saveposition', 'incrementBackwardsCount'): 'return amount;',
-    ('spawnpoints', 'getPlayerSpawnpoint'): 'return self.testSpawn;',
-    ('spawnpoints', 'getSpectatorSpawnpoint'): 'return self.testSpawn;',
-
+SERVICE_RESULTS = {
+    ("login", "isLoggedIn"): "return true;",
+    ("settings", "areSettingsLoaded"): "return true;",
+    ("settings", "getSetting"): "return false;",
+    (
+        "shop",
+        "loadEquipment",
+    ): r"return self openCJ\platformTest::loadEquipmentForTest();",
+    ("fpsregistration", "canStart"): "return true;",
+    ("mapid", "hasMapID"): "return true;",
+    ("util", "isPlayerReady"): "return true;",
+    ("noclip", "hasNoclip"): "return self.noclip;",
+    ("demos", "isPlayingDemo"): "return self.playingDemo;",
+    ("saveposition", "canLoadError"): "return int(self.testNoSaves);",
+    ("saveposition", "incrementBackwardsCount"): "return amount;",
+    ("spawnpoints", "getPlayerSpawnpoint"): "return self.testSpawn;",
+    ("spawnpoints", "getSpectatorSpawnpoint"): "return self.testSpawn;",
 }
-
-# Match the current read/write wrapper contract: a SELECT returns rows, never a
-# scalar status. Keep the real bounded history loader for empty-run relocation.
-history_rows = """
+SQL_READERS = ("mysqlAsyncQuery", "mysqlAsyncRead", "mysqlAsyncWrite")
+HISTORY_ROWS = """
     if(isDefined(self) && isDefined(self.testHistoryFailure) && self.testHistoryFailure)
     {
         return undefined;
@@ -84,125 +81,156 @@ history_rows = """
     rows[0] = row;
     return rows;
 """
-for function in ("mysqlAsyncQuery", "mysqlAsyncRead", "mysqlAsyncWrite"):
-    custom[("mysql", function)] = history_rows
 
 
-# Replace bodies using a comment/string-aware mask so braces in strings or
-# comments cannot corrupt the production signatures.
-def bodies(src):
-    mask = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"', lambda m: ' ' * (len(m[0])), src)
-    found = list(re.finditer(r'^(\w+)\(([^)]*)\)\s*\{', mask, re.M))
-    for m in reversed(found):
-        end = m.end()
+def function_bodies(source):
+    """Locate complete GSC bodies without treating quoted or commented braces as code."""
+    mask = re.sub(
+        r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"',
+        lambda match: " " * len(match[0]),
+        source,
+    )
+    definitions = list(re.finditer(r"^(\w+)\s*\(([^)]*)\)\s*\{", mask, re.MULTILINE))
+    for definition in reversed(definitions):
+        end = definition.end()
         depth = 1
-        while depth:
-            if mask[end] == '{':
+        while depth and end < len(mask):
+            if mask[end] == "{":
                 depth += 1
-            elif mask[end] == '}':
+            elif mask[end] == "}":
                 depth -= 1
             end += 1
-        yield m.group(1), m.group(2), m.end(), end - 1
+        if depth:
+            raise ValueError("Unclosed GSC function: " + definition.group(1))
+        yield definition.group(1), definition.group(2), definition.end(), end - 1
 
 
-for p in (mod / 'opencj').rglob('*.gsc'):
-    key = str(p.relative_to(mod / 'opencj').with_suffix('')).lower()
-    if key in keep and keep[key] is None:
-        continue
-    s = p.read_text()
-    for fn, args, start, end in bodies(s):
-        if fn in keep.get(key, set()):
+def service_body(module, function_name, parameters):
+    """Supply fixture results with the production function's current signature."""
+    first_parameter = parameters.split(",")[0].strip()
+    if (module, function_name) == ("playerruns", "archiveRun"):
+        return "self.testArchivedRunID = " + first_parameter + ";\n    return;"
+    if (module, function_name) == ("saveposition", "getSavedPosition"):
+        return "return self.testSaves[" + first_parameter + "];"
+    if module == "mysql" and function_name in SQL_READERS:
+        # The real loader expects a rowset, including for its storage receipt.
+        return HISTORY_ROWS.replace("query,", first_parameter + ",")
+    if (module, function_name) == ("saveposition", "incrementBackwardsCount"):
+        return "return " + first_parameter + ";"
+    return SERVICE_RESULTS.get((module, function_name), "return 0;")
+
+
+def isolate_service_dependencies(mod):
+    """Retain movement/lifecycle code and replace unrelated services in the private copy."""
+    observed = set()
+    for path in (mod / "opencj").rglob("*.gsc"):
+        module = path.relative_to(mod / "opencj").with_suffix("").as_posix().lower()
+        if module in RETAINED_FUNCTIONS and RETAINED_FUNCTIONS[module] is None:
             continue
-        body = custom.get((key, fn), 'return 0;')
-        # Match actual production parameter names for fixture-only service results.
-        if key == 'saveposition' and fn == 'getSavedPosition':
-            body = 'return self.testSaves[' + args.split(',')[0].strip() + '];'
-        if key == 'mysql' and fn in ('mysqlAsyncQuery', 'mysqlAsyncRead', 'mysqlAsyncWrite'):
-            body = body.replace('query,', args.split(',')[0].strip() + ',')
-        s = s[:start] + '\n' + body + '\n' + s[end:]
-    p.write_text(s)
-# Run restore with saved positions exercises real restoreRun/loadPosition. Empty
-# restores additionally exercise real historyLoad/_loadSavesFromDatabase.
-p = mod / 'opencj/historysave.gsc'
-s = p.read_text()
-s = s.replace(
-    '    self openCJ\\mapBoost::cancel();',
-    '    self openCJ\\mapBoost::cancel();\n    if(!self.testNoSaves)return true;',
-    1,
-)
-p.write_text(s)
-# Observe every real scale write, without replacing the native setter.
-p = mod / 'opencj/mapboost.gsc'
-s = p.read_text()
-s = re.sub(
-    r'self SetMoveSpeedScale\(([^)]+)\);', r'self.testScale=\1;self SetMoveSpeedScale(\1);', s
-)
-p.write_text(s)
-p = mod / 'maps/mp/mp_to_the_moon.gsc'
-s = p.read_text()
-for fn in ['speed', 'speed2', 'speed3']:
-    s = s.replace('thread ' + fn + '();', '')
-    s = s.replace(fn + '()\n{', fn + '()\n{\n    level endon("moon_test_stop_listener");')
-p.write_text(s)
-shutil.copyfile(root / 'dev-tools/tests/moon-boost.gsc', mod / 'opencj/moonboosttest.gsc')
-p = mod / 'maps/mp/gametypes/cj.gsc'
-s = p.read_text()
-p.write_text(s.replace('main()\n{', 'main()\n{\n    thread openCJ\\moonBoostTest::main();', 1))
-p = mod / 'maps/mp/gametypes/_callbacksetup.gsc'
-s = p.read_text()
-for fn, args, start, end in bodies(s):
-    if fn.startswith('CodeCallback_'):
-        s = s[:start] + '\n' + s[end:]
-p.write_text(s)
-name = 'opencj-' + tag
-args = [
-    'docker',
-    'compose',
-    'run',
-    '-d',
-    '--no-deps',
-    '--name',
-    name,
-    "--workdir",
-    "/workspace/" + str(home.relative_to(root)),
-    'server',
-    '/workspace/cod4x-server/bin/cod4x18_dedrun',
-]
-for k, v in [
-    ('fs_basepath', '/game'),
-    ('fs_homepath', '/workspace/dev-tools/local/' + tag),
-    ('fs_game', 'mods/opencj'),
-    ('dedicated', '2'),
-    ('net_port', '28963'),
-    ('sv_maxclients', '4'),
-    ('sv_authorizemode', '0'),
-    ('com_hunkMegs', '1024'),
-    ('developer', '1'),
-    ('g_gametype', 'cj'),
-    ('sv_fps', '20'),
-]:
-    args += ['+set', k, v]
-args += ['+map', 'mp_to_the_moon']
-try:
-    subprocess.run(args, cwd=root / 'dev-tools', check=True, capture_output=True)
-    for _ in range(70):
-        time.sleep(1)
-        log = subprocess.check_output(['docker', 'logs', name], stderr=subprocess.STDOUT, text=True)
-        if (
-            'MOON SELFTEST COMPLETE' in log
-            or 'script compile error' in log
-            or 'script runtime error' in log
-        ):
-            break
-    (home / 'test.log').write_text(log)
-    for l in log.splitlines():
-        if 'MOON SELFTEST' in l:
-            print(l, flush=True)
-    for term in ['script compile error', 'script runtime error']:
-        if term in log:
-            pos = log.index(term)
-            print(log[pos : pos + 2200], flush=True)
-    print('ARTIFACTS', home, flush=True)
-    assert 'MOON SELFTEST COMPLETE failures=0' in log
-finally:
-    subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
+        source = path.read_text()
+        for function_name, parameters, start, end in function_bodies(source):
+            observed.add((module, function_name))
+            if function_name in RETAINED_FUNCTIONS.get(module, set()):
+                continue
+            body = service_body(module, function_name, parameters)
+            source = source[:start] + "\n    " + body.strip() + "\n" + source[end:]
+        path.write_text(source)
+    required = set(SERVICE_RESULTS)
+    required.update(("mysql", name) for name in SQL_READERS)
+    required.update(
+        {("playerruns", "archiveRun"), ("saveposition", "getSavedPosition")}
+    )
+    for module, functions in RETAINED_FUNCTIONS.items():
+        if functions is not None:
+            required.update((module, name) for name in functions)
+    missing = required - observed
+    if missing:
+        raise RuntimeError(
+            "Fixture service interfaces were not found: " + repr(sorted(missing))
+        )
+
+
+def select_history_scenario(mod):
+    """Use fixture saves for nonempty restores; keep the real empty-run loader."""
+    path = mod / "opencj/historysave.gsc"
+    source = path.read_text()
+    entry = re.compile(r"(?m)^historyLoad\s*\(([^)]*)\)\s*\{")
+    match = entry.search(source)
+    if match is None:
+        raise RuntimeError("History loader was not found")
+    parameter = match.group(1).strip()
+    if not re.fullmatch(r"[A-Za-z_]\w*", parameter):
+        raise RuntimeError("Expected one run-ID parameter in the history loader")
+    source, count = entry.subn(
+        lambda match: "_fixtureHistoryLoad(" + parameter + ")\n{", source
+    )
+    if count != 1:
+        raise RuntimeError("Expected one history loader entry point")
+    wrapper = (
+        "\nhistoryLoad(" + parameter + ")\n{\n"
+        "    if(!self.testNoSaves)\n"
+        "    {\n"
+        "        return true;\n"
+        "    }\n"
+        "    return self _fixtureHistoryLoad(" + parameter + ");\n"
+        "}\n"
+    )
+    path.write_text(source + wrapper)
+
+
+def observe_speed_changes(mod):
+    """Record scale writes while still calling the native movement setter."""
+    path = mod / "opencj/mapboost.gsc"
+    source, count = re.subn(
+        r"(?m)^([ \t]*)self\s+SetMoveSpeedScale\s*\(([^;]+)\);",
+        lambda match: match[1] + "self.testScale = " + match[2] + ";\n" + match[0],
+        path.read_text(),
+    )
+    if count == 0:
+        raise RuntimeError("Native movement setters were not found")
+    path.write_text(source)
+
+
+def control_map_listeners(mod):
+    """Let each scenario start its own boost trigger without a competing map listener."""
+    path = mod / "maps/mp/mp_to_the_moon.gsc"
+    source = path.read_text()
+    for name in ("speed", "speed2", "speed3"):
+        source, removed = re.subn(r"\bthread\s+" + name + r"\s*\(\s*\)\s*;", "", source)
+        source, instrumented = re.subn(
+            r"(?m)^" + name + r"\s*\(\s*\)\s*\{",
+            lambda match: match[0] + '\n    level endon("moon_test_stop_listener");',
+            source,
+        )
+        if removed != 1 or instrumented != 1:
+            raise RuntimeError("Expected one map listener and startup call: " + name)
+    path.write_text(source)
+
+
+def main():
+    options = parse_options(
+        default_fixture=ROOT / "dev-tools/tests/moon-boost.gsc",
+        completion_marker="MOON SELFTEST COMPLETE",
+        default_maps=(TEST_MAP,),
+    )
+    if options.maps != [TEST_MAP]:
+        raise SystemExit("This fixture requires " + TEST_MAP + "'s three boost ramps.")
+    home = ROOT / "dev-tools/local" / ("moon-boost-" + uuid.uuid4().hex[:8])
+    source_hashes, _ = prepare_fixture(options, home, retained_callbacks=())
+    mod = home / "mods/opencj"
+    isolate_service_dependencies(mod)
+    select_history_scenario(mod)
+    observe_speed_changes(mod)
+    control_map_listeners(mod)
+    run_prepared_fixture(
+        options,
+        home,
+        TEST_MAP,
+        source_hashes,
+        timeout_seconds=COMPLETION_TIMEOUT_SECONDS,
+        extra_settings={"sv_fps": "20", "sv_maxclients": "4"},
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,186 +1,243 @@
+// Exercise independent boost ownership, lifecycle exits, and matching movement traces.
 main()
 {
     wait 1;
-    level.failures = 0;
+    level.moonFailures = 0;
+    level.moonChecks = 0;
+    level.moonBoostScale = 12;
+    level.moonNormalScale = 1;
     level.checkpointLayoutEpoch = 1;
     openCJ\historySave::onInit();
-    a = addTestClient();
-    b = addTestClient();
+    player = addTestClient();
+    otherPlayer = addTestClient();
     wait 0.5;
-    check(isDefined(a) && isDefined(b), "two real clients");
-    if(!isDefined(a) || !isDefined(b))
+    check(isDefined(player) && isDefined(otherPlayer), "two real clients");
+    if(!isDefined(player) || !isDefined(otherPlayer))
     {
         return;
     }
-    a setup();
-    b setup();
+    player initializePlayerState();
+    otherPlayer initializePlayerState();
+
+    player verifyIndependentPlayers(otherPlayer);
+    player verifyAirborneBoost();
+    player verifyPositionLoadCancelsBoost();
+    player verifySpectatorTransition();
+    player verifyRunRestoreCancelsBoost();
+    player verifyNoclipCancelsBoost();
+    player verifyDeathCancelsBoost();
+    player verifyCooldownOwnership();
+
+    player verifySupersededSpawn();
+    player verifyFailedRunRestore();
+    player verifyRestoreDoesNotArchiveItself();
+    player verifyEditorTravelCancelsBoost();
+    player verifyMatchedTrajectories();
+    printf("MOON SELFTEST COMPLETE failures=" + level.moonFailures + " checks=" + level.moonChecks +
+           "\n");
+}
+
+verifyIndependentPlayers(otherPlayer)
+{
     // Stationary, grounded placements inside ramp 1, separated across its width.
-    a place((-1000, -2200, 1669));
-    b place((-1200, -2200, 1669));
+    self resetPlayerAt((-1000, -2200, 1669));
+    otherPlayer resetPlayerAt((-1200, -2200, 1669));
     thread maps\mp\mp_to_the_moon::speed();
     trigger = getEnt("svt_accelerate_1", "targetname");
-    trigger notify("trigger", a);
-    trigger notify("trigger", b);
+    trigger notify("trigger", self);
+    trigger notify("trigger", otherPlayer);
     wait 0.1;
     level notify("moon_test_stop_listener");
-    check(a.testScale == 12 && b.testScale == 12,
+    check(self.testScale == level.moonBoostScale && otherPlayer.testScale == level.moonBoostScale,
           "same production trigger boosts two players independently");
-    a openCJ\mapBoost::cancel();
+    self openCJ\mapBoost::cancel();
     wait 0.1;
-    check(a.testScale == 1 && !isDefined(a.mapBoostOwned) && b.testScale == 12,
+    check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned) &&
+              otherPlayer.testScale == level.moonBoostScale,
           "cancelling A leaves B boosted");
-    check(isAlive(a) && a isOnGround(), "A ready for boost");
-    a thread openCJ\mapBoost::start(12);
+    check(isAlive(self) && self isOnGround(), "A ready for boost");
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 0.1;
-    check(a.testScale == 12 && b.testScale == 12,
+    check(self.testScale == level.moonBoostScale && otherPlayer.testScale == level.moonBoostScale,
           "A immediately reacquires without stale-thread interference");
-    a openCJ\mapBoost::cancel();
-    b openCJ\mapBoost::cancel();
+    self openCJ\mapBoost::cancel();
+    otherPlayer openCJ\mapBoost::cancel();
+}
 
-    a place((-1000, -2200, 1900));
-    a thread openCJ\mapBoost::start(12);
-    check(!isDefined(a.mapBoostOwned), "airborne touch does not consume cooldown");
+verifyAirborneBoost()
+{
+    self resetPlayerAt((-1000, -2200, 1900));
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
+    check(!isDefined(self.mapBoostOwned), "airborne touch does not consume cooldown");
+}
 
+verifyPositionLoadCancelsBoost()
+{
     for(i = 0; i < 2; i++)
     {
-        a place((-1000, -2200, 1669));
-        check(isAlive(a) && a isOnGround(), "A ready for boost");
-        a thread openCJ\mapBoost::start(12);
+        self resetPlayerAt((-1000, -2200, 1669));
+        check(isAlive(self) && self isOnGround(), "A ready for boost");
+        self thread openCJ\mapBoost::start(level.moonBoostScale);
         wait 0.1;
-        a openCJ\events\eventHandler::onLoadPositionRequest(i);
-        check(a.testScale == 1 && !isDefined(a.mapBoostOwned),
+        self openCJ\events\eventHandler::onLoadPositionRequest(i);
+        check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
               "load request cancels synchronously " + i);
-        a thread openCJ\mapBoost::start(12);
+        self thread openCJ\mapBoost::start(level.moonBoostScale);
         wait 0.1;
-        check(a.testScale == 12, "direct load begins boosted " + i);
-        a openCJ\events\loadPosition::main(i);
-        check(distance(a.origin, a.testSaves[i].origin) < 4, "real load reaches destination " + i);
+        check(self.testScale == level.moonBoostScale, "direct load begins boosted " + i);
+        self openCJ\events\loadPosition::main(i);
+        check(distance(self.origin, self.testSaves[i].origin) < 4,
+              "real load reaches destination " + i);
         wait 0.15;
-        check(a.testScale == 1 && !isDefined(a.mapBoostOwned), "load cannot reapply boost " + i);
+        check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
+              "load cannot reapply boost " + i);
     }
+}
 
-    a place((-1000, -2200, 1669));
-    check(isAlive(a) && a isOnGround(), "A ready for boost");
-    a thread openCJ\mapBoost::start(12);
+verifySpectatorTransition()
+{
+    self resetPlayerAt((-1000, -2200, 1669));
+    check(isAlive(self) && self isOnGround(), "A ready for boost");
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 0.1;
-    a openCJ\events\spawnSpectator::main();
-    check(a.sessionstate == "spectator" && a.testScale == 1 && !isDefined(a.mapBoostOwned),
+    self openCJ\events\spawnSpectator::main();
+    check(self.sessionstate == "spectator" && self.testScale == level.moonNormalScale &&
+              !isDefined(self.mapBoostOwned),
           "real spectator transition clears boost");
-    a openCJ\events\spawnPlayer::main(false);
-    check(a.sessionstate == "playing" && a.testScale == 1, "real respawn retains normal scale");
+    self openCJ\events\spawnPlayer::main(false);
+    check(self.sessionstate == "playing" && self.testScale == level.moonNormalScale,
+          "real respawn retains normal scale");
     wait 0.15;
-    check(a.testScale == 1 && !isDefined(a.mapBoostOwned),
+    check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
           "spectator-respawn cannot revive worker");
+}
 
+verifyRunRestoreCancelsBoost()
+{
     for(i = 0; i < 2; i++)
     {
-        a place((-1000, -2200, 1669));
-        a.testNoSaves = i;
-        check(isAlive(a) && a isOnGround(), "A ready for boost");
-        a thread openCJ\mapBoost::start(12);
+        self resetPlayerAt((-1000, -2200, 1669));
+        self.testNoSaves = i;
+        check(isAlive(self) && self isOnGround(), "A ready for boost");
+        self thread openCJ\mapBoost::start(level.moonBoostScale);
         wait 0.1;
-        a openCJ\playerRuns::restoreRun(999);
+        self openCJ\playerRuns::restoreRun(999);
         wait 0.2;
-        check(a.testScale == 1 && !isDefined(a.mapBoostOwned),
+        check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
               "run restore cancels boost, empty=" + i);
         if(i == 0)
         {
-            expected = a.testSaves[0].origin;
+            expectedOrigin = self.testSaves[0].origin;
         }
         else
         {
-            expected = a.testSpawn.origin;
+            expectedOrigin = self.testSpawn.origin;
         }
-        check(distance(a.origin, expected) < 6, "run restore destination, empty=" + i);
+        check(distance(self.origin, expectedOrigin) < 6, "run restore destination, empty=" + i);
     }
+}
 
-    a place((-1000, -2200, 1669));
-    a thread openCJ\mapBoost::start(12);
+verifyNoclipCancelsBoost()
+{
+    self resetPlayerAt((-1000, -2200, 1669));
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 0.1;
-    a openCJ\noclip::enableNoclip();
-    check(a.noclip && a.testScale == 1 && !isDefined(a.mapBoostOwned),
+    self openCJ\noclip::enableNoclip();
+    check(self.noclip && self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
           "real noclip activation cancels boost");
-    a thread openCJ\mapBoost::start(12);
-    check(!isDefined(a.mapBoostOwned), "noclip cannot acquire boost");
-    a openCJ\noclip::disableNoclip();
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
+    check(!isDefined(self.mapBoostOwned), "noclip cannot acquire boost");
+    self openCJ\noclip::disableNoclip();
+}
 
-    a place((-1000, -2200, 1669));
-    a thread openCJ\mapBoost::start(12);
+verifyDeathCancelsBoost()
+{
+    self resetPlayerAt((-1000, -2200, 1669));
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 0.1;
-    a openCJ\events\playerKilled::main(a, a, 100, "MOD_SUICIDE", "none", (0, 0, 0), "none", 0, 0);
-    check(a.sessionstate == "dead" && a.testScale == 1 && !isDefined(a.mapBoostOwned),
+    self openCJ\events\playerKilled::main(self, self, 100, "MOD_SUICIDE", "none", (0, 0, 0), "none",
+                                          0, 0);
+    check(self.sessionstate == "dead" && self.testScale == level.moonNormalScale &&
+              !isDefined(self.mapBoostOwned),
           "death clears boost");
+}
 
+verifyCooldownOwnership()
+{
     // A genuine boost cooldown cannot later clear a new owner.
-    a place((-1000, -2200, 1669));
-    check(isAlive(a) && a isOnGround(), "A ready for boost");
-    a thread openCJ\mapBoost::start(12);
+    self resetPlayerAt((-1000, -2200, 1669));
+    check(isAlive(self) && self isOnGround(), "A ready for boost");
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 0.1;
-    a setOriginAndAngles((-1000, -2200, 1900), (0, 90, 0)); // test-only simulated takeoff
+    self setOriginAndAngles((-1000, -2200, 1900), (0, 90, 0)); // test-only simulated takeoff
     wait 0.1;
-    check(a.testScale == 1 && isDefined(a.mapBoostOwned),
+    check(self.testScale == level.moonNormalScale && isDefined(self.mapBoostOwned),
           "successful attempt enters original cooldown");
-    a openCJ\mapBoost::cancel();
-    a place((-1000, -2200, 1669));
-    check(isAlive(a) && a isOnGround(), "A ready for boost");
-    a thread openCJ\mapBoost::start(12);
+    self openCJ\mapBoost::cancel();
+    self resetPlayerAt((-1000, -2200, 1669));
+    check(isAlive(self) && self isOnGround(), "A ready for boost");
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 2.2;
-    check(a.testScale == 12 && isDefined(a.mapBoostOwned),
+    check(self.testScale == level.moonBoostScale && isDefined(self.mapBoostOwned),
           "cancelled cooldown cannot clear new owner");
-    a openCJ\mapBoost::cancel();
+    self openCJ\mapBoost::cancel();
+}
 
-    a verifySupersededSpawn();
-    a verifyFailedRunRestore();
-    a verifyRestoreDoesNotArchiveItself();
-    a editorBoostTest();
-
+verifyMatchedTrajectories()
+{
     // Compare real engine movement using the original loop and production loop.
     // Automatic map boost listeners are disabled only in this fixture, so each
     // trial has exactly one known owner.
-    starts = [];
-    goals = [];
-    starts[0] = (-1060, -2200, 1669);
-    goals[0] = (-1060, 1800, 4000);
-    starts[1] = (2248, -1450, 1585);
-    goals[1] = (1760, -2300, 1583);
-    starts[2] = (7740, -1150, 1989);
-    goals[2] = (9300, -1150, 4000);
-    for(r = 0; r < 3; r++)
+    positionToleranceUnits = 0.1;
+    velocityToleranceUnitsPerSecond = 0.1;
+    rampStarts = [];
+    rampGoals = [];
+    rampStarts[0] = (-1060, -2200, 1669);
+    rampGoals[0] = (-1060, 1800, 4000);
+    rampStarts[1] = (2248, -1450, 1585);
+    rampGoals[1] = (1760, -2300, 1583);
+    rampStarts[2] = (7740, -1150, 1989);
+    rampGoals[2] = (9300, -1150, 4000);
+    for(rampIndex = 0; rampIndex < 3; rampIndex++)
     {
-        baseline = a trial(starts[r], goals[r], r, true);
-        actual = a trial(starts[r], goals[r], r, false);
-        maxPos = 0;
-        maxVel = 0;
+        originalTrace =
+            self captureMovementTrace(rampStarts[rampIndex], rampGoals[rampIndex], rampIndex, true);
+        productionTrace = self captureMovementTrace(rampStarts[rampIndex], rampGoals[rampIndex],
+                                                    rampIndex, false);
+        maximumPositionDelta = 0;
+        maximumVelocityDelta = 0;
         scaleMatches = true;
-        airSamples = 0;
+        airborneSamples = 0;
         boostSamples = 0;
-        for(i = 0; i < baseline.size; i++)
+        for(i = 0; i < originalTrace.size; i++)
         {
-            maxPos = max(maxPos, distance(baseline[i].origin, actual[i].origin));
-            maxVel = max(maxVel, distance(baseline[i].velocity, actual[i].velocity));
-            if(baseline[i].scale != actual[i].scale)
+            maximumPositionDelta = max(
+                maximumPositionDelta, distance(originalTrace[i].origin, productionTrace[i].origin));
+            maximumVelocityDelta = max(maximumVelocityDelta, distance(originalTrace[i].velocity,
+                                                                      productionTrace[i].velocity));
+            if(originalTrace[i].scale != productionTrace[i].scale)
             {
                 scaleMatches = false;
             }
-            if(!baseline[i].grounded)
+            if(!originalTrace[i].grounded)
             {
-                airSamples++;
+                airborneSamples++;
             }
-            if(baseline[i].scale == 12)
+            if(originalTrace[i].scale == level.moonBoostScale)
             {
                 boostSamples++;
             }
         }
-        printf("MOON SELFTEST trajectory ramp=" + r + " position_delta=" + maxPos +
-               " velocity_delta=" + maxVel + "\n");
-        check(airSamples > 0 && boostSamples > 0,
-              "trajectory includes boost and takeoff ramp " + r);
-        check(maxPos < 0.1 && maxVel < 0.1 && scaleMatches,
-              "matched trajectory and scale timing ramp " + r);
+        printf("MOON SELFTEST trajectory ramp=" + rampIndex + " position_delta=" +
+               maximumPositionDelta + " velocity_delta=" + maximumVelocityDelta + "\n");
+        check(airborneSamples > 0 && boostSamples > 0,
+              "trajectory includes boost and takeoff ramp " + rampIndex);
+        check(maximumPositionDelta < positionToleranceUnits &&
+                  maximumVelocityDelta < velocityToleranceUnitsPerSecond && scaleMatches,
+              "matched trajectory and scale timing ramp " + rampIndex);
     }
-    printf("MOON SELFTEST COMPLETE failures=" + level.failures + "\n");
 }
-setup()
+initializePlayerState()
 {
     self.sessionTeam = "allies";
     self.sessionState = "playing";
@@ -190,25 +247,26 @@ setup()
     self.isFirstSpawn = true;
     self.eventQueue = [];
     self.testNoSaves = false;
-    self.testScale = 1;
+    self.testScale = level.moonNormalScale;
     self.testSpawn = spawnStruct();
     self.testSpawn.origin = (1760, -1290, 1585);
     self.testSpawn.angles = (0, 90, 0);
     self.testSaves = [];
     for(i = 0; i < 2; i++)
     {
-        s = spawnStruct();
-        s.origin = (1550 + i * 300, -1290, 1585);
-        s.angles = (0, 90, 0);
-        s.explosiveJumps = 0;
-        s.doubleExplosives = 0;
-        s.FPSMode = 125;
-        s.checkpointID = 0;
-        s.saveNum = i;
-        self.testSaves[i] = s;
+        save = spawnStruct();
+        save.origin = (1550 + i * 300, -1290, 1585);
+        save.angles = (0, 90, 0);
+        save.explosiveJumps = 0;
+        save.doubleExplosives = 0;
+        save.FPSMode = 125;
+        save.checkpointID = 0;
+        save.saveNum = i;
+        self.testSaves[i] = save;
     }
 }
-place(origin)
+// Reset physics and allow the test client to settle before each movement trial.
+resetPlayerAt(origin)
 {
     self notify("moon_test_baseline_cancel");
     self openCJ\mapBoost::cancel();
@@ -219,94 +277,105 @@ place(origin)
     self spawn(origin, (0, 90, 0));
     self.maxhealth = 100;
     self.health = 100;
-    self setMoveSpeedScale(1);
-    self.testScale = 1;
+    self setMoveSpeedScale(level.moonNormalScale);
+    self.testScale = level.moonNormalScale;
     self setg_speed(190);
     self setOriginAndAngles(origin, (0, 90, 0));
     self setVelocity((0, 0, 0));
-    wait 0.3;
+    settleSeconds = 0.3;
+    wait settleSeconds;
 }
-trial(origin, goal, ramp, original)
+captureMovementTrace(origin, targetOrigin, rampIndex, useOriginalLoop)
 {
-    self place(origin);
+    self resetPlayerAt(origin);
     printf("MOON SELFTEST trial origin=" + self.origin + " alive=" + isAlive(self) + "\n");
-    check(self isOnGround(), "trial starts grounded ramp " + ramp);
+    check(self isOnGround(), "trial starts grounded ramp " + rampIndex);
     self.testTrace = [];
-    if(original)
+    frameCount = 60;
+    frameStepSeconds = 0.05;
+    jumpPressFrame = 30;
+    jumpReleaseFrame = 31;
+    firstTurnFrame = 4;
+    finalTurnFrame = 10;
+    if(useOriginalLoop)
     {
         self thread originalBoost();
     }
     else
     {
-        self thread openCJ\mapBoost::start(12);
+        self thread openCJ\mapBoost::start(level.moonBoostScale);
     }
-    if(ramp == 1)
+    if(rampIndex == 1)
     {
         self botMoveTo((2248, -1288, 1583));
     }
     else
     {
-        self botMoveTo(goal);
+        self botMoveTo(targetOrigin);
     }
-    for(i = 0; i < 60; i++)
+    for(i = 0; i < frameCount; i++)
     {
-        if(ramp == 0 && i == 30)
+        if(rampIndex == 0 && i == jumpPressFrame)
         {
             self botAction("+gostand");
         }
-        if(ramp == 0 && i == 31)
+        if(rampIndex == 0 && i == jumpReleaseFrame)
         {
             self botAction("-gostand");
         }
-        if(ramp == 1 && i == 4)
+        if(rampIndex == 1 && i == firstTurnFrame)
         {
             self botMoveTo((1760, -1288, 1583));
         }
-        if(ramp == 1 && i == 10)
+        if(rampIndex == 1 && i == finalTurnFrame)
         {
-            self botMoveTo(goal);
+            self botMoveTo(targetOrigin);
         }
-        t = spawnStruct();
-        t.origin = self.origin;
-        t.velocity = self getVelocity();
-        t.scale = self.testScale;
-        t.grounded = self isOnGround();
-        self.testTrace[i] = t;
-        wait 0.05;
+        sample = spawnStruct();
+        sample.origin = self.origin;
+        sample.velocity = self getVelocity();
+        sample.scale = self.testScale;
+        sample.grounded = self isOnGround();
+        self.testTrace[i] = sample;
+        wait frameStepSeconds;
     }
     printf("MOON SELFTEST trajectory endpoint=" + self.origin + " velocity=" + self getVelocity() +
            "\n");
     trace = self.testTrace;
     self notify("moon_test_baseline_cancel");
     self openCJ\mapBoost::cancel();
-    self setMoveSpeedScale(1);
+    self setMoveSpeedScale(level.moonNormalScale);
     self botStop();
     return trace;
 }
+// Preserve the old grounded-loop behavior as an independent movement reference.
 originalBoost()
 {
     self endon("disconnect");
     self endon("moon_test_baseline_cancel");
+    frameStepSeconds = 0.05;
+    cooldownSeconds = 2;
     while(self isOnGround())
     {
-        self.testScale = 12;
-        self setMoveSpeedScale(12);
-        wait 0.05;
+        self.testScale = level.moonBoostScale;
+        self setMoveSpeedScale(level.moonBoostScale);
+        wait frameStepSeconds;
     }
-    self.testScale = 1;
-    self setMoveSpeedScale(1);
-    wait 2;
+    self.testScale = level.moonNormalScale;
+    self setMoveSpeedScale(level.moonNormalScale);
+    wait cooldownSeconds;
 }
-check(ok, message)
+check(passed, description)
 {
-    if(!ok)
+    level.moonChecks++;
+    if(!isDefined(passed) || !passed)
     {
-        level.failures++;
+        level.moonFailures++;
     }
-    printf("MOON SELFTEST " + message + ": " + ok + "\n");
+    printf("MOON SELFTEST " + description + ": " + passed + "\n");
 }
 
-editorBoostTest()
+verifyEditorTravelCancelsBoost()
 {
     self.cpc = spawnStruct();
     self.cpc.positions = [];
@@ -315,32 +384,32 @@ editorBoostTest()
     self.cpc.travelIndex = 0;
     for(i = 0; i < 2; i++)
     {
-        self place((7740, -1150, 1989));
+        self resetPlayerAt((7740, -1150, 1989));
         thread maps\mp\mp_to_the_moon::speed3();
         trigger = getEnt("svt_accelerate_3", "targetname");
         trigger notify("trigger", self);
         wait 0.1;
         level notify("moon_test_stop_listener");
-        check(self.testScale == 12 && isDefined(self.mapBoostOwned),
+        check(self.testScale == level.moonBoostScale && isDefined(self.mapBoostOwned),
               "editor can activate actual inter-ramp trigger " + i);
         self openCJ\events\eventHandler::onLoadPositionRequest(i);
-        check(self.testScale == 1 && !isDefined(self.mapBoostOwned),
+        check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
               "editor load request cancels active boost " + i);
         self openCJ\checkpointCreation::processTravelRequests();
         check(distance(self.origin, self.testSaves[i].origin) < 4,
               "real editor load reaches destination " + i);
         wait 0.15;
-        check(self.testScale == 1 && !isDefined(self.mapBoostOwned),
+        check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
               "editor teleport cannot revive boost " + i);
     }
-    self place((7740, -1150, 1989));
-    self thread openCJ\mapBoost::start(12);
+    self resetPlayerAt((7740, -1150, 1989));
+    self thread openCJ\mapBoost::start(level.moonBoostScale);
     wait 0.1;
-    check(self.testScale == 12, "editor can reactivate after loading");
+    check(self.testScale == level.moonBoostScale, "editor can reactivate after loading");
     self.cpc.restoreOrigin = self.testSaves[0].origin;
     self.cpc.restoreAngles = self.testSaves[0].angles;
     self openCJ\checkpointCreation::processTravelRequests();
-    check(self.testScale == 1 && !isDefined(self.mapBoostOwned),
+    check(self.testScale == level.moonNormalScale && !isDefined(self.mapBoostOwned),
           "editor restore-origin travel cancels boost");
     check(distance(self.origin, self.testSaves[0].origin) < 4,
           "editor restore-origin reaches destination");
@@ -350,7 +419,7 @@ editorBoostTest()
 // A failed history read must not move the player or turn the old run into a fresh one.
 verifyFailedRunRestore()
 {
-    self place((-1000, -2200, 1669));
+    self resetPlayerAt((-1000, -2200, 1669));
     self.playerRuns_runID = 321;
     self.runInstanceNumber = 7;
     self.playerRuns_runStarted = false;

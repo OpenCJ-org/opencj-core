@@ -25,11 +25,18 @@ SCRIPT_ERRORS = (
 COMPLETION_TIMEOUT_SECONDS = 45
 
 
-def parse_options(*, default_fixture=None, completion_marker="DEMO VIEWING COMPLETE"):
+def parse_options(
+    *,
+    default_fixture=None,
+    completion_marker="DEMO VIEWING COMPLETE",
+    default_maps=("mp_killhouse",)
+):
     """Reject invalid inputs before creating a fixture home or container."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("maps", nargs="*", default=["mp_killhouse"])
-    parser.add_argument("--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun")
+    parser.add_argument("maps", nargs="*", default=list(default_maps))
+    parser.add_argument(
+        "--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun"
+    )
     parser.add_argument(
         "--fixture",
         type=Path,
@@ -67,7 +74,9 @@ def parse_options(*, default_fixture=None, completion_marker="DEMO VIEWING COMPL
         parser.error("--completion-marker must be one nonempty line")
     for map_name in options.maps:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", map_name):
-            parser.error("Map names must contain only letters, numbers, underscores or hyphens")
+            parser.error(
+                "Map names must contain only letters, numbers, underscores or hyphens"
+            )
     return options
 
 
@@ -210,7 +219,9 @@ def prepare_fixture(options, home, *, retained_callbacks=("CodeCallback_FragButt
     return original_hashes, script_hashes(mod)
 
 
-def server_command(options, home, container_name, map_name, plugin_names):
+def server_command(
+    options, home, container_name, map_name, plugin_names, extra_settings=None
+):
     container_home = "/workspace/" + home.relative_to(ROOT).as_posix()
     command = [
         "docker",
@@ -238,6 +249,8 @@ def server_command(options, home, container_name, map_name, plugin_names):
         "g_gametype": "cj",
         "opencj_isolated_demo_test": "1",
     }
+    if extra_settings:
+        settings.update(extra_settings)
     for setting, value in settings.items():
         command.extend(["+set", setting, value])
     for plugin_name in plugin_names:
@@ -246,13 +259,17 @@ def server_command(options, home, container_name, map_name, plugin_names):
     return command
 
 
-def wait_for_fixture(container_name, completion_markers):
+def wait_for_fixture(
+    container_name, completion_markers, timeout_seconds=COMPLETION_TIMEOUT_SECONDS
+):
     """Bound the wait and retain the engine's own error when the container exits."""
-    deadline = time.monotonic() + COMPLETION_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout_seconds
     log = ""
     while time.monotonic() < deadline:
         time.sleep(1)
-        result = subprocess.run(["docker", "logs", container_name], capture_output=True, text=True)
+        result = subprocess.run(
+            ["docker", "logs", container_name], capture_output=True, text=True
+        )
         log = result.stdout + result.stderr
         if all(marker in log for marker in completion_markers) or any(
             error in log for error in SCRIPT_ERRORS
@@ -294,7 +311,15 @@ def run_fixture(options, map_name):
 
 
 def run_prepared_fixture(
-    options, home, map_name, source_hashes, *, plugin_names=(), extra_completion_markers=()
+    options,
+    home,
+    map_name,
+    source_hashes,
+    *,
+    plugin_names=(),
+    extra_completion_markers=(),
+    timeout_seconds=COMPLETION_TIMEOUT_SECONDS,
+    extra_settings=None
 ):
     """Run an already prepared private copy and retain its actual source hashes."""
     fixture_hashes = script_hashes(home / "mods/opencj")
@@ -302,12 +327,14 @@ def run_prepared_fixture(
     completion_markers = (options.completion_marker, *extra_completion_markers)
     try:
         subprocess.run(
-            server_command(options, home, container_name, map_name, plugin_names),
+            server_command(
+                options, home, container_name, map_name, plugin_names, extra_settings
+            ),
             cwd=ROOT / "dev-tools",
             check=True,
             capture_output=True,
         )
-        log = wait_for_fixture(container_name, completion_markers)
+        log = wait_for_fixture(container_name, completion_markers, timeout_seconds)
         (home / "console.log").write_text(log)
         passed = all(
             re.search(re.escape(marker) + r"\s+failures=0(?:\s|$)", log)
@@ -343,7 +370,9 @@ def run_prepared_fixture(
                 position = log.index(error)
                 print(log[position : position + 1400], flush=True)
         if not passed:
-            raise RuntimeError("GSC fixture failed or timed out; see " + str(home / "console.log"))
+            raise RuntimeError(
+                "GSC fixture failed or timed out; see " + str(home / "console.log")
+            )
         return report
     finally:
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
