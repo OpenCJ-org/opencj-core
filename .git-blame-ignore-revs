@@ -56,3 +56,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # FPS fixture layout; non-brace tokens preserved and both suites passed.
 5c086f7378e76bcebc1158647b4adb82ad30131d
+
+# Narrow gameplay layout; non-brace tokens preserved and HUD fixtures passed.
+8a1858ef86ce78ad6ac4df14d44e9a80c294bacf
