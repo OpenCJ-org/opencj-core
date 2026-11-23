@@ -569,7 +569,11 @@ G_LocalizedStringIndex(string)
     // Return the absolute configstring index used by client "d" commands.
     if (getCodVersion() == 4)
     {
-        return G_FindConfigstringIndex(string, 309, 512);
+        localizedStringStart = 309;
+        localizedStringCount = 512;
+        return G_FindConfigstringIndex(string, localizedStringStart, localizedStringCount);
     }
-    return G_FindConfigstringIndex(string, 1310, 256);
+    localizedStringStart = 1310;
+    localizedStringCount = 256;
+    return G_FindConfigstringIndex(string, localizedStringStart, localizedStringCount);
 }

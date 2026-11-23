@@ -2,9 +2,12 @@
 
 onInit()
 {
-    // Keep saved 0/1 preferences compatible: 0 off, 1 OpenCJ, 2 standard.
+    // These values are saved player preferences; preserve their existing meanings.
+    level.fpsHudModeOff = 0;
+    level.fpsHudModeOpenCJ = 1;
+    level.fpsHudModeStandard = 2;
     underlyingCmd = openCJ\settings::addSettingInt(
-        "fpshud", 0, 2, 1,
+        "fpshud", level.fpsHudModeOff, level.fpsHudModeStandard, level.fpsHudModeOpenCJ,
         "FPS overlay: 0 off, 1 OpenCJ, 2 standard (cg_drawfps). Usage: !fpshud [0-2]",
         ::_onFPSHudSetting);
     openCJ\huds\infiniteHuds::initInfiniteHud("fps");
@@ -55,15 +58,16 @@ onSpawnPlayer()
     self.hud[self.fpsHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(currentFPSText, self, false);
 }
 
-_onFPSHudSetting(newVal)
+_onFPSHudSetting(displayMode)
 {
-    shouldEnable = (newVal == 1);
-    self setClientCvar("cg_drawfps", int(newVal == 2));
+    shouldEnable = (displayMode == level.fpsHudModeOpenCJ);
+    self setClientCvar("cg_drawfps", int(displayMode == level.fpsHudModeStandard));
 
     if(shouldEnable)
     {
         currentFPSText = "" + self openCJ\fps::getCurrentFPS();
-        self.hud[self.fpsHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(currentFPSText, self, false);
+        self.hud[self.fpsHudName] openCJ\huds\infiniteHuds::setInfiniteHudText(
+            currentFPSText, self, false);
         self openCJ\huds\base::enableHUD(self.fpsHudName);
     }
     else
