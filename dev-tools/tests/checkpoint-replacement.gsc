@@ -2,109 +2,122 @@ main()
 {
     wait 2;
     level.replacementFailures = 0;
-    p = spawnStruct();
-    p.cpc = spawnStruct();
-    p.cpc.rows = [];
-    p.cpc.history = [];
-    p.cpc.testing = false;
-    p.cpc.revision = 0;
-    p.cpc.route = "replacement_test";
-    p.cpc.routeHex = "#ff7777";
-    p.cpc.path = "replacement_test";
-    a = area(0);
-    b = area(200);
-    c = area(400);
-    c.finish = true;
-    b.alternatives[0] = area(600).points;
-    b.double = true;
-    b.allowEle = true;
-    b.allowSave = false;
-    b.onGround = false;
-    p.cpc.rows[0] = openCJ\checkpointCreation::_encode(a);
-    p.cpc.rows[1] = openCJ\checkpointCreation::_encode(b);
-    p.cpc.rows[2] = openCJ\checkpointCreation::_encode(c);
-    original = p.cpc.rows[1];
-    before = p.cpc.rows[0];
-    after = p.cpc.rows[2];
-    p.cpc.selected = 1;
-    p.cpc.draft = openCJ\checkpointCreation::_decode(original);
-    p openCJ\checkpointCreation::_action("replace");
-    check(p.cpc.selected == 1 && p.cpc.rows.size == 3, "replacement keeps route position");
-    check(p.cpc.rows[1] == original && p.cpc.rows[0] == before && p.cpc.rows[2] == after,
+    editor = spawnStruct();
+    editor.cpc = spawnStruct();
+    editor.cpc.rows = [];
+    editor.cpc.history = [];
+    editor.cpc.testing = false;
+    editor.cpc.revision = 0;
+    editor.cpc.route = "replacement_test";
+    editor.cpc.routeHex = "#ff7777";
+    editor.cpc.path = "replacement_test";
+    startCheckpoint = area(0);
+    middleCheckpoint = area(200);
+    finishCheckpoint = area(400);
+    finishCheckpoint.finish = true;
+    middleCheckpoint.alternatives[0] = area(600).points;
+    middleCheckpoint.double = true;
+    middleCheckpoint.allowEle = true;
+    middleCheckpoint.allowSave = false;
+    middleCheckpoint.onGround = false;
+    editor.cpc.rows[0] = openCJ\checkpointCreation::_encode(startCheckpoint);
+    editor.cpc.rows[1] = openCJ\checkpointCreation::_encode(middleCheckpoint);
+    editor.cpc.rows[2] = openCJ\checkpointCreation::_encode(finishCheckpoint);
+    originalMiddleRow = editor.cpc.rows[1];
+    precedingRow = editor.cpc.rows[0];
+    followingRow = editor.cpc.rows[2];
+    editor.cpc.selected = 1;
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(originalMiddleRow);
+    editor openCJ\checkpointCreation::_action("replace");
+    check(editor.cpc.selected == 1 && editor.cpc.rows.size == 3,
+          "replacement keeps route position");
+    check(editor.cpc.rows[1] == originalMiddleRow && editor.cpc.rows[0] == precedingRow &&
+              editor.cpc.rows[2] == followingRow,
           "confirmed route untouched before Apply");
-    check(p.cpc.draft.points.size == 0 && p.cpc.draft.alternatives.size == 0,
+    check(editor.cpc.draft.points.size == 0 && editor.cpc.draft.alternatives.size == 0,
           "all old geometry cleared from pending selection");
-    check(openCJ\checkpointNetwork::pendingEdit(p.cpc), "empty replacement remains pending");
-    restored = openCJ\checkpointCreation::_read(p.cpc.path + ".b", p.cpc.route);
+    check(openCJ\checkpointNetwork::pendingEdit(editor.cpc), "empty replacement remains pending");
+    restored = openCJ\checkpointCreation::_read(editor.cpc.path + ".b", editor.cpc.route);
     check(isDefined(restored) && restored.selected == 1 && restored.draft.points.size == 0 &&
-              restored.rows[1] == original,
+              restored.rows[1] == originalMiddleRow,
           "autosave retains pending replacement and confirmed row");
-    p openCJ\checkpointCreation::_action("undo");
-    check(openCJ\checkpointCreation::_encode(p.cpc.draft) == original && p.cpc.selected == 1,
+    editor openCJ\checkpointCreation::_action("undo");
+    check(openCJ\checkpointCreation::_encode(editor.cpc.draft) == originalMiddleRow &&
+              editor.cpc.selected == 1,
           "Undo restores multi-area selection");
-    p openCJ\checkpointCreation::_action("area");
-    p openCJ\checkpointCreation::_action("deletearea");
-    check(p.cpc.draft.alternatives.size == 0 &&
-              distanceSquared(p.cpc.draft.points[0], b.points[0]) == 0,
+    editor openCJ\checkpointCreation::_action("area");
+    editor openCJ\checkpointCreation::_action("deletearea");
+    check(editor.cpc.draft.alternatives.size == 0 &&
+              distanceSquared(editor.cpc.draft.points[0], middleCheckpoint.points[0]) == 0,
           "delete area removes cycled alternative only");
-    check(p.cpc.rows[1] == original && p.cpc.rows.size == 3, "area deletion waits for Apply");
-    p openCJ\checkpointCreation::_action("deletearea");
-    check(p.cpc.selected == 1 && p.cpc.draft.points.size == 0,
+    check(editor.cpc.rows[1] == originalMiddleRow && editor.cpc.rows.size == 3,
+          "area deletion waits for Apply");
+    editor openCJ\checkpointCreation::_action("deletearea");
+    check(editor.cpc.selected == 1 && editor.cpc.draft.points.size == 0,
           "last area removal keeps replacement slot");
-    p.cpc.draft.points = area(800).points;
-    p openCJ\checkpointCreation::_action("confirm");
-    cp = openCJ\checkpointCreation::_decode(p.cpc.rows[1]);
-    check(p.cpc.rows.size == 3 && p.cpc.rows[0] == before && p.cpc.rows[2] == after,
+    editor.cpc.draft.points = area(800).points;
+    editor openCJ\checkpointCreation::_action("confirm");
+    replacement = openCJ\checkpointCreation::_decode(editor.cpc.rows[1]);
+    check(editor.cpc.rows.size == 3 && editor.cpc.rows[0] == precedingRow &&
+              editor.cpc.rows[2] == followingRow,
           "Apply preserves predecessor successor and route count");
     // Confirm may rotate the perimeter order; every selected corner must survive.
-    check(cp.alternatives.size == 0 && sameCorners(area(800).points, cp.points),
+    check(replacement.alternatives.size == 0 && sameCorners(area(800).points, replacement.points),
           "Apply replaces middle checkpoint with single new area");
-    check(cp.double &&cp.allowEle && !cp.allowSave && !cp.onGround, "requirements preserved");
-    p openCJ\checkpointCreation::_action("undo");
-    check(p.cpc.rows[1] == original && p.cpc.selected == 1,
+    check(replacement.double &&replacement.allowEle && !replacement.allowSave &&
+              !replacement.onGround,
+          "requirements preserved");
+    editor openCJ\checkpointCreation::_action("undo");
+    check(editor.cpc.rows[1] == originalMiddleRow && editor.cpc.selected == 1,
           "Undo Apply restores original linked checkpoint");
-    p.cpc.sharedCount = 2;
-    p openCJ\checkpointCreation::_action("replace");
-    check(p.cpc.draft.points.size == 4, "legacy shared opening protected");
-    p.cpc.sharedCount = undefined;
-    p.cpc.selected = p.cpc.rows.size;
-    p.cpc.draft = openCJ\checkpointCreation::_empty();
-    check(!openCJ\checkpointNetwork::pendingEdit(p.cpc), "empty append slot is not pending");
-    p openCJ\checkpointCreation::_action("replace");
-    check(p.cpc.rows.size == 3 && p.cpc.selected == 3, "replace requires existing checkpoint");
-    p.cpc.selected = 1;
-    p.cpc.draft = openCJ\checkpointCreation::_decode(original);
-    p openCJ\checkpointCreation::_action("discard");
-    check(p.cpc.rows.size == 2 && p.cpc.rows[0] == before && p.cpc.rows[1] == after,
+    editor.cpc.sharedCount = 2;
+    editor openCJ\checkpointCreation::_action("replace");
+    check(editor.cpc.draft.points.size == 4, "legacy shared opening protected");
+    editor.cpc.sharedCount = undefined;
+    editor.cpc.selected = editor.cpc.rows.size;
+    editor.cpc.draft = openCJ\checkpointCreation::_empty();
+    check(!openCJ\checkpointNetwork::pendingEdit(editor.cpc), "empty append slot is not pending");
+    editor openCJ\checkpointCreation::_action("replace");
+    check(editor.cpc.rows.size == 3 && editor.cpc.selected == 3,
+          "replace requires existing checkpoint");
+    editor.cpc.selected = 1;
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(originalMiddleRow);
+    editor openCJ\checkpointCreation::_action("discard");
+    check(editor.cpc.rows.size == 2 && editor.cpc.rows[0] == precedingRow &&
+              editor.cpc.rows[1] == followingRow,
           "Discard deletes selected middle checkpoint and retains finish");
-    cp = openCJ\checkpointCreation::_decode(p.cpc.rows[1]);
-    check(cp.finish, "finish marker survives selected discard");
-    p openCJ\checkpointCreation::_action("undo");
-    check(p.cpc.rows.size == 3 && p.cpc.rows[1] == original && p.cpc.selected == 1,
+    replacement = openCJ\checkpointCreation::_decode(editor.cpc.rows[1]);
+    check(replacement.finish, "finish marker survives selected discard");
+    editor openCJ\checkpointCreation::_action("undo");
+    check(editor.cpc.rows.size == 3 && editor.cpc.rows[1] == originalMiddleRow &&
+              editor.cpc.selected == 1,
           "Undo restores selected discard and its links");
-    p.cpc.sharedCount = 2;
-    p.cpc.selected = 0;
-    p.cpc.draft = openCJ\checkpointCreation::_decode(before);
-    p openCJ\checkpointCreation::_action("discard");
-    check(p.cpc.rows.size == 3 && p.cpc.rows[2] == after,
+    editor.cpc.sharedCount = 2;
+    editor.cpc.selected = 0;
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(precedingRow);
+    editor openCJ\checkpointCreation::_action("discard");
+    check(editor.cpc.rows.size == 3 && editor.cpc.rows[2] == followingRow,
           "selected shared opening cannot be discarded");
-    p.cpc.sharedCount = undefined;
-    p.cpc.selected = 3;
-    p.cpc.draft = area(900);
-    p openCJ\checkpointCreation::_action("discard");
-    check(p.cpc.rows.size == 3 && p.cpc.rows[2] == after && p.cpc.draft.points.size == 0,
+    editor.cpc.sharedCount = undefined;
+    editor.cpc.selected = 3;
+    editor.cpc.draft = area(900);
+    editor openCJ\checkpointCreation::_action("discard");
+    check(editor.cpc.rows.size == 3 && editor.cpc.rows[2] == followingRow &&
+              editor.cpc.draft.points.size == 0,
           "Discard new geometry preserves finish");
     printf("REPLACEMENT SELFTEST COMPLETE failures=" + level.replacementFailures + "\n");
 }
+
 area(x)
 {
-    cp = openCJ\checkpointCreation::_empty();
-    cp.points[0] = (x, 0, 0);
-    cp.points[1] = (x + 100, 0, 0);
-    cp.points[2] = (x + 100, 100, 0);
-    cp.points[3] = (x, 100, 0);
-    return cp;
+    replacement = openCJ\checkpointCreation::_empty();
+    replacement.points[0] = (x, 0, 0);
+    replacement.points[1] = (x + 100, 0, 0);
+    replacement.points[2] = (x + 100, 100, 0);
+    replacement.points[3] = (x, 100, 0);
+    return replacement;
 }
+
 check(ok, label)
 {
     if(!ok)

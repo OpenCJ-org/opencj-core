@@ -6,36 +6,44 @@ main()
     }
     level.contactFailures = 0;
     level.contactChecks = 0;
+    checkContactTiming();
+    checkLeaderboardKinds();
+    checkFutileContacts();
+    printf("CHECKPOINT CONTACT COMPLETE failures=" + level.contactFailures +
+           " checks=" + level.contactChecks + "\n");
+}
+
+checkContactTiming()
+{
     player = spawnStruct();
-    cp = spawnStruct();
-    cp.onGround = true;
-    fast = (351, 0, 0);
-    check(!player openCJ\checkpoints::contactReady(cp, true, 0, fast),
+    checkpoint = spawnStruct();
+    checkpoint.onGround = true;
+    fastVelocity = (351, 0, 0);
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 0, fastVelocity),
           "fast landing starts pending");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 50, fast), "fast 50ms insufficient");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 100, fast), "fast 100ms insufficient");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 149, fast), "fast 149ms insufficient");
-    check(player openCJ\checkpoints::contactReady(cp, true, 150, fast),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 50, fastVelocity),
+          "fast 50ms insufficient");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 100, fastVelocity),
+          "fast 100ms insufficient");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 149, fastVelocity),
+          "fast 149ms insufficient");
+    check(player openCJ\checkpoints::contactReady(checkpoint, true, 150, fastVelocity),
           "fast 150ms continuous contact awards");
-    check(!player openCJ\checkpoints::contactReady(cp, false, 160, (0, 0, 0)),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, false, 160, (0, 0, 0)),
           "airborne never receives speed exception");
     check(!isDefined(player.checkpointContact), "airborne clears pending contact");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 200, fast), "new landing starts over");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 400, fast),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 200, fastVelocity),
+          "new landing starts over");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 400, fastVelocity),
           "missed polls reset contact");
-    other = spawnStruct();
-    other.onGround = true;
-    check(!player openCJ\checkpoints::contactReady(other, true, 450, fast),
+    otherCheckpoint = spawnStruct();
+    otherCheckpoint.onGround = true;
+    check(!player openCJ\checkpoints::contactReady(otherCheckpoint, true, 450, fastVelocity),
           "different area starts over");
-    other.onGround = false;
-    check(player openCJ\checkpoints::contactReady(other, false, 451, fast),
+    otherCheckpoint.onGround = false;
+    check(player openCJ\checkpoints::contactReady(otherCheckpoint, false, 451, fastVelocity),
           "airborne checkpoint remains immediate");
     check(!isDefined(player.checkpointContact), "airborne award clears pending contact");
-
-    check(openCJ\demos::leaderboardKind(true) == "walkthrough",
-          "walkthrough winner takes priority");
-    check(openCJ\demos::leaderboardKind(false) == "speedrun",
-          "other leaderboard runs stay complete");
 
     speeds = [];
     speeds[0] = (0, 0, 0);
@@ -48,26 +56,41 @@ main()
     speeds[7] = (0, -350, 250);
     for(i = 0; i < speeds.size; i++)
     {
-        check(player openCJ\checkpoints::contactReady(cp, true, 500 + i * 50, speeds[i]),
+        check(player openCJ\checkpoints::contactReady(checkpoint, true, 500 + i * 50, speeds[i]),
               "ordinary speed counts at first poll " + i);
         check(!isDefined(player.checkpointContact), "immediate contact clears pending state " + i);
     }
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1000, (350.1, 0, 0)),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1000, (350.1, 0, 0)),
           "just above cutoff waits");
     player.checkpointContact = undefined;
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1100, (250, 250, 0)),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1100, (250, 250, 0)),
           "combined diagonal speed exceeds cutoff");
-    check(player openCJ\checkpoints::contactReady(cp, true, 1150, (200, 250, 0)),
+    check(player openCJ\checkpoints::contactReady(checkpoint, true, 1150, (200, 250, 0)),
           "slowing into ordinary range counts");
     check(!isDefined(player.checkpointContact), "slowing clears pending contact");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1200),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1200),
           "unknown speed retains settled landing");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1250), "unknown speed still waits");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1300),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1250),
+          "unknown speed still waits");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1300),
           "unknown speed 100ms still waits");
-    check(player openCJ\checkpoints::contactReady(cp, true, 1350), "unknown speed 150ms counts");
+    check(player openCJ\checkpoints::contactReady(checkpoint, true, 1350),
+          "unknown speed 150ms counts");
+}
 
-    // Published Futile areas 33056-33058, copied without editing the database.
+checkLeaderboardKinds()
+{
+    check(openCJ\demos::leaderboardKind(true) == "walkthrough",
+          "walkthrough winner takes priority");
+    check(openCJ\demos::leaderboardKind(false) == "speedrun",
+          "other leaderboard runs stay complete");
+}
+
+checkFutileContacts()
+{
+    checkpoint = spawnStruct();
+    checkpoint.onGround = true;
+    // Fixed Futile landing geometry; the fixture never reads or edits a database.
     areas = [];
     areas[0] = rectangle(2125.88, 2522.12, -1840.12, 1792.12, 654.125);
     areas[1] = rectangle(3119.88, 3792.12, -1520.12, 768.125, 752.125);
@@ -88,6 +111,11 @@ main()
             "Futile wrong height rejected " + i);
     }
 
+    checkActualGroundContacts(areas, centers, checkpoint);
+}
+
+checkActualGroundContacts(areas, centers, checkpoint)
+{
     // Real engine ground/velocity samples on those platforms; no run or DB writes.
     wait 1;
     bot = addTestClient();
@@ -120,17 +148,19 @@ main()
             check(openCJ\checkpointArea::touchesPlayer(areas[i], bot.origin, grounded, true, 0),
                   "actual Futile player touches area " + i);
             bot setVelocity((320, 0, 0));
-            check(bot openCJ\checkpoints::contactReady(cp, grounded, getTime(), bot getVelocity()),
+            check(bot openCJ\checkpoints::contactReady(checkpoint, grounded, getTime(),
+                                                       bot getVelocity()),
                   "real ordinary velocity counts immediately " + i);
             bot setVelocity((500, 0, 0));
-            check(!bot openCJ\checkpoints::contactReady(cp, grounded, getTime(), bot getVelocity()),
+            check(!bot openCJ\checkpoints::contactReady(checkpoint, grounded, getTime(),
+                                                        bot getVelocity()),
                   "real excess velocity needs settled contact " + i);
             bot.checkpointContact = undefined;
         }
     }
-    printf("CHECKPOINT CONTACT COMPLETE failures=" + level.contactFailures +
-           " checks=" + level.contactChecks + "\n");
 }
+
+
 rectangle(minX, maxX, minY, maxY, z)
 {
     points = [];
@@ -140,6 +170,7 @@ rectangle(minX, maxX, minY, maxY, z)
     points[3] = (maxX, minY, z);
     return points;
 }
+
 check(ok, label)
 {
     level.contactChecks++;

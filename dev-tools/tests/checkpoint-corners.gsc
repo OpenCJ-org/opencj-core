@@ -8,6 +8,7 @@ main()
     base[2] = (100, 100, 0);
     base[3] = (0, 100, 0);
     permutations = 0;
+    // Exhaust this fixed four-corner input; the nested loops contain only scenario setup.
     for(a = 0; a < 4; a++)
     {
         for(b = 0; b < 4; b++)
@@ -25,27 +26,7 @@ main()
                     points[1] = base[b];
                     points[2] = base[c];
                     points[3] = base[d];
-                    ordered = openCJ\checkpointArea::orderCorners(points);
-                    check(openCJ\checkpointArea::validate(ordered) == "", "rectangle permutation");
-                    check(ordered.size == 4 &&
-                              openCJ\checkpointArea::contains(ordered, (50, 50, 0), true),
-                          "rectangle area preserved");
-                    for(i = 0; i < 4; i++)
-                    {
-                        found = false;
-                        for(j = 0; j < 4; j++)
-                        {
-                            if(points[i] == ordered[j])
-                            {
-                                found = true;
-                            }
-                        }
-                        check(found, "selected point preserved");
-                        points[i] = (points[i][0], points[i][1], points[i][0] * 0.25);
-                    }
-                    check(openCJ\checkpointArea::validate(
-                              openCJ\checkpointArea::orderCorners(points)) == "",
-                          "sloped rectangle permutation");
+                    checkClickOrder(points, "" + a + b + c + d);
                     permutations++;
                 }
             }
@@ -74,4 +55,28 @@ check(ok, message)
         level.failures++;
         printf("CORNERS SELFTEST FAIL " + message + "\n");
     }
+}
+
+// The 24 click orders must keep every corner and the same sloped/flat footprint.
+checkClickOrder(points, clickOrder)
+{
+    ordered = openCJ\checkpointArea::orderCorners(points);
+    check(openCJ\checkpointArea::validate(ordered) == "", "rectangle permutation " + clickOrder);
+    check(ordered.size == 4 && openCJ\checkpointArea::contains(ordered, (50, 50, 0), true),
+          "rectangle area preserved " + clickOrder);
+    for(i = 0; i < 4; i++)
+    {
+        found = false;
+        for(j = 0; j < 4; j++)
+        {
+            if(points[i] == ordered[j])
+            {
+                found = true;
+            }
+        }
+        check(found, "selected point " + i + " preserved in " + clickOrder);
+        points[i] = (points[i][0], points[i][1], points[i][0] * 0.25);
+    }
+    check(openCJ\checkpointArea::validate(openCJ\checkpointArea::orderCorners(points)) == "",
+          "sloped rectangle permutation " + clickOrder);
 }

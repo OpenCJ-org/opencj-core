@@ -3,46 +3,49 @@ main()
     wait 1;
     level.failures = 0;
     check(isDefined(opencjScanDir(getCvar("fs_homepath"))), "directory enumeration available");
-    check(openCJ\checkpointList::draftName("69_mp_dark_hard.a", "69_mp_dark_") == "hard",
+    // Account IDs in these filenames are synthetic.
+    check(openCJ\checkpointList::draftName("101_mp_dark_hard.a", "101_mp_dark_") == "hard",
           "own route filename");
-    check(!isDefined(openCJ\checkpointList::draftName("70_mp_dark_hard.a", "69_mp_dark_")),
+    check(!isDefined(openCJ\checkpointList::draftName("102_mp_dark_hard.a", "101_mp_dark_")),
           "other player private");
-    check(!isDefined(openCJ\checkpointList::draftName("69_mp_dark_v2_hard.a", "69_mp_dark_")) ||
-              openCJ\checkpointList::draftName("69_mp_dark_v2_hard.a", "69_mp_dark_") == "v2_hard",
-          "reader validates ambiguous map prefixes");
-    check(!isDefined(
-              openCJ\checkpointList::draftName("69_mp_dark_hard.before-reset-2.a", "69_mp_dark_")),
+    check(openCJ\checkpointList::draftName("101_mp_dark_v2_hard.a", "101_mp_dark_") == "v2_hard",
+          "filename parser preserves an underscore in the route name");
+    check(!isDefined(openCJ\checkpointList::draftName("101_mp_dark_hard.before-reset-2.a",
+                                                      "101_mp_dark_")),
           "backup excluded");
-    check(!isDefined(openCJ\checkpointList::draftName("69_mp_dark_network.a", "69_mp_dark_")),
+    check(!isDefined(openCJ\checkpointList::draftName("101_mp_dark_network.a", "101_mp_dark_")),
           "network metadata excluded");
-    cp = openCJ\checkpointCreation::_empty();
-    cp.points[0] = (0, 0, 0);
-    cp.points[1] = (100, 0, 0);
-    cp.points[2] = (100, 100, 0);
-    cp.points[3] = (0, 100, 0);
-    cp.finish = true;
-    part = spawnStruct();
-    part.rows = [];
-    part.rows[0] = openCJ\checkpointCreation::_encode(cp);
-    part.selected = 1;
-    part.draft = openCJ\checkpointCreation::_empty();
+    checkpoint = openCJ\checkpointCreation::_empty();
+    checkpoint.points[0] = (0, 0, 0);
+    checkpoint.points[1] = (100, 0, 0);
+    checkpoint.points[2] = (100, 100, 0);
+    checkpoint.points[3] = (0, 100, 0);
+    checkpoint.finish = true;
+    draftSection = spawnStruct();
+    draftSection.rows = [];
+    draftSection.rows[0] = openCJ\checkpointCreation::_encode(checkpoint);
+    draftSection.selected = 1;
+    draftSection.draft = openCJ\checkpointCreation::_empty();
     rows = [];
-    rows[0] = part.rows[0];
-    check(openCJ\checkpointList::matches(part, rows),
+    rows[0] = draftSection.rows[0];
+    check(openCJ\checkpointList::matches(draftSection, rows),
           "retained finalized draft matches publication");
-    part.draft = cp;
-    check(!openCJ\checkpointList::matches(part, rows), "pending selection remains unfinished");
-    part.selected = 0;
-    check(openCJ\checkpointList::matches(part, rows),
+    draftSection.draft = checkpoint;
+    check(!openCJ\checkpointList::matches(draftSection, rows),
+          "pending selection remains unfinished");
+    draftSection.selected = 0;
+    check(openCJ\checkpointList::matches(draftSection, rows),
           "selecting unchanged checkpoint does not dirty draft");
-    part.draft.allowEle = true;
-    check(!openCJ\checkpointList::matches(part, rows), "pending property edit differs");
-    part.pending = false;
-    check(openCJ\checkpointList::matches(part, rows), "flattened shared route matches");
-    part.pending = true;
-    check(!openCJ\checkpointList::matches(part, rows), "shared section edit remains unfinished");
+    draftSection.draft.allowEle = true;
+    check(!openCJ\checkpointList::matches(draftSection, rows), "pending property edit differs");
+    draftSection.pending = false;
+    check(openCJ\checkpointList::matches(draftSection, rows), "flattened shared route matches");
+    draftSection.pending = true;
+    check(!openCJ\checkpointList::matches(draftSection, rows),
+          "shared section edit remains unfinished");
     printf("LIST SELFTEST COMPLETE failures=" + level.failures + "\n");
 }
+
 check(ok, message)
 {
     if(!ok)

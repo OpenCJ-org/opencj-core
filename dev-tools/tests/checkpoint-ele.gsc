@@ -2,155 +2,174 @@ main()
 {
     wait 2;
     level.eleFailures = 0;
-    cp = openCJ\checkpointCreation::_empty();
-    cp.points[0] = (0, 0, 0);
-    cp.points[1] = (100, 0, 0);
-    cp.points[2] = (100, 100, 0);
-    cp.points[3] = (0, 100, 0);
-    check(!cp.allowEle, "default denies exemption");
-    for(ele = 0; ele <= 1; ele++)
+    checkElevatorSerialization();
+    checkRunModeDetection();
+    checkOverlapWarnings();
+    printf("ELE SELFTEST COMPLETE failures=" + level.eleFailures + "\n");
+}
+
+checkElevatorSerialization()
+{
+    checkpoint = openCJ\checkpointCreation::_empty();
+    checkpoint.points[0] = (0, 0, 0);
+    checkpoint.points[1] = (100, 0, 0);
+    checkpoint.points[2] = (100, 100, 0);
+    checkpoint.points[3] = (0, 100, 0);
+    check(!checkpoint.allowEle, "default denies exemption");
+    for(allowElevator = 0; allowElevator <= 1; allowElevator++)
     {
-        for(save = 0; save <= 1; save++)
+        for(allowSave = 0; allowSave <= 1; allowSave++)
         {
-            for(ground = 0; ground <= 1; ground++)
+            for(requireGround = 0; requireGround <= 1; requireGround++)
             {
-                cp.allowEle = ele;
-                cp.allowSave = save;
-                cp.onGround = ground;
-                text = openCJ\checkpointCreation::_encode(cp);
+                checkpoint.allowEle = allowElevator;
+                checkpoint.allowSave = allowSave;
+                checkpoint.onGround = requireGround;
+                text = openCJ\checkpointCreation::_encode(checkpoint);
                 restored = openCJ\checkpointCreation::_decode(text);
-                check(isDefined(restored) && restored.allowEle == ele &&
-                          restored.allowSave == save && restored.onGround == ground,
-                      "draft properties roundtrip " + ele + save + ground);
-                check(openCJ\checkpointNetwork::sameCheckpoint(cp, restored),
+                check(isDefined(restored) && restored.allowEle == allowElevator &&
+                          restored.allowSave == allowSave && restored.onGround == requireGround,
+                      "draft properties roundtrip " + allowElevator + allowSave + requireGround);
+                check(openCJ\checkpointNetwork::sameCheckpoint(checkpoint, restored),
                       "network equality roundtrip");
             }
         }
     }
-    old = openCJ\checkpointCreation::_decode("0:0:p0,0,0;100,0,0;100,100,0;0,100,0");
-    check(isDefined(old) && !old.allowEle && old.allowSave, "old draft keeps defaults");
-    cp.allowEle = !old.allowEle;
-    check(!openCJ\checkpointNetwork::sameCheckpoint(cp, old),
+    legacyCheckpoint = openCJ\checkpointCreation::_decode("0:0:p0,0,0;100,0,0;100,100,0;0,100,0");
+    check(isDefined(legacyCheckpoint) && !legacyCheckpoint.allowEle && legacyCheckpoint.allowSave,
+          "old draft keeps defaults");
+    checkpoint.allowEle = !legacyCheckpoint.allowEle;
+    check(!openCJ\checkpointNetwork::sameCheckpoint(checkpoint, legacyCheckpoint),
           "network compares elevator requirement");
     check(!isDefined(openCJ\checkpointCreation::_decode("0:0:p0,0,0;100,0,0;100,100,0:1:1:2")),
           "malformed elevator flag rejected");
-    p = spawnStruct();
-    p.sessionState = "playing";
-    p.playerRuns_runPaused = false;
-    p.playerRuns_runFinished = false;
-    p.cheating = false;
-    p.hasUsedEle = false;
-    p.allowEle = false;
-    check(!p openCJ\playerRuns::modeDetectionActive(), "no run is inactive");
-    p openCJ\elevate::onElevate();
-    check(!p.hasUsedEle, "no-run elevator ignored");
-    p.playerRuns_runID = 1;
-    p.runInstanceNumber = 1;
-    cp = spawnStruct();
-    cp.childs = [];
-    p.checkpoints_checkpoint = cp;
-    next = spawnStruct();
-    next.isEleAllowed = true;
-    cp.childs[0] = next;
-    check(p openCJ\playerRuns::modeDetectionActive(), "active run detected");
-    p openCJ\elevate::onElevate();
-    check(!p.hasUsedEle, "allowed next checkpoint does not mark ele");
-    next.isEleAllowed = false;
-    p.allowEle = true;
-    p openCJ\elevate::onElevate();
-    check(p.hasUsedEle, "ordinary elevator still marks ele");
-    next.isEleAllowed = true;
-    p openCJ\elevate::onElevate();
-    check(p.hasUsedEle, "exemption never clears prior ele mode");
-    p.hasUsedEle = false;
-    p.allowEle = false;
-    p.cpc = spawnStruct();
-    p openCJ\elevate::onElevate();
-    check(!p.hasUsedEle && !p openCJ\playerRuns::modeDetectionActive(),
+}
+
+checkRunModeDetection()
+{
+    player = spawnStruct();
+    player.sessionState = "playing";
+    player.playerRuns_runPaused = false;
+    player.playerRuns_runFinished = false;
+    player.cheating = false;
+    player.hasUsedEle = false;
+    player.allowEle = false;
+    check(!player openCJ\playerRuns::modeDetectionActive(), "no run is inactive");
+    player openCJ\elevate::onElevate();
+    check(!player.hasUsedEle, "no-run elevator ignored");
+    player.playerRuns_runID = 1;
+    player.runInstanceNumber = 1;
+    checkpoint = spawnStruct();
+    checkpoint.childs = [];
+    player.checkpoints_checkpoint = checkpoint;
+    nextCheckpoint = spawnStruct();
+    nextCheckpoint.isEleAllowed = true;
+    checkpoint.childs[0] = nextCheckpoint;
+    check(player openCJ\playerRuns::modeDetectionActive(), "active run detected");
+    player openCJ\elevate::onElevate();
+    check(!player.hasUsedEle, "allowed next checkpoint does not mark ele");
+    nextCheckpoint.isEleAllowed = false;
+    player.allowEle = true;
+    player openCJ\elevate::onElevate();
+    check(player.hasUsedEle, "ordinary elevator still marks ele");
+    nextCheckpoint.isEleAllowed = true;
+    player openCJ\elevate::onElevate();
+    check(player.hasUsedEle, "exemption never clears prior ele mode");
+    player.hasUsedEle = false;
+    player.allowEle = false;
+    player.cpc = spawnStruct();
+    player openCJ\elevate::onElevate();
+    check(!player.hasUsedEle && !player openCJ\playerRuns::modeDetectionActive(),
           "CPC suppresses detection even with stale run ID");
-    p.cpc = undefined;
-    p.playerRuns_runPaused = true;
-    check(!p openCJ\playerRuns::modeDetectionActive(), "paused run inactive");
-    p.playerRuns_runPaused = false;
-    p.playerRuns_runFinished = true;
-    check(!p openCJ\playerRuns::modeDetectionActive(), "finished run inactive");
-    p.playerRuns_runFinished = false;
-    p.playingDemo = true;
-    check(!p openCJ\playerRuns::modeDetectionActive(), "demo inactive");
-    p.playingDemo = false;
-    p.sessionState = "spectator";
-    check(!p openCJ\playerRuns::modeDetectionActive(), "spectator inactive");
-    p.sessionState = "playing";
-    alt = spawnStruct();
-    alt.bigBrother = next;
-    cp.childs[1] = alt;
-    check(p openCJ\checkpoints::nextAllowsEle(), "alternative area preserves requirement");
+    player.cpc = undefined;
+    player.playerRuns_runPaused = true;
+    check(!player openCJ\playerRuns::modeDetectionActive(), "paused run inactive");
+    player.playerRuns_runPaused = false;
+    player.playerRuns_runFinished = true;
+    check(!player openCJ\playerRuns::modeDetectionActive(), "finished run inactive");
+    player.playerRuns_runFinished = false;
+    player.playingDemo = true;
+    check(!player openCJ\playerRuns::modeDetectionActive(), "demo inactive");
+    player.playingDemo = false;
+    player.sessionState = "spectator";
+    check(!player openCJ\playerRuns::modeDetectionActive(), "spectator inactive");
+    player.sessionState = "playing";
+    alternative = spawnStruct();
+    alternative.bigBrother = nextCheckpoint;
+    checkpoint.childs[1] = alternative;
+    check(player openCJ\checkpoints::nextAllowsEle(), "alternative area preserves requirement");
     branch = spawnStruct();
     branch.isEleAllowed = false;
-    cp.childs[2] = branch;
-    check(!p openCJ\checkpoints::nextAllowsEle(), "ambiguous split does not leak exemption");
-    p.cpc = spawnStruct();
-    p.cpc.route = "easy";
-    p.cpc.rows = [];
-    a = openCJ\checkpointCreation::_empty();
-    a.points[0] = (0, 0, 0);
-    a.points[1] = (100, 0, 0);
-    a.points[2] = (100, 100, 0);
-    a.points[3] = (0, 100, 0);
-    p.cpc.rows[0] = openCJ\checkpointCreation::_encode(a);
+    checkpoint.childs[2] = branch;
+    check(!player openCJ\checkpoints::nextAllowsEle(), "ambiguous split does not leak exemption");
+}
+
+checkOverlapWarnings()
+{
+    player = spawnStruct();
+    player.cpc = spawnStruct();
+    player.cpc.route = "easy";
+    player.cpc.rows = [];
+    selectedArea = openCJ\checkpointCreation::_empty();
+    selectedArea.points[0] = (0, 0, 0);
+    selectedArea.points[1] = (100, 0, 0);
+    selectedArea.points[2] = (100, 100, 0);
+    selectedArea.points[3] = (0, 100, 0);
+    player.cpc.rows[0] = openCJ\checkpointCreation::_encode(selectedArea);
     // The editor's append selection is the slot after the confirmed rows.
-    p.cpc.selected = p.cpc.rows.size;
-    p.cpc.draft = openCJ\checkpointCreation::_empty();
+    player.cpc.selected = player.cpc.rows.size;
+    player.cpc.draft = openCJ\checkpointCreation::_empty();
     level.checkpoints_checkpoints = [];
     // Detection stores the current outline before asking for overlap warnings.
-    p.cpc.draft.points = a.points;
-    check(
-        isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(a.points), "Checkpoint #1"),
-        "detect warns about same-draft checkpoint");
+    player.cpc.draft.points = selectedArea.points;
+    check(isSubStr(player openCJ\checkpointCreation::detectedCheckpointWarning(selectedArea.points),
+                   "Checkpoint #1"),
+          "detect warns about same-draft checkpoint");
     shifted = [];
-    for(i = 0; i < a.points.size; i++)
+    for(i = 0; i < selectedArea.points.size; i++)
     {
-        shifted[i] = a.points[i] + (0, 0, 100);
+        shifted[i] = selectedArea.points[i] + (0, 0, 100);
     }
-    p.cpc.draft.points = shifted;
-    check(p openCJ\checkpointCreation::detectedCheckpointWarning(shifted) == "",
+    player.cpc.draft.points = shifted;
+    check(player openCJ\checkpointCreation::detectedCheckpointWarning(shifted) == "",
           "different floor does not warn");
     adjacent = [];
-    for(i = 0; i < a.points.size; i++)
+    for(i = 0; i < selectedArea.points.size; i++)
     {
-        adjacent[i] = a.points[i] + (100, 0, 0);
+        adjacent[i] = selectedArea.points[i] + (100, 0, 0);
     }
-    p.cpc.draft.points = adjacent;
-    check(p openCJ\checkpointCreation::detectedCheckpointWarning(adjacent) == "",
+    player.cpc.draft.points = adjacent;
+    check(player openCJ\checkpointCreation::detectedCheckpointWarning(adjacent) == "",
           "touching boundary does not warn");
-    a.alternatives[0] = shifted;
-    p.cpc.rows[0] = openCJ\checkpointCreation::_encode(a);
-    p.cpc.draft.points = shifted;
-    check(
-        isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(shifted), "Checkpoint #1"),
-        "detect warns about confirmed alternative");
-    p.cpc.rows = [];
-    p.cpc.selected = 0;
-    p.cpc.draft.alternatives[0] = a.points;
-    p.cpc.draft.points = a.points;
-    check(p openCJ\checkpointCreation::detectedCheckpointWarning(a.points) == "",
+    selectedArea.alternatives[0] = shifted;
+    player.cpc.rows[0] = openCJ\checkpointCreation::_encode(selectedArea);
+    player.cpc.draft.points = shifted;
+    check(isSubStr(player openCJ\checkpointCreation::detectedCheckpointWarning(shifted),
+                   "Checkpoint #1"),
+          "detect warns about confirmed alternative");
+    player.cpc.rows = [];
+    player.cpc.selected = 0;
+    player.cpc.draft.alternatives[0] = selectedArea.points;
+    player.cpc.draft.points = selectedArea.points;
+    check(player openCJ\checkpointCreation::detectedCheckpointWarning(selectedArea.points) == "",
           "pending alternatives belong to the same logical checkpoint");
-    p.cpc.draft = openCJ\checkpointCreation::_empty();
+    player.cpc.draft = openCJ\checkpointCreation::_empty();
     published = spawnStruct();
-    published.area = a.points;
+    published.area = selectedArea.points;
     published.id = 42;
     published.routeInfo = spawnStruct();
     published.routeInfo.name = "hard";
     level.checkpoints_checkpoints[0] = published;
-    p.cpc.draft.points = a.points;
-    beforeWarning = openCJ\checkpointCreation::_encode(p.cpc.draft);
-    check(isSubStr(p openCJ\checkpointCreation::detectedCheckpointWarning(a.points),
+    player.cpc.draft.points = selectedArea.points;
+    beforeWarning = openCJ\checkpointCreation::_encode(player.cpc.draft);
+    check(isSubStr(player openCJ\checkpointCreation::detectedCheckpointWarning(selectedArea.points),
                    "Published checkpoint #42 (hard)"),
           "detect warns about published checkpoint");
-    check(p.cpc.rows.size == 0 && openCJ\checkpointCreation::_encode(p.cpc.draft) == beforeWarning,
+    check(player.cpc.rows.size == 0 &&
+              openCJ\checkpointCreation::_encode(player.cpc.draft) == beforeWarning,
           "warning does not change draft");
-    printf("ELE SELFTEST COMPLETE failures=" + level.eleFailures + "\n");
 }
+
 check(value, name)
 {
     if(!value)

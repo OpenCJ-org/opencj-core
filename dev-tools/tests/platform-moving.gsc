@@ -16,55 +16,61 @@ main()
         return;
     }
     check(openCJ\checkpointMoving::resolve(key) == platform, "reference resolves exact platform");
-    cp = openCJ\checkpointCreation::_empty();
-    cp.platformRef = key;
-    cp.points = openCJ\checkpointMoving::points(cp);
-    check(cp.points.size == 4, "whole platform visual bounds");
-    check(openCJ\checkpointMoving::valid(cp) == "", "moving checkpoint validates");
-    cp.allowEle = true;
-    cp.allowSave = false;
-    cp.finish = true;
-    encoded = openCJ\checkpointCreation::_encode(cp);
+    checkpoint = openCJ\checkpointCreation::_empty();
+    checkpoint.platformRef = key;
+    checkpoint.points = openCJ\checkpointMoving::points(checkpoint);
+    check(checkpoint.points.size == 4, "whole platform visual bounds");
+    check(openCJ\checkpointMoving::valid(checkpoint) == "", "moving checkpoint validates");
+    checkpoint.allowEle = true;
+    checkpoint.allowSave = false;
+    checkpoint.finish = true;
+    encoded = openCJ\checkpointCreation::_encode(checkpoint);
     decoded = openCJ\checkpointCreation::_decode(encoded);
     check(isDefined(decoded) && decoded.platformRef == key && decoded.allowEle &&
               !decoded.allowSave && decoded.finish,
           "draft roundtrip preserves reference and requirements");
     player = spawnStruct();
-    check(player openCJ\checkpointMoving::touches(cp, true, platform),
+    check(player openCJ\checkpointMoving::touches(checkpoint, true, platform),
           "ground entity contact accepted");
-    check(!(player openCJ\checkpointMoving::touches(cp, false, platform)),
+    check(!(player openCJ\checkpointMoving::touches(checkpoint, false, platform)),
           "airborne contact rejected");
-    check(!(player openCJ\checkpointMoving::touches(cp, true, undefined)),
+    check(!(player openCJ\checkpointMoving::touches(checkpoint, true, undefined)),
           "world contact rejected");
     other = getEnt("yellow1", "targetname");
-    check(!(player openCJ\checkpointMoving::touches(cp, true, other)),
+    check(!(player openCJ\checkpointMoving::touches(checkpoint, true, other)),
           "other moving platform rejected");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1000),
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1000),
           "initial contact does not pass");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1050), "short bunnyhop does not pass");
-    check(!player openCJ\checkpoints::contactReady(cp, false, 1100), "airborne clears dwell");
-    check(!player openCJ\checkpoints::contactReady(cp, true, 1150), "new landing restarts dwell");
-    player openCJ\checkpoints::contactReady(cp, true, 1200);
-    player openCJ\checkpoints::contactReady(cp, true, 1250);
-    check(player openCJ\checkpoints::contactReady(cp, true, 1300), "settled landing passes");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1050),
+          "short bunnyhop does not pass");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, false, 1100),
+          "airborne clears dwell");
+    check(!player openCJ\checkpoints::contactReady(checkpoint, true, 1150),
+          "new landing restarts dwell");
+    player openCJ\checkpoints::contactReady(checkpoint, true, 1200);
+    player openCJ\checkpoints::contactReady(checkpoint, true, 1250);
+    check(player openCJ\checkpoints::contactReady(checkpoint, true, 1300),
+          "settled landing passes");
     stationary = openCJ\checkpointCreation::_empty();
-    stationary.points = cp.points;
-    check(!openCJ\checkpointNetwork::areaOverlap(cp, stationary, stationary.points),
+    stationary.points = checkpoint.points;
+    check(!openCJ\checkpointNetwork::areaOverlap(checkpoint, stationary, stationary.points),
           "moving over stationary floor is not shared geometry");
-    check(openCJ\checkpointNetwork::areaOverlap(cp, decoded, decoded.points),
+    check(openCJ\checkpointNetwork::areaOverlap(checkpoint, decoded, decoded.points),
           "same moving platform is shared geometry");
-    before = openCJ\checkpointMoving::center(cp);
-    start = platform.origin;
-    angles = platform.angles;
-    platform moveTo(start + (100, 50, 25), 0.2);
+    centerBeforeMove = openCJ\checkpointMoving::center(checkpoint);
+    initialOrigin = platform.origin;
+    initialAngles = platform.angles;
+    platform moveTo(initialOrigin + (100, 50, 25), 0.2);
     platform waittill("movedone");
-    after = openCJ\checkpointMoving::center(cp);
-    check(distance(after, before + (100, 50, 25)) < 0.1, "indicator follows actual translation");
-    platform rotateTo(angles + (0, 90, 0), 0.2);
+    centerAfterMove = openCJ\checkpointMoving::center(checkpoint);
+    check(distance(centerAfterMove, centerBeforeMove + (100, 50, 25)) < 0.1,
+          "indicator follows actual translation");
+    platform rotateTo(initialAngles + (0, 90, 0), 0.2);
     platform waittill("rotatedone");
-    p = openCJ\checkpointMoving::points(cp);
-    check(distance(p[0], p[1]) > 0 &&
-              abs(distance(p[0], p[1]) - distance(cp.points[0], cp.points[1])) < 0.1,
+    rotatedCorners = openCJ\checkpointMoving::points(checkpoint);
+    check(distance(rotatedCorners[0], rotatedCorners[1]) > 0 &&
+              abs(distance(rotatedCorners[0], rotatedCorners[1]) -
+                  distance(checkpoint.points[0], checkpoint.points[1])) < 0.1,
           "rotation preserves bounds dimensions");
     check(openCJ\checkpointMoving::resolve(key) == platform, "identity unchanged by movement");
     level.checkpointMovingCache = undefined;
@@ -74,13 +80,14 @@ main()
           "movement does not rewrite persisted geometry");
     missing = openCJ\checkpointCreation::_empty();
     missing.platformRef = "b999999";
-    missing.points = cp.points;
+    missing.points = checkpoint.points;
     check(openCJ\checkpointMoving::valid(missing) != "", "missing entity fails validation");
     check(!(player openCJ\checkpointMoving::touches(missing, true, platform)),
           "missing entity never awards checkpoint");
     checkReferenceCacheCapacity(key, platform);
     printf("BRUSH SELFTEST COMPLETE failures=" + level.brushFailures + "\n");
 }
+
 check(value, name)
 {
     if(!value)
