@@ -1,6 +1,33 @@
 // No account callbacks or database access. Measure production initializers/functions.
 main()
 {
+    initializeFeatures();
+    wait 1;
+    player = addTestClient();
+    wait 0.1;
+    if(!isDefined(player))
+    {
+        printf("MEM COMPLETE failures=1\n");
+        return;
+    }
+    player.sessionTeam = "allies";
+    player.sessionState = "playing";
+    player.pers["team"] = "allies";
+    player spawn((0, 0, 500), (0, 0, 0));
+    player freezeControls(true);
+    player.FPS = 333;
+    player.isFirstSpawn = false;
+    memoryAudit("entity", player);
+
+    player measureConnectedHuds();
+    player measureUnchangedHistory();
+    player measurePlaybackSeek();
+    printf("MEM COMPLETE failures=0\n");
+}
+
+// Register the same features as gameplay, without starting account or recording SQL.
+initializeFeatures()
+{
     openCJ\settings::onInit();
     openCJ\commands_base::onInit();
     openCJ\huds\infiniteHuds::onInit();
@@ -12,80 +39,93 @@ main()
     openCJ\huds\hudSpeedometer::onInit();
     openCJ\huds\hudPosition::onInit();
     openCJ\showRecords::onInit();
-    // Decode production frame flags without starting database-backed recording.
     openCJ\demoRecording::_initConstants();
     level.weapons_rpgs = [];
     level.weapons_rpgs["default"] = "rpg_mp";
-    wait 1;
-    p = addTestClient();
-    wait .1;
-    p.sessionTeam = "allies";
-    p.sessionState = "playing";
-    p.pers["team"] = "allies";
-    p spawn((0, 0, 500), (0, 0, 0));
-    p freezeControls(true);
-    p.FPS = 333;
-    p.isFirstSpawn = false;
-    memoryAudit("entity", p);
-    p openCJ\settings::onPlayerConnect();
-    p openCJ\huds\base::onPlayerConnect();
-    memoryAudit("settings", p);
-    p openCJ\huds\hudOnScreenKeyboard::onPlayerConnect();
-    memoryAudit("keyboard", p);
-    p openCJ\huds\hudGrenadeTimers::onPlayerConnect();
-    p openCJ\huds\hudFps::onPlayerConnect();
-    p openCJ\huds\hudFPSHistory::onPlayerConnect();
-    memoryAudit("fps_initial", p);
-    p openCJ\huds\hudJumpSlowdown::onPlayerConnect();
-    p openCJ\huds\hudSpeedometer::onPlayerConnect();
-    memoryAudit("speed_first", p);
-    p openCJ\huds\hudProgressBar::onPlayerConnect();
-    memoryAudit("progress", p);
-    p openCJ\huds\hudSpeedometer::onPlayerConnect();
-    memoryAudit("speed_duplicate", p);
-    p openCJ\huds\hudPosition::onPlayerConnect();
-    p openCJ\huds\hudTimeLimit::onPlayerConnect();
-    p openCJ\huds\hudRunInfo::onPlayerConnect();
-    p openCJ\showRecords::onPlayerConnect();
-    memoryAudit("connect_huds", p);
-    p.settingValues["poshud"] = true;
-    p openCJ\huds\hudPosition::whileAlive();
-    memoryAudit("position_enabled", p);
-    p.settingValues["poshud"] = false;
-    p openCJ\huds\hudPosition::whileAlive();
-    memoryAudit("position_disabled", p);
-    p demoFPSReset();
-    p.fpsHistoryText = "32-323";
-    p.fpsHistoryDetailedText = "WA 32 > BOUNCE > WD 3 > WA 2 > WD 3";
-    memoryAudit("cache_empty", p);
-    for(i = 0; i < 512; i++)
+}
+
+// Measure each HUD group, including duplicate initialization and optional position text.
+measureConnectedHuds()
+{
+    self openCJ\settings::onPlayerConnect();
+    self openCJ\huds\base::onPlayerConnect();
+    memoryAudit("settings", self);
+    self openCJ\huds\hudOnScreenKeyboard::onPlayerConnect();
+    memoryAudit("keyboard", self);
+    self openCJ\huds\hudGrenadeTimers::onPlayerConnect();
+    self openCJ\huds\hudFps::onPlayerConnect();
+    self openCJ\huds\hudFPSHistory::onPlayerConnect();
+    memoryAudit("fps_initial", self);
+    self openCJ\huds\hudJumpSlowdown::onPlayerConnect();
+    self openCJ\huds\hudSpeedometer::onPlayerConnect();
+    memoryAudit("speed_first", self);
+    self openCJ\huds\hudProgressBar::onPlayerConnect();
+    memoryAudit("progress", self);
+    self openCJ\huds\hudSpeedometer::onPlayerConnect();
+    memoryAudit("speed_duplicate", self);
+    self openCJ\huds\hudPosition::onPlayerConnect();
+    self openCJ\huds\hudTimeLimit::onPlayerConnect();
+    self openCJ\huds\hudRunInfo::onPlayerConnect();
+    self openCJ\showRecords::onPlayerConnect();
+    memoryAudit("connect_huds", self);
+
+    self.settingValues["poshud"] = true;
+    self openCJ\huds\hudPosition::whileAlive();
+    memoryAudit("position_enabled", self);
+    self.settingValues["poshud"] = false;
+    self openCJ\huds\hudPosition::whileAlive();
+    memoryAudit("position_disabled", self);
+}
+
+// Repeated identical history must stay native instead of allocating script rows.
+measureUnchangedHistory()
+{
+    repeatedSampleCount = 512;
+    self demoFPSReset();
+    self.fpsHistoryText = "32-323";
+    self.fpsHistoryDetailedText = "WA 32 > BOUNCE > WD 3 > WA 2 > WD 3";
+    memoryAudit("cache_empty", self);
+    for(i = 0; i < repeatedSampleCount; i++)
     {
-        p openCJ\demos::cacheDemoFPS(i);
+        self openCJ\demos::cacheDemoFPS(i);
     }
-    memoryAudit("cache_512_unchanged", p);
-    stats = p demoFPSStats();
-    printf("MEM NATIVE changes=" + stats[0] + " samples=" + stats[1] + "\n");
-    p demoFPSReset();
-    memoryAudit("cache_cleared", p);
-    createDemo(770001);
-    for(i = 0; i < 600; i++)
+    memoryAudit("cache_512_unchanged", self);
+    statistics = self demoFPSStats();
+    changeCountColumn = 0;
+    sampleCountColumn = 1;
+    printf("MEM NATIVE changes=" + statistics[changeCountColumn] +
+           " samples=" + statistics[sampleCountColumn] + "\n");
+    self demoFPSReset();
+    memoryAudit("cache_cleared", self);
+}
+
+// A seek reconstructs a bounded rendered history from a recording longer than its cache.
+measurePlaybackSeek()
+{
+    demoID = 770001; // Reserved for this disposable engine.
+    frameCount = 600;
+    lastFrame = frameCount - 1;
+    weaponID = 1;
+    checkpointID = 1;
+    forwardLeftStanding = level.demoFlags.forward | level.demoFlags.left | level.demoFlags.standing;
+    createDemo(demoID);
+    for(i = 0; i < frameCount; i++)
     {
-        addFrameToDemo(770001, (i * .5, 0, 500), (0, i, 0), 1, 517, 0, 0, 0, 333, 1,
-                       p getEntityNumber());
+        addFrameToDemo(demoID, (i * 0.5, 0, 500), (0, i, 0), weaponID,
+                       forwardLeftStanding, 0, 0, 0, 333, checkpointID, self getEntityNumber());
     }
-    completeDemo(770001);
-    p selectPlaybackDemo(770001);
-    p.demoID = 770001;
-    p.demoBegin = 0;
-    p.demoEnd = 599;
-    p.demoStyle = 0;
-    p.playingDemo = true;
-    p skipPlaybackFrames(599);
-    memoryAudit("before_seek", p);
-    p openCJ\demos::syncDemoFPSHistory(599);
-    memoryAudit("after_seek", p);
-    p demoFPSReset();
-    memoryAudit("seek_cleared", p);
-    destroyDemo(770001);
-    printf("MEM COMPLETE\n");
+    completeDemo(demoID);
+    self selectPlaybackDemo(demoID);
+    self.demoID = demoID;
+    self.demoBegin = 0;
+    self.demoEnd = lastFrame;
+    self.demoStyle = 0;
+    self.playingDemo = true;
+    self skipPlaybackFrames(lastFrame);
+    memoryAudit("before_seek", self);
+    self openCJ\demos::syncDemoFPSHistory(lastFrame);
+    memoryAudit("after_seek", self);
+    self demoFPSReset();
+    memoryAudit("seek_cleared", self);
+    destroyDemo(demoID);
 }
