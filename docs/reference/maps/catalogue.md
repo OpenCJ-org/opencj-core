@@ -78,6 +78,22 @@ Other existing tables with a direct `mapID` foreign key to `mapids`:
 
 None of those tables replaces the mapper relationship above.
 
+## Map plays (028)
+
+`openCJ_cod4.mapPlays` records one row per map session that a logged-in player
+joined. The game inserts it when the first player of the session logs in, so
+map loads on an empty server are not counted, and reconnecting players do not
+add a second play. Gameplay may only insert rows. The website ranks maps by
+these rows. Sessions before migration 028 were not recorded.
+
+| Column | Type | Meaning / constraints |
+| --- | --- | --- |
+| `mapPlayID` | `int unsigned` | Auto-increment primary key |
+| `mapID` | `int` | Required foreign key to `mapids.mapID` |
+| `startedAt` | `timestamp` | When the session's first player logged in |
+
+Implementation: [mapplays.gsc](../../../server-gsc/opencj/mapplays.gsc).
+
 ## Date and author evidence
 
 The [CoDJumper map catalogue](https://www.codjumper.com/maps/index2.php?game=cod4)

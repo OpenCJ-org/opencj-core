@@ -57,6 +57,7 @@ _getPlayerInformation(uid)
     {
         self.login_playerID = int(rows[0][0]);
         self openCJ\playerNames::onAccountIdentified();
+        self openCJ\mapPlays::onAccountIdentified();
         self openCJ\commands_base::setAdminLevel(int(rows[0][1]));
         if(isDefined(rows[0][2])) //muted until [seconds] into future
         {

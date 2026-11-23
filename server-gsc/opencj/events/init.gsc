@@ -10,6 +10,7 @@ main()
     openCJ\maps::onInit();
     openCJ\timeLimit::onInit();
     openCJ\mapID::onInit();
+    openCJ\mapPlays::onInit();
     openCJ\checkpoints::onInit();
     openCJ\checkpointPointers::onInit();
     openCJ\savePosition::onInit();
