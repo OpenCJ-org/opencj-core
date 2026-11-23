@@ -153,3 +153,6 @@ d25853c6faf0a40b04dc0f9df91e56c48eb779dd
 
 # Expand memory and protocol fixtures; verified tokens and comments unchanged.
 d7a5dc56f9742f8aaf200007f180f6fd1401997a
+
+# Expand save-history fixture; verified tokens and comments unchanged.
+ce5d7ad44843b6bdebd369a0cbe68787373bf8b3
