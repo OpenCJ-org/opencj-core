@@ -4,13 +4,15 @@ onInit()
 {
     // Use OpenCJ votes exclusively; stock callvote bypasses the alpha policy.
     setCvar("g_allowVote", 0);
-    cmd = openCJ\commands_base::registerCommand("vote", "Vote for something. Usage: !vote <extend|map mp_mapname|yes|no>", ::vote, 1, 2, 0);
+    cmd = openCJ\commands_base::registerCommand(
+        "vote", "Vote for something. Usage: !vote <extend|map mp_mapname|yes|no>", ::vote, 1, 2, 0);
     openCJ\commands_base::addAlias(cmd, "v");
 
-    cmd = openCJ\commands_base::registerCommand("maprestart", "Restart the current map", ::onCmdRestartMap, 0, 0, 60);
+    cmd = openCJ\commands_base::registerCommand("maprestart", "Restart the current map",
+                                                ::onCmdRestartMap, 0, 0, 60);
     openCJ\commands_base::addAlias(cmd, "restartmap");
 
-    level.vote = undefined; // Will be filled in with spawnStruct
+    level.vote = undefined;               // Will be filled in with spawnStruct
     level.autoExtendThreshold = (5 * 60); // 5 minutes
     thread _autoExtendTimeLoop();
 }
@@ -78,14 +80,14 @@ vote(args) //args[0] = map, extend, yes/no
     {
         // Vote cooldown
         canVoteIn = int(self.canVoteAt - (getTime() / 1000) + 0.5);
-        if (canVoteIn > 0 && !openCJ\commands_base::isUberAdminLevel(self.adminLevel))
+        if(canVoteIn > 0 && !openCJ\commands_base::isUberAdminLevel(self.adminLevel))
         {
             self iprintln("You can vote in another ^1" + canVoteIn + "^7 seconds");
             return;
         }
 
         // If an auto extend is queued, don't allow player to vote (edge case)
-        if (isDefined(level.isAutoExtendQueued) && level.isAutoExtendQueued)
+        if(isDefined(level.isAutoExtendQueued) && level.isAutoExtendQueued)
         {
             return;
         }
@@ -93,7 +95,7 @@ vote(args) //args[0] = map, extend, yes/no
         if((args[0] == "map") && isDefined(args[1]))
         {
             mapName = toLower(args[1]);
-            if (getCvar("mapname") != mapName)
+            if(getCvar("mapname") != mapName)
             {
                 self thread _doVoteMap(mapName);
             }
@@ -131,7 +133,10 @@ onPlayerLogin()
 
 _setVoteCooldown(seconds)
 {
-    if (openCJ\commands_base::isUberAdminLevel(self.adminLevel))seconds = 0;
+    if (openCJ\commands_base::isUberAdminLevel(self.adminLevel))
+    {
+        seconds = 0;
+    }
     self.canVoteAt = (getTime() / 1000) + seconds;
 }
 
@@ -157,13 +162,16 @@ getMapImage(mapName)
 {
     if(isDefined(mapName))
     {
-        if (getCodVersion() == 4)
+        if(getCodVersion() == 4)
         {
             return openCJ\maps::previewImage(mapName);
         }
         switch(mapName)
         {
-            case "jm_pier_2": return "jhs_jm_pier_2";
+        case "jm_pier_2":
+        {
+            return "jhs_jm_pier_2";
+        }
         }
     }
     return "default";
@@ -204,14 +212,17 @@ _doVoteMap(mapName)
     self endon("disconnect");
 
     // Only one vote at a time
-    if(isDefined(level.vote))
+    if (isDefined(level.vote))
     {
         self iprintln("Another vote is already in progress");
         return;
     }
 
     map = self _findMapByName(mapName, true);
-    if (!isDefined(map)) return;
+    if (!isDefined(map))
+    {
+        return;
+    }
     if (map == getCvar("mapname"))
     {
         self sendLocalChatMessage("You can't vote for the current map", true);
@@ -259,12 +270,12 @@ _setupVote(mapName, text, playerEnt)
     }
     level.vote.mapImage = getMapImage(mapName);
     level.vote.yesCount = 0;
-    level.vote.noCount  = 0;
+    level.vote.noCount = 0;
     level.vote.timeLeft = 30; // Seconds
 
     // Initialize all players' initial votes
     players = getEntArray("player", "classname");
-    for(i = 0; i < players.size; i++)
+    for (i = 0; i < players.size; i++)
     {
         players[i].vote = undefined;
     }
@@ -293,19 +304,38 @@ _findMapByName(string, recurse)
 {
     string = toLower(string);
     // Exact names also cover maps installed since the catalogue was loaded.
-    if (openCJ\maps::canVoteMap(string, self.adminLevel)) return string;
+    if (openCJ\maps::canVoteMap(string, self.adminLevel))
+    {
+        return string;
+    }
     maps = openCJ\maps::voteMaps(self.adminLevel);
     matches = [];
     if (string != "")
+    {
         for (i = 0; i < maps.size; i++)
-            if (isSubStr(maps[i]["name"], string)) matches[matches.size] = maps[i]["name"];
-    if (matches.size == 1) return matches[0];
+        {
+            if (isSubStr(maps[i]["name"], string))
+            {
+                matches[matches.size] = maps[i]["name"];
+            }
+        }
+    }
+    if (matches.size == 1)
+    {
+        return matches[0];
+    }
     if (matches.size > 5)
+    {
         self sendLocalChatMessage("Too many available maps match (" + matches.size + ")", true);
+    }
     else if (matches.size > 1)
+    {
         self sendLocalChatMessage("Available matches: " + arrayConcat(matches, ", "), true);
+    }
     else
+    {
         self sendLocalChatMessage("Map not installed or unavailable for voting", true);
+    }
     return undefined;
 }
 

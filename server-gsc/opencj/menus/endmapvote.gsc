@@ -64,7 +64,8 @@ onPlayerConnected()
 {
     self.endVote = -1;
 
-    self setClientCvar(level.endVote["prefix"] + "status", level.endVote["status"]); // Actual end map vote status
+    self setClientCvar(level.endVote["prefix"] + "status",
+                       level.endVote["status"]);               // Actual end map vote status
     self setClientCvar(level.endVote["prefix"] + "voted", ""); // Player hasn't voted
 
     winning = "";
@@ -72,7 +73,8 @@ onPlayerConnected()
     {
         winning = (level.endVote["winning"] + 1);
     }
-     self setClientCvar(level.endVote["prefix"] + "winning", winning); // Which map is currently winning
+    self setClientCvar(level.endVote["prefix"] + "winning",
+                       winning); // Which map is currently winning
 
     for (i = 0; i < level.endVote["nrMaps"]; i++)
     {
