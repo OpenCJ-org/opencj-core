@@ -53,3 +53,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 
 # FPS history layout; non-brace tokens preserved and engine regressions passed.
 4e78c101d43a68262eb3ed7e5e7071d2ee8c49f5
+
+# FPS fixture layout; non-brace tokens preserved and both suites passed.
+5c086f7378e76bcebc1158647b4adb82ad30131d
