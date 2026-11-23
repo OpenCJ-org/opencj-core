@@ -201,7 +201,18 @@ checkLostNetworkCommitReply(editor)
 
 publicationQuery(query)
 {
+    if(query == "COMMIT" && isDefined(level.rejectNetworkCommit) && level.rejectNetworkCommit)
+    {
+        level.rejectNetworkCommit = false;
+        return undefined;
+    }
     result = openCJ\mySQL::mysqlSyncQuery(query);
+    if(isSubStr(query, "SELECT routeName FROM routes WHERE routeID=") &&
+       isDefined(level.hideRenameLookup) && level.hideRenameLookup)
+    {
+        level.hideRenameLookup = false;
+        return undefined;
+    }
     if(query == "COMMIT" && isDefined(level.hideNetworkCommitReply) && level.hideNetworkCommitReply)
     {
         level.hideNetworkCommitReply = false;
@@ -241,6 +252,8 @@ checkEditingCommands(editor)
     }
     checkRouteRename(editor);
     checkLostRenameReply(editor);
+    checkRenameRollback(editor);
+    checkUnresolvedRename(editor);
 }
 
 prepareSplitApproaches(editor)
@@ -382,4 +395,38 @@ checkLostRenameReply(editor)
           "confirmed rename keeps the matching manifest names");
     checkScalar("SELECT routeID FROM routes WHERE routeName='edit_precise'", routeId,
                 "lost rename reply preserves the same route identity");
+}
+
+checkRenameRollback(editor)
+{
+    level.rejectNetworkCommit = true;
+    check(!editor openCJ\checkpointNetwork::rename("edit_precise", "edit_aborted"),
+          "uncommitted rename reports rollback");
+    network = editor openCJ\checkpointNetwork::load();
+    check(isDefined(network.paths["edit_precise"]) && !isDefined(network.paths["edit_aborted"]),
+          "verified rollback restores the old manifest entry");
+    checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='edit_precise'", 1,
+                "verified rollback retains the old database name");
+    checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='edit_aborted'", 0,
+                "verified rollback does not create a destination route");
+}
+
+checkUnresolvedRename(editor)
+{
+    level.hideNetworkCommitReply = true;
+    level.hideRenameLookup = true;
+    check(!editor openCJ\checkpointNetwork::rename("edit_precise", "edit_uncertain"),
+          "unavailable identity lookup leaves rename outcome unconfirmed");
+    check(isSubStr(editor.cpc.status, "confirm"), "unconfirmed rename asks for published-name verification");
+    network = editor openCJ\checkpointNetwork::load();
+    check(isDefined(network.paths["edit_uncertain"]) && !isDefined(network.paths["edit_precise"]),
+          "unknown outcome does not falsely restore old manifest names");
+    checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='edit_uncertain'", 1,
+                "unknown reply does not undo an already committed rename");
+    oldPath = editor openCJ\checkpointNetwork::basePath() + "edit_precise";
+    newPath = editor openCJ\checkpointNetwork::basePath() + "edit_uncertain";
+    check(FS_TestFile(oldPath + ".a") || FS_TestFile(oldPath + ".b"),
+          "unconfirmed rename retains original draft files");
+    check(FS_TestFile(newPath + ".a") || FS_TestFile(newPath + ".b"),
+          "unconfirmed rename retains destination draft files");
 }
