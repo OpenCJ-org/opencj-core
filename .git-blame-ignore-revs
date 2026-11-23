@@ -95,3 +95,6 @@ f342d9cf6db2744260d82b876ffaa1ea180fe9b6
 
 # Development shell layout; command tokens and arguments preserved.
 2a6f4a2723a71d1db9b2d81e5f17b5ba4a82282c
+
+# Notification and HUD probe layout; token and engine checks passed.
+30a44ae01205038b38deef62f236dac4ee17ec2c
