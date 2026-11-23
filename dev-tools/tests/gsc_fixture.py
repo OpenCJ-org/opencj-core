@@ -23,6 +23,7 @@ SCRIPT_ERRORS = (
     "EXE_SERVERCOMMANDOVERFLOW",
 )
 COMPLETION_TIMEOUT_SECONDS = 45
+CONTROL_TIMEOUT_SECONDS = 30
 
 
 def create_parser(
@@ -388,7 +389,8 @@ def wait_for_fixture(
     while time.monotonic() < deadline:
         time.sleep(1)
         result = subprocess.run(
-            ["docker", "logs", container_name], capture_output=True, text=True
+            ["docker", "logs", container_name], capture_output=True, text=True,
+            timeout=CONTROL_TIMEOUT_SECONDS,
         )
         log = result.stdout + result.stderr
         if all(marker in log for marker in completion_markers) or any(
@@ -397,7 +399,7 @@ def wait_for_fixture(
             break
         running = subprocess.check_output(
             ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
-            text=True,
+            text=True, timeout=CONTROL_TIMEOUT_SECONDS,
         ).strip()
         if running != "true":
             break
@@ -417,6 +419,7 @@ def has_libcod_mapping(container_name):
         ],
         capture_output=True,
         text=True,
+        timeout=CONTROL_TIMEOUT_SECONDS,
     )
     if result.returncode:
         raise RuntimeError("Could not inspect the isolated server's loaded libraries")
@@ -446,6 +449,7 @@ def run_prepared_fixture(
     fixture_hashes = script_hashes(home / "mods/opencj")
     container_name = "opencj-" + home.name
     completion_markers = (options.completion_marker, *extra_completion_markers)
+    report = None
     try:
         subprocess.run(
             server_command(
@@ -455,6 +459,7 @@ def run_prepared_fixture(
             cwd=ROOT / "dev-tools",
             check=True,
             capture_output=True,
+            timeout=CONTROL_TIMEOUT_SECONDS,
         )
         log = wait_for_fixture(container_name, completion_markers, timeout_seconds)
         (home / "console.log").write_text(log)
@@ -480,6 +485,7 @@ def run_prepared_fixture(
             "sourceHashes": source_hashes,
             "fixtureHashes": fixture_hashes,
             "passed": passed,
+            "containerRemoved": False,
             "summary": summary,
         }
         (home / "result.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -497,7 +503,24 @@ def run_prepared_fixture(
             )
         return report
     finally:
-        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+        removed = False
+        try:
+            result = subprocess.run(
+                ["docker", "rm", "-f", container_name],
+                capture_output=True,
+                text=True,
+                timeout=CONTROL_TIMEOUT_SECONDS,
+            )
+            # A failed launch may leave no container. Other removal failures matter.
+            removed = result.returncode == 0 or "No such container:" in result.stderr
+            if not removed:
+                raise RuntimeError("Isolated engine cleanup failed: " + container_name)
+        finally:
+            if report is not None:
+                report["containerRemoved"] = removed
+                if not removed:
+                    report["passed"] = False
+                (home / "result.json").write_text(json.dumps(report, indent=2) + "\n")
 
 
 def main():

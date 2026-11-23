@@ -225,6 +225,7 @@ def cleanup_resources(home, monitor, database, engine_container):
 
 
 def run_capacity(options):
+    """Measure one owned workload and record cleanup and source-preservation results."""
     home = ROOT / "dev-tools/local" / ("capacity-" + uuid.uuid4().hex[:8])
     source_hashes = prepare_scripts(options, home)
     database = database_for(home, options)

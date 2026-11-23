@@ -745,11 +745,12 @@
     {
       "id": "fixture-ownership-unit",
       "category": "portable",
-      "description": "Disposable SQL ownership, launch failure cleanup and credential containment.",
+      "description": "Owned database and GSC fixture cleanup, credential lifetime, control bounds and failure reporting.",
       "requires": "Python standard library; no Docker daemon, database or installation.",
       "effects": "Temporary directories and mocked commands only.",
       "files": [
-        "dev-tools/tests/test_disposable_mysql.py"
+        "dev-tools/tests/test_disposable_mysql.py",
+        "dev-tools/tests/test_gsc_fixture.py"
       ],
       "commands": [],
       "mode": "unit"
