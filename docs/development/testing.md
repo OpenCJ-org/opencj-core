@@ -390,3 +390,10 @@ execute, a cancelled running read settles within the fixture deadline, newer
 results remain visible, and the pool drains. Running queries retain the native
 adapter's SQL/socket limits; cancellation does not interrupt an active MySQL call.
 The controlled queries do not verify the production route-selection SQL.
+
+The map-menu fixture exercises the real browser with three installed stock maps,
+including page boundaries, case-insensitive search, clearing selection, route
+overview state, and obsolete listeners after disconnect or map end. A two-row
+fixture page exercises pagination; the normal twenty-row setting is checked
+before that override. Notifications are synthetic and client rendering is not
+observed.

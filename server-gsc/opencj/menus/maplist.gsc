@@ -31,8 +31,12 @@ onOpen() // Map list menu is opened
     self thread _updateMapList(true);
 }
 
+// Search notifications belong only to this player session and map.
 onSearchText()
 {
+    self endon("disconnect");
+    level endon("game_ended");
+
     self setClientCvar(level.mapListDvarPrefix + "textfield", "");
     for(;;)
     {

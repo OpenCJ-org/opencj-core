@@ -590,7 +590,7 @@
     {
       "id": "focused-gsc",
       "category": "integration",
-      "description": "Checkpoint contact/landing selection and bounded ancestor traversal, panel states, bounded indicators/travel, moving-marker cancellation and draft validation; client startup, graphics menu, HUD, native-helper and numeric-input boundary, save-history, map-hint, route catalogue and map-pool regressions.",
+      "description": "Checkpoint contact/landing selection and bounded ancestor traversal, panel states, bounded indicators/travel, moving-marker cancellation and draft validation; client startup, graphics menu, HUD, native-helper and numeric-input boundary, save-history, map-hint, route catalogue, map-pool and map-browser lifecycle regressions.",
       "requires": "Initialized Compose, current engine, licensed game/compiled mod; each command selects its fixture and completion marker. Checkpoint contact requires mp_futile_fixed; other listed fixtures use mp_killhouse.",
       "effects": "Isolated servers and synthetic clients; private logs/drafts, no gameplay database.",
       "files": [
@@ -609,7 +609,8 @@
         "dev-tools/tests/save-position.gsc",
         "dev-tools/tests/challenge-state.gsc",
         "dev-tools/tests/graphics-menu.gsc",
-        "dev-tools/tests/map-catalogue.gsc"
+        "dev-tools/tests/map-catalogue.gsc",
+        "dev-tools/tests/map-menu.gsc"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_futile_fixed --fixture dev-tools/tests/checkpoint-contact.gsc --completion-marker \"CHECKPOINT CONTACT COMPLETE\"",
@@ -627,7 +628,8 @@
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/save-position.gsc --completion-marker \"SAVE POSITION COMPLETE\"",
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_killhouse --fixture dev-tools/tests/challenge-state.gsc --completion-marker \"CHALLENGE STATE COMPLETE\"",
         "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/graphics-menu.gsc --completion-marker \"GRAPHICS MENU COMPLETE\"",
-        "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/map-catalogue.gsc --completion-marker \"MAP CATALOGUE COMPLETE\""
+        "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/map-catalogue.gsc --completion-marker \"MAP CATALOGUE COMPLETE\"",
+        "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/map-menu.gsc --completion-marker \"MAP MENU COMPLETE\""
       ]
     },
     {
