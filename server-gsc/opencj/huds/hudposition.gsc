@@ -2,7 +2,7 @@
 
 onInit()
 {
-    underlyingCmd = openCJ\settings::addSettingBool(
+    openCJ\settings::addSettingBool(
         "poshud", false, "Turn on/off position hud. Usage: !poshud [on/off]", undefined);
 }
 
@@ -10,25 +10,27 @@ onPlayerConnect()
 {
 }
 
+// Allocate coordinate elements only when the setting is enabled.
 _createPositionHud()
 {
-    if(!isDefined(self.hudPos))
+    if(isDefined(self.hudPos))
     {
-        self.hudPos = [];
-
-        rgb = (0.8, 0.8, 0.8);
-        spaceBetween = 20;
-        startY = 6;
-        if(getCodVersion() == 4)
-        {
-            spaceBetween = 16;
-            startY = 8;
-        }
-        self _initPosHud("x", rgb, startY);
-        self _initPosHud("y", rgb, startY + spaceBetween);
-        self _initPosHud("z", rgb, startY + (2 * spaceBetween));
-        self _initPosHud("angle", rgb, startY + (3 * spaceBetween));
+        return;
     }
+    self.hudPos = [];
+
+    textColor = (0.8, 0.8, 0.8);
+    rowSpacing = 20;
+    firstRowY = 6;
+    if(getCodVersion() == 4)
+    {
+        rowSpacing = 16;
+        firstRowY = 8;
+    }
+    self _initPosHud("x", textColor, firstRowY);
+    self _initPosHud("y", textColor, firstRowY + rowSpacing);
+    self _initPosHud("z", textColor, firstRowY + (2 * rowSpacing));
+    self _initPosHud("angle", textColor, firstRowY + (3 * rowSpacing));
 }
 
 onSpawnPlayer()
@@ -78,42 +80,42 @@ _updatePosHudValues()
     self.hudPos["angle"] setValue(self getPlayerAngles()[1]);
 }
 
-_setPosHudAlpha(val)
+_setPosHudAlpha(alpha)
 {
     if(!isDefined(self.hudPos))
     {
         return;
     }
-    self.hudPos["x"].alpha = val;
-    self.hudPos["y"].alpha = val;
-    self.hudPos["z"].alpha = val;
-    self.hudPos["angle"].alpha = val;
+    self.hudPos["x"].alpha = alpha;
+    self.hudPos["y"].alpha = alpha;
+    self.hudPos["z"].alpha = alpha;
+    self.hudPos["angle"].alpha = alpha;
 }
 
-_initPosHud(name, colors, yOffset)
+_initPosHud(fieldName, textColor, yOffset)
 {
-    if(!isDefined(self.hudPos[name]))
+    if(!isDefined(self.hudPos[fieldName]))
     {
-        self.hudPos[name] = newClientHudElem(self);
-        self.hudPos[name].alpha = 0;
-        self.hudPos[name].foreground = true;
-        self.hudPos[name].alignx = "left";
-        self.hudPos[name].aligny = "top";
-        self.hudPos[name].x = 115; // To the right of minimap
-        self.hudPos[name].y = yOffset;
-        self.hudPos[name].horzalign = "left";
-        self.hudPos[name].vertalign = "top";
-        self.hudPos[name].color = colors;
-        self.hudPos[name].fontscale = 1.4;
+        self.hudPos[fieldName] = newClientHudElem(self);
+        self.hudPos[fieldName].alpha = 0;
+        self.hudPos[fieldName].foreground = true;
+        self.hudPos[fieldName].alignx = "left";
+        self.hudPos[fieldName].aligny = "top";
+        self.hudPos[fieldName].x = 115; // To the right of minimap
+        self.hudPos[fieldName].y = yOffset;
+        self.hudPos[fieldName].horzalign = "left";
+        self.hudPos[fieldName].vertalign = "top";
+        self.hudPos[fieldName].color = textColor;
+        self.hudPos[fieldName].fontscale = 1.4;
         if(getCodVersion() == 4)
         {
             // Minimap occupies x=5..73.3 and y=5..73.3 in the same HUD space.
-            self.hudPos[name].x = 80;
+            self.hudPos[fieldName].x = 80;
             // Keep the original readable face; compact the rows instead of the glyphs.
-            self.hudPos[name].font = "default";
+            self.hudPos[fieldName].font = "default";
         }
-        self.hudPos[name].archived = false;
-        self.hudPos[name].hideWhenInMenu = true;
+        self.hudPos[fieldName].archived = false;
+        self.hudPos[fieldName].hideWhenInMenu = true;
     }
 }
 
@@ -123,10 +125,10 @@ _destroyPositionHud()
     {
         return;
     }
-    keys = getArrayKeys(self.hudPos);
-    for(i = 0; i < keys.size; i++)
+    fieldNames = getArrayKeys(self.hudPos);
+    for(i = 0; i < fieldNames.size; i++)
     {
-        self.hudPos[keys[i]] destroy();
+        self.hudPos[fieldNames[i]] destroy();
     }
     self.hudPos = undefined;
 }
