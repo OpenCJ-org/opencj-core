@@ -11,7 +11,7 @@ main(atLastSavedPosition)
         return;
     }
 
-    if (!self openCJ\fpsRegistration::canStart())
+    if(!self openCJ\fpsRegistration::canStart())
     {
         self.fpsRegistrationSpawnPending = true;
         self.fpsRegistrationSpawnAtSave = atLastSavedPosition;
@@ -32,20 +32,24 @@ main(atLastSavedPosition)
     }
 
     self openCJ\demos::cancelRequest();
-    if(self openCJ\demos::isPlayingDemo())self openCJ\demos::stopDemo();
+    if(self openCJ\demos::isPlayingDemo())
+    {
+        self openCJ\demos::stopDemo();
+    }
 
     self openCJ\noclip::disableNoclip();
 
-    self.demoSpectatorCaption=undefined;
-    self setClientCvar("cg_drawSpectatorMessages",1);
+    self.demoSpectatorCaption = undefined;
+    self setClientCvar("cg_drawSpectatorMessages", 1);
     self notify("spawned");
 
     resetTimeout();
     self.sessionTeam = "allies";
     self.sessionState = "playing";
-    if (self.spectatorClient != -1)
+    if(self.spectatorClient != -1)
     {
-        self openCJ\events\spectatorClientChanged::main(getEntByNum(self.spectatorClient), undefined);
+        self openCJ\events\spectatorClientChanged::main(getEntByNum(self.spectatorClient),
+                                                        undefined);
         self.spectatorClient = -1;
     }
     self.archiveTime = 0;
@@ -85,7 +89,8 @@ main(atLastSavedPosition)
     self openCJ\checkpointCreation::onSpawnPlayer();
 
     // Set player at last saved position if requested
-    if (isDefined(atLastSavedPosition) && atLastSavedPosition && !self openCJ\checkpointCreation::isEditing())
+    if(isDefined(atLastSavedPosition) && atLastSavedPosition &&
+       !self openCJ\checkpointCreation::isEditing())
     {
         self openCJ\events\eventHandler::onLoadPositionRequest(0);
     }
@@ -137,7 +142,9 @@ _dummy()
 {
     waittillframeend;
     if(isDefined(self))
+    {
         self notify("spawned_player");
+    }
 }
 
 setDemoSpawnVars(giveRPG)
