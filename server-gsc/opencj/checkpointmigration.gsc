@@ -332,13 +332,13 @@ matchExistingAreas(entries, existing, groups, migrationPlan)
     retainedIdsSql = "(";
     for(i = 0; i < entries.size; i++)
     {
-        existingArea = [];
+        existingArea = spawnStruct();
         oldGroupIndex = migrationPlan.mapping[entries[i].group];
         areaIndex = i - entries[i].leader;
         if(oldGroupIndex >= 0 && areaIndex < groups[oldGroupIndex].size)
         {
             existingArea = existing[groups[oldGroupIndex][areaIndex]];
-            checkpointId = int(existingArea[0]);
+            checkpointId = existingArea.id;
             if(retainedIdsSql != "(")
             {
                 retainedIdsSql += ",";

@@ -14,7 +14,10 @@ main()
     checkBackupCapacity(editor);
     checkRouteMigration(editor);
     checkPartialWriteRollback(editor);
+    checkInsertedCheckpoint(editor);
+    checkUnusedRouteReplacement(editor);
     checkSharedBranches(editor);
+    checkLoadedMetadata();
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
            " checks=" + level.publicationChecks + "\n");
 }
@@ -261,4 +264,67 @@ checkSharedBranches(editor)
         "WHERE a.draftName='shared_opening' AND a.ordinal=0",
         50, "rejected shared edit leaves the original opening center");
     editor.cpc = firstBranch;
+}
+
+checkInsertedCheckpoint(editor)
+{
+    editor.cpc = routeDraft("fixture_route");
+    editor.cpc.rows[1] = row(300, false, false);
+    check(editor openCJ\checkpointPublish::publish(), "insertion allocates only the new checkpoint");
+    checkScalar("SELECT COUNT(*) FROM checkpoints", 5, "insertion keeps retired checkpoints and adds one");
+    checkScalar("SELECT cpID FROM checkpointAreas WHERE draftName='fixture_route' AND ordinal=0",
+                level.publicationOriginalIds[0], "insertion keeps original start ID");
+    checkScalar("SELECT cpID FROM checkpointAreas WHERE draftName='fixture_route' AND ordinal=2",
+                level.publicationOriginalIds[3], "insertion keeps original finish ID");
+    checkScalar("SELECT COUNT(*) FROM checkpointStatistics", 2, "insertion preserves historical statistics");
+}
+
+checkUnusedRouteReplacement(editor)
+{
+    editor.cpc = routeDraft("unused_route");
+    check(editor openCJ\checkpointPublish::publish(), "unused route baseline publishes");
+    firstRows = openCJ\mySQL::mysqlSyncQuery(
+        "SELECT cpID FROM checkpointAreas WHERE draftName='unused_route' ORDER BY ordinal");
+    if (!check(isDefined(firstRows) && firstRows.size == 4, "unused route has four initial area IDs"))
+    {
+        return;
+    }
+    firstCheckpointId = int(firstRows[0][0]);
+    editor.cpc.rows[0] = row(100, false, false);
+    editor.cpc.rows[2] = row(700, true, false);
+    checkpoint = openCJ\checkpointCreation::_decode(editor.cpc.rows[1]);
+    checkpoint.allowEle = true;
+    editor.cpc.rows[1] = openCJ\checkpointCreation::_encode(checkpoint);
+    check(editor openCJ\checkpointPublish::publish(), "route without history permits endpoint and requirement changes");
+    checkScalar("SELECT cpID FROM checkpointAreas WHERE draftName='unused_route' AND ordinal=0",
+                firstCheckpointId, "unused route replacement preserves start identity");
+    checkScalar("SELECT x FROM checkpoints WHERE cpID=" + firstCheckpointId, 150,
+                "unused route replacement publishes the changed start");
+}
+
+// Metadata loading updates the runtime graph without changing its checkpoint identities.
+checkLoadedMetadata()
+{
+    areaIds = openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas ORDER BY cpID");
+    if (!check(isDefined(areaIds) && areaIds.size > 0, "published metadata has checkpoint IDs"))
+    {
+        return;
+    }
+    level.checkpoints_checkpoints = [];
+    for (i = 0; i < areaIds.size; i++)
+    {
+        checkpoint = spawnStruct();
+        checkpoint.id = int(areaIds[i][0]);
+        level.checkpoints_checkpoints[i] = checkpoint;
+    }
+    check(isDefined(openCJ\mySQL::mysqlSyncQuery(
+              "UPDATE checkpointAreas SET heightAbove=24 WHERE draftName='fixture_route' AND ordinal=0")),
+          "seed synthetic area height");
+    openCJ\checkpointPublish::loadAreas();
+    startCheckpoint = openCJ\checkpoints::getCheckpointByID(level.publicationOriginalIds[0]);
+    check(isDefined(startCheckpoint.area) && startCheckpoint.area.size == 4,
+          "area loader restores the stored polygon");
+    check(startCheckpoint.heightAbove == 24, "area loader restores the stored height");
+    check(isDefined(startCheckpoint.routeInfo) && startCheckpoint.routeInfo.hex == "#123456",
+          "area loader attaches the current route color");
 }
