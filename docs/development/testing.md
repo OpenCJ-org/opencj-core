@@ -406,3 +406,12 @@ phase. Synthetic disconnect events test listener cancellation; replacement vote
 objects test timer cancellation and ownership after a wait. It uses real engine
 entities and installed maps, but does not run a map transition, physically
 disconnect a client, render the menu or write to the database.
+
+### Leaderboard menus
+
+The focused boards fixture executes production row decoding and demo-button
+handling with synthetic SQL results. It checks totals, pages, column meanings,
+empty versus failed reads, FPS labels and selected demo IDs. Fixture-only
+boundaries supply SQL rows and record playback requests; no database or demo
+playback starts. Query-equivalence tests separately execute generated SQL.
+Client rendering and physical disconnects are not observed.

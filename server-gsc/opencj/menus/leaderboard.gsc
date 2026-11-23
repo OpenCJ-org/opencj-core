@@ -254,14 +254,40 @@ getEndCheckpointIdsForRoute(routeName)
     return "(" + cpSqlStr + ")";
 }
 
+// Resolve the complete client slot before cancelling or starting demo playback.
 handleDemo(button)
 {
-    if(self.currentMenu!="opencj_leaderboard")return;
-    index=int(getSubStr(button,8))-1;
-    if(index<0 || index>=self.currentBoard["nrEntriesThisPage"])return;
-    id=self.currentBoard["demoRunIDs"][index];
-    if(!isDefined(id))return;
+    if(self.currentMenu != "opencj_leaderboard")
+    {
+        return;
+    }
+
+    demoButtonPrefix = "playdemo";
+    if(getSubStr(button, 0, demoButtonPrefix.size) != demoButtonPrefix)
+    {
+        return;
+    }
+
+    slotText = getSubStr(button, demoButtonPrefix.size);
+    if(!isValidInt(slotText))
+    {
+        return;
+    }
+
+    rowIndex = int(slotText) - 1;
+    if(rowIndex < 0 || rowIndex >= self.currentBoard["nrEntriesThisPage"])
+    {
+        return;
+    }
+
+    runID = self.currentBoard["demoRunIDs"][rowIndex];
+    if(!isDefined(runID))
+    {
+        return;
+    }
+
     self openCJ\demos::cancelRequest();
     self closeMenu();
-    self thread openCJ\demos::playRun(id,true);
+    returnToBoard = true;
+    self thread openCJ\demos::playRun(runID, returnToBoard);
 }

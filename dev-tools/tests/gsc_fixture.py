@@ -180,6 +180,19 @@ def install_observation_hooks(mod, fixture_name):
                 ),
             ),
         ),
+        "boards.gsc": (
+            "opencj/menus/leaderboard.gsc",
+            (
+                (
+                    r"openCJ\\mySQL::mysqlAsyncMenuQuery\s*\(",
+                    r"openCJ\platformTest::boardQuery(",
+                ),
+                (
+                    r"openCJ\\demos::playRun\s*\(",
+                    r"openCJ\platformTest::recordDemoSelection(",
+                ),
+            ),
+        ),
         "map-menu.gsc": (
             "opencj/menus/maplist.gsc",
             (

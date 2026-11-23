@@ -218,6 +218,11 @@ onMenuResponse()
     {
         self waittill("menuresponse", menu, response);
 
+        if (menu != self.currentMenu)
+        {
+            continue;
+        }
+
         // Only handle the response if a board-type menu is currently open
         if ((self.currentMenu != "opencj_leaderboard") && (self.currentMenu != "opencj_runsboard"))
         {
