@@ -19,6 +19,7 @@ main(inflictor, attacker, damage, flags, meansOfDeath, weapon, vPoint, vDir, hit
         return;
     }
 
+    noKnockbackFlag = 4;
     if(!isdefined(vDir))
     {
         flags |= 4;
@@ -43,7 +44,8 @@ main(inflictor, attacker, damage, flags, meansOfDeath, weapon, vPoint, vDir, hit
     {
         if(self openCJ\checkpointCreation::isEditing())
         {
-            if(self openCJ\checkpointCreation::loadPosition(0))
+            editorPositionLoaded = self openCJ\checkpointCreation::loadPosition(0);
+            if(editorPositionLoaded)
             {
                 return;
             }
@@ -56,7 +58,8 @@ main(inflictor, attacker, damage, flags, meansOfDeath, weapon, vPoint, vDir, hit
             {
                 if(getCodVersion() == 2)
                 {
-                    self openCJ\playTime::addTimeUntil(getTime() + 5000);
+                    cod2DeathPenaltyMs = 5000;
+                    self openCJ\playTime::addTimeUntil(getTime() + cod2DeathPenaltyMs);
                 }
                 return;
             }

@@ -112,10 +112,24 @@ whileAlive()
         }
 
     }
-    if(self isPlayerReady() && self openCJ\playTime::isActivelyPlaying() && !self openCJ\playerRuns::isRunFinished() && !self openCJ\cheating::isCheating() && self openCJ\playerRuns::hasRunStarted())
+    if(self canRecordRunFrame())
     {
         self openCJ\demoRecording::capture();
     }
     self openCJ\clips::capture();
     self.eventQueue = [];
+}
+
+// Check readiness before reading run state; clips have their own capture policy.
+canRecordRunFrame()
+{
+    if(!self isPlayerReady())
+    {
+        return false;
+    }
+    if(!self openCJ\playTime::isActivelyPlaying() || self openCJ\playerRuns::isRunFinished())
+    {
+        return false;
+    }
+    return !self openCJ\cheating::isCheating() && self openCJ\playerRuns::hasRunStarted();
 }
