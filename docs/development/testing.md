@@ -397,3 +397,12 @@ overview state, and obsolete listeners after disconnect or map end. A two-row
 fixture page exercises pagination; the normal twenty-row setting is checked
 before that override. A forwarding hook records requested client cvar values.
 Notifications are synthetic and client rendering is not observed.
+
+### Voting
+
+The focused voting fixture checks map-pool selection, exact and partial lookup,
+admin cooldowns, end-vote button validation, vote transfers and the closed voting
+phase. Synthetic disconnect events test listener cancellation; replacement vote
+objects test timer cancellation and ownership after a wait. It uses real engine
+entities and installed maps, but does not run a map transition, physically
+disconnect a client, render the menu or write to the database.

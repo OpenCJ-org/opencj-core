@@ -137,6 +137,8 @@ _setVoteCooldown(seconds)
 
 menuResponse()
 {
+    self endon("disconnect");
+
     while (1)
     {
         self waittill("menuresponse", menu, response);
@@ -402,6 +404,8 @@ _destroyVote()
         players[i] _writeVoteString();
         players[i] _setMapVoteImage();
     }
+    // Finish cleanup before this notification can stop the calling timer.
+    level notify("vote_finished");
 }
 
 _writeVoteString()
@@ -430,6 +434,13 @@ _writeVoteCountString()
 
 _monitorVote()
 {
+    level endon("vote_finished");
+    activeVote = level.vote;
+    if(!isDefined(activeVote))
+    {
+        return;
+    }
+
     // Update the votes and menu for each player
     players = getEntArray("player", "classname");
     for(i = 0; i < players.size; i++)
@@ -441,16 +452,16 @@ _monitorVote()
         players[i] _writeVoteCountString();
     }
 
-    // Start 30 second timer
-    for(time = level.vote.timeLeft; time > 0; time--)
+    // Each timer belongs to one vote, including the final check after its wait.
+    for(remainingSeconds = activeVote.timeLeft; remainingSeconds > 0; remainingSeconds--)
     {
-        if(!isDefined(level.vote))
+        if(!isDefined(level.vote) || level.vote != activeVote)
         {
             return;
         }
 
         // Update the vote string for everyone
-        level.vote.timeLeft = time;
+        activeVote.timeLeft = remainingSeconds;
         players = getEntArray("player", "classname");
         for(i = 0; i < players.size; i++)
         {
@@ -464,8 +475,8 @@ _monitorVote()
         wait 1;
     }
 
-    // If the vote went the full 30 seconds, then it means the vote failed
-    if(isDefined(level.vote))
+    // The original vote failed if its full duration elapsed.
+    if(isDefined(level.vote) && level.vote == activeVote)
     {
         _voteFailed();
     }

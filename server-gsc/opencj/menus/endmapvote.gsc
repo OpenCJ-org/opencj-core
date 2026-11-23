@@ -195,7 +195,7 @@ removeVote(mapIdx) // When a player disconnected
 onVoteChanged(val)
 {
     // Only when end map vote is active and the vote is valid
-    if ((val < 1) || (val > level.endVote["maps"].size) || (level.endVote["status"] <= 0))
+    if ((val < 1) || (val > level.endVote["maps"].size) || (level.endVote["status"] != 1))
     {
         return;
     }
@@ -274,30 +274,31 @@ _updateVotes(prevVoteIdx, newVoteIdx)
     }
 }
 
+// Accept only complete vote buttons from this menu while its voting phase is active.
 _menuResponse()
 {
     self endon("disconnect");
+    voteButtonPrefix = "click_vote";
 
-    for(;;)
+    for (;;)
     {
         self waittill("menuresponse", menu, response);
+        if (menu != level.endVote["menu"])
+        {
+            continue;
+        }
 
-        button = undefined;
-        if (isSubStr(response, "click_"))
+        if (getSubStr(response, 0, voteButtonPrefix.size) != voteButtonPrefix)
         {
-            button = getSubStr(response, 6); 
+            continue;
         }
-        
-        if (isDefined(button)) // A button was clicked
+
+        slotText = getSubStr(response, voteButtonPrefix.size);
+        if (!isValidInt(slotText))
         {
-            if (isSubStr(button, "vote") && (button.size > 4))
-            {
-                val = int(getSubStr(button, 4)); // "vote"
-                if (isDefined(val))
-                {
-                    self onVoteChanged(val);
-                }
-            }
+            continue;
         }
+
+        self onVoteChanged(int(slotText));
     }
 }
