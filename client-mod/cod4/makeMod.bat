@@ -1,103 +1,121 @@
-Rem IMPORTANT: this makeMod.bat needs to be in the Mods/opencj/cod4 folder for the paths to work
-
-@Rem Some variables that are used multiple times or need to be remembered
 @echo off
-@Rem Use an installed 7-Zip; check it before changing any build output.
-if not defined OPENCJ_7ZIP set "OPENCJ_7ZIP=7z.exe"
+setlocal
+rem Run from the staged Mods/opencj/cod4 directory.
+set "OPENCJ_COD4_DIR=%cd%"
+set "OPENCJ_DIR=%OPENCJ_COD4_DIR%\.."
+set "ROOT_DIR=%OPENCJ_COD4_DIR%\..\..\.."
+set "RAW_DIR=%ROOT_DIR%\raw"
+set "BIN_DIR=%ROOT_DIR%\bin"
+set "ZONE_SOURCE_DIR=%ROOT_DIR%\zone_source"
+set "ZONE_DIR=%ROOT_DIR%\zone"
+set "OPENCJ_IWD=z_opencj.iwd"
+set "OPENCJ_FF=mod.ff"
+
+rem Check tools and staged inputs before invalidating any previous output.
+if not defined OPENCJ_7ZIP (
+    set "OPENCJ_7ZIP=7z.exe"
+)
 "%OPENCJ_7ZIP%" i >nul 2>&1
 if errorlevel 1 (
     echo 7-Zip is unavailable. Install it and add 7z.exe to PATH, 1>&2
     echo or set OPENCJ_7ZIP to its full executable path. 1>&2
     exit /B 1
 )
-
-SET OPENCJ_COD4_DIR=%cd%
-SET OPENCJ_DIR=%OPENCJ_COD4_DIR%\..
-SET ROOT_DIR=%OPENCJ_COD4_DIR%\..\..\..
-SET RAW_DIR=%ROOT_DIR%\raw
-SET BIN_DIR=%ROOT_DIR%\bin
-SET ZONE_SOURCE_DIR=%ROOT_DIR%\zone_source
-SET ZONE_DIR=%ROOT_DIR%\zone
-SET OPENCJ_IWD=z_opencj.iwd
-SET OPENCJ_FF=mod.ff
-@echo on
-
-@Rem we are in subdir cod4, and while we need files from here, the output needs to be in the parent directory for the fs_game to be working
-cd %OPENCJ_DIR%
-
-@if %ERRORLEVEL% NEQ 0 echo "Failed to cd to parent dir" & cd %OPENCJ_COD4_DIR% & goto:eof
-
-@Rem remove any existing output files
-@if exist %OPENCJ_IWD% (
-    del %OPENCJ_IWD%
+if not exist "%BIN_DIR%\linker_pc.exe" (
+    echo Missing Mod Tools linker. 1>&2
+    exit /B 1
 )
-@if exist %OPENCJ_FF% (
-    del %OPENCJ_FF%
+if not exist "%OPENCJ_COD4_DIR%\mod.csv" (
+    echo Missing staged mod.csv. 1>&2
+    exit /B 1
 )
-
-@if %ERRORLEVEL% NEQ 0 echo "Failed to remove output files (perhaps the game is using them?)" & cd %OPENCJ_COD4_DIR% & goto:eof
-
-cd %OPENCJ_COD4_DIR%
-
-@Rem ..and copy over all files to raw for the mod tools to do their job
-@set /A nr_folders=0
-@setlocal enabledelayedexpansion
-@for %%x in (opencj animtrees english fx images maps material_properties materials info mp soundaliases sound ui ui_mp weapons vision xanim xmodel xmodelparts xmodelsurfs) do (
-    @if exist %%x\ (
-        @set /A nr_folders+=1
-        echo d | xcopy %%x "%RAW_DIR%\%%x" /SY
-    ) else (
-        @echo No %%x folder
+if not exist "%OPENCJ_COD4_DIR%\licenses\" (
+    echo Missing staged license notices. 1>&2
+    exit /B 1
+)
+for %%D in ("%RAW_DIR%" "%ZONE_SOURCE_DIR%" "%ZONE_DIR%\english") do (
+    if not exist "%%~D\" (
+        echo Missing Mod Tools directory: %%~D 1>&2
+        exit /B 1
     )
 )
-@endlocal
-
-@if %ERRORLEVEL% NEQ 0 echo "One or more xcopy failed" & cd %OPENCJ_COD4_DIR% & goto:eof
-
-@Rem if no folders were copied, then we are probably in wrong directory
-@if nr_folders equ 0 (
-    @echo No folders to copy were found..
-    GOTO:FAIL
+set /A asset_folder_count=0
+for %%D in (opencj animtrees english fx images maps material_properties materials info mp soundaliases sound ui ui_mp weapons vision xanim xmodel xmodelparts xmodelsurfs) do (
+    if exist "%%D\" (
+        set /A asset_folder_count+=1 >nul
+    )
+)
+if "%asset_folder_count%"=="0" (
+    echo No fastfile asset folders were found. 1>&2
+    exit /B 1
 )
 
-@Rem make sure to copy the mod.csv too so it is known what files are used for our mod
-copy /Y mod.csv "%ZONE_SOURCE_DIR%"
-
-@if %ERRORLEVEL% NEQ 0 echo "Failed to copy mod.csv" & cd %OPENCJ_COD4_DIR% & goto:eof
-
-@Rem go to the ModTools bin folder and start working
-cd %BIN_DIR%
-CALL linker_pc.exe -language english -compress -cleanup mod
-
-@if %ERRORLEVEL% NEQ 0 echo "Failed to build mod" & cd %OPENCJ_COD4_DIR% & goto:eof
-
-@Rem go back to the mods/opencj/cod4 folder
-cd %OPENCJ_COD4_DIR%
-
-@Rem and now we can copy over the output files
-copy "%ZONE_DIR%\english\mod.ff" "%OPENCJ_DIR%\"
-
-@if %ERRORLEVEL% NEQ 0 echo "Failed to copy back mod.ff file" & cd %OPENCJ_COD4_DIR% & goto:eof
-
-@Rem ..and zip all folders to the iwd
-@set /A nr_folders_zip=0
-@setlocal enabledelayedexpansion
-@for %%x in (images weapons licenses) do (
-    @if exist %%x\ (
-        @set /A nr_folders_zip+=1
-        "%OPENCJ_7ZIP%" a -r -tzip "%OPENCJ_DIR%\%OPENCJ_IWD%" %%x
+rem A failed build must not leave an old package that looks newly built.
+for %%F in ("%OPENCJ_DIR%\%OPENCJ_IWD%" "%OPENCJ_DIR%\%OPENCJ_FF%" "%ZONE_DIR%\english\%OPENCJ_FF%") do (
+    if exist "%%~F" (
+        del /Q "%%~F"
         if errorlevel 1 (
-            @echo Failed to package %%x into the IWD. 1>&2
-            @endlocal
-            @exit /B 1
+            echo Failed to remove an old build output. 1>&2
+            goto fail
         )
-    ) else (
-        @echo No %%x folder to add to zip
     )
 )
-@endlocal
 
-@echo =========== Mod created successfully! ===========
-pause
-@exit /B 0
+rem Keep each copy failure visible; a later successful copy must not hide it.
+for %%D in (opencj animtrees english fx images maps material_properties materials info mp soundaliases sound ui ui_mp weapons vision xanim xmodel xmodelparts xmodelsurfs) do (
+    if exist "%%D\" (
+        xcopy "%%D" "%RAW_DIR%\%%D" /E /I /Y
+        if errorlevel 1 (
+            echo Failed to copy %%D into raw assets. 1>&2
+            goto fail
+        )
+    )
+)
+copy /Y "%OPENCJ_COD4_DIR%\mod.csv" "%ZONE_SOURCE_DIR%\mod.csv" >nul
+if errorlevel 1 (
+    echo Failed to copy mod.csv. 1>&2
+    goto fail
+)
 
+pushd "%BIN_DIR%"
+if errorlevel 1 (
+    echo Failed to enter the Mod Tools bin directory. 1>&2
+    goto fail
+)
+linker_pc.exe -language english -compress -cleanup mod
+set "linker_exit_code=%errorlevel%"
+popd
+if not "%linker_exit_code%"=="0" (
+    echo Linker failed with exit code %linker_exit_code%. 1>&2
+    goto fail
+)
+if not exist "%ZONE_DIR%\english\%OPENCJ_FF%" (
+    echo Linker produced no mod.ff. 1>&2
+    goto fail
+)
+
+copy /Y "%ZONE_DIR%\english\%OPENCJ_FF%" "%OPENCJ_DIR%\%OPENCJ_FF%" >nul
+if errorlevel 1 (
+    echo Failed to copy the compiled fastfile. 1>&2
+    goto fail
+)
+for %%D in (images weapons licenses) do (
+    if exist "%%D\" (
+        "%OPENCJ_7ZIP%" a -r -tzip "%OPENCJ_DIR%\%OPENCJ_IWD%" "%%D"
+        if errorlevel 1 (
+            echo Failed to package %%D into the IWD. 1>&2
+            goto fail
+        )
+    )
+)
+echo Mod created successfully!
+exit /B 0
+
+:fail
+rem These are this build's output names; never remove any source directories.
+for %%F in ("%OPENCJ_DIR%\%OPENCJ_IWD%" "%OPENCJ_DIR%\%OPENCJ_FF%") do (
+    if exist "%%~F" (
+        del /Q "%%~F"
+    )
+)
+exit /B 1

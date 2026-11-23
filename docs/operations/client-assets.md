@@ -33,9 +33,22 @@ The helper validates its placement beneath the selected Mod Tools installation.
 batch file. The value is an executable path, without surrounding quotes or
 extra arguments. Paths containing spaces are supported.
 
-The builder checks the tool before changing build output and stops if archive
-creation fails. It still requires the Windows CoD4 Mod Tools installation.
-The Python builder uses Python's archive support and does not require 7-Zip.
+The builder checks tools and staged inputs before changing build output, and
+returns failure if copying, linking or archive creation fails. It rejects a
+successful linker exit that produced no new fastfile. It still requires the
+Windows CoD4 Mod Tools installation.
+
+The canonical Python builder uses Python's archive support and does not require
+7-Zip. Its linker wait is limited to 180 seconds; the private Windows helper
+uses its existing 45-second limit. Both canonical builders preserve previous
+packages when prerequisites are missing. Once a validated build starts, they
+invalidate the previous packages so a failed build cannot look newly completed.
+Only use outputs from a build that reports success.
+
+The `client-build-unit` tests use synthetic inputs. The manual
+`client-build-windows` group exercises the actual batch file with an installed
+7-Zip and a synthetic linker compiled by the selected .NET C# compiler. These
+checks do not replace a real asset build and compiled-output comparison.
 
 ## Install and verify
 

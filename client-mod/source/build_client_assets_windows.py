@@ -319,7 +319,10 @@ def run_installed_builder(paths):
         if not arguments or arguments[0] != "linker_pc.exe":
             raise RuntimeError("Unexpected subprocess in installed builder: " + str(arguments))
         try:
-            return original_run(arguments, timeout=LINKER_TIMEOUT_SECONDS, **options)
+            options["timeout"] = min(
+                options.get("timeout", LINKER_TIMEOUT_SECONDS), LINKER_TIMEOUT_SECONDS
+            )
+            return original_run(arguments, **options)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
             output = error.stdout or b""
             if isinstance(output, str):

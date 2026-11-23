@@ -66,7 +66,7 @@
     {
       "id": "client-build-unit",
       "category": "portable",
-      "description": "Private Windows asset-builder input validation, shader lookup and ownership, and notice packaging.",
+      "description": "Client-builder validation, bounded linking, output publication, shader lookup and ownership, and notice packaging.",
       "requires": "Python 3 standard library; no Windows compiler, game assets or network.",
       "effects": "Synthetic binary tables and archives, mocked COM outputs, temporary files; no shared installation writes.",
       "files": [
@@ -449,6 +449,19 @@
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-sticky-walls-native.py"
+      ]
+    },
+    {
+      "id": "client-build-windows",
+      "category": "manual",
+      "description": "Legacy batch success, failure status, stale-fastfile rejection and notice packaging.",
+      "requires": "Windows, Python 3, a staged current makeMod.bat, installed csc.exe and 7z.exe; no game assets.",
+      "effects": "Compiles a synthetic linker and runs the real batch file in owned temporary trees; cleans them on success or failure.",
+      "files": [
+        "dev-tools/tests/check_client_batch_windows.py"
+      ],
+      "commands": [
+        "python dev-tools/tests/check_client_batch_windows.py --builder STAGED_MAKE_MOD_BAT --compiler CSC_EXE --archiver SEVEN_ZIP_EXE"
       ]
     },
     {

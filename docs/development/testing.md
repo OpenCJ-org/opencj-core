@@ -58,7 +58,7 @@ to their listed harnesses, not standalone commands.
 | Checkpoint editor/contact/HUD | `checkpoint-engine`, `checkpoint-matching`, `focused-gsc` |
 | Player visibility or ping sampling | `native-unit`, `focused-gsc` |
 | Platform or movement code | `platform-engine`, `movement-engine`, `sticky-walls`, `native-unit` |
-| Private Windows client build helper | `client-build-unit` and an actual Windows build |
+| Client build scripts and private Windows helper | `client-build-unit`, `client-build-windows` and an actual asset build |
 | Menus or notification artwork | `compiled-menus`, `demo-menu-source`, `notification-assets` |
 | Query growth or capacity | `capacity` |
 | Tutorial mode, automatic FPS or landing targets | `tutorial-mode` |

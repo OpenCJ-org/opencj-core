@@ -1,168 +1,163 @@
+"""Build OpenCJ from a staged Mods/opencj/cod4 directory in Windows Mod Tools."""
+
 import os
-import sys
-import subprocess
+from pathlib import Path
 import shutil
+import subprocess
+import sys
+import tempfile
 
-# Bunch of paths
-opencj_cod4_dir = os.getcwd()
-opencj_dir = os.path.join(opencj_cod4_dir, '..\\')
-root_dir = os.path.join(opencj_cod4_dir, '..\\..\\..\\')
-raw_dir = os.path.join(root_dir, 'raw')
-bin_dir = os.path.join(root_dir, 'bin')
-zone_source_dir = os.path.join(root_dir, 'zone_source')
-zone_dir = os.path.join(root_dir, 'zone')
-tmp_dir = os.path.join(opencj_cod4_dir, 'tmp')
-opencj_iwd_name = 'z_opencj'
-opencj_ff = 'mod.ff'
+LINKER_TIMEOUT_SECONDS = 180
+FASTFILE_NAME = "mod.ff"
+ARCHIVE_NAME = "z_opencj.iwd"
+FASTFILE_FOLDERS = [
+    "opencj",
+    "animtrees",
+    "english",
+    "fx",
+    "images",
+    "maps",
+    "material_properties",
+    "materials",
+    "info",
+    "mp",
+    "soundaliases",
+    "sound",
+    "ui",
+    "ui_mp",
+    "weapons",
+    "vision",
+    "xanim",
+    "xmodel",
+    "xmodelparts",
+    "xmodelsurfs",
+]
+ARCHIVE_FOLDERS = ["images", "weapons", "licenses"]
 
 
-def fatal_exit(str):
-    print(
-        '\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nFATAL: {}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'.format(
-            str
+def validate_layout(source_directory):
+    """Resolve the legacy relative layout and reject missing inputs before writes."""
+    if len(source_directory.parents) < 3:
+        raise ValueError("Run from the staged Mods/opencj/cod4 directory")
+    installation = source_directory.parents[2]
+    required_files = [
+        source_directory / "mod.csv",
+        installation / "bin/linker_pc.exe",
+    ]
+    required_directories = [
+        installation / "raw",
+        installation / "zone_source",
+        installation / "zone/english",
+        source_directory / "licenses",
+    ]
+    missing = [str(path) for path in required_files if not path.is_file()]
+    missing.extend(str(path) for path in required_directories if not path.is_dir())
+    if missing:
+        raise ValueError("Missing build inputs:\n" + "\n".join(missing))
+    if not any((source_directory / folder).is_dir() for folder in FASTFILE_FOLDERS):
+        raise ValueError("No fastfile asset folders found in " + str(source_directory))
+    for name in [FASTFILE_NAME, ARCHIVE_NAME]:
+        output = source_directory.parent / name
+        if output.exists() and not output.is_file():
+            raise ValueError("Build output is not a file: " + str(output))
+    return installation
+
+
+def copy_fastfile_inputs(source_directory, installation):
+    for folder in FASTFILE_FOLDERS:
+        source = source_directory / folder
+        if source.is_dir():
+            shutil.copytree(source, installation / "raw" / folder, dirs_exist_ok=True)
+    shutil.copyfile(source_directory / "mod.csv", installation / "zone_source/mod.csv")
+
+
+def run_linker(installation):
+    """Keep the legacy command and working directory, with a bounded wait."""
+    previous_directory = Path.cwd()
+    try:
+        os.chdir(installation / "bin")
+        result = subprocess.run(
+            ["linker_pc.exe", "-language", "english", "-compress", "-cleanup", "mod"],
+            capture_output=True,
+            text=True,
+            timeout=LINKER_TIMEOUT_SECONDS,
         )
-    )
-    cd(opencj_cod4_dir)  # Don't end up in a random folder upon error
-    if os.path.exists(tmp_dir):
-        shutil.rmtree(tmp_dir)  # Always delete the tmp directory
-    sys.exit(1)
+    finally:
+        os.chdir(previous_directory)
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
+    if result.returncode:
+        raise RuntimeError(f"Linker failed with exit code {result.returncode}")
+    if any(
+        marker in result.stdout for marker in ["Menu load error", "UNRECOVERABLE ERROR", "\nERROR:"]
+    ) or result.stdout.startswith("ERROR:"):
+        raise RuntimeError("Linker reported asset errors")
+    if not (installation / "zone/english" / FASTFILE_NAME).is_file():
+        raise RuntimeError("Linker produced no " + FASTFILE_NAME)
 
 
-def cd(path):
-    try:
-        os.chdir(path)
-    except (WindowsError, OSError) as e:
-        fatal_exit('Could not cd to: {}'.format(path))
-
-
-def rmfile(path):
-    if os.path.exists(path):
-        os.remove(path)
-
-
-def mkdir(path, force=False):
-    if os.path.exists(path) and os.path.isdir(path):
-        if force:
-            os.rmdir(path)
+def build_archive(source_directory, temporary_directory):
+    """Package assets and notices without creating missing folders in the source."""
+    archive_root = temporary_directory / "archive"
+    archive_root.mkdir()
+    for folder in ARCHIVE_FOLDERS:
+        source = source_directory / folder
+        destination = archive_root / folder
+        if source.is_dir():
+            shutil.copytree(source, destination)
         else:
-            fatal_exit('Failed to remove directory: {} (force={})'.format(path, force))
-    os.mkdir(path)
+            destination.mkdir()
+    archive_path = shutil.make_archive(
+        str(temporary_directory / "z_opencj"), "zip", root_dir=archive_root, base_dir="./"
+    )
+    return Path(archive_path)
 
 
-def cp_contents(src, dst):
-    # Copy contents of the src folder into dst directly
+def publish_outputs(staged_outputs, output_directory):
+    """Publish complete files; remove this attempt's outputs if either move fails."""
+    published = []
     try:
-        os.makedirs(src, exist_ok=True)
-        shutil.copytree(src, dst, dirs_exist_ok=True)
-    except Exception as e:
-        print(e)
-        fatal_exit('Failed to contents of folder {} into {}'.format(src, dst))
+        for staged, name in staged_outputs:
+            destination = output_directory / name
+            staged.replace(destination)
+            published.append(destination)
+    except OSError:
+        for path in published:
+            path.unlink(missing_ok=True)
+        raise
 
 
-def cmd(cmd_list):
-    try:
-        result = subprocess.run(cmd_list, capture_output=True, text=True, check=True)
-        if result.stdout:
-            print(result.stdout)
-        if result.stderr:
-            print(result.stderr)
-    except subprocess.CalledProcessError as cpe:
-        fatal_exit('Command: {}   failed with error: {}'.format(cmd_list, cpe.stderr))
+def build(source_directory):
+    source_directory = source_directory.resolve()
+    installation = validate_layout(source_directory)
+    output_directory = source_directory.parent
 
+    # Once a valid build starts, remove old outputs so a failure cannot look like success.
+    for name in [FASTFILE_NAME, ARCHIVE_NAME]:
+        (output_directory / name).unlink(missing_ok=True)
+    copy_fastfile_inputs(source_directory, installation)
+    (installation / "zone/english" / FASTFILE_NAME).unlink(missing_ok=True)
+    run_linker(installation)
 
-def clear():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    # A unique owned folder cannot pick up debris from a previous interrupted build.
+    with tempfile.TemporaryDirectory(prefix=".opencj-build-", dir=source_directory) as directory:
+        temporary_directory = Path(directory)
+        archive = build_archive(source_directory, temporary_directory)
+        fastfile = temporary_directory / FASTFILE_NAME
+        shutil.copyfile(installation / "zone/english" / FASTFILE_NAME, fastfile)
+        publish_outputs([(fastfile, FASTFILE_NAME), (archive, ARCHIVE_NAME)], output_directory)
+    print("Mod created successfully!")
 
 
 def main():
-    clear()
-    print(
-        'Important: this script needs to be in <game>/mods/opencj/cod4 folder for the paths to work\n'
-    )
-
-    # We start in a subdir where we need files from, but the output needs to be in parent directory so the fs_game works
-    cd(opencj_dir)
-
-    # Remove any existing output files so if the build fails you can't accidentally use the existing files
-    rmfile(opencj_iwd_name + '.iwd')
-    rmfile(opencj_ff)
-
-    # Copy over all files to raw so the mod tools can do their job
-    ff_folders = [
-        'opencj',
-        'animtrees',
-        'english',
-        'fx',
-        'images',
-        'maps',
-        'material_properties',
-        'materials',
-        'info',
-        'mp',
-        'soundaliases',
-        'sound',
-        'ui',
-        'ui_mp',
-        'weapons',
-        'vision',
-        'xanim',
-        'xmodel',
-        'xmodelparts',
-        'xmodelsurfs',
-    ]
-    folders_copied = 0
-    for folder in ff_folders:
-        # Only copy it if it exists
-        full_path = os.path.join(opencj_cod4_dir, folder)
-        raw_subdir = os.path.join(raw_dir, folder)
-        if os.path.exists(full_path):
-            cp_contents(full_path, raw_subdir)
-            folders_copied += 1
-
-    # If no folders were copied, this is probably not the right directory
-    if folders_copied == 0:
-        fatal_exit('None of the .ff folders were found in {}'.format(opencj_cod4_dir))
-
-    # Copy the mod.csv so the mod tools know which files are used by the mod
-    mod_csv = 'mod.csv'
-    mod_csv_path = os.path.join(opencj_cod4_dir, mod_csv)
     try:
-        shutil.copyfile(mod_csv_path, os.path.join(zone_source_dir, mod_csv))
-    except Exception as e:
-        fatal_exit('Could not copy {} to {}'.format(mod_csv_path, zone_dir))
-
-    # Now head to the Modtools bin folder and get to work
-    cd(bin_dir)
-    cmd(['linker_pc.exe', '-language', 'english', '-compress', '-cleanup', 'mod'])
-
-    # Return to the original folder and copy over the newly generated output files
-    cd(opencj_cod4_dir)
-    try:
-        shutil.copyfile(
-            os.path.join(zone_dir, 'english/mod.ff'), os.path.join(opencj_dir, opencj_ff)
-        )
-    except Exception as e:
-        fatal_exit('Could not copy over mod.ff from zone dir')
-
-    # Now zip relevant folders to the iwd. For that we need to make a temporary directory to use with make_archive, and copy all files to it
-    # zipfile package can do it without a root directory, but that requires users of this script to install a Python package..
-    iwd_folders = ['images', 'weapons', 'licenses']
-    for folder in iwd_folders:
-        tmp_subdir = os.path.join(tmp_dir, folder)
-        full_path = os.path.join(opencj_cod4_dir, folder)
-        cp_contents(full_path, tmp_subdir)
-
-    shutil.make_archive(opencj_iwd_name, 'zip', root_dir=tmp_dir, base_dir='./')
-
-    # Lastly delete the temporary directory, rename (->iwd) and move the zip file
-    shutil.rmtree(tmp_dir)
-    shutil.move(
-        os.path.join(opencj_cod4_dir, opencj_iwd_name + '.zip'),
-        os.path.join(opencj_dir, opencj_iwd_name + '.iwd'),
-    )
-
-    # All done!
-    print('Mod created successfully!')
+        # The installed-builder wrapper deliberately runs this script from a private tree.
+        build(Path.cwd())
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print("Build failed: " + str(error), file=sys.stderr)
+        raise SystemExit(1) from error
 
 
 if __name__ == "__main__":
