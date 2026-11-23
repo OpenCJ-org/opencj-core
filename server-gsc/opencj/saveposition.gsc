@@ -2,6 +2,20 @@
 
 onInit()
 {
+    level.saveError_none = 0;
+    level.saveError_notPlaying = 1;
+    level.saveError_airborne = 2;
+    level.saveError_loading = 4;
+    level.saveError_tutorialSkip = 5;
+
+    // The first three load results match the native save-selection interface.
+    level.loadError_none = 0;
+    level.loadError_empty = 1;
+    level.loadError_unavailable = 2;
+    level.loadError_loading = 3;
+    level.loadError_demoPlaying = 998;
+    level.loadError_invalidSession = 999;
+
     level.saveFlagName_cheating = "cheating";
     level.saveFlagName_speedModeNow = "speedModeNow";
     level.saveFlagName_speedModeEver = "speedModeEver";
@@ -127,64 +141,45 @@ onRunCreated()
     self resetBackwardsCount();
 }
 
+// Return a save restriction without changing the player's current save.
 canSaveError()
 {
     if(self openCJ\historySave::isLoadingInitial())
     {
-        return 4;
+        return level.saveError_loading;
     }
     if(self.sessionState != "playing")
     {
-        return 1;
+        return level.saveError_notPlaying;
     }
-
     if(!self isOnGround())
     {
-        return 2;
+        return level.saveError_airborne;
     }
 
-    // Tutorial runs follow their route: no saving where a skip was triggered
+    // Tutorial runs must follow the route instead of saving beyond a skipped checkpoint.
     isTutorialRun = self openCJ\tutorial::isTutorialRun();
     if(isTutorialRun && (self openCJ\tutorial::isSkipLoadPending() ||
                          self openCJ\checkpoints::touchesRouteSkippingCheckpoint()))
     {
-        return 5;
+        return level.saveError_tutorialSkip;
     }
-
-    groundEntity = self getGroundEntity();
-
-    if(isDefined(groundEntity) && !isDefined(groundEntity.canSaveOn) && false)
-    {
-        return 3;
-    }
-
-    return 0;
+    return level.saveError_none;
 }
 
 printCanSaveError(error)
 {
-    switch(error)
-    {
-    case 4:
+    if(error == level.saveError_loading)
     {
         self iprintln("Wait until your run has loaded.");
-        break;
     }
-    case 2:
+    else if(error == level.saveError_airborne)
     {
         self iprintln("^1Cannot save in air");
-        break;
     }
-    case 3:
-    {
-        self iprintln("^1Cannot save on this object");
-        break;
-    }
-    case 5:
+    else if(error == level.saveError_tutorialSkip)
     {
         self iprintln("^1Cannot save here: tutorial runs follow the route");
-        break;
-    }
     }
 }
 
@@ -203,86 +198,82 @@ onSpawnPlayer()
     self resetBackwardsCount();
 }
 
+// Select a retained save when requested, and start an older page read if needed.
+// An undefined offset checks only whether loading is allowed.
 canLoadError(backwardsCount)
 {
-    error = 0; // No error by default
-    if((self.sessionState != "playing") && (self.sessionState != "spectator"))
+    if(self.sessionState != "playing" && self.sessionState != "spectator")
     {
-        error = 999;
+        return level.loadError_invalidSession;
     }
-    else if(self openCJ\demos::isPlayingDemo())
+    if(self openCJ\demos::isPlayingDemo())
     {
-        error = 998;
+        return level.loadError_demoPlaying;
     }
-    else if(self openCJ\historySave::isLoadingInitial())
+    if(self openCJ\historySave::isLoadingInitial())
     {
-        error = 3;
+        return level.loadError_loading;
     }
-    else if(isDefined(backwardsCount)) // Sometimes we don't want to select any save
+    if(!isDefined(backwardsCount))
     {
-        error = self savePosition_selectSave(backwardsCount);
-        if(self openCJ\historySave::maybePrefetch(backwardsCount) && error != 0)
-        {
-            error = 3;
-        }
+        return level.loadError_none;
     }
 
-    if(error != 0) // Useful for debugging
+    selectionError = self savePosition_selectSave(backwardsCount);
+    loadingOlderSaves = self openCJ\historySave::maybePrefetch(backwardsCount);
+    if(loadingOlderSaves && selectionError != level.loadError_none)
     {
-        // self iprintln("canLoadError: " + error);
+        return level.loadError_loading;
     }
-    return error;
+    return selectionError;
 }
 
+// Explain unavailable history and keep the selection inside the retained page.
 printCanLoadError(error)
 {
-    switch(error)
-    {
-    case 1:
+    if(error == level.loadError_empty)
     {
         self iprintln("^1No save available");
-        break;
+        return;
     }
-    case 3:
+    if(error != level.loadError_loading && error != level.loadError_unavailable)
+    {
+        return;
+    }
+
+    historyInfo = self savePosition_historyInfo();
+    retainedCount = historyInfo[0];
+    historyCapacity = historyInfo[3];
+    if(error == level.loadError_loading)
     {
         self iprintln("Loading older saves...");
-        info = self savePosition_historyInfo();
-        if(info[0] > 0 && self.savePosition_backwardsCount >= info[0])
-        {
-            self.savePosition_backwardsCount = info[0] - 1;
-        }
-        break;
     }
-    case 2:
+    else if(retainedCount >= historyCapacity)
     {
-        info = self savePosition_historyInfo();
-        if(info[0] >= info[3])
-        {
-            self iprintln("Only the " + info[3] + " most recent saves are available.");
-        }
-        else if(isDefined(self.historySaves) && self.historySaves.failed)
-        {
-            self iprintln("^1Could not read older saves. Try again.");
-        }
-        else
-        {
-            self iprintln("No older saved position available.");
-        }
-        if(self.savePosition_backwardsCount >= info[0] && info[0] > 0)
-        {
-            self.savePosition_backwardsCount = info[0] - 1;
-        }
-        break;
+        self iprintln("Only the " + historyCapacity + " most recent saves are available.");
     }
+    else if(isDefined(self.historySaves) && self.historySaves.failed)
+    {
+        self iprintln("^1Could not read older saves. Try again.");
+    }
+    else
+    {
+        self iprintln("No older saved position available.");
+    }
+
+    if(retainedCount > 0 && self.savePosition_backwardsCount >= retainedCount)
+    {
+        self.savePosition_backwardsCount = retainedCount - 1;
     }
 }
 
-_findNumOfEnt(ent)
+// Target names can be shared; persistence identifies the platform by its sibling index.
+_findEntitySiblingIndex(entity)
 {
-    ents = getEntArray(ent.targetName, "targetname");
-    for(i = 0; i < ents.size; i++)
+    siblings = getEntArray(entity.targetName, "targetname");
+    for(i = 0; i < siblings.size; i++)
     {
-        if(ents[i] == ent)
+        if(siblings[i] == entity)
         {
             return i;
         }
@@ -290,6 +281,7 @@ _findNumOfEnt(ent)
     return undefined;
 }
 
+// Store platform-relative coordinates, then publish the accepted save to persistence and demos.
 setSavedPosition()
 {
     groundEntity = self getGroundEntity();
@@ -297,35 +289,35 @@ setSavedPosition()
     angles = self getPlayerAngles();
     if(isDefined(groundEntity) && isDefined(groundEntity.targetName))
     {
-        diff = origin - groundEntity.origin;
-        x = vectorDot(anglesToForward(groundEntity.angles), diff);
-        y = vectorDot(anglesToRight(groundEntity.angles), diff);
-        z = vectorDot(anglesToUp(groundEntity.angles), diff);
+        positionOffset = origin - groundEntity.origin;
+        x = vectorDot(anglesToForward(groundEntity.angles), positionOffset);
+        y = vectorDot(anglesToRight(groundEntity.angles), positionOffset);
+        z = vectorDot(anglesToUp(groundEntity.angles), positionOffset);
         origin = (x, y, z);
         angles = angles - (0, groundEntity.angles[1], 0);
-        entNum = groundEntity getEntityNumber();
-        entTargetName = groundEntity.targetName;
-        numOfEnt = _findNumOfEnt(groundEntity);
+        entityNumber = groundEntity getEntityNumber();
+        entityTargetName = groundEntity.targetName;
+        entitySiblingIndex = _findEntitySiblingIndex(groundEntity);
     }
     else
     {
-        entNum = undefined;
-        entTargetName = undefined;
-        numOfEnt = undefined;
+        entityNumber = undefined;
+        entityTargetName = undefined;
+        entitySiblingIndex = undefined;
     }
     flags = self createFlags();
-    FPSModeStr = self openCJ\fps::getCurrentFPSMode();
-    FPSModeNum = self openCJ\fps::FPSModeToInt(FPSModeStr);
+    fpsModeName = self openCJ\fps::getCurrentFPSMode();
+    fpsModeNumber = self openCJ\fps::FPSModeToInt(fpsModeName);
     previousSaveCount = self openCJ\statistics::getSaveCount();
-    saveNum = self openCJ\statistics::increaseAndGetSaveCount();
+    saveNumber = self openCJ\statistics::increaseAndGetSaveCount();
 
     // Native validation can reject a position. Publish it only after local storage
     // accepts it, so a failed save cannot advance progress or add a demo marker.
-    saved = self savePosition_save(
-        origin, angles, entNum, self openCJ\statistics::getExplosiveJumps(),
+    nativeSaveResult = self savePosition_save(
+        origin, angles, entityNumber, self openCJ\statistics::getExplosiveJumps(),
         self openCJ\statistics::getDoubleExplosives(),
-        self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeNum, flags, saveNum);
-    if(!isDefined(saved))
+        self openCJ\checkpoints::getCurrentCheckpointID(), fpsModeNumber, flags, saveNumber);
+    if(!isDefined(nativeSaveResult))
     {
         self openCJ\statistics::setSaveCount(previousSaveCount);
         self iprintln("^1Could not save this position.");
@@ -333,18 +325,19 @@ setSavedPosition()
     }
 
     self thread openCJ\historySave::saveToDatabase(
-        origin, angles, entTargetName, numOfEnt, self openCJ\statistics::getExplosiveJumps(),
+        origin, angles, entityTargetName, entitySiblingIndex, self openCJ\statistics::getExplosiveJumps(),
         self openCJ\statistics::getDoubleExplosives(),
-        self openCJ\checkpoints::getCurrentCheckpointID(), FPSModeStr, flags);
-    self openCJ\demoRecording::onSaved(saveNum);
-    return saveNum;
+        self openCJ\checkpoints::getCurrentCheckpointID(), fpsModeName, flags);
+    self openCJ\demoRecording::onSaved(saveNumber);
+    return saveNumber;
 }
 
+// Read the selected native save and convert a moving-platform offset back to world space.
 getSavedPosition(backwardsCount)
 {
-    error = self savePosition_selectSave(backwardsCount);
+    selectionError = self savePosition_selectSave(backwardsCount);
     self openCJ\historySave::maybePrefetch(backwardsCount);
-    if(error == 0) // No error
+    if(selectionError == level.loadError_none)
     {
         save = spawnStruct();
         save.origin = self savePosition_getOrigin();
@@ -360,10 +353,10 @@ getSavedPosition(backwardsCount)
 
         if(isDefined(groundEntity))
         {
-            x = vectorScale(anglesToForward(groundEntity.angles), save.origin[0]);
-            y = vectorScale(anglesToRight(groundEntity.angles), save.origin[1]);
-            z = vectorScale(anglesToUp(groundEntity.angles), save.origin[2]);
-            save.origin = groundEntity.origin + x + y + z;
+            forwardOffset = vectorScale(anglesToForward(groundEntity.angles), save.origin[0]);
+            rightOffset = vectorScale(anglesToRight(groundEntity.angles), save.origin[1]);
+            upOffset = vectorScale(anglesToUp(groundEntity.angles), save.origin[2]);
+            save.origin = groundEntity.origin + forwardOffset + rightOffset + upOffset;
             save.angles = (save.angles[0], save.angles[1] + groundEntity.angles[1], save.angles[2]);
         }
 
@@ -382,10 +375,11 @@ incrementBackwardsCount(amount)
     else
     {
         self.savePosition_backwardsCount += amount;
-        info = self savePosition_historyInfo();
-        if(self.savePosition_backwardsCount > info[3])
+        historyInfo = self savePosition_historyInfo();
+        historyCapacity = historyInfo[3];
+        if(self.savePosition_backwardsCount > historyCapacity)
         {
-            self.savePosition_backwardsCount = info[3];
+            self.savePosition_backwardsCount = historyCapacity;
         }
         if(self.savePosition_backwardsCount < 0)
         {
