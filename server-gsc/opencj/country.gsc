@@ -12,6 +12,7 @@ onPlayerConnected()
 {
 }
 
+// Claim the single announcement and lookup attempt for this authenticated connection.
 beginLogin()
 {
     if(!self openCJ\login::isLoggedIn())
@@ -37,53 +38,60 @@ onPlayerLogin()
     self thread _countryQuery();
 }
 
+// Keep raw addresses inside the lookup; expose only the country or a fallback reason.
 _countryQuery()
 {
     self endon("disconnect");
-    ip = self getIP();
-    if(!isDefined(ip) || ip == "")
+    ipv4Address = self getIP();
+    if(!isDefined(ipv4Address) || ipv4Address == "")
     {
         self lookupFailed("missing_address");
         return;
     }
-    if(isSubStr(ip, ":"))
+    if(isSubStr(ipv4Address, ":"))
     {
         self lookupFailed("unsupported_ip_family");
         return;
     }
-    escaped = openCJ\mySQL::escapeString(ip);
-    query =
-        "SELECT geoIPLookupCode(IF(IS_IPV4('" + escaped + "'),INET_ATON('" + escaped + "'),NULL))";
-    result = self openCJ\mySQL::_request(query, 1, "", "", 5000, true);
-    if(!isDefined(result))
+    escapedIPv4 = openCJ\mySQL::escapeString(ipv4Address);
+    lookupQuery = "SELECT geoIPLookupCode(" + "IF(IS_IPV4('" + escapedIPv4 + "'), INET_ATON('" +
+                  escapedIPv4 + "'), NULL))";
+    queueWaitMs = 5000;
+    retainRows = true;
+    lookupResult = self openCJ\mySQL::_request(lookupQuery, level.sqlConstants.policyRead, "", "",
+                                               queueWaitMs, retainRows);
+    if(!isDefined(lookupResult))
     {
         self lookupFailed("query_unavailable");
         return;
     }
-    if(result.status != 0)
+    if(lookupResult.status != level.sqlConstants.outcomeOK)
     {
-        self lookupFailed("query_failed outcome=" + result.status + " mysql=" + result.error);
+        self lookupFailed("query_failed outcome=" + lookupResult.status +
+                          " mysql=" + lookupResult.error);
         return;
     }
-    if(!isDefined(result.rows) || !isDefined(result.rows[0]) || !isDefined(result.rows[0][0]))
+    if(!isDefined(lookupResult.rows) || !isDefined(lookupResult.rows[0]) ||
+       !isDefined(lookupResult.rows[0][0]))
     {
         self lookupFailed("empty_query_result");
         return;
     }
-    self applyLookup(result.rows[0][0]);
+    countryCodeOrReason = lookupResult.rows[0][0];
+    self applyLookup(countryCodeOrReason);
     if(self.country_reason != "ok")
     {
         self logFailure();
     }
 }
 
-// Also used by isolated tests to exercise the actual result-to-icon path.
-applyLookup(value)
+// Apply a country code or database fallback reason and refresh the scoreboard.
+applyLookup(lookupValue)
 {
-    flag = openCJ\flagAtlas::resolve(value);
-    if(flag.known)
+    countryFlag = openCJ\flagAtlas::resolve(lookupValue);
+    if(countryFlag.known)
     {
-        self.country = value;
+        self.country = lookupValue;
         self.country_reason = "ok";
     }
     else
@@ -92,9 +100,9 @@ applyLookup(value)
         self.country_reason = "unsupported_country_code";
         if(isSubStr(
                " invalid_ip non_public_ip database_unavailable range_not_found country_not_reported ",
-               " " + value + " "))
+               " " + lookupValue + " "))
         {
-            self.country_reason = value;
+            self.country_reason = lookupValue;
         }
     }
     level.scoreboardNextUpdate = 0;

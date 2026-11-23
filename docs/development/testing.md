@@ -120,6 +120,19 @@ focused fixtures. The save-history native fixture checks invalid inputs, non-pla
 calls and stale selections without a database. HUD observation wrappers are
 installed only in the fixture copy.
 
+The GeoIP engine fixture exercises atlas selectors, login announcements and
+country fallback behavior without a database. It defaults to the complete
+working script tree; `--scripts` can select a complete prepared release
+containing `opencj/` and `maps/`. Supply matching compiled assets explicitly:
+
+```sh
+python3 -B dev-tools/tests/run-geoip-smoke.py --asset-dir COMPILED_MOD_DIR mp_killhouse
+```
+
+It snapshots the selected binary and assets, records their hashes with script
+hashes, and uses the shared isolated-server cleanup path. This fixture does not
+test database GeoIP queries or client rendering.
+
 Build the GeoIP updater image before its database integration test:
 
 ```sh

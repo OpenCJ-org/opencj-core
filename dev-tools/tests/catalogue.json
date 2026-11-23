@@ -318,9 +318,9 @@
     {
       "id": "geoip-engine",
       "category": "integration",
-      "description": "Country/flag behavior through an isolated engine.",
-      "requires": "Initialized Compose, matching engine and explicit compiled assets; --scripts can select the prepared release.",
-      "effects": "Isolated server and private output; no live restart.",
+      "description": "Atlas selectors, login announcement ownership and country fallback behavior in the GSC VM.",
+      "requires": "Initialized Compose, matching engine and explicit compiled assets. Defaults to complete working source; --scripts selects a complete prepared release.",
+      "effects": "Isolated server using the shared GSC harness; private binary/asset snapshots and source hashes. No database or live restart.",
       "files": [
         "dev-tools/tests/run-geoip-smoke.py",
         "dev-tools/tests/geoip.gsc"
