@@ -2,6 +2,26 @@
 #define OPENCJ_DEMO_TECHNIQUE_HPP
 #include <cmath>
 
+// Mode values are shared with GSC menus; style flags can contain several techniques.
+enum CJ_DemoTechniqueMode {
+    CJ_DEMO_ORIGINAL = 0,
+    CJ_DEMO_FULLBEAT = 1,
+    CJ_DEMO_HALFBEAT = 2,
+    CJ_DEMO_INVERT = 3
+};
+
+enum CJ_DemoStyleFlags {
+    CJ_DEMO_STYLE_FULLBEAT = 1,
+    CJ_DEMO_STYLE_HALFBEAT = 2,
+    CJ_DEMO_STYLE_INVERT = 4
+};
+
+// Limit rescans of one jump and ignore key taps shorter than 150 ms.
+static constexpr int CJ_DEMO_MAX_SECTION_FRAMES = 512;
+static constexpr int CJ_DEMO_MIN_PHASE_SAMPLES = 3;
+static constexpr int CJ_DEMO_INVERT_SWITCHES = 2;
+static constexpr float CJ_DEMO_PI = 3.14159265358979323846f;
+
 // Playback interpretation only. The original recording and game physics never
 // receive these transformed inputs. Samples are 50 ms apart.
 struct CJ_DemoInput {
@@ -23,165 +43,191 @@ struct CJ_DemoTechnique {
 
 inline float CJ_DemoInputAngle(int forward, int right)
 {
-    return std::atan2(float(-right), float(forward)) * 180.0f / 3.14159265358979323846f;
+    return std::atan2(float(-right), float(forward)) * 180.0f / CJ_DEMO_PI;
 }
 
 // Cache only the classification for one airborne section.
 // This avoids rescanning the same jump for every sample during an FPS rebuild.
 struct CJ_DemoSection {
-    int begin;
-    int end;
-    int anchorF;
-    int anchorR;
+    int beginFrame;
+    int endFrame;
+    int anchorForward;
+    int anchorRight;
     int style;
-    int takeoffEnd;
+    int takeoffEndFrame;
 };
 
+// Find a complete airborne section within the scan limit. The caller supplies
+// a valid frame index and a reader for [0, frameCount).
 template <class Read>
-CJ_DemoSection CJ_AnalyzeDemoTechnique(int count, int index, Read read)
+bool CJ_FindDemoAirborneSection(int frameCount, int frameIndex, Read readInput,
+                                CJ_DemoSection &section)
 {
-    CJ_DemoSection section = {};
-    section.begin = index;
-    section.end = index + 1;
-    const CJ_DemoInput input = read(index);
+    const CJ_DemoInput input = readInput(frameIndex);
     if (input.ground || input.cut) {
-        return section;
+        return false;
     }
-    int begin = index;
-    int end = index + 1;
-    while (begin > 0 && index - begin < 512) {
-        const CJ_DemoInput previous = read(begin - 1);
-        const CJ_DemoInput current = read(begin);
+    int beginFrame = frameIndex;
+    int endFrame = frameIndex + 1;
+    while (beginFrame > 0 && frameIndex - beginFrame < CJ_DEMO_MAX_SECTION_FRAMES) {
+        const CJ_DemoInput previous = readInput(beginFrame - 1);
+        const CJ_DemoInput current = readInput(beginFrame);
         if (previous.ground || current.cut) {
             break;
         }
-        --begin;
+        --beginFrame;
     }
-    if (begin > 0 && index - begin == 512) {
-        return section;
+    if (beginFrame > 0 && frameIndex - beginFrame == CJ_DEMO_MAX_SECTION_FRAMES) {
+        return false;
     }
-    while (end < count && end - begin < 512) {
-        const CJ_DemoInput next = read(end);
+    while (endFrame < frameCount && endFrame - beginFrame < CJ_DEMO_MAX_SECTION_FRAMES) {
+        const CJ_DemoInput next = readInput(endFrame);
         if (next.ground || next.cut) {
             break;
         }
-        ++end;
+        ++endFrame;
     }
-    if (end < count && end - begin == 512) {
+    if (endFrame < frameCount && endFrame - beginFrame == CJ_DEMO_MAX_SECTION_FRAMES) {
+        return false;
+    }
+    section.beginFrame = beginFrame;
+    section.endFrame = endFrame;
+    return true;
+}
+
+// Classify stable key phases in one jump. Brief releases do not establish a
+// technique, and changing W/S direction makes the section ambiguous.
+template <class Read>
+CJ_DemoSection CJ_AnalyzeDemoTechnique(int frameCount, int frameIndex, Read readInput)
+{
+    CJ_DemoSection section = {};
+    section.beginFrame = frameIndex;
+    section.endFrame = frameIndex + 1;
+    if (!CJ_FindDemoAirborneSection(frameCount, frameIndex, readInput, section)) {
         return section;
     }
-    section.begin = begin;
-    section.end = end;
-    int anchorF = 0;
-    int anchorR = 0;
-    int lastF = 0;
-    int lastR = 0;
-    bool haveLast = false;
-    bool full = false;
-    bool half = false;
-    bool invert = false;
-    bool mixedForward = false;
-    int singleRight = 0;
-    int singleSwitches = 0;
+    const int beginFrame = section.beginFrame;
+    const int endFrame = section.endFrame;
+    int anchorForward = 0;
+    int anchorRight = 0;
+    int previousForward = 0;
+    int previousRight = 0;
+    bool hasPreviousPhase = false;
+    bool hasFullbeat = false;
+    bool hasHalfbeat = false;
+    bool hasInvert = false;
+    bool hasMixedForward = false;
+    int previousSingleRight = 0;
+    int singleKeySwitchCount = 0;
     int firstSingleRight = 0;
-    for (int first = begin; first < end;) {
-        CJ_DemoInput phase = read(first);
-        int last = first + 1;
-        while (last < end) {
-            const CJ_DemoInput next = read(last);
+    for (int phaseBegin = beginFrame; phaseBegin < endFrame;) {
+        CJ_DemoInput phase = readInput(phaseBegin);
+        int phaseEnd = phaseBegin + 1;
+        while (phaseEnd < endFrame) {
+            const CJ_DemoInput next = readInput(phaseEnd);
             if (next.forward != phase.forward || next.right != phase.right ||
                 next.excluded != phase.excluded) {
                 break;
             }
-            ++last;
+            ++phaseEnd;
         }
-        const bool stable = last - first >= 3 || (first == begin && phase.forward && phase.right);
-        if (stable && !phase.excluded && phase.right) {
-            if (phase.forward) {
-                singleRight = 0;
-                singleSwitches = 0;
-                if (!anchorF) {
-                    anchorF = phase.forward;
-                    anchorR = phase.right;
-                    section.takeoffEnd = last;
-                } else if (phase.forward != anchorF) {
-                    mixedForward = true;
-                } else if (phase.right == -anchorR) {
-                    full = true;
-                }
-                if (haveLast && !lastF && lastR == -phase.right && phase.forward == anchorF &&
-                    phase.right == anchorR) {
-                    half = true;
-                }
-                lastF = phase.forward;
-                lastR = phase.right;
-                haveLast = true;
-            } else {
-                // A repeated A/D/A pattern establishes Invert, rather than
-                // interpreting one released diagonal as another technique.
-                if (!firstSingleRight) {
-                    firstSingleRight = phase.right;
-                }
-                if (singleRight && singleRight == -phase.right) {
-                    ++singleSwitches;
-                }
-                singleRight = phase.right;
-                if (singleSwitches >= 2) {
-                    invert = true;
-                }
-                if (anchorF && phase.right == -anchorR) {
-                    lastF = 0;
-                    lastR = phase.right;
-                    haveLast = true;
-                }
+        const bool stablePhase = phaseEnd - phaseBegin >= CJ_DEMO_MIN_PHASE_SAMPLES ||
+                                 (phaseBegin == beginFrame && phase.forward && phase.right);
+        phaseBegin = phaseEnd;
+        if (!stablePhase || phase.excluded || !phase.right) {
+            continue;
+        }
+        if (phase.forward) {
+            previousSingleRight = 0;
+            singleKeySwitchCount = 0;
+            if (!anchorForward) {
+                anchorForward = phase.forward;
+                anchorRight = phase.right;
+                section.takeoffEndFrame = phaseEnd;
+            } else if (phase.forward != anchorForward) {
+                hasMixedForward = true;
+            } else if (phase.right == -anchorRight) {
+                hasFullbeat = true;
+            }
+            const bool returningToAnchor =
+                phase.forward == anchorForward && phase.right == anchorRight;
+            const bool followsOppositeSingleKey =
+                hasPreviousPhase && !previousForward && previousRight == -phase.right;
+            if (returningToAnchor && followsOppositeSingleKey) {
+                hasHalfbeat = true;
+            }
+            previousForward = phase.forward;
+            previousRight = phase.right;
+            hasPreviousPhase = true;
+        } else {
+            // A repeated A/D/A pattern establishes Invert, rather than
+            // interpreting one released diagonal as another technique.
+            if (!firstSingleRight) {
+                firstSingleRight = phase.right;
+            }
+            if (previousSingleRight && previousSingleRight == -phase.right) {
+                ++singleKeySwitchCount;
+            }
+            previousSingleRight = phase.right;
+            if (singleKeySwitchCount >= CJ_DEMO_INVERT_SWITCHES) {
+                hasInvert = true;
+            }
+            if (anchorForward && phase.right == -anchorRight) {
+                previousForward = 0;
+                previousRight = phase.right;
+                hasPreviousPhase = true;
             }
         }
-        first = last;
     }
     // Anchor the viewing pattern to the original takeoff. Re-anchoring to an
     // opposite-side RPG leaves a two-phase WA -> WD jump entirely unconverted.
     // Shot aiming is handled by the camera, independently of converted keys.
-    if (!anchorF && invert) {
-        anchorF = 1;
-        anchorR = firstSingleRight;
-        section.takeoffEnd = begin;
+    if (!anchorForward && hasInvert) {
+        anchorForward = 1;
+        anchorRight = firstSingleRight;
+        section.takeoffEndFrame = beginFrame;
     }
-    section.anchorF = anchorF;
-    section.anchorR = anchorR;
-    if (anchorF && !mixedForward && (full || half || invert)) {
-        section.style = (full ? 1 : 0) | (half ? 2 : 0) | (invert ? 4 : 0);
+    section.anchorForward = anchorForward;
+    section.anchorRight = anchorRight;
+    if (anchorForward && !hasMixedForward && (hasFullbeat || hasHalfbeat || hasInvert)) {
+        section.style = (hasFullbeat ? CJ_DEMO_STYLE_FULLBEAT : 0) |
+                        (hasHalfbeat ? CJ_DEMO_STYLE_HALFBEAT : 0) |
+                        (hasInvert ? CJ_DEMO_STYLE_INVERT : 0);
     }
     return section;
 }
 
-inline CJ_DemoTechnique CJ_ApplyDemoTechnique(int index, int mode, const CJ_DemoInput &input,
+// Change viewing keys within the classified section while keeping world movement direction.
+inline CJ_DemoTechnique CJ_ApplyDemoTechnique(int frameIndex, int mode, const CJ_DemoInput &input,
                                               const CJ_DemoSection &section)
 {
     CJ_DemoTechnique result = {input.forward, input.right, 0, false, false};
-    if (!mode || input.ground) {
+    if (mode == CJ_DEMO_ORIGINAL || input.ground) {
         return result;
     }
     if (input.cut || input.excluded || !section.style) {
         result.fallback = true;
         return result;
     }
-    if (index < section.begin || index >= section.end) {
+    if (frameIndex < section.beginFrame || frameIndex >= section.endFrame) {
         return result;
     }
     // Preserve the original diagonal takeoff; the opposing phase converts
     // from its first recorded sample, including bounce and RPG samples.
-    if ((mode == 2 || mode == 3) && index < section.takeoffEnd && input.forward && input.right) {
+    if ((mode == CJ_DEMO_HALFBEAT || mode == CJ_DEMO_INVERT) &&
+        frameIndex < section.takeoffEndFrame && input.forward && input.right) {
         return result;
     }
-    if (mode == 1 && !input.forward && input.right &&
-        (input.right == -section.anchorR || (section.style & 4))) {
-        result.forward = section.anchorF;
-    } else if (mode == 2 && input.forward == section.anchorF && input.right == -section.anchorR) {
+    if (mode == CJ_DEMO_FULLBEAT && !input.forward && input.right &&
+        (input.right == -section.anchorRight || (section.style & CJ_DEMO_STYLE_INVERT))) {
+        result.forward = section.anchorForward;
+    } else if (mode == CJ_DEMO_HALFBEAT && input.forward == section.anchorForward &&
+               input.right == -section.anchorRight) {
         result.forward = 0;
-    } else if (mode == 2 && (section.style & 4) && !input.forward &&
-               input.right == section.anchorR) {
-        result.forward = section.anchorF;
-    } else if (mode == 3 && input.right && input.forward == section.anchorF) {
+    } else if (mode == CJ_DEMO_HALFBEAT && (section.style & CJ_DEMO_STYLE_INVERT) &&
+               !input.forward && input.right == section.anchorRight) {
+        result.forward = section.anchorForward;
+    } else if (mode == CJ_DEMO_INVERT && input.right && input.forward == section.anchorForward) {
         result.forward = 0;
     }
     result.changed = result.forward != input.forward;
@@ -194,10 +240,10 @@ inline CJ_DemoTechnique CJ_ApplyDemoTechnique(int index, int mode, const CJ_Demo
 }
 
 template <class Read>
-CJ_DemoTechnique CJ_InterpretDemoTechnique(int count, int index, int mode, Read read)
+CJ_DemoTechnique CJ_InterpretDemoTechnique(int frameCount, int frameIndex, int mode, Read readInput)
 {
-    return CJ_ApplyDemoTechnique(index, mode, read(index),
-                                 CJ_AnalyzeDemoTechnique(count, index, read));
+    return CJ_ApplyDemoTechnique(frameIndex, mode, readInput(frameIndex),
+                                 CJ_AnalyzeDemoTechnique(frameCount, frameIndex, readInput));
 }
 
 struct CJ_DemoCameraSample {
@@ -211,26 +257,34 @@ struct CJ_DemoCameraSample {
 // Ease only camera changes introduced by conversion. Recorded RPG aim, ground
 // frames and load cuts remain exact. Position, velocity and FPS never enter here.
 template <class Sample>
-float CJ_SmoothDemoYaw(int count, int index, Sample sample)
+float CJ_SmoothDemoYaw(int frameCount, int frameIndex, Sample readCameraSample)
 {
-    const CJ_DemoCameraSample center = sample(index);
+    // Samples are 50 ms apart: the two-sample kernel spans 100 ms each way.
+    static constexpr int KERNEL_RADIUS_FRAMES = 2;
+    static constexpr int PROTECTED_RADIUS_FRAMES = 3;
+    static constexpr int CENTER_WEIGHT = 3;
+    static constexpr float SHOT_APPROACH_FRAMES = 2.0f;
+    static constexpr float LOCKED_APPROACH_FRAMES = 3.0f;
+    static constexpr float OFFSET_TOLERANCE_DEGREES = .01f;
+
+    const CJ_DemoCameraSample center = readCameraSample(frameIndex);
     if (center.locked || center.cut || center.shot) {
         return center.yaw;
     }
-    const float target = center.yaw + center.offset;
-    float sum = 3 * center.offset;
-    float weight = 3;
-    float protection = 1;
+    const float targetYaw = center.yaw + center.offset;
+    float weightedOffset = CENTER_WEIGHT * center.offset;
+    float totalWeight = CENTER_WEIGHT;
+    float lockedFrameScale = 1;
     float shotScale = 1;
-    bool transition = false;
+    bool hasTransition = false;
     for (int direction = -1; direction <= 1; direction += 2) {
         CJ_DemoCameraSample previous = center;
-        for (int distance = 1; distance <= 3; ++distance) {
-            int n = index + direction * distance;
-            if (n < 0 || n >= count) {
+        for (int distance = 1; distance <= PROTECTED_RADIUS_FRAMES; ++distance) {
+            int neighborFrame = frameIndex + direction * distance;
+            if (neighborFrame < 0 || neighborFrame >= frameCount) {
                 break;
             }
-            const CJ_DemoCameraSample next = sample(n);
+            const CJ_DemoCameraSample next = readCameraSample(neighborFrame);
             if (direction > 0 ? next.cut : previous.cut) {
                 break;
             }
@@ -238,26 +292,29 @@ float CJ_SmoothDemoYaw(int count, int index, Sample sample)
             // of the ordinary smoothing kernel, which otherwise adds a second
             // slow dip on top of the aiming turn.
             if (next.shot) {
-                shotScale = std::fmin(shotScale, distance / 2.0f);
+                shotScale = std::fmin(shotScale, distance / SHOT_APPROACH_FRAMES);
             }
             if (next.locked) {
-                protection = std::fmin(protection, distance / 3.0f);
+                lockedFrameScale = std::fmin(lockedFrameScale, distance / LOCKED_APPROACH_FRAMES);
             }
-            if (std::fabs(std::remainder(next.offset - center.offset, 360.0f)) > .01f) {
-                transition = true;
+            if (std::fabs(std::remainder(next.offset - center.offset, 360.0f)) >
+                OFFSET_TOLERANCE_DEGREES) {
+                hasTransition = true;
             }
-            if (distance <= 2) {
-                const float w = 3 - distance;
-                sum += w * (center.offset + std::remainder(next.offset - center.offset, 360.0f));
-                weight += w;
+            if (distance <= KERNEL_RADIUS_FRAMES) {
+                const float neighborWeight = CENTER_WEIGHT - distance;
+                weightedOffset +=
+                    neighborWeight *
+                    (center.offset + std::remainder(next.offset - center.offset, 360.0f));
+                totalWeight += neighborWeight;
             }
             previous = next;
         }
     }
-    if (!transition) {
-        return center.yaw + shotScale * (target - center.yaw);
+    if (!hasTransition) {
+        return center.yaw + shotScale * (targetYaw - center.yaw);
     }
-    return center.yaw + shotScale * protection * sum / weight;
+    return center.yaw + shotScale * lockedFrameScale * weightedOffset / totalWeight;
 }
 
 #endif

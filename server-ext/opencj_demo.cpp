@@ -234,7 +234,7 @@ static sDemoFrame_t &techniqueFrame(int client,const sDemo_t &demo,int index)
             int(bool(f.flags&2))-int(bool(f.flags&1)),bool(f.flags&8192),f.loadNow,excluded,f.rpgNow};
     };
     if(state.sectionGeneration!=demo.generation || state.sectionSize!=demo.size ||
-       index<state.section.begin || index>=state.section.end)
+       index<state.section.beginFrame || index>=state.section.endFrame)
     {
         state.section=CJ_AnalyzeDemoTechnique(demo.size,index,read);
         state.sectionGeneration=demo.generation;state.sectionSize=demo.size;
@@ -245,7 +245,7 @@ static sDemoFrame_t &techniqueFrame(int client,const sDemo_t &demo,int index)
         (result.right>0?2:result.right<0?1:0);
     auto camera=[&](int i) {
         const CJ_DemoInput input=read(i);
-        const bool outside=i<state.section.begin || i>=state.section.end;
+        const bool outside=i<state.section.beginFrame || i>=state.section.endFrame;
         CJ_DemoTechnique view=CJ_ApplyDemoTechnique(i,state.mode,input,state.section);
         // Shot aiming is a short camera-only flick, independent of the general
         // strafe smoothing and the converted keys.
@@ -284,8 +284,8 @@ void Gsc_Demo_TechniquePhase(int client)
     const auto &section=state.section;
     if(!state.mode || state.fallback || !section.style){stackPushInt(0);return;}
     int mode=state.mode;
-    if((mode==2 || mode==3) && play.selectedFrame<section.takeoffEnd)mode=1;
-    stackPushInt((mode<<4)|(section.anchorF>0?4:8)|(section.anchorR>0?2:1));
+    if((mode==2 || mode==3) && play.selectedFrame<section.takeoffEndFrame)mode=1;
+    stackPushInt((mode<<4)|(section.anchorForward>0?4:8)|(section.anchorRight>0?2:1));
 }
 void Gsc_Demo_ReadFrame_Checkpoint(int client)
 {
