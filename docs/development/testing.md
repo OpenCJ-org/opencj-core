@@ -179,6 +179,9 @@ Capacity testing needs two available CPU cores and substantial runtime.
 `run-query-capacity.py --cpu-set` can select a different available pair.
 
 Compiled menu checks require actual Unlinker output from the build being reviewed.
+They inspect command controls and route geometry, and replay startup commands with
+controlled FPS/max-packets values to check registration and repeated startup.
+The replay models immediate/deferred commands; it does not run the game client.
 The source-only demo-menu check verifies asset registration, response actions and
 toolbar geometry. Menu startup, initial overlay output and closing/restoring the
 normal menu are exercised by the demo engine fixture through forwarding native

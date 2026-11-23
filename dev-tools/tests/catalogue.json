@@ -442,9 +442,9 @@
     {
       "id": "compiled-menus",
       "category": "manual",
-      "description": "Current compiled command, startup and route menus.",
-      "requires": "Explicit current Unlinker output; no historical build required.",
-      "effects": "Reads extracted assets; optional private JSON evidence. Does not verify rendering.",
+      "description": "Current linked command controls, startup FPS/max-packets registration and route geometry.",
+      "requires": "Explicit current Unlinker output; uses the quote-aware block reader in check_demo_menu.py.",
+      "effects": "Reads extracted assets and replays startup commands in a controlled model; optional private JSON evidence. Does not run or render the game client.",
       "files": [
         "dev-tools/tests/check-command-menu-assets.py",
         "dev-tools/tests/check-map-route-menu.py",

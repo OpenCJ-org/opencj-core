@@ -1,38 +1,52 @@
-"""Replay the compiled startup menu's commands with controlled cvars.
-Usage: python3 dev-tools/tests/check_client_init_menu.py UNLINKED_MENU_ROOT
-This checks the actual linked scripts, not source macro expansion. It models
-only their immediate/deferred command behavior; it is not a live-client test.
+"""Replay linked startup actions with controlled client cvars.
+
+This checks immediate and deferred commands from actual Unlinker output.
+It does not run the game client or establish how its menus render.
 """
 
-from pathlib import Path
+import argparse
 import json
+from pathlib import Path
 import re
 import shlex
-import sys
 
-root = Path(sys.argv[1]) / "ui_mp/scriptmenus"
-TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|[^\s;]+|;')
+from check_demo_menu import blocks
+
+ACTION_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|[^\s;]+|;')
+STARTUP_REPETITIONS = 3
 
 
-def actions(name):
-    text = (root / (name + ".menu")).read_text()
-    body = text.split("onOpen", 1)[1].split("{", 1)[1].split("}", 1)[0]
-    tokens = TOKEN.findall(body)
-    result, action = [], []
-    for token in tokens:
+def read_open_actions(menu_root, menu_name):
+    """Decode the single onOpen block without splitting quoted console commands."""
+    source = (menu_root / (menu_name + ".menu")).read_text()
+    opening_blocks = list(blocks(source, "onOpen"))
+    if len(opening_blocks) != 1:
+        raise ValueError(f"{menu_name}: expected one onOpen block")
+
+    actions = []
+    current_action = []
+    for token in ACTION_TOKEN.findall(opening_blocks[0]):
         if token == ";":
-            result.append(action)
-            action = []
+            if not current_action:
+                raise ValueError(f"{menu_name}: empty action")
+            actions.append(current_action)
+            current_action = []
         else:
-            action.append(json.loads(token) if token.startswith('"') else token)
-    assert not action, action
-    return result
+            value = json.loads(token) if token.startswith('"') else token
+            current_action.append(value)
+    if current_action:
+        raise ValueError(f"{menu_name}: unterminated action {current_action}")
+    return actions
 
 
 class Client:
-    def __init__(self, fps="333", register=True):
+    """Model only the console and menu operations used by startup registration."""
+
+    def __init__(self, menu_root, fps="333", max_packets="100", register=True):
+        self.menu_root = menu_root
         self.cvars = dict(
             com_maxfps=fps,
+            cl_maxpackets=max_packets,
             temp="user-owned",
             opencj_init_once="1",
             opencj_init_fps=str(int(register)),
@@ -47,86 +61,141 @@ class Client:
         self.binds = []
 
     def command(self, text):
-        cmd = shlex.split(text)
-        if cmd[0] == "setfromdvar":
-            self.cvars[cmd[1]] = self.cvars[cmd[2]]
-        elif cmd[0] in ("set", "setu"):
-            self.cvars[cmd[1]] = cmd[2]
-            if cmd[0] == "setu":
-                self.userinfo.add(cmd[1])
-        elif cmd[0] == "bind":
-            self.binds.append(cmd[1:])
+        arguments = shlex.split(text)
+        operation = arguments[0]
+        if operation == "setfromdvar":
+            destination, source = arguments[1:]
+            self.cvars[destination] = self.cvars[source]
+        elif operation in ("set", "setu"):
+            name, value = arguments[1:]
+            self.cvars[name] = value
+            if operation == "setu":
+                self.userinfo.add(name)
+        elif operation == "bind":
+            self.binds.append(arguments[1:])
         else:
-            raise AssertionError(("unexpected console command", cmd))
+            raise AssertionError(f"Unexpected console command: {arguments}")
 
-    def open(self, name):
-        for a in actions(name):
-            op = a[0].lower()
-            if op == "execnow":
-                self.command(a[1])
-            elif op == "execnowondvarintvalue":
-                if int(self.cvars.get(a[1], "0")) == int(a[2]):
-                    self.command(a[3])
-            elif op == "setdvar":
-                self.cvars[a[1]] = a[2]
-            elif op == "scriptmenuresponse":
-                self.responses.append((name, a[1]))
-            elif op == "close":
-                self.closed.append(a[1])
-            elif op == "exec":
-                self.queued.append(a[1])
+    def open(self, menu_name):
+        for action in read_open_actions(self.menu_root, menu_name):
+            operation = action[0].lower()
+            if operation == "execnow":
+                self.command(action[1])
+            elif operation == "execnowondvarintvalue":
+                cvar_name, expected_value, command = action[1:]
+                if int(self.cvars.get(cvar_name, "0")) == int(expected_value):
+                    self.command(command)
+            elif operation == "setdvar":
+                name, value = action[1:]
+                self.cvars[name] = value
+            elif operation == "scriptmenuresponse":
+                self.responses.append((menu_name, action[1]))
+            elif operation == "close":
+                self.closed.append(action[1])
+            elif operation == "exec":
+                self.queued.append(action[1])
             else:
-                raise AssertionError(("unexpected menu operation", a))
+                raise AssertionError(f"Unexpected menu operation in {menu_name}: {action}")
 
 
-for fps in ("43", "76", "125", "250", "333", "0", "500", "999"):
-    c = Client(fps)
-    for _ in range(3):
-        c.open("opencj_client_init")
-        assert c.cvars["com_maxfps"] == fps, (fps, c.cvars)
-        assert not c.queued, "registration must finish before command-buffer execution"
-    assert "com_maxfps" in c.userinfo
-    assert c.cvars["temp"] == "user-owned"
-    assert c.cvars["opencj_sb_ready"] == "3"
-    assert len(c.binds) == 1, "duplicate startup must not reinstall active controls"
-    assert len(c.responses) == 3 and all(r[1] == "ready" for r in c.responses)
-    assert c.closed == ["opencj_client_init"] * 3
+def check_repeated_registration(menu_root):
+    """Registration must expose existing settings without changing their values."""
+    for fps in ("43", "76", "125", "250", "333", "0", "500", "999"):
+        for max_packets in ("15", "30", "100", "125"):
+            client = Client(menu_root, fps=fps, max_packets=max_packets)
+            scenario = f"FPS {fps}, max packets {max_packets}"
+            for _ in range(STARTUP_REPETITIONS):
+                client.open("opencj_client_init")
+                assert client.cvars["com_maxfps"] == fps, scenario
+                assert client.cvars["cl_maxpackets"] == max_packets, scenario
+                assert not client.queued, "Registration must finish before deferred commands"
 
-c = Client()
-c.open("opencj_client_init")
-saved = {k: v for k, v in c.cvars.items() if k.startswith("opencj_gfx_map_")}
-# Model settings application and a player holding Tab after initial success.
-c.cvars.update(
-    sm_sunEnable="0",
-    sm_spotEnable="1",
-    r_blur="0",
-    opencj_sb_held="1",
-    opencj_sb_active="1",
-    com_maxfps="125",
-)
-c.open("opencj_client_init")
-assert c.cvars["com_maxfps"] == "125", "late retry must preserve the current FPS"
-assert all(c.cvars[k] == v for k, v in saved.items()), "late retry recaptured map defaults"
-assert c.cvars["opencj_sb_held"] == c.cvars["opencj_sb_active"] == "1"
+            assert {"com_maxfps", "cl_maxpackets"} <= client.userinfo, scenario
+            assert client.cvars["temp"] == "user-owned", scenario
+            assert client.cvars["opencj_sb_ready"] == "3", scenario
+            assert len(client.binds) == 1, "A startup retry must not reinstall controls"
+            assert (
+                client.responses == [("opencj_client_init", "ready")] * STARTUP_REPETITIONS
+            ), scenario
+            assert client.closed == ["opencj_client_init"] * STARTUP_REPETITIONS, scenario
 
-c = Client("333", register=False)
-c.open("opencj_client_init")
-assert c.cvars["com_maxfps"] == "333" and "opencj_fps_saved" not in c.cvars
 
-c = Client()
-for _ in range(3):
-    c.open("opencj_fps_userinfo")
-assert c.cvars["com_maxfps"] == "333" and not c.queued
-assert c.closed == ["opencj_fps_userinfo"] * 3
+def check_late_retry(menu_root):
+    """A retry must preserve settings and the held scoreboard after initial setup."""
+    client = Client(menu_root)
+    client.open("opencj_client_init")
+    map_defaults = {
+        name: value for name, value in client.cvars.items() if name.startswith("opencj_gfx_map_")
+    }
+    # Model settings application and a player holding Tab after initial success.
+    client.cvars.update(
+        sm_sunEnable="0",
+        sm_spotEnable="1",
+        r_blur="0",
+        opencj_sb_held="1",
+        opencj_sb_active="1",
+        com_maxfps="125",
+        cl_maxpackets="30",
+    )
+    client.open("opencj_client_init")
+    assert client.cvars["com_maxfps"] == "125", "Late retry changed FPS"
+    assert client.cvars["cl_maxpackets"] == "30", "Late retry changed max packets"
+    assert all(
+        client.cvars[name] == value for name, value in map_defaults.items()
+    ), "Late retry recaptured map defaults"
+    assert client.cvars["opencj_sb_held"] == client.cvars["opencj_sb_active"] == "1"
 
-# Shared scoreboard scripts must retain the same binding strings after linking.
-c = Client()
-c.open("opencj_scoreboard_setup")
-d = Client()
-d.open("opencj_client_init")
-assert c.cvars["opencj_sb_up"] == d.cvars["opencj_sb_up"]
-assert c.cvars["opencj_sb_down"] == d.cvars["opencj_sb_down"]
-assert 'bind TAB "+scores; vstr opencj_sb_up; set opencj_sb_release"' in c.cvars["opencj_sb_down"]
-print(
-    "PASS: linked menu preserves FPS across batched/late retries; map defaults, held scoreboard, user temp and binding quotes are preserved; acknowledgement follows immediate setup."
-)
+
+def check_registration_disabled(menu_root):
+    client = Client(menu_root, register=False)
+    client.open("opencj_client_init")
+    assert client.cvars["com_maxfps"] == "333"
+    assert client.cvars["cl_maxpackets"] == "100"
+    assert "opencj_fps_saved" not in client.cvars
+    assert "opencj_maxpackets_saved" not in client.cvars
+    assert not {"com_maxfps", "cl_maxpackets"}.intersection(client.userinfo)
+
+
+def check_standalone_registration(menu_root):
+    client = Client(menu_root)
+    for _ in range(STARTUP_REPETITIONS):
+        client.open("opencj_fps_userinfo")
+    assert client.cvars["com_maxfps"] == "333"
+    assert client.cvars["cl_maxpackets"] == "100"
+    assert {"com_maxfps", "cl_maxpackets"} <= client.userinfo
+    assert not client.queued
+    assert client.closed == ["opencj_fps_userinfo"] * STARTUP_REPETITIONS
+
+
+def check_shared_scoreboard_bindings(menu_root):
+    scoreboard_client = Client(menu_root)
+    scoreboard_client.open("opencj_scoreboard_setup")
+    startup_client = Client(menu_root)
+    startup_client.open("opencj_client_init")
+    assert scoreboard_client.cvars["opencj_sb_up"] == startup_client.cvars["opencj_sb_up"]
+    assert scoreboard_client.cvars["opencj_sb_down"] == startup_client.cvars["opencj_sb_down"]
+    assert 'bind TAB "+scores; vstr opencj_sb_up; set opencj_sb_release"' in (
+        scoreboard_client.cvars["opencj_sb_down"]
+    ), "Nested binding quotes were lost during linking"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("compiled", type=Path, help="Current Unlinker output directory")
+    options = parser.parse_args()
+    menu_root = options.compiled / "ui_mp/scriptmenus"
+    scenarios = [
+        check_repeated_registration,
+        check_late_retry,
+        check_registration_disabled,
+        check_standalone_registration,
+        check_shared_scoreboard_bindings,
+    ]
+    for scenario in scenarios:
+        scenario(menu_root)
+        print("PASS: " + scenario.__name__.removeprefix("check_").replace("_", " "))
+    print("PASS: 5 linked startup scenarios; 32 FPS/max-packets combinations")
+
+
+if __name__ == "__main__":
+    main()
