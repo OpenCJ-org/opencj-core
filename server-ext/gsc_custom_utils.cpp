@@ -16,13 +16,24 @@ extern "C" {
 void Gsc_Utils_ScanDir()
 {
     char *path;
-    if (!stackGetParams("s", &path)) { stackPushUndefined(); return; }
+    if (!stackGetParams("s", &path))
+    {
+        stackPushUndefined();
+        return;
+    }
     DIR *dir = opendir(path);
-    if (!dir) { stackPushUndefined(); return; }
+    if (!dir)
+    {
+        stackPushUndefined();
+        return;
+    }
     stackMakeArray();
     while (dirent *entry = readdir(dir))
     {
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+        {
+            continue;
+        }
         stackPushString(entry->d_name);
         stackPushArrayNext();
     }
@@ -36,24 +47,37 @@ extern qboolean DB_FileExists(const char *filename, int ffdir);
 void Gsc_Utils_MapExists()
 {
     char *input;
-    if (!stackGetParams("s", &input)) { stackPushBool(false); return; }
+    if (!stackGetParams("s", &input))
+    {
+        stackPushBool(false);
+        return;
+    }
     const size_t length = strlen(input);
-    if (!length || length >= MAX_QPATH) { stackPushBool(false); return; }
+    if (!length || length >= MAX_QPATH)
+    {
+        stackPushBool(false);
+        return;
+    }
     char name[MAX_QPATH];
     for (size_t i = 0; i < length; ++i)
     {
         unsigned char c = (unsigned char)input[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-              (c >= '0' && c <= '9') || c == '_' || c == '-'))
-        { stackPushBool(false); return; }
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '_' || c == '-'))
+        {
+            stackPushBool(false);
+            return;
+        }
         name[i] = tolower(c);
     }
     name[length] = '\0';
     // Load screens and shared zone assets are not selectable multiplayer maps.
     if (length >= 5 && !strcmp(name + length - 5, "_load"))
-    { stackPushBool(false); return; }
-    stackPushBool(DB_FileExists(name, 2) ||
-                  (!strncmp(name, "mp_", 3) && DB_FileExists(name, 0)));
+    {
+        stackPushBool(false);
+        return;
+    }
+    stackPushBool(DB_FileExists(name, 2) || (!strncmp(name, "mp_", 3) && DB_FileExists(name, 0)));
 }
 #endif
 
@@ -148,7 +172,11 @@ void Gsc_Utils_IsValidInt()
 void Gsc_Utils_FloatToPreciseString()
 {
     float value;
-    if (!stackGetParams("f", &value)) { stackPushUndefined(); return; }
+    if (!stackGetParams("f", &value))
+    {
+        stackPushUndefined();
+        return;
+    }
     char text[32];
     snprintf(text, sizeof(text), "%.9g", double(value));
     stackPushString(text);

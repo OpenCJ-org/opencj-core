@@ -267,25 +267,42 @@ void Gsc_Player_GetQueuedReliableMessages(int id)
 // Spread of recent snapshot round-trip samples, not one-way network jitter.
 void Gsc_Player_GetPingVariation(int id)
 {
-    if (id < 0 || id >= sv_maxclients->integer) { stackPushInt(-1); return; }
+    if (id < 0 || id >= sv_maxclients->integer)
+    {
+        stackPushInt(-1);
+        return;
+    }
     const client_t *client = &svs.clients[id];
     if (client->state != CS_ACTIVE || client->netchan.remoteAddress.type == NA_BOT)
-    { stackPushInt(-1); return; }
+    {
+        stackPushInt(-1);
+        return;
+    }
     const unsigned int now = Sys_Milliseconds();
-    double sum = 0, squares = 0;
+    double sum = 0;
+    double squares = 0;
     int count = 0;
     for (int i = 0; i < PACKET_BACKUP; ++i)
     {
         const clientSnapshot_t *frame = &client->frames[i];
         if (frame->messageAcked == 0xFFFFFFFFu || now - frame->messageSent > 5000u)
+        {
             continue;
+        }
         const unsigned int sample = frame->messageAcked - frame->messageSent;
-        if (sample > 5000u) continue;
+        if (sample > 5000u)
+        {
+            continue;
+        }
         sum += sample;
         squares += double(sample) * sample;
         ++count;
     }
-    if (count < 4) { stackPushInt(-1); return; }
+    if (count < 4)
+    {
+        stackPushInt(-1);
+        return;
+    }
     const double mean = sum / count;
     const double variance = squares / count - mean * mean;
     stackPushInt(int(sqrt(variance > 0 ? variance : 0) + 0.5));

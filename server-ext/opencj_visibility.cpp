@@ -196,7 +196,10 @@ void Gsc_Vis_UpdatePlayerVisibility()
     for (int i = 0; i < sv_maxclients->integer; i++)
     {
         gentity_t *wantsToHide = &g_entities[i];
-        if (!wantsToHide->client || (svs.clients[i].state != CS_ACTIVE)) continue;
+        if (!wantsToHide->client || (svs.clients[i].state != CS_ACTIVE))
+        {
+            continue;
+        }
 
         if (!svs.clients[i].gentity || !svs.clients[i].gentity->client)
         {
@@ -206,21 +209,28 @@ void Gsc_Vis_UpdatePlayerVisibility()
         // j = player that will be hidden
         for (int j = 0; j < sv_maxclients->integer; j++)
         {
-            if (j == i) continue; // Don't do this for themself
+            if (j == i)
+            {
+                continue; // Don't do this for themself
+            }
 
             gentity_t *willBeHidden = &g_entities[j];
-            if (!willBeHidden->client || (svs.clients[j].state != CS_ACTIVE)) continue;
+            if (!willBeHidden->client || (svs.clients[j].state != CS_ACTIVE))
+            {
+                continue;
+            }
 
             // A demo uses the viewer's own body for third-person rendering.
             // Only that viewer (skipped above) and spectators following them
             // may see it; ordinary visibility settings must not reveal it.
-            if(OpenCJ_Demo_IsPresentationActive(j))
+            if (OpenCJ_Demo_IsPresentationActive(j))
             {
-                bool following=svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR &&
-                    SV_GameClientNum(i)->clientNum==j;
+                bool following =
+                    svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR &&
+                    SV_GameClientNum(i)->clientNum == j;
                 setEntityVisibilityForPlayer(willBeHidden, wantsToHide, !following);
             }
-            else if(svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR)
+            else if (svs.clients[i].gentity->client->sess.sessionState == SESS_STATE_SPECTATOR)
             {
                 setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
             }
@@ -242,9 +252,12 @@ void Gsc_Vis_UpdatePlayerVisibility()
             }
             else /* HIDE_NEAR */
             {
-                int diffOriginX = (willBeHidden->r.currentOrigin[0] - wantsToHide->r.currentOrigin[0]) + 0.5;
-                int diffOriginY = (willBeHidden->r.currentOrigin[1] - wantsToHide->r.currentOrigin[1]) + 0.5;
-                int diffOriginZ = (willBeHidden->r.currentOrigin[2] - wantsToHide->r.currentOrigin[2]) + 0.5;
+                int diffOriginX =
+                    (willBeHidden->r.currentOrigin[0] - wantsToHide->r.currentOrigin[0]) + 0.5;
+                int diffOriginY =
+                    (willBeHidden->r.currentOrigin[1] - wantsToHide->r.currentOrigin[1]) + 0.5;
+                int diffOriginZ =
+                    (willBeHidden->r.currentOrigin[2] - wantsToHide->r.currentOrigin[2]) + 0.5;
 
                 if (abs(diffOriginZ) > opencj_hideCylinder[i].height)
                 {
@@ -252,7 +265,8 @@ void Gsc_Vis_UpdatePlayerVisibility()
                 }
                 else
                 {
-                    int squared2DDistanceBetweenPlayers = (diffOriginX * diffOriginX) + (diffOriginY * diffOriginY);
+                    int squared2DDistanceBetweenPlayers =
+                        (diffOriginX * diffOriginX) + (diffOriginY * diffOriginY);
                     if (squared2DDistanceBetweenPlayers > opencj_hideCylinder[i].radiusSquared)
                     {
                         setEntityVisibilityForPlayer(willBeHidden, wantsToHide, false);
