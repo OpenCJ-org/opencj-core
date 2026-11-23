@@ -40,7 +40,9 @@ static int mysql_prepare_new_statement(MYSQL *connection)
         error = mysql_ping(connection);
         if (error && (mysql_errno(connection) == CR_SERVER_LOST ||
                       mysql_errno(connection) == CR_SERVER_GONE_ERROR))
+        {
             error = mysql_ping(connection);
+        }
         reconnect = false;
         mysql_options(connection, MYSQL_OPT_RECONNECT, &reconnect);
     }
@@ -56,11 +58,21 @@ static MYSQL_RES *mysql_store_first_result(MYSQL *connection, bool *failed)
     while (!*failed && mysql_more_results(connection))
     {
         int next = mysql_next_result(connection);
-        if (next > 0) { *failed = true; break; }
-        if (next < 0) break;
+        if (next > 0)
+        {
+            *failed = true;
+            break;
+        }
+        if (next < 0)
+        {
+            break;
+        }
         MYSQL_RES *extra = mysql_store_result(connection);
         *failed = mysql_errno(connection) != 0;
-        if (extra) mysql_free_result(extra);
+        if (extra)
+        {
+            mysql_free_result(extra);
+        }
     }
     if (*failed && first)
     {
@@ -72,57 +84,118 @@ static MYSQL_RES *mysql_store_first_result(MYSQL *connection, bool *failed)
 
 int mysql_async_query_initializer(char *sql, bool save)
 {
-    int id=sqlPoolSubmit(sql,save,SQL_WRITE,"","",10000);
-    return id>0?id:0;
+    int id = sqlPoolSubmit(sql, save, SQL_WRITE, "", "", 10000);
+    return id > 0 ? id : 0;
 }
 
 void gsc_mysql_async_create_query_nosave()
 {
-    char *query=NULL;
-    if(!stackGetParams("s",&query)){stackPushUndefined();return;}
-    int id=mysql_async_query_initializer(query,false);
-    if(id)stackPushInt(id);else stackPushUndefined();
+    char *query = NULL;
+    if (!stackGetParams("s", &query))
+    {
+        stackPushUndefined();
+        return;
+    }
+    int id = mysql_async_query_initializer(query, false);
+    if (id)
+    {
+        stackPushInt(id);
+    }
+    else
+    {
+        stackPushUndefined();
+    }
 }
 void gsc_mysql_async_create_query()
 {
-    char *query=NULL;
-    if(!stackGetParams("s",&query)){stackPushUndefined();return;}
-    int id=mysql_async_query_initializer(query,true);
-    if(id)stackPushInt(id);else stackPushUndefined();
+    char *query = NULL;
+    if (!stackGetParams("s", &query))
+    {
+        stackPushUndefined();
+        return;
+    }
+    int id = mysql_async_query_initializer(query, true);
+    if (id)
+    {
+        stackPushInt(id);
+    }
+    else
+    {
+        stackPushUndefined();
+    }
 }
 void gsc_mysql_async_submit()
 {
-    char *query=NULL,*key=NULL,*scope=NULL;
-    int policy=SQL_WRITE,deadline=10000,save=1;
-    if(!stackGetParams("sissii",&query,&policy,&key,&scope,&deadline,&save))
-    {stackPushInt(-SQL_INVALID);return;}
-    stackPushInt(sqlPoolSubmit(query,save!=0,policy,key,scope,deadline));
+    char *query = NULL;
+    char *key = NULL;
+    char *scope = NULL;
+    int policy = SQL_WRITE;
+    int deadline = 10000;
+    int save = 1;
+    if (!stackGetParams("sissii", &query, &policy, &key, &scope, &deadline, &save))
+    {
+        stackPushInt(-SQL_INVALID);
+        return;
+    }
+    stackPushInt(sqlPoolSubmit(query, save != 0, policy, key, scope, deadline));
 }
 void gsc_mysql_async_getdone_list()
 {
-    int ids[512];int count=sqlPoolDone(ids,512),published=0;
-    long long deadline=OpenCJ_Demo_SQLClockMs()+4;
+    int ids[512];
+    int count = sqlPoolDone(ids, 512);
+    int published = 0;
+    long long deadline = OpenCJ_Demo_SQLClockMs() + 4;
     stackMakeArray();
-    for(int i=0;i<count && published<64;i++)if(OpenCJ_Demo_SQLReady(ids[i],deadline))
-    {stackPushInt(ids[i]);stackPushArrayNext();++published;}
+    for (int i = 0; i < count && published < 64; i++)
+    {
+        if (OpenCJ_Demo_SQLReady(ids[i], deadline))
+        {
+            stackPushInt(ids[i]);
+            stackPushArrayNext();
+            ++published;
+        }
+    }
 }
 void gsc_mysql_async_getstatus()
 {
-    int id=0;SqlCompletion c;
-    if(!stackGetParams("i",&id) || !sqlPoolStatus(id,&c)){stackPushUndefined();return;}
+    int id = 0;
+    SqlCompletion c;
+    if (!stackGetParams("i", &id) || !sqlPoolStatus(id, &c))
+    {
+        stackPushUndefined();
+        return;
+    }
     stackMakeArray();
-    OpenCJ_Demo_SQLStatus(id,&c);
-    int values[]={c.outcome,c.error,c.waitMs,c.executionMs};
-    for(int i=0;i<4;i++){stackPushInt(values[i]);stackPushArrayNext();}
+    OpenCJ_Demo_SQLStatus(id, &c);
+    int values[] = {c.outcome, c.error, c.waitMs, c.executionMs};
+    for (int i = 0; i < 4; i++)
+    {
+        stackPushInt(values[i]);
+        stackPushArrayNext();
+    }
 }
 void gsc_mysql_async_getresult_and_free()
 {
-    int id=0;SqlCompletion c;MYSQL_RES *result=NULL;
-    if(!stackGetParams("i",&id) || !sqlPoolTake(id,&result,&c)){stackPushUndefined();return;}
-    if(c.outcome!=SQL_OK) {
-        if(result)mysql_free_result(result);
+    int id = 0;
+    SqlCompletion c;
+    MYSQL_RES *result = NULL;
+    if (!stackGetParams("i", &id) || !sqlPoolTake(id, &result, &c))
+    {
         stackPushUndefined();
-    } else stackPushInt((int)result);
+        return;
+    }
+    if (c.outcome != SQL_OK)
+    {
+        if (result)
+        {
+            mysql_free_result(result);
+        }
+        stackPushUndefined();
+    }
+    else
+    {
+        stackPushInt((int)result);
+    }
 }
 // Translate script flags into explicit native cancellation choices.
 void gsc_mysql_async_cancel()
@@ -130,7 +203,7 @@ void gsc_mysql_async_cancel()
     char *scope = NULL;
     int prefix = 0;
     int forget = 0;
-    if(!stackGetParams("sii", &scope, &prefix, &forget))
+    if (!stackGetParams("sii", &scope, &prefix, &forget))
     {
         stackPushUndefined();
         return;
@@ -145,26 +218,45 @@ void gsc_mysql_async_cancel()
 
 void gsc_mysql_async_newmap()
 {
-    OpenCJ_Demo_SQLNewMap();sqlPoolNewMap();stackPushInt(1);
+    OpenCJ_Demo_SQLNewMap();
+    sqlPoolNewMap();
+    stackPushInt(1);
 }
 void gsc_mysql_async_stats()
 {
-    SqlPoolStats s=sqlPoolStats();
-    int values[]={s.workers,s.queued,s.running,s.completed,s.outstanding,s.queryBytes,
-        s.peakJobs,s.peakBytes,s.accepted,s.succeeded,s.failed,s.cancelled,
-        s.rejected,s.expired,s.unknown,s.oldestWaitMs,s.maxWaitMs,s.maxExecutionMs};
+    SqlPoolStats s = sqlPoolStats();
+    int values[] = {s.workers,      s.queued,    s.running,       s.completed, s.outstanding,
+                    s.queryBytes,   s.peakJobs,  s.peakBytes,     s.accepted,  s.succeeded,
+                    s.failed,       s.cancelled, s.rejected,      s.expired,   s.unknown,
+                    s.oldestWaitMs, s.maxWaitMs, s.maxExecutionMs};
     stackMakeArray();
-    for(int i=0;i<18;i++){stackPushInt(values[i]);stackPushArrayNext();}
+    for (int i = 0; i < 18; i++)
+    {
+        stackPushInt(values[i]);
+        stackPushArrayNext();
+    }
 }
 void gsc_mysql_async_initializer()
 {
-    char *host=NULL,*user=NULL,*pass=NULL,*db=NULL;
-    int port=0,count=0;
-    if(!stackGetParams("ssssii",&host,&user,&pass,&db,&port,&count) ||
-       !sqlPoolInit(host,user,pass,db,port,count)){stackPushUndefined();return;}
+    char *host = NULL;
+    char *user = NULL;
+    char *pass = NULL;
+    char *db = NULL;
+    int port = 0;
+    int count = 0;
+    if (!stackGetParams("ssssii", &host, &user, &pass, &db, &port, &count) ||
+        !sqlPoolInit(host, user, pass, db, port, count))
+    {
+        stackPushUndefined();
+        return;
+    }
     // Do not expose worker-owned MYSQL pointers to the game thread.
     stackMakeArray();
-    for(int i=0;i<4;i++){stackPushInt(i);stackPushArrayNext();}
+    for (int i = 0; i < 4; i++)
+    {
+        stackPushInt(i);
+        stackPushArrayNext();
+    }
 }
 
 void gsc_mysql_init()
@@ -196,26 +288,34 @@ void gsc_mysql_reuse_connection()
 
 void gsc_mysql_real_connect()
 {
-	int iMysql = 0, port = 0;
-	char *host = NULL, *user = NULL, *pass = NULL, *db = NULL;
-	if (!stackGetParams("issssi", &iMysql, &host, &user, &pass, &db, &port))
-	{
-		stackError("gsc_mysql_real_connect() one or more arguments is undefined or has a wrong type");
-		stackPushUndefined();
-		return;
-	}
-
-	MYSQL *mysql = mysql_real_connect((MYSQL *)iMysql, host, user, pass, db, port, NULL, 0);
-	bool reconnect = false;
-	if (mysql) mysql_options(mysql, MYSQL_OPT_RECONNECT, &reconnect);
-	if(cod_mysql_connection == NULL)
+    int iMysql = 0;
+    int port = 0;
+    char *host = NULL;
+    char *user = NULL;
+    char *pass = NULL;
+    char *db = NULL;
+    if (!stackGetParams("issssi", &iMysql, &host, &user, &pass, &db, &port))
     {
-		cod_mysql_connection = (MYSQL*)mysql;
+        stackError(
+            "gsc_mysql_real_connect() one or more arguments is undefined or has a wrong type");
+        stackPushUndefined();
+        return;
+    }
+
+    MYSQL *mysql = mysql_real_connect((MYSQL *)iMysql, host, user, pass, db, port, NULL, 0);
+    bool reconnect = false;
+    if (mysql)
+    {
+        mysql_options(mysql, MYSQL_OPT_RECONNECT, &reconnect);
+    }
+    if (cod_mysql_connection == NULL)
+    {
+        cod_mysql_connection = (MYSQL *)mysql;
     }
 
     if (mysql != NULL)
     {
-	    stackPushInt((int)mysql);
+        stackPushInt((int)mysql);
     }
     else
     {
@@ -254,13 +354,13 @@ void gsc_mysql_errno()
 
 void gsc_mysql_close()
 {
-	int mysql = 0;
-	if (!stackGetParams("i", &mysql))
-	{
-		stackError("gsc_mysql_close() argument is undefined or has a wrong type");
-		stackPushUndefined();
-		return;
-	}
+    int mysql = 0;
+    if (!stackGetParams("i", &mysql))
+    {
+        stackError("gsc_mysql_close() argument is undefined or has a wrong type");
+        stackPushUndefined();
+        return;
+    }
 
     if ((MYSQL *)mysql == cod_mysql_connection)
     {
@@ -274,14 +374,14 @@ void gsc_mysql_close()
 
 void gsc_mysql_query()
 {
-	int mysql = 0;
-	char *query = NULL;
-	if (!stackGetParams("is", &mysql, &query))
-	{
-		stackError("gsc_mysql_query() one or more arguments is undefined or has a wrong type");
-		stackPushUndefined();
-		return;
-	}
+    int mysql = 0;
+    char *query = NULL;
+    if (!stackGetParams("is", &mysql, &query))
+    {
+        stackError("gsc_mysql_query() one or more arguments is undefined or has a wrong type");
+        stackPushUndefined();
+        return;
+    }
 
     MYSQL *connection = (MYSQL *)mysql;
     bool tracked = connection == cod_mysql_connection;
@@ -294,15 +394,24 @@ void gsc_mysql_query()
     if (tracked && !sync_mysql_transaction && !sync_mysql_failed_transaction)
     {
         int ping = mysql_prepare_new_statement(connection);
-        if (ping) { stackPushInt(ping); return; }
+        if (ping)
+        {
+            stackPushInt(ping);
+            return;
+        }
     }
     int ret = mysql_query(connection, query);
     if (tracked)
     {
-        if (ret && sync_mysql_transaction) sync_mysql_failed_transaction = true;
+        if (ret && sync_mysql_transaction)
+        {
+            sync_mysql_failed_transaction = true;
+        }
         // SELECT status is final only after its rowset has been consumed.
         if (!ret && mysql_field_count(connection) == 0)
+        {
             sync_mysql_transaction = (connection->server_status & SERVER_STATUS_IN_TRANS) != 0;
+        }
         if (rollback)
         {
             sync_mysql_transaction = false;
@@ -328,26 +437,31 @@ void gsc_mysql_affected_rows()
 
 void gsc_mysql_store_result()
 {
-	int mysql = 0;
-	if (!stackGetParams("i", &mysql))
-	{
-		stackError("gsc_mysql_store_result() argument is undefined or has a wrong type");
-		stackPushUndefined();
-		return;
-	}
+    int mysql = 0;
+    if (!stackGetParams("i", &mysql))
+    {
+        stackError("gsc_mysql_store_result() argument is undefined or has a wrong type");
+        stackPushUndefined();
+        return;
+    }
 
-	bool failed = false;
-	MYSQL_RES *result = mysql_store_first_result((MYSQL *)mysql, &failed);
+    bool failed = false;
+    MYSQL_RES *result = mysql_store_first_result((MYSQL *)mysql, &failed);
     if (failed)
     {
         if ((MYSQL *)mysql == cod_mysql_connection && sync_mysql_transaction)
+        {
             sync_mysql_failed_transaction = true;
+        }
         stackPushUndefined();
     }
     else
     {
         if ((MYSQL *)mysql == cod_mysql_connection)
-            sync_mysql_transaction = (((MYSQL *)mysql)->server_status & SERVER_STATUS_IN_TRANS) != 0;
+        {
+            sync_mysql_transaction =
+                (((MYSQL *)mysql)->server_status & SERVER_STATUS_IN_TRANS) != 0;
+        }
         stackPushInt((int)result);
     }
 }
@@ -603,28 +717,72 @@ void gsc_mysql_async_execute_longquery()
     }
 
     mysql_long_query *longQuery = (mysql_long_query *)ptr;
-    //printf("Executing long query: %s\n", longQuery);
+    // printf("Executing long query: %s\n", longQuery);
     int queryId = longQuery->failed ? 0 : mysql_async_query_initializer(longQuery->text, save > 0);
     free(longQuery);
 
-    if (queryId) stackPushInt(queryId);
-    else stackPushUndefined();
+    if (queryId)
+    {
+        stackPushInt(queryId);
+    }
+    else
+    {
+        stackPushUndefined();
+    }
 }
 
 // Collect regular rowsets or small native-transfer receipts through one path.
 // Binary demo payloads are decoded before this function becomes eligible.
-void gsc_mysql_async_getrows_and_free() {
-    int id;if(!stackGetParams("i",&id)){stackPushUndefined();return;}
-    if(OpenCJ_Demo_SQLTake(id))return;
-    SqlCompletion c;MYSQL_RES *result=nullptr;
-    if(!sqlPoolTake(id,&result,&c)){stackPushUndefined();return;}
-    if(c.outcome!=SQL_OK){if(result)mysql_free_result(result);stackPushUndefined();return;}
+void gsc_mysql_async_getrows_and_free()
+{
+    int id;
+    if (!stackGetParams("i", &id))
+    {
+        stackPushUndefined();
+        return;
+    }
+    if (OpenCJ_Demo_SQLTake(id))
+    {
+        return;
+    }
+    SqlCompletion c;
+    MYSQL_RES *result = nullptr;
+    if (!sqlPoolTake(id, &result, &c))
+    {
+        stackPushUndefined();
+        return;
+    }
+    if (c.outcome != SQL_OK)
+    {
+        if (result)
+        {
+            mysql_free_result(result);
+        }
+        stackPushUndefined();
+        return;
+    }
     stackMakeArray();
-    if(!result)return;
-    MYSQL_ROW row;unsigned fields=mysql_num_fields(result);
-    while((row=mysql_fetch_row(result))) {
+    if (!result)
+    {
+        return;
+    }
+    MYSQL_ROW row;
+    unsigned fields = mysql_num_fields(result);
+    while ((row = mysql_fetch_row(result)))
+    {
         stackMakeArray();
-        for(unsigned i=0;i<fields;i++){if(row[i])stackPushString(row[i]);else stackPushUndefined();stackPushArrayNext();}
+        for (unsigned i = 0; i < fields; i++)
+        {
+            if (row[i])
+            {
+                stackPushString(row[i]);
+            }
+            else
+            {
+                stackPushUndefined();
+            }
+            stackPushArrayNext();
+        }
         stackPushArrayNext();
     }
     mysql_free_result(result);
