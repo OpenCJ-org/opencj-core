@@ -115,12 +115,15 @@ secret vault. Protect private backups and host access accordingly.
 Do not add local/, .env, database dumps or secret files to Git or support bundles.
 The Docker context whitelist contains only Dockerfile, requirements.txt and
 update.py. provision.py checks Git exclusion and refuses to silently reset an
-existing account whose local secret is missing. To move hosts, provision a new
+existing account whose local secret is missing. Existing updater accounts with table DDL
+or transferable grants are refused; provisioning does not silently revoke them. To move hosts, provision a new
 restricted account/secret there; do not put passwords in deployment manifests.
 
 ## Verification
 
-Run python3 -B server-db/tools/geoip/test_update.py from the workspace root.
+Run the portable `database-client-unit` and `geoip-unit` groups from the
+workspace root. They cover pipe cleanup, provider parsing, input validation and
+private secret handling without a database.
 The real MySQL fixture is python3 -B dev-tools/tests/run-geoip-database.py;
 it creates and removes its own temporary schema/account/secret and checks exact
 range boundaries, gaps, atomic failure, retention and restricted privileges.

@@ -54,11 +54,12 @@
     {
       "id": "geoip-unit",
       "category": "portable",
-      "description": "GeoIP input parsing, overlaps, gzip integrity and country mapping.",
+      "description": "GeoIP input parsing, overlaps, gzip integrity, country mapping and private credential handling.",
       "requires": "Python 3 standard library; no provider download or database driver.",
-      "effects": "Temporary compressed inputs and SQLite files.",
+      "effects": "Temporary compressed inputs, SQLite files and synthetic secrets; mocked database commands.",
       "files": [
-        "server-db/tools/geoip/test_update.py"
+        "server-db/tools/geoip/test_update.py",
+        "server-db/tools/geoip/test_provision.py"
       ],
       "commands": [],
       "mode": "unit"
@@ -116,9 +117,9 @@
     {
       "id": "geoip-database",
       "category": "integration",
-      "description": "GeoIP import, publication and lookup against synthetic data.",
+      "description": "GeoIP provisioning, publication and lookup against synthetic data.",
       "requires": "Selected disposable Compose database and locally built GeoIP updater image.",
-      "effects": "Creates/removes temporary schema, account and password file; helper runs inside updater image.",
+      "effects": "Creates/removes temporary schema, account and password file; verifies restricted grants; helper runs inside updater image.",
       "files": [
         "dev-tools/tests/run-geoip-database.py",
         "server-db/tools/geoip/test_database.py"
