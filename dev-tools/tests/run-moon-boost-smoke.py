@@ -213,6 +213,13 @@ def control_map_listeners(mod):
     )
     if instrumented != 1:
         raise RuntimeError("Expected one shared map boost listener")
+    source, reset_listener = re.subn(
+        r"(?m)^resetPlayerOnTouch\s*\(\s*\)\s*\{",
+        lambda match: match[0] + '\n    level endon("moon_test_stop_reset_listener");',
+        source,
+    )
+    if reset_listener != 1:
+        raise RuntimeError("Expected one reset trigger listener")
     path.write_text(source)
 
 

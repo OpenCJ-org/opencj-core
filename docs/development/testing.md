@@ -125,6 +125,10 @@ The moon movement runner accepts `--binary PATH` and `--scripts PATH` through
 the shared GSC harness. It requires `mp_to_the_moon` because its scenarios use
 that map's ramps. The report records engine and script hashes, and the fixture
 compares native trajectories while isolating account, UI, and database services.
+Its reset-trigger scenario sends synthetic contact notifications through the real
+map listener and load-request handler. It verifies immediate queueing, no later
+load after another player action, and rejection of non-player/dead actors; it
+does not test the spatial bounds of the map's reset brushes.
 
 The tutorial auto-FPS runner accepts a candidate engine path inside the checkout,
 either as a host path or its `/workspace/...` container path. It checks movement

@@ -27,6 +27,7 @@ main()
     player verifyNoclipCancelsBoost();
     player verifyDeathCancelsBoost();
     player verifyCooldownOwnership();
+    player verifyResetTriggerTiming();
 
     player verifySupersededSpawn();
     player verifyFPSRegistrationCancellation();
@@ -531,4 +532,42 @@ verifyFPSRegistrationCancellation()
     self openCJ\fpsRegistration::finish();
     check(self.sessionState == "playing" && !self.fpsRegistrationSpawnPending,
           "an uncancelled registration-held spawn still resumes");
+}
+
+// A map reset must not queue a second load after a later player action.
+verifyResetTriggerTiming()
+{
+    self resetPlayerAt((-1000, -2200, 1669));
+    self.eventQueue = [];
+    resetTrigger = spawn("script_origin", self.origin);
+    resetTrigger thread maps\mp\mp_to_the_moon::resetPlayerOnTouch();
+    waittillframeend;
+
+    resetTrigger notify("trigger", self);
+    waittillframeend;
+    check(isDefined(self.eventQueue["load"]) && self.eventQueue["load"] == 0,
+          "reset contact queues its load without a delayed player action");
+
+    // Simulate consuming that load and choosing another position before the old delay expires.
+    self.eventQueue = [];
+    self setOriginAndAngles((-1200, -2200, 1669), (0, 90, 0));
+    wait .15;
+    check(!isDefined(self.eventQueue["load"]),
+          "reset contact cannot queue another load after the player's later action");
+    self.eventQueue = [];
+    wait .1;
+
+    nonPlayer = spawn("script_origin", self.origin);
+    resetTrigger notify("trigger", nonPlayer);
+    wait .25;
+    check(!isDefined(self.eventQueue["load"]), "reset listener ignores non-player actors");
+    nonPlayer delete();
+
+    self.health = 0;
+    resetTrigger notify("trigger", self);
+    wait .25;
+    check(!isDefined(self.eventQueue["load"]), "reset listener ignores dead players");
+    level notify("moon_test_stop_reset_listener");
+    resetTrigger delete();
+    self resetPlayerAt((-1000, -2200, 1669));
 }

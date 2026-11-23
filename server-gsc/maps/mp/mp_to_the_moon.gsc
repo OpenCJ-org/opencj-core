@@ -161,22 +161,19 @@ startResetTriggers()
     }
 }
 
+// Handle this contact before yielding so a later player action cannot be undone.
 resetPlayerOnTouch()
 {
-    self endon("disconnect");
-    self endon("killed_player");
-    self endon("joined_spectators");
-
+    // Keep the old combined cooldown, with no deferred action against the player.
+    repeatDelaySeconds = 0.2;
     while (true)
     {
-        self waittill("trigger", other);
-
-        wait(0.10);
-        if (isDefined(other) && isPlayer(other) && isAlive(other))
+        self waittill("trigger", player);
+        if (isDefined(player) && isPlayer(player) && isAlive(player))
         {
-            other openCJ\events\eventHandler::onLoadPositionRequest(0);
+            player openCJ\events\eventHandler::onLoadPositionRequest(0);
         }
-        wait(0.10);
+        wait repeatDelaySeconds;
     }
 }
 
