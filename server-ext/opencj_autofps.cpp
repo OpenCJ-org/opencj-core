@@ -432,7 +432,8 @@ extern "C" bool opencj_autoFpsIsUpwardGain(float previousEndVerticalSpeed, float
 // True when two server times are at most RPG_PUSH_WINDOW_MS apart.
 extern "C" bool opencj_autoFpsIsWithinRPGWindow(int firstTime, int secondTime)
 {
-    int distanceMs = secondTime - firstTime;
+    // Widen before subtraction so distant times cannot look like a recent shot.
+    long long distanceMs = static_cast<long long>(secondTime) - firstTime;
     if (distanceMs < 0)
     {
         distanceMs = -distanceMs;

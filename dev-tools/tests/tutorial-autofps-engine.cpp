@@ -6,6 +6,7 @@
 #include "/workspace/server-ext/opencj_autofps.hpp"
 #include "/workspace/cod4x-server/plugins/plugin_declarations.h"
 #include <string.h>
+#include <limits.h>
 
 extern "C"
 {
@@ -131,6 +132,12 @@ static void runTests()
     check(opencj_autoFpsIsWithinRPGWindow(1300, 1000), "shot 300 ms after gain is linked", 1);
     check(opencj_autoFpsIsWithinRPGWindow(1000, 1500), "500 ms is still linked", 1);
     check(!opencj_autoFpsIsWithinRPGWindow(1000, 1501), "over 500 ms is not linked", 0);
+
+    check(!opencj_autoFpsIsWithinRPGWindow(INT_MIN, 0), "distant times cannot overflow into a push", 0);
+    check(!opencj_autoFpsIsWithinRPGWindow(0, INT_MIN), "reversed distant times remain unrelated", 0);
+    check(!opencj_autoFpsIsWithinRPGWindow(INT_MIN, INT_MAX), "opposite integer limits remain unrelated", 0);
+    check(opencj_autoFpsIsWithinRPGWindow(INT_MAX - 500, INT_MAX), "nearby upper-limit times still link", 1);
+    check(opencj_autoFpsIsWithinRPGWindow(INT_MIN, INT_MIN + 500), "nearby lower-limit times still link", 1);
 
     // After a push the rule treats the climb as a new rise: 333 for height.
     inPushRise = true;
