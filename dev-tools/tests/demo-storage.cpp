@@ -9,6 +9,7 @@
 static bool returnedUndefined;
 static int returnedInteger;
 static std::vector<int> scriptArguments;
+static std::vector<int> returnedArray;
 static float returnedVector[3];
 
 struct TestSqlJob
@@ -46,7 +47,11 @@ extern "C"
 {
 int Scr_GetMultipleValues(const char *format, ...)
 {
-    assert(std::strcmp(format, "iiii") == 0 && scriptArguments.size() == 4);
+    assert(std::strlen(format) == scriptArguments.size());
+    for (const char *type = format; *type; ++type)
+    {
+        assert(*type == 'i');
+    }
     va_list values;
     va_start(values, format);
     for (int value : scriptArguments)
@@ -96,7 +101,18 @@ unsigned Scr_GetType(unsigned index)
         return 0;
     }
 
-    void Scr_AddUndefined()
+    void Scr_MakeArray()
+{
+    returnedArray.clear();
+    returnedUndefined = false;
+}
+
+void Scr_AddArray()
+{
+    returnedArray.push_back(returnedInteger);
+}
+
+void Scr_AddUndefined()
     {
         returnedUndefined = true;
     }
@@ -434,6 +450,41 @@ static void obsoleteDemoLoadsAreCancelled()
     testSqlJobs.clear();
 }
 
+static void invalidTimelineRequestsPreservePlayback()
+{
+    constexpr int client = 0;
+    sDemo_t *demo = createDemo(8, 4);
+    assert(demo);
+    for (int index = 0; index < 4; ++index)
+    {
+        sDemoFrame_t frame = {};
+        frame.isKeyFrame = index == 0 || index == 3;
+        assert(appendDemoFrame(demo, frame));
+    }
+    opencj_playback[client] = {demo, 0};
+    scriptArguments = {1, 1, 2};
+    Gsc_Demo_PlaybackStyle(client);
+    assert(returnedUndefined);
+    assert(demoPlaybackTimeline[client].empty());
+    assert(opencj_playback[client].selectedFrame == 0);
+
+    scriptArguments = {1, 0, 3};
+    Gsc_Demo_PlaybackStyle(client);
+    assert(!returnedUndefined && returnedArray == std::vector<int>({0, 3}));
+    for (const std::vector<int> invalidRange : {
+             std::vector<int>{-1, 3}, std::vector<int>{0, 4}, std::vector<int>{3, 1}})
+    {
+        scriptArguments = invalidRange;
+        returnedUndefined = false;
+        Gsc_Demo_PlaybackTime(client);
+        assert(returnedUndefined);
+    }
+    scriptArguments = {0, 3};
+    Gsc_Demo_PlaybackTime(client);
+    assert(!returnedUndefined && returnedArray == std::vector<int>({0, 1}));
+    clearDemoById(8);
+}
+
 int main()
 {
     emptyAndShortenedPlayback();
@@ -443,5 +494,6 @@ int main()
     storedFormatsRemainCompatible();
     trimmedRecordingRefreshesSelectedSample();
     obsoleteDemoLoadsAreCancelled();
+    invalidTimelineRequestsPreservePlayback();
     std::puts("DEMO STORAGE PASS bounds, atomic appends, presentation and OCJ1-5 compatibility");
 }

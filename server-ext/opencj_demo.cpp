@@ -1897,10 +1897,9 @@ void Gsc_Demo_PlaybackStyle(int client)
         stackPushUndefined();
         return;
     }
-    auto &timeline = demoPlaybackTimeline[client];
-    std::vector<int>().swap(timeline);
     if (style == 0)
     {
+        std::vector<int>().swap(demoPlaybackTimeline[client]);
         opencj_playback[client].selectedFrame = begin;
         stackMakeArray();
         stackPushInt(begin);
@@ -1909,9 +1908,10 @@ void Gsc_Demo_PlaybackStyle(int client)
         stackPushArrayNext();
         return;
     }
+    std::vector<int> timeline;
     for (int i = 0; i < demo->size; ++i)
     {
-        if (style == 0 || demo->pDemoFrames[i].isKeyFrame)
+        if (demo->pDemoFrames[i].isKeyFrame)
         {
             timeline.push_back(i);
         }
@@ -1949,11 +1949,15 @@ void Gsc_Demo_PlaybackStyle(int client)
         stackPushUndefined();
         return;
     }
-    opencj_playback[client].selectedFrame = *a;
+    const int firstFrame = *a;
+    const int lastFrame = *(b - 1);
+    // Publish only after the requested range contains playable frames.
+    demoPlaybackTimeline[client].swap(timeline);
+    opencj_playback[client].selectedFrame = firstFrame;
     stackMakeArray();
-    stackPushInt(*a);
+    stackPushInt(firstFrame);
     stackPushArrayNext();
-    stackPushInt(*(b - 1));
+    stackPushInt(lastFrame);
     stackPushArrayNext();
 }
 
@@ -1967,14 +1971,14 @@ void Gsc_Demo_PlaybackTime(int client)
     if (!stackGetParams("ii", &begin, &end)) {
         return;
     }
+    const sDemo_t *demo = opencj_playback[client].pDemo;
+    if (!demo || begin < 0 || end < begin || end >= demo->size) {
+        stackPushUndefined();
+        return;
+    }
     const auto &timeline = demoPlaybackTimeline[client];
     int frame = opencj_playback[client].selectedFrame;
     if (timeline.empty()) {
-        const sDemo_t *demo = opencj_playback[client].pDemo;
-        if (!demo || begin < 0 || end < begin || end >= demo->size) {
-            stackPushUndefined();
-            return;
-        }
         stackMakeArray();
         stackPushInt(std::max(0, std::min(end, frame) - begin));
         stackPushArrayNext();
