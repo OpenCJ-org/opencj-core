@@ -18,43 +18,56 @@ onPlayerLogin()
     self thread _createRunID();
 }
 
+// Persist this run's finish; a delayed reply must not finish a replacement run.
 onRunFinished(cp, filterStr)
 {
-    if(self isRunFinished())
-    {
-        return false;
-    }
-    if(!self hasRunID())
-    {
-        return false;
-    }
-    if(self openCJ\cheating::isCheating())
+    if (self isRunFinished() || !self hasRunID() || self openCJ\cheating::isCheating())
     {
         return false;
     }
 
-
-    cpID = openCJ\checkpoints::getCheckpointID(cp);
-    if (!isDefined(cpID))
+    checkpointID = openCJ\checkpoints::getCheckpointID(cp);
+    if (!isDefined(checkpointID))
     {
         return false;
     }
 
     runID = self getRunID();
-    // A tutorial finish must be marked first so it can never enter rankings
-    if (self openCJ\tutorial::isTutorialRun() && !self openCJ\tutorial::markRunAsTutorial(runID))
+    instanceNumber = self getRunInstanceNumber();
+    if (!isDefined(filterStr))
     {
-        self iPrintLnBold("Could not save this tutorial finish. Try finishing again.");
+        filterStr = self finishSettings();
+    }
+
+    // A tutorial finish must be marked first so it can never enter rankings.
+    if (self openCJ\tutorial::isTutorialRun())
+    {
+        marked = self openCJ\tutorial::markRunAsTutorial(runID);
+        if (!self openCJ\runStorage::isCurrent(runID, instanceNumber))
+        {
+            return false;
+        }
+        if (!marked)
+        {
+            self iPrintLnBold("Could not save this tutorial finish. Try finishing again.");
+            return false;
+        }
+    }
+
+    query = "SELECT runFinished(" + runID + ", " + checkpointID + ", " +
+            filterStr + ", " + instanceNumber + ")";
+    rows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:" + runID);
+    // Let the write settle even if the player changes runs while it is in flight.
+    if (!self openCJ\runStorage::isCurrent(runID, instanceNumber))
+    {
         return false;
     }
-    if (!isDefined(filterStr))
-        filterStr = self finishSettings();
-    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT runFinished(" + runID + ", " + cpID + ", " + filterStr + ", " + self getRunInstanceNumber() + ")", "run:"+runID);
-    if(!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
+    if (!isDefined(rows) || !isDefined(rows[0]) || !isDefined(rows[0][0]))
     {
         self iPrintLnBold("Could not confirm that this finish was saved. Check your records before resetting.");
         return false;
     }
+
     self.playerRuns_runFinished = true;
     self openCJ\halfBeat::disableCorrection();
     return true;
@@ -212,8 +225,11 @@ saveRun(runLabel)
     printf("DEBUG: executing saveRun query:\n" + query + "\n");
 
     rows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:"+runID);
-    if(!isDefined(self))
-        return; //player disconnected during save command
+    // Saving the old run must settle, but its reply cannot stop a newer run.
+    if (!isDefined(self) || !self openCJ\runStorage::isCurrent(runID, runInstanceNumber))
+    {
+        return;
+    }
     if (isDefined(rows) && isDefined(rows[0]) && isDefined(rows[0][0]) && (int(rows[0][0]) == runID))
     {
         // Successfully saved

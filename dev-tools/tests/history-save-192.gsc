@@ -69,12 +69,12 @@ main()
     fresh = newRun();
     freshInstance = scalar("SELECT createRunInstance(" + fresh + ")");
     a.history192Warnings = 0;
-    level.history192Delay = true;
+    level.history192DelayedQuery = "SELECT savePosition(";
     a thread delayedSave();
     a waittill("history192_result_ready");
     a selectRun(fresh, freshInstance);
     a waittill("history192_save_done");
-    level.history192Delay = false;
+    level.history192DelayedQuery = undefined;
     check(a.history192Warnings == 0 &&
         scalar("SELECT instanceNumber FROM playerRuns WHERE runID=" + fresh) == freshInstance, "old run response is ignored after switching runs");
     a.history192Warnings = 0;
@@ -123,6 +123,7 @@ main()
         scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + fresh) == 3, "working demo and category references survive failed upload");
     sql("DROP TRIGGER history192_demo_fail");
     incompleteDemoChecks(failedDemo, fresh);
+    a verifyDelayedRunReplies();
     a extraSaveChecks();
     finish();
 }
@@ -309,4 +310,160 @@ incompleteDemoChecks(candidate, winner)
     check(scalar("SELECT COUNT(*) FROM demoWinners WHERE runID=" + winner) == 3 &&
         scalar("SELECT COUNT(*) FROM demoChunks WHERE runID=" + winner) == 2, "all incomplete candidates preserve the current demo");
     sql("DELETE FROM demoRuns WHERE runID=" + candidate);
+}
+
+
+// Let real writes finish, then switch the player's run before delivering their replies.
+verifyDelayedRunReplies()
+{
+    openCJ\playerRuns::onInit();
+    level.mapid_mapID = 1;
+    self.settingsLoaded = true;
+    checkpoint = spawnStruct();
+    checkpoint.id = 1;
+
+    self verifyDelayedFinish(checkpoint, false);
+    self verifyDelayedFinish(checkpoint, true);
+    self verifyDelayedRunSave();
+    self verifyDelayedCheckpointFinish(checkpoint);
+    self verifyDelayedTutorialFinish(checkpoint);
+}
+
+verifyDelayedFinish(checkpoint, resumeSameRun)
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    self selectRun(originalRunID, originalInstance);
+    sql("INSERT INTO checkpointStatistics(" +
+        "runID, cpID, timePlayed, saveCount, loadCount, explosiveJumps, " +
+        "explosiveLaunches, doubleExplosives, FPSMode, ele, anyPct, hardTAS)" +
+        " VALUES(" + originalRunID + ", 1, 1000, 1, 0, 0, 0, 0, '125', 0, 0, 0)");
+
+    replacementRunID = originalRunID;
+    replacementInstance = originalInstance + 1;
+    if (!resumeSameRun)
+    {
+        replacementRunID = newRun();
+        replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    }
+
+    level.history192DelayedQuery = "SELECT runFinished(";
+    self thread finishWithDelayedReply(checkpoint);
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self waittill("history192_finish_done");
+    level.history192DelayedQuery = undefined;
+
+    scenario = "a different run";
+    if (resumeSameRun)
+    {
+        scenario = "a newer instance of the same run";
+    }
+    check(!self.history192FinishResult && !self openCJ\playerRuns::isRunFinished(),
+          "late finish reply cannot finish " + scenario);
+    check(self openCJ\runStorage::isCurrent(replacementRunID, replacementInstance),
+          "late finish reply preserves " + scenario);
+    check(scalar("SELECT COUNT(*) FROM playerRuns WHERE runID = " + originalRunID +
+                 " AND finishTimeStamp IS NOT NULL") == 1,
+          "ignoring a late finish reply preserves its completed database write");
+}
+
+finishWithDelayedReply(checkpoint)
+{
+    self.history192FinishResult = self openCJ\playerRuns::onRunFinished(
+        checkpoint, "'125',0,0,0,0");
+    self notify("history192_finish_done");
+}
+
+verifyDelayedRunSave()
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self selectRun(originalRunID, originalInstance);
+    self.history192Stopped = false;
+
+    level.history192DelayedQuery = "SELECT saveRun(";
+    self thread saveRunWithDelayedReply();
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self waittill("history192_run_save_done");
+    level.history192DelayedQuery = undefined;
+
+    check(self openCJ\runStorage::isCurrent(replacementRunID, replacementInstance),
+          "late save reply cannot stop the replacement run");
+    check(!self.history192Stopped,
+          "late save reply does not emit a stop event for the replacement run");
+}
+
+saveRunWithDelayedReply()
+{
+    self openCJ\playerRuns::saveRun("delayed save");
+    self notify("history192_run_save_done");
+}
+
+
+verifyDelayedCheckpointFinish(checkpoint)
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self selectRun(originalRunID, originalInstance);
+    self.playerRuns_runPaused = false;
+    self.allowHalfBeat = false;
+    self.startTime = 0;
+    self.stopTime = 1000;
+
+    level.history192FinishRequests = 0;
+    level.history192DelayedQuery = "SELECT checkpointPassed(";
+    self thread finishEventWithDelayedReply(checkpoint);
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self.playerRuns_runFinishing = false;
+    self waittill("history192_finish_event_done");
+    level.history192DelayedQuery = undefined;
+
+    check(level.history192FinishRequests == 0,
+          "late checkpoint reply never submits a finish for the replacement run");
+    check(!self openCJ\playerRuns::isRunFinished() && !self.playerRuns_runFinishing,
+          "late checkpoint reply preserves the replacement run's finish state");
+    check(scalar("SELECT COUNT(*) FROM checkpointStatistics WHERE runID = " +
+                 originalRunID + " AND cpID = 1") == 1,
+          "ignoring the checkpoint reply preserves the completed checkpoint write");
+    level.history192FinishRequests = undefined;
+}
+
+finishEventWithDelayedReply(checkpoint)
+{
+    self openCJ\events\runFinished::main(checkpoint, 0, "verification");
+    self notify("history192_finish_event_done");
+}
+
+verifyDelayedTutorialFinish(checkpoint)
+{
+    originalRunID = newRun();
+    originalInstance = scalar("SELECT createRunInstance(" + originalRunID + ")");
+    replacementRunID = newRun();
+    replacementInstance = scalar("SELECT createRunInstance(" + replacementRunID + ")");
+    self selectRun(originalRunID, originalInstance);
+    self.tutorialRun = true;
+
+    level.history192FinishRequests = 0;
+    level.history192DelayedQuery = "UPDATE playerRuns SET tutorial = 1";
+    self thread finishWithDelayedReply(checkpoint);
+    self waittill("history192_result_ready");
+    self selectRun(replacementRunID, replacementInstance);
+    self.tutorialRun = false;
+    self waittill("history192_finish_done");
+    level.history192DelayedQuery = undefined;
+
+    check(!self.history192FinishResult && level.history192FinishRequests == 0,
+          "late tutorial mark never submits a finish after a run switch");
+    check(!self openCJ\playerRuns::isRunFinished(),
+          "late tutorial mark leaves the replacement run unfinished");
+    check(scalar("SELECT tutorial FROM playerRuns WHERE runID = " + originalRunID) == 1,
+          "ignoring a tutorial mark reply preserves its completed database write");
+    level.history192FinishRequests = undefined;
 }

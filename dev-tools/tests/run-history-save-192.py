@@ -197,11 +197,18 @@ try:
         r"\s*[A-Za-z_]\w*\s*,\s*[A-Za-z_]\w*\s*\)\s*;[ \t]*\n"
     )
     delay = (
-        "    if (isDefined(level.history192Delay) && level.history192Delay && "
-        'isSubStr(query, "SELECT savePosition("))\n'
+        "    if (isDefined(level.history192DelayedQuery) && "
+        'isSubStr(query, level.history192DelayedQuery))\n'
         "    {\n"
         '        self notify("history192_result_ready");\n'
         "        wait 0.2;\n"
+        "    }\n"
+    )
+    delay += (
+        "    if (isDefined(level.history192FinishRequests) && "
+        'isSubStr(query, "SELECT runFinished("))\n'
+        "    {\n"
+        "        level.history192FinishRequests++;\n"
         "    }\n"
     )
     request_function, replacements = result_wait.subn(
@@ -212,6 +219,10 @@ try:
         source[: request_match.start()]
         + request_function
         + source[request_match.end() :]
+    )
+    # Run identity changes remain real; omit HUD callbacks that need a human client.
+    (mod / "opencj/events/onrunstopped.gsc").write_text(
+        "main()\n{\n    self.history192Stopped = true;\n}\n"
     )
     cfg = (ROOT / "dev-tools/local/runtime/mods/opencj/opencj-dev.cfg").read_text()
     lines = [line for line in cfg.splitlines() if re.match(r"\s*set(?:a)?\s+db_", line)]

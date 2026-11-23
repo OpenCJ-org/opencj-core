@@ -19,6 +19,7 @@ main(cp, tOffset, route)
     self openCJ\demoRecording::capture(true);
     self.playerRuns_runFinishing = true;
     runID = self openCJ\playerRuns::getRunID();
+    instanceNumber = self openCJ\playerRuns::getRunInstanceNumber();
     filters = self openCJ\playerRuns::finishSettings();
     category=openCJ\recordNotices::category(self openCJ\fps::getCurrentFPSMode(),self openCJ\elevate::hasUsedEle(),self openCJ\anyPct::hasAnyPct(),self openCJ\halfBeat::isHalfBeatAllowed(),self openCJ\tas::hasHardTAS());
     finishedRPGs=self openCJ\statistics::getExplosiveJumps();
@@ -27,9 +28,18 @@ main(cp, tOffset, route)
     self openCJ\playTime::onRunFinished(cp);
     // Finish statistics must exist before the run becomes leaderboard-visible.
     if (!self openCJ\checkpoints::storeCheckpointPassed(runID, cpID, timePlayed))
+    {
         return;
+    }
+    // The checkpoint write may outlive a restore or reset. Do not finish that new run.
+    if (!self openCJ\runStorage::isCurrent(runID, instanceNumber))
+    {
+        return;
+    }
     if (!self openCJ\playerRuns::onRunFinished(cp, filters))
+    {
         return;
+    }
     self.playerRuns_runFinishing = false;
     self openCJ\notifications::beginResults(runID);
     self thread openCJ\finishSounds::onRunFinished(runID);
