@@ -156,3 +156,6 @@ d7a5dc56f9742f8aaf200007f180f6fd1401997a
 
 # Expand save-history fixture; verified tokens and comments unchanged.
 ce5d7ad44843b6bdebd369a0cbe68787373bf8b3
+
+# Expand SQL pool fixture; verified tokens and comments unchanged.
+9fc2be11e96a0a3f51ddded4b5a7e66014fe53d9
