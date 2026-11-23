@@ -527,8 +527,8 @@
       "id": "feature-sql",
       "category": "integration",
       "description": "Current challenge-route binding, shop transactions and finish ranking.",
-      "requires": "Selected disposable current-schema Compose database; administrative fixture access for route/shop setup.",
-      "effects": "Route rows roll back; shop synthetic rows are removed; finish ranking uses read-only CTEs.",
+      "requires": "Configured current-schema development database and Docker; schema/account administration for the disposable shop fixture.",
+      "effects": "Route rows roll back; shop creates/removes an owned schema/account; finish ranking uses read-only CTEs.",
       "files": [
         "dev-tools/tests/challenge-route-link.py",
         "dev-tools/tests/shop-purchases.py",
