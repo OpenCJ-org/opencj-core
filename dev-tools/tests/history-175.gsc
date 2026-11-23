@@ -5,8 +5,20 @@ main()
     level.history175Failures = 0;
     level.history175Queries = 0;
     level.history175Peak = 0;
-    expected = getCvar("history175_database");
-    if(getSubStr(expected, 0, 18) != "opencj_verify_175_")
+    level.history175ClientCount = 32;
+    level.history175Limit = 100;
+    level.history175PageSize = 50;
+    level.history175FirstRunID = 1001;
+    level.history175NewestSave = 160;
+    level.history175MissingPeriod = 17;
+    level.history175Fields = spawnStruct();
+    level.history175Fields.count = 0;
+    level.history175Fields.oldest = 1;
+    level.history175Fields.generation = 2;
+    level.history175Fields.newest = 4;
+    expectedDatabase = getCvar("history175_database");
+    fixtureDatabasePrefix = "opencj_verify_history_";
+    if(getSubStr(expectedDatabase, 0, fixtureDatabasePrefix.size) != fixtureDatabasePrefix)
     {
         return;
     }
@@ -17,69 +29,81 @@ main()
     level.checkpointLayoutEpoch = 1;
     level.clients = [];
     rows = openCJ\mySQL::mysqlSyncQuery("SELECT DATABASE()");
-    check(rows[0][0] == expected, "disposable database");
-    wait 1;
-    for(i = 0; i < 32; i++)
+    isFixtureDatabase = isDefined(rows) && rows.size == 1 && rows[0][0] == expectedDatabase;
+    check(isFixtureDatabase, "disposable database");
+    if(!isFixtureDatabase)
     {
-        p = addTestClient();
-        check(isDefined(p), "client " + i);
-        if(!isDefined(p))
+        finish();
+        return;
+    }
+    wait 1;
+    for(i = 0; i < level.history175ClientCount; i++)
+    {
+        player = addTestClient();
+        check(isDefined(player), "client " + i);
+        if(!isDefined(player))
         {
             finish();
             return;
         }
-        level.clients[i] = p;
+        level.clients[i] = player;
         wait .05;
-        p.sessionTeam = "allies";
-        p.sessionState = "playing";
-        p.pers["team"] = "allies";
-        p spawn((i * 30, 0, 700), (0, 0, 0));
-        p freezeControls(true);
-        p.login_playerID = i + 1;
-        p.playingDemo = false;
-        p openCJ\playerRuns::setRunIDAndInstanceNumber(1001 + i, 1);
-        p openCJ\savePosition::resetBackwardsCount();
-        p savePosition_initClient();
+        player.sessionTeam = "allies";
+        player.sessionState = "playing";
+        player.pers["team"] = "allies";
+        player spawn((i * 30, 0, 700), (0, 0, 0));
+        player freezeControls(true);
+        player.login_playerID = i + 1;
+        player.playingDemo = false;
+        player openCJ\playerRuns::setRunIDAndInstanceNumber(level.history175FirstRunID + i, 1);
+        player openCJ\savePosition::resetBackwardsCount();
+        player savePosition_initClient();
     }
-    a = level.clients[0];
-    b = level.clients[1];
-    a nativeChecks(b);
+    firstPlayer = level.clients[0];
+    secondPlayer = level.clients[1];
+    firstPlayer verifyNativeHistory(secondPlayer);
     memoryAudit("baseline", level);
-    level.history175Pending = 32;
-    for(i = 0; i < 32; i++)
+    level.history175Pending = level.history175ClientCount;
+    for(i = 0; i < level.history175ClientCount; i++)
     {
-        level.clients[i] thread loadInitial(1001 + i);
+        level.clients[i] thread loadInitial(level.history175FirstRunID + i);
     }
-    waitPending();
-    for(i = 0; i < 32; i++)
+    waitForInitialLoads();
+    for(i = 0; i < level.history175ClientCount; i++)
     {
-        p = level.clients[i];
-        info = p savePosition_historyInfo();
-        check(info[0] == 50, "initial page " + i);
-        check(p savePosition_selectSave(0) == 0 && p savePosition_getSaveNum() == 160,
+        player = level.clients[i];
+        historyInfo = player savePosition_historyInfo();
+        check(historyInfo[level.history175Fields.count] == level.history175PageSize,
+              "initial page " + i);
+        check(player savePosition_selectSave(0) == 0 && player savePosition_getSaveNum() == 160,
               "actual newest save number " + i);
-        check(p savePosition_selectSave(49) == 0 && p savePosition_getSaveNum() == numberAt(49),
+        check(player savePosition_selectSave(49) == 0 &&
+                  player savePosition_getSaveNum() == saveNumberAt(49),
               "gaps preserve oldest number " + i);
-        origin = p savePosition_getOrigin();
-        check(origin[0] == numberAt(49), "saved coordinates " + i);
-        p thread requestOlder();
+        origin = player savePosition_getOrigin();
+        check(origin[0] == saveNumberAt(49), "saved coordinates " + i);
+        player thread requestOlderPageRepeatedly();
     }
-    waitPages();
-    for(i = 0; i < 32; i++)
+    waitForOlderPages();
+    for(i = 0; i < level.history175ClientCount; i++)
     {
-        p = level.clients[i];
-        info = p savePosition_historyInfo();
-        check(info[0] == 100 && info[1] == numberAt(99), "bounded full history " + i);
-        check(p savePosition_selectSave(99) == 0 && p savePosition_getSaveNum() == numberAt(99),
+        player = level.clients[i];
+        historyInfo = player savePosition_historyInfo();
+        check(historyInfo[level.history175Fields.count] == level.history175Limit &&
+                  historyInfo[level.history175Fields.oldest] == saveNumberAt(99),
+              "bounded full history " + i);
+        check(player savePosition_selectSave(99) == 0 &&
+                  player savePosition_getSaveNum() == saveNumberAt(99),
               "oldest reachable " + i);
-        check(!p openCJ\historySave::maybePrefetch(99), "no fetch past cap " + i);
-        check(p openCJ\savePosition::canLoadError(100) == 2, "cap is visible to controls " + i);
+        check(!player openCJ\historySave::maybePrefetch(99), "no fetch past cap " + i);
+        check(player openCJ\savePosition::canLoadError(100) == 2,
+              "cap is visible to controls " + i);
     }
     check(level.history175Peak <= 2, "at most two retained SQL pages");
     check(level.history175Queries == 64, "one initial and one older query per client");
     memoryAudit("loaded", level);
-    a raceChecks();
-    for(i = 0; i < 32; i++)
+    firstPlayer verifyRacesAndFailures();
+    for(i = 0; i < level.history175ClientCount; i++)
     {
         level.clients[i] savePosition_initClient();
     }
@@ -87,10 +111,10 @@ main()
     check(level.historySavesActive == 0, "all read slots released");
     finish();
 }
-check(ok, message)
+check(passed, message)
 {
     level.history175Checks++;
-    if(!isDefined(ok) || !ok)
+    if(!isDefined(passed) || !passed)
     {
         level.history175Failures++;
         printf("H175 FAILURE " + message + "\n");
@@ -98,76 +122,87 @@ check(ok, message)
 }
 finish()
 {
-    printf("H175 COMPLETE " + level.history175Failures + " " + level.history175Checks + " " +
-           level.history175Peak + " " + level.history175Queries + "\n");
+    printf("H175 COMPLETE failures=" + level.history175Failures +
+           " checks=" + level.history175Checks + " peak=" + level.history175Peak +
+           " queries=" + level.history175Queries + "\n");
 }
-numberAt(index)
+// The synthetic SQL intentionally omits every seventeenth save.
+saveNumberAt(index)
 {
-    count = 0;
-    for(n = 160; n >= 1; n--)
+    eligibleCount = 0;
+    for(saveNumber = level.history175NewestSave; saveNumber >= 1; saveNumber--)
     {
-        if(n % 17 == 0)
+        if(saveNumber % level.history175MissingPeriod == 0)
         {
             continue;
         }
-        if(count == index)
+        if(eligibleCount == index)
         {
-            return n;
+            return saveNumber;
         }
-        count++;
+        eligibleCount++;
     }
     return -1;
 }
-loadInitial(run)
+loadInitial(runID)
 {
     self savePosition_initClient();
-    ok = self openCJ\historySave::_loadSavesFromDatabase(run, 1);
-    check(ok, "initial SQL/native restore " + run);
+    passed = self openCJ\historySave::_loadSavesFromDatabase(runID, 1);
+    check(passed, "initial SQL/native restore " + runID);
     level.history175Pending--;
 }
-waitPending()
+waitForInitialLoads()
 {
-    for(i = 0; i < 200 && level.history175Pending > 0; i++)
+    pollLimit = 200;
+    pollIntervalSeconds = 0.05;
+    for(i = 0; i < pollLimit && level.history175Pending > 0; i++)
     {
-        wait .05;
+        wait pollIntervalSeconds;
     }
     check(level.history175Pending == 0, "initial requests complete");
 }
-requestOlder()
+requestOlderPageRepeatedly()
 {
     for(j = 0; j < 10; j++)
     {
         self openCJ\historySave::maybePrefetch(40);
     }
 }
-waitPages()
+waitForOlderPages()
 {
-    for(k = 0; k < 200; k++)
+    pollLimit = 200;
+    pollIntervalSeconds = 0.05;
+    for(k = 0; k < pollLimit; k++)
     {
-        pending = level.historySavesActive;
+        pendingPages = level.historySavesActive;
         for(j = 0; j < level.clients.size; j++)
         {
             if(isDefined(level.clients[j].historySaves) && level.clients[j].historySaves.loading)
             {
-                pending++;
+                pendingPages++;
             }
         }
-        if(pending == 0)
+        if(pendingPages == 0)
         {
             return;
         }
-        wait .05;
+        wait pollIntervalSeconds;
     }
     check(false, "page requests complete");
 }
-nativeChecks(other)
+// Test native eviction, selection invalidation and ordering without SQL.
+verifyNativeHistory(other)
 {
-    for(n = 1; n <= 140; n++)
+    for(saveNumber = 1; saveNumber <= 140; saveNumber++)
     {
-        self savePosition_save((n, 0, 700), (0, 0, 0), undefined, 0, 0, 1, 5, 0, n);
+        self savePosition_save((saveNumber, 0, 700), (0, 0, 0), undefined, 0, 0, 1, 5, 0,
+                               saveNumber);
     }
-    info = self savePosition_historyInfo();
-    check(info[0] == 100 && info[1] == 41 && info[4] == 140, "live saves evict oldest at 100");
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175Limit &&
+              historyInfo[level.history175Fields.oldest] == 41 &&
+              historyInfo[level.history175Fields.newest] == 140,
+          "live saves evict oldest at 100");
     self savePosition_selectSave(99);
     self savePosition_save((141, 0, 700), (0, 0, 0), undefined, 0, 0, 1, 5, 0, 141);
     check(!isDefined(self savePosition_getSaveNum()), "evicted selection invalidated safely");
@@ -177,8 +212,10 @@ nativeChecks(other)
     other savePosition_selectWithoutFlag(1, self getEntityNumber());
     self savePosition_initClient();
     check(!isDefined(other savePosition_getOrigin()), "cross-player selection cleared on release");
-    after = self savePosition_historyInfo();
-    check(after[2] != info[2], "clear advances history generation");
+    clearedHistory = self savePosition_historyInfo();
+    check(clearedHistory[level.history175Fields.generation] !=
+              historyInfo[level.history175Fields.generation],
+          "clear advances history generation");
     self savePosition_addOlder((200, 0, 0), (0, 0, 0), undefined, 0, 0, 1, 5, 0, 200);
     self savePosition_selectSave(0);
     self savePosition_addOlder((199, 0, 0), (0, 0, 0), undefined, 0, 0, 1, 5, 0, 199);
@@ -189,7 +226,7 @@ nativeChecks(other)
           "newer insertion rejected at older end");
     self savePosition_initClient();
 }
-resetInitial()
+reloadInitialHistory()
 {
     self openCJ\historySave::cancelPendingPage();
     self savePosition_initClient();
@@ -199,9 +236,24 @@ resetInitial()
     self openCJ\playerRuns::setRunIDAndInstanceNumber(1001, 1);
     check(self openCJ\historySave::_loadSavesFromDatabase(1001, 1), "reset initial fixture");
 }
-raceChecks()
+verifyRacesAndFailures()
 {
-    self resetInitial();
+    self verifyInitialLoadLocks();
+    self verifyCancelledQueuedPage();
+    self verifyNewSavesDuringFetch();
+    self verifyDisconnectDuringFetch();
+    self verifyChangedRunInstance();
+    self verifyChangedLayout();
+    self verifyModeCancellation();
+    self verifyOlderPageRetry();
+    self verifyInitialPageFailure();
+    self verifyExhaustedPages();
+    self verifyPendingNavigation();
+}
+
+verifyInitialLoadLocks()
+{
+    self reloadInitialHistory();
     // While initial SQL is pending, neither a new save nor a load may mix runs.
     self savePosition_initClient();
     level.history175DelayOwner = 1;
@@ -210,67 +262,92 @@ raceChecks()
     self waittill("history175_result_ready");
     check(self openCJ\savePosition::canSaveError() == 4, "initial restore blocks new saves");
     check(self openCJ\savePosition::canLoadError(0) == 3, "initial restore blocks position loads");
-    waitPending();
+    waitForInitialLoads();
     level.history175DelayOwner = undefined;
+}
 
+verifyCancelledQueuedPage()
+{
     // Hold both read slots, invalidate the queued request, then release them.
-    self resetInitial();
+    self reloadInitialHistory();
     level.historySavesActive = 2;
-    queries = level.history175Queries;
+    queriesBefore = level.history175Queries;
     self openCJ\historySave::maybePrefetch(40);
     self savePosition_initClient();
     wait .1;
-    check(!self.historySaves.loading && level.history175Queries == queries,
+    check(!self.historySaves.loading && level.history175Queries == queriesBefore,
           "stale queued request stops without querying");
     level.historySavesActive = 0;
+}
 
-    self resetInitial();
+verifyNewSavesDuringFetch()
+{
+    self reloadInitialHistory();
     level.history175DelayOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
     self waittill("history175_result_ready");
-    for(n = 161; n <= 180; n++)
+    for(saveNumber = 161; saveNumber <= 180; saveNumber++)
     {
-        self savePosition_save((n, 0, 700), (0, 0, 0), undefined, 0, 0, 1, 5, 0, n);
+        self savePosition_save((saveNumber, 0, 700), (0, 0, 0), undefined, 0, 0, 1, 5, 0,
+                               saveNumber);
     }
-    waitPages();
+    waitForOlderPages();
     level.history175DelayOwner = undefined;
-    info = self savePosition_historyInfo();
-    check(info[0] == 100 && info[4] == 180 && info[1] == numberAt(79),
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175Limit &&
+              historyInfo[level.history175Fields.newest] == 180 &&
+              historyInfo[level.history175Fields.oldest] == saveNumberAt(79),
           "new saves during fetch preserve cap and chronology");
-    self resetInitial();
+}
+
+verifyDisconnectDuringFetch()
+{
+    self reloadInitialHistory();
     level.history175DelayOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
     self waittill("history175_result_ready");
     self notify("disconnect");
     self savePosition_initClient();
     self savePosition_save((999, 0, 700), (0, 0, 0), undefined, 0, 0, 1, 5, 0, 999);
-    waitPages();
+    waitForOlderPages();
     level.history175DelayOwner = undefined;
-    info = self savePosition_historyInfo();
-    check(info[0] == 1 && info[4] == 999,
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == 1 &&
+              historyInfo[level.history175Fields.newest] == 999,
           "stale page rejected after native reset/disconnect notification");
+}
 
-    self resetInitial();
+verifyChangedRunInstance()
+{
+    self reloadInitialHistory();
     level.history175DelayOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
     self waittill("history175_result_ready");
     self.runInstanceNumber = 2;
-    waitPages();
+    waitForOlderPages();
     level.history175DelayOwner = undefined;
-    info = self savePosition_historyInfo();
-    check(info[0] == 50, "stale run-instance page rejected");
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175PageSize,
+          "stale run-instance page rejected");
+}
 
-    self resetInitial();
+verifyChangedLayout()
+{
+    self reloadInitialHistory();
     level.history175DelayOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
     self waittill("history175_result_ready");
     level.checkpointLayoutEpoch++;
-    waitPages();
+    waitForOlderPages();
     level.history175DelayOwner = undefined;
-    info = self savePosition_historyInfo();
-    check(info[0] == 50, "stale layout page rejected");
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175PageSize,
+          "stale layout page rejected");
+}
 
-    self resetInitial();
+verifyModeCancellation()
+{
+    self reloadInitialHistory();
     level.history175DelayOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
     self waittill("history175_result_ready");
@@ -279,49 +356,70 @@ raceChecks()
     self.playingDemo = false;
     wait .3;
     level.history175DelayOwner = undefined;
-    info = self savePosition_historyInfo();
-    check(info[0] == 50, "mode cancellation rejects reply even after returning");
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175PageSize,
+          "mode cancellation rejects reply even after returning");
+}
 
-    self resetInitial();
+verifyOlderPageRetry()
+{
+    self reloadInitialHistory();
     level.history175FailOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
-    waitPages();
-    info = self savePosition_historyInfo();
-    check(info[0] == 50 && self.historySaves.failed, "failed page preserves loaded history");
+    waitForOlderPages();
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175PageSize &&
+              self.historySaves.failed,
+          "failed page preserves loaded history");
     check(!self openCJ\historySave::maybePrefetch(40), "failed page has retry delay");
     level.history175FailOwner = undefined;
     wait 1.05;
     self openCJ\historySave::maybePrefetch(40);
-    waitPages();
-    info = self savePosition_historyInfo();
-    check(info[0] == 100 && !self.historySaves.failed, "failed page can retry without duplicates");
+    waitForOlderPages();
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == level.history175Limit &&
+              !self.historySaves.failed,
+          "failed page can retry without duplicates");
+}
 
+verifyInitialPageFailure()
+{
     self savePosition_initClient();
     level.history175FailOwner = 1;
     check(!self openCJ\historySave::_loadSavesFromDatabase(1001, 1),
           "initial page failure reported");
-    info = self savePosition_historyInfo();
-    check(info[0] == 0 && !isDefined(self.historySaves), "initial page failure clears state");
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == 0 && !isDefined(self.historySaves),
+          "initial page failure clears state");
     level.history175FailOwner = undefined;
+}
 
+verifyExhaustedPages()
+{
     self savePosition_initClient();
     state = self openCJ\historySave::_beginHistory(1001, 1);
     state.initial = false;
     self openCJ\historySave::_startPage(state, 11);
-    waitPages();
-    info = self savePosition_historyInfo();
-    check(info[0] == 10 && info[1] == 1 && state.exhausted, "short last page stops prefetch");
+    waitForOlderPages();
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == 10 &&
+              historyInfo[level.history175Fields.oldest] == 1 && state.exhausted,
+          "short last page stops prefetch");
     check(!self openCJ\historySave::maybePrefetch(9), "exhausted history does not query again");
 
     self savePosition_initClient();
     state = self openCJ\historySave::_beginHistory(1001, 1);
     state.initial = false;
     self openCJ\historySave::_startPage(state, 1);
-    waitPages();
-    info = self savePosition_historyInfo();
-    check(info[0] == 0 && state.exhausted, "empty history stops prefetch");
+    waitForOlderPages();
+    historyInfo = self savePosition_historyInfo();
+    check(historyInfo[level.history175Fields.count] == 0 && state.exhausted,
+          "empty history stops prefetch");
+}
 
-    self resetInitial();
+verifyPendingNavigation()
+{
+    self reloadInitialHistory();
     level.history175DelayOwner = 1;
     self openCJ\historySave::maybePrefetch(40);
     self waittill("history175_result_ready");
@@ -331,7 +429,7 @@ raceChecks()
     check(self openCJ\savePosition::getBackwardsCount() == 49,
           "pending boundary does not skip a position");
     self setOrigin((321, 123, 700));
-    waitPages();
+    waitForOlderPages();
     level.history175DelayOwner = undefined;
     check(self.origin[0] == 321 && self.origin[1] == 123, "late page never teleports player");
     self.savePosition_backwardsCount = 100;

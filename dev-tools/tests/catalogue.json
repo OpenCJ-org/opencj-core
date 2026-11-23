@@ -383,7 +383,7 @@
       "category": "integration",
       "description": "Player allocation and save-history memory behavior.",
       "requires": "Initialized Compose, compiler/build image, matching engine and licensed game/compiled assets. The history runner accepts --engine PATH for a candidate inside the checkout.",
-      "effects": "Isolated synthetic players and test plugins; no gameplay database.",
+      "effects": "Isolated synthetic players and plugins; history copies schema into a separate temporary MySQL container. No gameplay rows are copied or changed.",
       "files": [
         "dev-tools/tests/run-player-memory-audit.py",
         "dev-tools/tests/player-memory-audit.gsc",
@@ -589,13 +589,14 @@
     {
       "id": "shared-support",
       "category": "support",
-      "description": "Compose prerequisites, owned schema-only database copies and synthetic run/CTE fixtures shared by integration runners.",
+      "description": "Compose prerequisites, owned schema/container fixtures and synthetic run tables shared by integration runners.",
       "requires": "Imported helpers; database operations require a selected disposable installation.",
       "effects": "No work at import. Helpers resolve Compose prerequisites or construct and explicitly execute synthetic SQL scenarios.",
       "files": [
         "dev-tools/tests/compose_environment.py",
         "dev-tools/tests/sql_run_fixture.py",
-        "dev-tools/tests/isolated_database.py"
+        "dev-tools/tests/isolated_database.py",
+        "dev-tools/tests/disposable_mysql.py"
       ],
       "commands": []
     },
@@ -734,6 +735,18 @@
       "commands": [
         "python3 -B dev-tools/tests/run-map-routes.py"
       ]
+    },
+    {
+      "id": "fixture-ownership-unit",
+      "category": "portable",
+      "description": "Disposable SQL ownership, launch failure cleanup and credential containment.",
+      "requires": "Python standard library; no Docker daemon, database or installation.",
+      "effects": "Temporary directories and mocked commands only.",
+      "files": [
+        "dev-tools/tests/test_disposable_mysql.py"
+      ],
+      "commands": [],
+      "mode": "unit"
     }
   ]
 }
