@@ -2,7 +2,10 @@
 
 onInit()
 {
-    underlyingCmd = openCJ\settings::addSettingInt("speclisthud", 0, 5, 4, "Set the maximum spectator names shown in your HUD (0-5). 0 = off.", ::_onSpectatorListSettingChanged);
+    underlyingCmd = openCJ\settings::addSettingInt(
+        "speclisthud", 0, 5, 4,
+        "Set the maximum spectator names shown in your HUD (0-5). 0 = off.",
+        ::_onSpectatorListSettingChanged);
     openCJ\commands_base::addAlias(underlyingCmd, "speclist");
 
     level.specListHudName = "speclist";

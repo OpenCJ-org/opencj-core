@@ -227,7 +227,10 @@ _fetchIgnoreList()
 
     // Retrieve the player's ignore list
     rows = self openCJ\mySQL::mysqlAsyncQuery("SELECT ignoreID FROM playerIgnore WHERE playerID = " + self openCJ\login::getPlayerID());
-    if (!isDefined(rows)) return;
+    if(!isDefined(rows))
+    {
+        return;
+    }
     for(i = 0; i < rows.size; i++)
     {
         self addToIgnoreList(int(rows[i][0]));
@@ -284,7 +287,11 @@ _getMessages(previousMessageID) // CSC: Get player messages from servers that ar
         // Every subsequent call to this function will only obtain any new messages (from other servers)
         players = getEntArray("player", "classname");
         rows = openCJ\mySQL::mysqlAsyncQuery("SELECT a.messageID, b.playerName, a.message, a.ignoredBy, a.server FROM (SELECT messageID, playerID, message, getIgnoredBy(playerID) ignoredBy, server FROM messages WHERE SERVER != '" + openCJ\mySQL::escapeString(getServerName()) + "' AND messageID > " + previousMessageID + ") a INNER JOIN playerInformation b ON a.playerID = b.playerID");
-        if (!isDefined(rows)) rows = []; // Retry cross-server polling after the usual delay.
+        // Retry cross-server polling after the usual delay.
+        if(!isDefined(rows))
+        {
+            rows = [];
+        }
         for(i = 0; i < rows.size; i++)
         {
             name = rows[i][1];

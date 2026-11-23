@@ -249,8 +249,11 @@ _createKeyboard()
         self.keyboard["sprint"] setShader(level.onscreenKeyboardShader["sprint"], 80, 20);
     }
 
-    keys=getArrayKeys(self.keyboard);
-    for(i=0;i<keys.size;i++)self.keyboard[keys[i]].hideWhenInMenu=true;
+    keys = getArrayKeys(self.keyboard);
+    for(i = 0; i < keys.size; i++)
+    {
+        self.keyboard[keys[i]].hideWhenInMenu = true;
+    }
 
     self.keyboard["forward"] setShader(level.onscreenKeyboardShader["forward"], 20, 20);
     self.keyboard["left"] setShader(level.onscreenKeyboardShader["left"], 20, 20);

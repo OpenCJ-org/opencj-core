@@ -3,7 +3,10 @@
 onInit()
 {
     // Keep saved 0/1 preferences compatible: 0 off, 1 OpenCJ, 2 standard.
-    underlyingCmd = openCJ\settings::addSettingInt("fpshud", 0, 2, 1, "FPS overlay: 0 off, 1 OpenCJ, 2 standard (cg_drawfps). Usage: !fpshud [0-2]", ::_onFPSHudSetting);
+    underlyingCmd = openCJ\settings::addSettingInt(
+        "fpshud", 0, 2, 1,
+        "FPS overlay: 0 off, 1 OpenCJ, 2 standard (cg_drawfps). Usage: !fpshud [0-2]",
+        ::_onFPSHudSetting);
     openCJ\huds\infiniteHuds::initInfiniteHud("fps");
 }
 

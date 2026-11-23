@@ -567,6 +567,9 @@ G_LocalizedStringIndex(string)
 {
     // CoD4's localized strings occupy 309..820; CoD2 uses its own table.
     // Return the absolute configstring index used by client "d" commands.
-    if (getCodVersion() == 4)return G_FindConfigstringIndex(string, 309, 512);
+    if (getCodVersion() == 4)
+    {
+        return G_FindConfigstringIndex(string, 309, 512);
+    }
     return G_FindConfigstringIndex(string, 1310, 256);
 }
