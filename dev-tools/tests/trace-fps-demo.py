@@ -1,276 +1,246 @@
-"""Replay an existing exported demo through the HUD, logging actions and displayed text.
+"""Replay a stored run, clip:<id>, or exported JSON through the FPS history HUD.
 
-Usage: python3 tests/trace-fps-demo.py <run-id> before
-       python3 tests/trace-fps-demo.py clip:<clip-id> before
-Or pass an exported JSON file with runID and [chunkNum, hexPayload] chunks.
-A numeric argument reads that demo's chunks from the OpenCJ DB using SELECT.
-No production writes, network ports, or human clients are used.
+The optional database export uses SELECT only. Replays run in an isolated server,
+and recordings, console output and trace JSON remain in ignored local evidence.
 """
 
-from compose_environment import database_container
-from pathlib import Path
-import sys
-import json
-import subprocess
-import shutil
-import time
-import re
-import uuid
+import argparse
 import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import uuid
 
-root = Path(__file__).resolve().parents[2]
-is_clip = sys.argv[1].startswith("clip:") and sys.argv[1][5:].isdigit()
-if sys.argv[1].isdigit() or is_clip:
-    run_id = int(sys.argv[1][5:] if is_clip else sys.argv[1])
+from compose_environment import database_container, workspace_file, workspace_path
+from gsc_fixture import ROOT, prepare_fixture, run_prepared_fixture
+
+MAX_NATIVE_ID = 2**31 - 1
+MAX_PACKED_CHUNK_BYTES = 8192  # Matches DemoWire::BUFFER_SIZE.
+CHUNK_LINE_CHARACTERS = 700  # Leave room below the engine's file-line buffer.
+PLAYBACK_STYLES = (0, 1, 2)
+ACTION_MARKER = "FPS LIVE ACTION\t"
+DETAILED_MARKER = "FPS DETAILED HUD\t"
+COMPACT_MARKER = "FPS COMPACT HUD\t"
+
+
+def parse_options():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("recording", help="Run ID, clip:<id>, or an exported JSON file")
+    parser.add_argument("label", help="Short label for the private evidence directory")
+    parser.add_argument("--binary", default="/workspace/cod4x-server/bin/cod4x18_dedrun")
+    options = parser.parse_args()
+    if not re.fullmatch(r"[a-z0-9_-]+", options.label):
+        parser.error("The label must contain lowercase letters, numbers, underscores or hyphens")
+    binary_input = options.binary
+    if binary_input.startswith("/workspace/"):
+        binary_input = ROOT / binary_input.removeprefix("/workspace/")
+    try:
+        options.engine = workspace_file(binary_input)
+        options.binary = workspace_path(options.engine)
+    except ValueError as error:
+        parser.error(str(error))
+    options.baseline = False
+    options.scripts = ROOT / "server-gsc"
+    options.completion_marker = "FPS LIVE TRACE COMPLETE"
+    return options
+
+
+def export_recording(recording_id, *, is_clip):
+    """Read only the requested recording from this installation's selected database."""
     table = "demoClipChunks" if is_clip else "demoChunks"
-    key = "clipID" if is_clip else "runID"
-    query = (
-        "SELECT chunkNum,HEX(payload) FROM "
-        + table
-        + " WHERE "
-        + key
-        + "="
-        + str(run_id)
-        + " ORDER BY chunkNum;"
+    id_column = "clipID" if is_clip else "runID"
+    query = f"""
+        SELECT chunkNum, HEX(payload)
+        FROM {table}
+        WHERE {id_column} = {recording_id}
+        ORDER BY chunkNum;
+    """
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "-i",
+            database_container(),
+            "sh",
+            "-c",
+            'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4',
+        ],
+        input=query,
+        text=True,
+        capture_output=True,
+        timeout=30,
     )
-    cmd = [
-        "docker",
-        "exec",
-        "-i",
-        database_container(),
-        "sh",
-        "-c",
-        'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -N -u root openCJ_cod4',
-    ]
-    result = subprocess.run(cmd, input=query, text=True, capture_output=True)
-    assert result.returncode == 0, "Read-only demo export failed"
+    if result.returncode:
+        # Do not echo database command output, which may contain installation details.
+        raise RuntimeError("Read-only demo export failed")
     recording = {
-        "runID": run_id,
+        "runID": recording_id,
         "chunks": [line.split("\t") for line in result.stdout.splitlines()],
+        "style": 0 if is_clip else 2,
     }
-    assert recording["chunks"], "No stored chunks found for this run"
-    recording["style"] = 0 if is_clip else 2
     if is_clip:
-        recording["clipID"] = run_id
-else:
-    recording = json.loads(Path(sys.argv[1]).read_text())
-label = sys.argv[2]
-assert re.fullmatch(r"[a-z0-9_-]+", label)
-tag = "fps-live-trace-" + label + "-" + uuid.uuid4().hex[:8]
-home = root / "dev-tools/local" / tag
-mod = home / "mods/opencj"
-mod.mkdir(parents=True)
-(home / "recording.json").write_text(json.dumps(recording) + "\n")
-(home / "recording.json").chmod(0o600)
-for folder in ["maps", "opencj"]:
-    shutil.copytree(root / "server-gsc" / folder, mod / folder)
-for asset in ["mod.ff", "z_opencj.iwd"]:
-    (mod / asset).symlink_to("/mod-assets/" + asset)
-(home / "usermaps").symlink_to("/game/usermaps")
-(home / "steamclient.so").symlink_to("/game/steamclient.so")
-(home / "plugins").mkdir()
+        recording["clipID"] = recording_id
+    return recording
 
-init = mod / "opencj/events/init.gsc"
-init.write_text(
-    init.read_text().replace(
-        "    level.playerCount = 0;", "    return;\n    level.playerCount = 0;", 1
-    )
-)
-game = mod / "maps/mp/gametypes/cj.gsc"
-game.write_text(
-    game.read_text().replace("main()\n{", "main()\n{\n    thread openCJ\\platformTest::main();", 1)
-)
-callback = mod / "maps/mp/gametypes/_callbacksetup.gsc"
-source = re.sub(r"//[^\n]*", "", callback.read_text())
-for match in reversed(list(re.finditer(r"(CodeCallback_\w+)\([^)]*\)\s*\{", source))):
-    start = match.end()
-    end = start
-    depth = 1
-    while depth:
-        if source[end] == "{":
-            depth += 1
-        elif source[end] == "}":
-            depth -= 1
-        end += 1
-    source = source[:start] + "\n" + source[end - 1 :]
-callback.write_text(source)
-hud = mod / "opencj/huds/hudfpshistory.gsc"
-source = hud.read_text()
-source = source.replace("getTime()", "level.fpsTraceTime")
-needle = "    event.switched=switched;event.started=now;"
-assert needle in source
-source = source.replace(
-    needle,
-    needle
-    + '\n    printf("FPS LIVE ACTION\\t"+level.fpsTraceFrame+"\\t"+level.fpsTraceTime+"\\t"+kind+"\\t"+event.keys+"\\t"+fps+"\\t"+switched+"\\n");',
-)
-hud.write_text(source)
-fixture = r"""
-main()
+
+def positive_native_id(value):
+    if isinstance(value, bool) or not re.fullmatch(r"[0-9]+", str(value)):
+        raise ValueError("Recording IDs must be positive integers")
+    recording_id = int(value)
+    if not 1 <= recording_id <= MAX_NATIVE_ID:
+        raise ValueError("Recording ID exceeds the native signed integer range")
+    return recording_id
+
+
+def validate_recording(recording):
+    """Check the complete export before writing files or starting a replay."""
+    if not isinstance(recording, dict):
+        raise ValueError("The recording must be a JSON object")
+    recording_id = positive_native_id(recording.get("runID"))
+    style = recording.get("style", 2)
+    if type(style) is not int or style not in PLAYBACK_STYLES:
+        raise ValueError("Playback style must be 0 (raw), 1 (speedrun), or 2 (walkthrough)")
+    chunks = recording.get("chunks")
+    if not isinstance(chunks, list) or not chunks:
+        raise ValueError("The recording must contain at least one chunk")
+    validated_chunks = []
+    for expected_number, chunk in enumerate(chunks):
+        if not isinstance(chunk, (list, tuple)) or len(chunk) != 2:
+            raise ValueError("Each chunk must contain its number and hexadecimal payload")
+        chunk_number, payload = chunk
+        if str(chunk_number) != str(expected_number):
+            raise ValueError("Chunks must be consecutive and ordered from zero")
+        if (
+            not isinstance(payload, str)
+            or not re.fullmatch(r"(?:[0-9a-fA-F]{2})+", payload)
+            or len(payload) > MAX_PACKED_CHUNK_BYTES * 2
+        ):
+            raise ValueError(f"Chunk {expected_number} has an invalid hexadecimal payload")
+        validated_chunks.append([expected_number, payload])
+    validated = {"runID": recording_id, "style": style, "chunks": validated_chunks}
+    if "clipID" in recording:
+        validated["clipID"] = positive_native_id(recording["clipID"])
+    return validated
+
+
+def read_recording(source):
+    is_clip = source.startswith("clip:")
+    if source.isdigit() or is_clip:
+        recording_id = positive_native_id(source[5:] if is_clip else source)
+        recording = export_recording(recording_id, is_clip=is_clip)
+    else:
+        recording = json.loads(Path(source).read_text())
+    return validate_recording(recording)
+
+
+def install_trace_hooks(mod):
+    """Observe completed actions at the function boundary, independent of body layout."""
+    hud = mod / "opencj/huds/hudfpshistory.gsc"
+    original = hud.read_text()
+    source, action_count = re.subn(r"(?m)^_action(?=\s*\()", "_traceOriginalAction", original)
+    source, clock_count = re.subn(r"\bgetTime\s*\(\s*\)", "level.fpsTraceTime", source)
+    if action_count != 1 or clock_count == 0:
+        raise RuntimeError("The FPS history action/clock observation boundary was not found")
+    source += r"""
+// Trace only the private fixture copy; production callbacks remain unchanged.
+_action(kind, fps, switched, inputTime, firstFPSChange)
 {
-    openCJ\demoRecording::_initConstants();
-    level.fpsTraceTime=0;level.fpsTraceFrame=0;
-    openCJ\settings::onInit();openCJ\commands_base::onInit();
-    openCJ\huds\infiniteHuds::onInit();openCJ\huds\hudFPSHistory::onInit();
-    wait 1;
-    player=addTestClient();wait .2;
-    player.sessionTeam="allies";player.sessionState="playing";player.pers["team"]="allies";
-    player spawn((0,0,5000),(0,0,0));player.isFirstSpawn=false;
-    player openCJ\huds\base::onPlayerConnect();
-    player openCJ\huds\hudFPSHistory::onPlayerConnect();
-    player.playingDemo=true;player.fpsHistoryMode="detailed";
-    id=RUN_ID;
-    createDemo(id);
-    LOAD_CHUNKS
-    completeDemo(id);player selectPlaybackDemo(id);
-    range=player demoPlaybackStyle(PLAYBACK_STYLE,0,numberOfDemoFrames(id)-1);
-    player.demoBegin=range[0];player.demoEnd=range[1];
-    first=true;previous=-2;tick=0;
-    while(true)
-    {
-        skip=1;if(first)skip=0;
-        frame=player openCJ\demos::_getDemoFrame(skip,true);
-        level.fpsTraceFrame=frame.number;level.fpsTraceTime=tick*50;
-        printf("FPS LIVE INPUT\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+int(frame.forward)+"\t"+int(frame.back)+"\t"+int(frame.left)+"\t"+int(frame.right)+"\t"+int(frame.onGround)+"\t"+frame.FPS+"\t"+int(frame.bounce)+"\n");
-        player openCJ\huds\hudFPSHistory::applyRecordedFrame(frame,!first && frame.number==previous+1,false);
-        if(!isDefined(player.fpsTraceDetailed) || player.fpsTraceDetailed!=player.fpsHistoryDetailedText)
-        {
-            printf("FPS DETAILED HUD\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+player.fpsHistoryDetailedText+"\n");
-            player.fpsTraceDetailed=player.fpsHistoryDetailedText;
-        }
-        if(!isDefined(player.fpsTraceCompact) || player.fpsTraceCompact!=player.fpsHistoryText)
-        {
-            printf("FPS COMPACT HUD\t"+frame.number+"\t"+level.fpsTraceTime+"\t"+player.fpsHistoryText+"\n");
-            player.fpsTraceCompact=player.fpsHistoryText;
-        }
-        if(frame.number>=player.demoEnd)break;
-        first=false;previous=frame.number;tick++;
-        if(tick%40==0)wait .05;
-    }
-    printf("FPS LIVE TRACE COMPLETE frames="+(tick+1)+"\n");
+    self _traceOriginalAction(kind, fps, switched, inputTime, firstFPSChange);
+    event = self.fpsHistoryEvents[self.fpsHistoryEvents.size - 1];
+    printf("FPS LIVE ACTION\t" + level.fpsTraceFrame + "\t" + level.fpsTraceTime +
+           "\t" + kind + "\t" + event.keys + "\t" + fps + "\t" + switched + "\n");
 }
 """
-lines = []
-for nr, payload in recording["chunks"]:
-    for start in range(0, len(payload), 700):
-        lines.append(payload[start : start + 700])
-    lines.append("END")
-(mod / "trace-chunks.txt").write_text("\n".join(lines) + "\n")
-loader = r"""
-    file=FS_FOpen("trace-chunks.txt","read");chunk="";
-    while(true)
-    {
-        line=FS_ReadLine(file);if(!isDefined(line))break;
-        if(line=="END")
-        {
-            if(!isDefined(demoDecodeChunk(id,chunk)))printf("FPS LIVE DECODE ERROR\n");
-            chunk="";
-        }
-        else chunk+=line;
-    }
-    FS_FClose(file);
-"""
-fixture = (
-    fixture.replace("RUN_ID", str(int(recording["runID"])))
-    .replace("PLAYBACK_STYLE", str(int(recording.get("style", 2))))
-    .replace("LOAD_CHUNKS", loader)
-)
-(mod / "opencj/platformtest.gsc").write_text(fixture)
-name = "opencj-" + tag
-args = [
-    "docker",
-    "compose",
-    "run",
-    "-d",
-    "--no-deps",
-    "--name",
-    name,
-    "--workdir",
-    "/workspace/" + str(home.relative_to(root)),
-    "server",
-    "/workspace/cod4x-server/bin/cod4x18_dedrun",
-]
-for k, v in [
-    ("fs_basepath", "/game"),
-    ("fs_homepath", "/workspace/dev-tools/local/" + tag),
-    ("fs_game", "mods/opencj"),
-    ("dedicated", "2"),
-    ("net_port", "28967"),
-    ("sv_maxclients", "1"),
-    ("sv_authorizemode", "0"),
-    ("com_hunkMegs", "1024"),
-    ("developer", "1"),
-    ("g_gametype", "cj"),
-]:
-    args += ["+set", k, v]
-args += ["+map", "mp_killhouse"]
-try:
-    subprocess.run(args, cwd=root / "dev-tools", check=True, capture_output=True)
-    for _ in range(45):
-        time.sleep(1)
-        log = subprocess.check_output(["docker", "logs", name], stderr=subprocess.STDOUT, text=True)
-        if any(
-            x in log
-            for x in [
-                "FPS LIVE TRACE COMPLETE",
-                "script runtime error",
-                "script compile error",
-                "FPS LIVE DECODE ERROR",
-                "Received signal:",
-                "script runtime warning",
-            ]
-        ):
-            break
-    assert "FPS LIVE TRACE COMPLETE" in log, log[-4000:]
-    assert "script runtime error" not in log and "script compile error" not in log
+    hud.write_text(source)
+    return hashlib.sha256(original.encode()).hexdigest()
+
+
+def prepare_trace(options, recording, home):
+    """Keep the export private and feed payloads as data, never generated GSC source."""
+    home.mkdir(parents=True, mode=0o700)
+    recording_path = home / "recording.json"
+    recording_path.write_text(json.dumps(recording) + "\n")
+    recording_path.chmod(0o600)
+    template = (ROOT / "dev-tools/tests/fps-demo-trace.gsc").read_text()
+    options.fixture = home / "trace.gsc"
+    options.fixture.write_text(
+        template.replace("TRACE_RECORDING_ID", str(recording["runID"])).replace(
+            "TRACE_PLAYBACK_STYLE", str(recording["style"])
+        )
+    )
+    source_hashes, _ = prepare_fixture(options, home)
+    mod = home / "mods/opencj"
+    source_hash = install_trace_hooks(mod)
+    with (mod / "trace-chunks.txt").open("w") as output:
+        for _, payload in recording["chunks"]:
+            for start in range(0, len(payload), CHUNK_LINE_CHARACTERS):
+                output.write(payload[start : start + CHUNK_LINE_CHARACTERS] + "\n")
+            output.write("END\n")
+    return source_hashes, source_hash
+
+
+def parse_trace(log):
+    """Decode stable output fields, preserving the original trace JSON interface."""
     actions = []
     detailed = []
     compact = []
     for line in log.splitlines():
-        if "FPS LIVE ACTION\t" in line:
-            x = line[line.index("FPS LIVE ACTION\t") :].split("\t")
+        if ACTION_MARKER in line:
+            fields = line[line.index(ACTION_MARKER) :].split("\t")
+            _, frame, elapsed_ms, kind, keys, fps, switched = fields
             actions.append(
                 {
-                    "frame": int(x[1]),
-                    "ms": int(x[2]),
-                    "kind": x[3],
-                    "keys": x[4],
-                    "fps": x[5],
-                    "switch": int(x[6]),
+                    "frame": int(frame),
+                    "ms": int(elapsed_ms),
+                    "kind": kind,
+                    "keys": keys,
+                    "fps": fps,
+                    "switch": int(switched),
                 }
             )
-        if "FPS DETAILED HUD\t" in line:
-            x = line[line.index("FPS DETAILED HUD\t") :].split("\t")
-            detailed.append({"frame": int(x[1]), "ms": int(x[2]), "text": x[3]})
-        if "FPS COMPACT HUD\t" in line:
-            x = line[line.index("FPS COMPACT HUD\t") :].split("\t")
-            compact.append({"frame": int(x[1]), "ms": int(x[2]), "text": x[3]})
+        for marker, changes in ((DETAILED_MARKER, detailed), (COMPACT_MARKER, compact)):
+            if marker in line:
+                _, frame, elapsed_ms, text = line[line.index(marker) :].split("\t", 3)
+                changes.append({"frame": int(frame), "ms": int(elapsed_ms), "text": text})
+    return actions, detailed, compact
+
+
+def main():
+    options = parse_options()
+    recording = read_recording(options.recording)
+    home = (
+        ROOT / "dev-tools/local" / ("fps-live-trace-" + options.label + "-" + uuid.uuid4().hex[:8])
+    )
+    source_hashes, source_hash = prepare_trace(options, recording, home)
+    run_prepared_fixture(options, home, "mp_killhouse", source_hashes)
+    actions, detailed, compact = parse_trace((home / "console.log").read_text())
     result = {
         "runID": recording["runID"],
-        "label": label,
-        "sourceSha256": hashlib.sha256(
-            (root / "server-gsc/opencj/huds/hudfpshistory.gsc").read_bytes()
-        ).hexdigest(),
+        "label": options.label,
+        "sourceSha256": source_hash,
         "actions": actions,
         "detailedChanges": detailed,
         "compactChanges": compact,
     }
-    (home / "trace.json").write_text(json.dumps(result, indent=2) + "\n")
+    trace_path = home / "trace.json"
+    trace_path.write_text(json.dumps(result, indent=2) + "\n")
     print(
         json.dumps(
             {
-                "path": str(home / "trace.json"),
+                "path": str(trace_path),
                 "actions": len(actions),
                 "detailedChanges": len(detailed),
-                "switches": sum(a["switch"] for a in actions),
+                "switches": sum(action["switch"] for action in actions),
                 "rawNeutralActions": sum(
-                    a["keys"] == "None" and a["kind"] == "move" for a in actions
+                    action["keys"] == "None" and action["kind"] == "move" for action in actions
                 ),
             },
             indent=2,
         )
     )
-finally:
-    logs = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
-    (home / "console.log").write_text(logs.stdout + logs.stderr)
-    subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

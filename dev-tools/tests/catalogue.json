@@ -493,7 +493,8 @@
       "requires": "Matching engine/assets and a reviewed recording export, or selected disposable database with synthetic run/clip IDs.",
       "effects": "Reads recordings and writes private traces; recorded player data must stay private.",
       "files": [
-        "dev-tools/tests/trace-fps-demo.py"
+        "dev-tools/tests/trace-fps-demo.py",
+        "dev-tools/tests/fps-demo-trace.gsc"
       ],
       "commands": [
         "python3 -B dev-tools/tests/trace-fps-demo.py PRIVATE_RECORDING_JSON LABEL"
