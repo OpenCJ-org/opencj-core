@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import shutil
 import subprocess
 import time
@@ -139,6 +140,16 @@ try:
         database,
     )
     print("Prepared empty schema/routine copy and isolated fixtures.", flush=True)
+    if globals().get("SQL_ADAPTER_VERIFY"):
+        publication_checks = runpy.run_path(
+            str(ROOT / "dev-tools/tests/demo-publication-190.py")
+        )["verify"]
+        report["publicationSQL"] = publication_checks(lambda query: db(query, database))
+        print(
+            "PUBLICATION SQL COMPLETE checks="
+            + str(report["publicationSQL"]["checks"]),
+            flush=True,
+        )
     for folder in ("opencj", "maps"):
         shutil.copytree(ROOT / "server-gsc" / folder, mod / folder)
     for asset in ("mod.ff", "z_opencj.iwd"):

@@ -375,8 +375,6 @@
         "dev-tools/tests/query-capacity-menu.gsc",
         "dev-tools/tests/sql-capacity-190.gsc",
         "dev-tools/tests/sql-capacity-clock.cpp",
-        "dev-tools/tests/demo-publication-190.gsc",
-        "dev-tools/tests/demo-publication-190.py",
         "dev-tools/tests/query-equivalence.py",
         "dev-tools/tests/query-rank-equivalence.py",
         "dev-tools/tests/query_sql.py",
@@ -470,7 +468,7 @@
     {
       "id": "sql-adapter",
       "category": "integration",
-      "description": "Current save ownership, native demo transfers, fault handling, pool and VM behavior. Legacy long-query assembly, SQL NULL and overflow rejection.",
+      "description": "Save ownership, native demo/clip transfers, pool and VM behavior; publication races, rollback, lost replies and receipt recovery.",
       "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod. Optional --engine PATH selects a candidate inside the core checkout.",
       "effects": "Creates/removes a temporary schema, grants and engine; private output.",
       "files": [
@@ -478,7 +476,9 @@
         "dev-tools/tests/history-save-192.gsc",
         "dev-tools/tests/run-sql-adapter.py",
         "dev-tools/tests/sql-adapter.gsc",
-        "dev-tools/tests/sql-adapter.cpp"
+        "dev-tools/tests/sql-adapter.cpp",
+        "dev-tools/tests/demo-publication-190.gsc",
+        "dev-tools/tests/demo-publication-190.py"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-sql-adapter.py",
