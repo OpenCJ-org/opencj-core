@@ -19,6 +19,7 @@ main()
         checkSharedOpeningColor(editor);
         checkDamagedSectionPreservation(editor);
         checkMissingOpening(editor, network);
+        checkMissingMergeOpening(editor);
         checkEditingCommands(editor);
     }
     printf("NETWORK SELFTEST COMPLETE failures=" + level.networkFailures +
@@ -122,6 +123,14 @@ checkSnapshotFallback(editor, network)
     check(isDefined(recovered) && recovered.revision == 1,
           "invalid newest manifest falls back to the previous complete revision");
     check(editor openCJ\checkpointNetwork::save(recovered), "recover the alternate manifest slot");
+    invalidPath = editor openCJ\checkpointNetwork::basePath() + "negative-revision.cpn";
+    invalidManifest = "CPN1 -1 net_opening 2\n" +
+                      "net_a #123456 net_opening,net_a\n" +
+                      "net_b #123456 net_opening,net_b\nEND -1";
+    check(writeText(invalidPath, invalidManifest), "prepare negative-revision network input");
+    check(!isDefined(openCJ\checkpointNetwork::readNetworkFile(invalidPath)),
+          "network parser rejects a negative revision");
+
 }
 
 checkDamagedSectionPreservation(editor)
@@ -254,6 +263,7 @@ checkEditingCommands(editor)
     checkLostRenameReply(editor);
     checkRenameRollback(editor);
     checkUnresolvedRename(editor);
+    checkDamagedRenameDestination(editor);
 }
 
 prepareSplitApproaches(editor)
@@ -429,4 +439,41 @@ checkUnresolvedRename(editor)
           "unconfirmed rename retains original draft files");
     check(FS_TestFile(newPath + ".a") || FS_TestFile(newPath + ".b"),
           "unconfirmed rename retains destination draft files");
+}
+
+checkMissingMergeOpening(editor)
+{
+    priorSection = editor openCJ\checkpointNetwork::readSection("net_a");
+    editor.cpc = sectionDraft("net_a", 1600, false);
+    editor.cpc.revision = priorSection.revision;
+    check(editor openCJ\checkpointNetwork::writeSection("net_a", editor.cpc),
+          "prepare incoming section without a finish");
+    priorSection = editor openCJ\checkpointNetwork::readSection("net_b");
+    replacement = sectionDraft("net_b", 2000, false);
+    replacement.revision = priorSection.revision;
+    check(editor openCJ\checkpointNetwork::writeSection("net_b", replacement),
+          "prepare second incoming section without a finish");
+    arguments = [];
+    arguments[0] = "merge";
+    arguments[1] = "net_a";
+    arguments[2] = "net_b";
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(row(2400, false));
+    check(!editor openCJ\checkpointNetwork::merge(arguments), "new merge rejects a missing opening");
+    check(editor.cpc.draft.points.size == 4, "rejected new merge retains detected geometry");
+    editor.cpc.draft = openCJ\checkpointCreation::_decode(row(2000, false));
+    check(!editor openCJ\checkpointNetwork::merge(arguments), "existing-section merge rejects a missing opening");
+    check(editor.cpc.draft.points.size == 4, "rejected existing merge retains detected geometry");
+}
+
+checkDamagedRenameDestination(editor)
+{
+    targetPath = editor openCJ\checkpointNetwork::basePath() + "damaged_rename";
+    check(writeText(targetPath + ".a", "damaged destination a") &&
+          writeText(targetPath + ".b", "damaged destination b"), "prepare unreadable rename destination");
+    check(!editor openCJ\checkpointNetwork::rename("edit_uncertain", "damaged_rename"),
+          "rename refuses an occupied unreadable destination");
+    checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='edit_uncertain'", 1,
+                "rejected rename leaves the source database name");
+    checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='damaged_rename'", 0,
+                "rejected rename does not publish the unreadable destination");
 }

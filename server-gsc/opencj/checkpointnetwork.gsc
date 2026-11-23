@@ -49,6 +49,10 @@ readNetworkContents(file)
     }
     network = spawnStruct();
     network.revision = int(header[1]);
+    if (network.revision < 0)
+    {
+        return undefined;
+    }
     network.root = header[2];
     network.paths = [];
     minimumRouteCount = 2;
@@ -464,10 +468,15 @@ merge(commandArguments)
     {
         return self fail("Split the shared opening into routes first.");
     }
+    openingDraft = self readSection(network.root);
+    if (!isDefined(openingDraft) || openingDraft.rows.size == 0)
+    {
+        return self fail("Shared opening cannot be read; merge unchanged.");
+    }
     self checkOverlap(true);
     if (isDefined(self.cpc.overlapSection))
     {
-        return self mergeExisting(commandArguments, network);
+        return self mergeExisting(commandArguments, network, openingDraft);
     }
     if (self.cpc.selected != self.cpc.rows.size ||
        openCJ\checkpointMoving::valid(self.cpc.draft) != "")
@@ -522,7 +531,6 @@ merge(commandArguments)
         return self fail("The route being edited must be included in the merge.");
     }
     sharedSectionName = "shared_" + (network.revision + 1);
-    openingDraft = self readSection(network.root);
     if (!self newSection(sharedSectionName, openingDraft.routeHex, self.cpc.draft))
     {
         return self fail("Could not save the common landing; merge unchanged.");
@@ -994,7 +1002,7 @@ replaceSection(network, previousName, firstName, secondName)
 }
 
 // Rejoin an existing continuation while retaining its later branches and finish.
-mergeExisting(commandArguments, network)
+mergeExisting(commandArguments, network, openingDraft)
 {
     sourceSectionName = self.cpc.route;
     targetSectionName = self.cpc.overlapSection;
@@ -1114,7 +1122,6 @@ mergeExisting(commandArguments, network)
             return self fail("Could not save existing approach; original retained.");
         }
     }
-    openingDraft = self readSection(network.root);
     sharedSectionName = self sliceSection(network, targetSection, overlapIndex,
                                           targetSection.rows.size, openingDraft.routeHex);
     if(!isDefined(sharedSectionName))
@@ -1361,13 +1368,15 @@ rename(previousName, newName)
     network = self load();
     previousNetwork = self load();
     previousSection = self readSection(previousName);
-    targetSection = self readSection(newName);
+    targetPath = self basePath() + newName;
     renamesRoute = isDefined(network) && isDefined(network.paths[previousName]);
     if(!isDefined(previousSection) && !renamesRoute)
     {
         return self fail("No route or section named " + previousName);
     }
-    if(isDefined(targetSection) || (isDefined(network) && isDefined(network.paths[newName])))
+    // Unreadable snapshots are occupied recovery files, not available destination names.
+    if(FS_TestFile(targetPath + ".a") || FS_TestFile(targetPath + ".b") ||
+       (isDefined(network) && isDefined(network.paths[newName])))
     {
         return self fail("The new name is already used; nothing overwritten.");
     }
