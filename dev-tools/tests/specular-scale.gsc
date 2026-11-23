@@ -33,7 +33,8 @@ main()
     {
         verify(1, "map change without override resets to default");
         check(getCvar("mapname") == "mp_killhouse", "map transition completed");
-        printf("SPECULAR TEST COMPLETE failures=" + level.specularFailures + " checks=" + level.specularChecks + "\n");
+        printf("SPECULAR TEST COMPLETE failures=" + level.specularFailures +
+               " checks=" + level.specularChecks + "\n");
     }
 }
 
@@ -44,7 +45,10 @@ verify(expected, label)
     // Wait for that asynchronous publication instead of assuming one script wait.
     for(attempt = 0; attempt < 100; attempt++)
     {
-        if(replicaMatches(expected)) break;
+        if(replicaMatches(expected))
+        {
+            break;
+        }
         wait 0.05;
     }
     count = 0;
@@ -65,8 +69,12 @@ verify(expected, label)
 
 next(stage, command)
 {
-    if(level.specularFailures) return;
-    printf("SPECULAR TEST STAGE COMPLETE " + getCvarInt("opencj_specular_test_stage") + " checks=" + level.specularChecks + "\n");
+    if(level.specularFailures)
+    {
+        return;
+    }
+    printf("SPECULAR TEST STAGE COMPLETE " + getCvarInt("opencj_specular_test_stage") +
+           " checks=" + level.specularChecks + "\n");
     setCvar("opencj_specular_test_stage", stage);
     exec(command);
 }
@@ -74,7 +82,10 @@ next(stage, command)
 check(ok, label)
 {
     level.specularChecks++;
-    if(!ok) level.specularFailures++;
+    if(!ok)
+    {
+        level.specularFailures++;
+    }
     printf("SPECULAR TEST " + ok + ": " + label + "\n");
 }
 
@@ -83,7 +94,10 @@ replicaMatches(expected)
     for(i = 20; i < 148; i++)
     {
         name = getConfigStringByIndex(i);
-        if(!isDefined(name) || toLower(name) != "r_specularcolorscale") continue;
+        if(!isDefined(name) || toLower(name) != "r_specularcolorscale")
+        {
+            continue;
+        }
         value = getConfigStringByIndex(i + 128);
         return isDefined(value) && abs(float(value) - expected) < 0.0001;
     }

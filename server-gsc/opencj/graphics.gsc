@@ -11,8 +11,11 @@ _configureMinimap()
         minimapTileSize = level.minimapMaxRange / minimapTileCount / 2;
         northvector = (cos(getnorthyaw()), sin(getnorthyaw()), 0);
         eastvector = (northvector[1], 0 - northvector[0], 0);
-        northwest = VectorScale(northvector, minimapTileSize) + VectorScale(eastvector, -1 * minimapTileSize) + level.spawnpoints_player[0].origin;
-        southeast = VectorScale(northvector, -1 * minimapTileSize) + VectorScale(eastvector, minimapTileSize) + level.spawnpoints_player[0].origin;
+        northwest = VectorScale(northvector, minimapTileSize) +
+                    VectorScale(eastvector, -1 * minimapTileSize) +
+                    level.spawnpoints_player[0].origin;
+        southeast = VectorScale(northvector, -1 * minimapTileSize) +
+                    VectorScale(eastvector, minimapTileSize) + level.spawnpoints_player[0].origin;
 
         setMiniMap("opencj_minimapbg", northwest[0], northwest[1], southeast[0], southeast[1]);
     }
@@ -21,7 +24,9 @@ _configureMinimap()
 onInit()
 {
     if(getCodVersion() == 4)
+    {
         precacheMenu("opencj_graphics");
+    }
 
     // If map doesn't have a custom minimap, then we set a default
     if(getCodVersion() == 4)
@@ -29,13 +34,23 @@ onInit()
         _configureMinimap();
     }
 
-    underlyingCmd = openCJ\settings::addSettingInt("fov", 13, 160, 90, "Set your field-of-view. Usage: !fov [value between 13 and 160]", ::_onSettingFOV);
-    underlyingCmd = openCJ\settings::addSettingBool("fullbright", false, "Enable/disable fullbright. Usage: !fullbright [on/off]", ::_onSettingFullbright);
-    underlyingCmd = openCJ\settings::addSettingBool("hidecollidingplayers", false, "Hide colliding players. Usage: !hidecollidingplayers [on/off]");
-    underlyingCmd = openCJ\settings::addSettingBool("viewbob", false, "Change view bobbing. Usage: !viewbob [on/off]", ::_onSettingViewBob);
-    underlyingCmd = openCJ\settings::addSettingBool("fx", true, "fx_enable. Usage: !fx [on/off]", ::_onSettingFX);
-    openCJ\settings::addSettingInt("gfx_specular", -1, 2, -1, "Graphics menu: specular", ::_gfx_specular);
-    openCJ\settings::addSettingInt("gfx_shadows", -1, 2, -1, "Graphics menu: shadows", ::_gfx_shadows);
+    underlyingCmd = openCJ\settings::addSettingInt(
+        "fov", 13, 160, 90, "Set your field-of-view. Usage: !fov [value between 13 and 160]",
+        ::_onSettingFOV);
+    underlyingCmd = openCJ\settings::addSettingBool(
+        "fullbright", false, "Enable/disable fullbright. Usage: !fullbright [on/off]",
+        ::_onSettingFullbright);
+    underlyingCmd = openCJ\settings::addSettingBool(
+        "hidecollidingplayers", false,
+        "Hide colliding players. Usage: !hidecollidingplayers [on/off]");
+    underlyingCmd = openCJ\settings::addSettingBool(
+        "viewbob", false, "Change view bobbing. Usage: !viewbob [on/off]", ::_onSettingViewBob);
+    underlyingCmd = openCJ\settings::addSettingBool("fx", true, "fx_enable. Usage: !fx [on/off]",
+                                                    ::_onSettingFX);
+    openCJ\settings::addSettingInt("gfx_specular", -1, 2, -1, "Graphics menu: specular",
+                                   ::_gfx_specular);
+    openCJ\settings::addSettingInt("gfx_shadows", -1, 2, -1, "Graphics menu: shadows",
+                                   ::_gfx_shadows);
     openCJ\settings::addSettingInt("gfx_glow", -1, 1, -1, "Graphics menu: glow", ::_gfx_glow);
     openCJ\settings::addSettingInt("gfx_dof", -1, 1, -1, "Graphics menu: dof", ::_gfx_dof);
     openCJ\settings::addSettingInt("gfx_decals", -1, 1, -1, "Graphics menu: decals", ::_gfx_decals);
@@ -45,10 +60,11 @@ onInit()
     openCJ\settings::addSettingInt("gfx_normal", -1, 1, -1, "Graphics menu: normal", ::_gfx_normal);
     openCJ\settings::addSettingInt("gfx_detail", -1, 1, -1, "Graphics menu: detail", ::_gfx_detail);
     openCJ\settings::addSettingInt("gfx_blur", -1, 1, -1, "Graphics menu: blur", ::_gfx_blur);
-    openCJ\settings::addSettingInt("gfx_entities", -1, 1, -1, "Graphics menu: entities", ::_gfx_entities);
-    openCJ\settings::addSettingInt("gfx_distance", -1, 131072, -1, "Graphics menu: distance", ::_gfx_distance);
+    openCJ\settings::addSettingInt("gfx_entities", -1, 1, -1, "Graphics menu: entities",
+                                   ::_gfx_entities);
+    openCJ\settings::addSettingInt("gfx_distance", -1, 131072, -1, "Graphics menu: distance",
+                                   ::_gfx_distance);
     openCJ\settings::addSettingInt("gfx_lod", -1, 2, -1, "Graphics menu: model detail", ::_gfx_lod);
-
 }
 
 onPlayerConnected()
@@ -62,8 +78,14 @@ onPlayerConnected()
         self setClientCvar("opencj_gfx_shadows", -1);
         self setClientCvar("opencj_gfx_blur", 1);
         mode = 0;
-        if(self openCJ\settings::getSetting("hideall")) mode = 2;
-        else if(self openCJ\settings::getSetting("hidenear")) mode = 1;
+        if(self openCJ\settings::getSetting("hideall"))
+        {
+            mode = 2;
+        }
+        else if(self openCJ\settings::getSetting("hidenear"))
+        {
+            mode = 1;
+        }
         self setClientCvar("opencj_gfx_hidemode", mode);
         // Map defaults are captured by the acknowledged client startup menu.
         self thread _graphicsMenuResponses();
@@ -117,7 +139,6 @@ _onSettingFX(newVal)
     self setClientCvar("fx_enable", newVal);
 }
 
-
 // Changes remain pending until Apply. Reopening/Cancel drops the pending selection.
 _graphicsMenuResponses()
 {
@@ -127,7 +148,9 @@ _graphicsMenuResponses()
     {
         self waittill("menuresponse", menu, response);
         if(toLower(menu) != "opencj_graphics")
+        {
             continue;
+        }
         if(response == "begin" || response == "cancel")
         {
             pending = [];
@@ -142,14 +165,20 @@ _graphicsMenuResponses()
             }
             keys = getArrayKeys(pending);
             for(i = 0; i < keys.size; i++)
+            {
                 if(isDefined(pending[keys[i]]))
+                {
                     self openCJ\settings::setSettingByScript(keys[i], pending[keys[i]]);
+                }
+            }
             pending = [];
             continue;
         }
         parts = strTok(response, ":");
         if(parts.size != 2 || !isValidInt(parts[1]))
+        {
             continue;
+        }
         key = parts[0];
         if(key == "gfx_hidemode")
         {
@@ -161,16 +190,20 @@ _graphicsMenuResponses()
             }
             continue;
         }
-        if(key != "fullbright" && key != "fx" && key != "viewbob" && key != "fov" && key != "hideradius" &&
-           key != "gfx_specular" && key != "gfx_shadows" && key != "gfx_glow" &&
-           key != "gfx_dof" && key != "gfx_decals" && key != "gfx_fog" &&
-           key != "gfx_sun" && key != "gfx_water" && key != "gfx_lod" &&
-           key != "gfx_normal" && key != "gfx_detail" && key != "gfx_blur" &&
-           key != "gfx_entities" && key != "gfx_distance")
+        if(key != "fullbright" && key != "fx" && key != "viewbob" && key != "fov" &&
+           key != "hideradius" && key != "gfx_specular" && key != "gfx_shadows" &&
+           key != "gfx_glow" && key != "gfx_dof" && key != "gfx_decals" && key != "gfx_fog" &&
+           key != "gfx_sun" && key != "gfx_water" && key != "gfx_lod" && key != "gfx_normal" &&
+           key != "gfx_detail" && key != "gfx_blur" && key != "gfx_entities" &&
+           key != "gfx_distance")
+        {
             continue;
+        }
         // Zero remains readable for old saved settings, but is not a menu choice.
         if(key == "hideradius" && int(parts[1]) < 1)
+        {
             continue;
+        }
         if(key == "gfx_lod" && parts[1] == "3")
         {
             pending[key] = undefined;
@@ -178,24 +211,38 @@ _graphicsMenuResponses()
         }
         value = openCJ\settings::parseSettingValue(level.settings[key], parts[1]);
         if(isDefined(value))
+        {
             pending[key] = value;
+        }
     }
 }
 
 _gfx_specular(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("opencj_gfx_specular", value);
     self setClientCvar("r_specular", value != 0);
     if(value == 2)
+    {
         self setClientCvar("r_specularMap", "White");
+    }
     else
+    {
         self setClientCvar("r_specularMap", "Unchanged");
+    }
 }
 
 _gfx_shadows(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("opencj_gfx_shadows", value);
     self setClientCvar("sm_enable", value != 0);
     if(value == 2)
@@ -204,49 +251,79 @@ _gfx_shadows(value)
         self setClientCvar("sm_spotEnable", 1);
     }
     else
-        self execClientCmd("setfromdvar sm_sunEnable opencj_gfx_map_sunShadow; setfromdvar sm_spotEnable opencj_gfx_map_spotShadow");
+    {
+        self execClientCmd(
+            "setfromdvar sm_sunEnable opencj_gfx_map_sunShadow; setfromdvar sm_spotEnable opencj_gfx_map_spotShadow");
+    }
 }
 
 _gfx_glow(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_glow_allowed", value);
 }
 
 _gfx_dof(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_dof_enable", value);
 }
 
 _gfx_decals(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_drawDecals", value);
     self setClientCvar("fx_marks", value);
 }
 
 _gfx_fog(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_fog", value);
 }
 
 _gfx_sun(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_drawSun", value);
 }
 
 _gfx_water(value)
 {
-    if(value < 0) return; // No override until the player chooses one.
+    // No override until the player chooses one.
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_drawWater", value);
 }
 
 _gfx_lod(value)
 {
-    if(value < 0) return;
+    if(value < 0)
+    {
+        return;
+    }
     rigidScale = 1;
     skinnedScale = 1;
     rigidBias = 0;
@@ -271,34 +348,53 @@ _gfx_lod(value)
 
 _gfx_normal(value)
 {
-    if(value < 0) return;
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_normal", value);
 }
 
 _gfx_detail(value)
 {
-    if(value < 0) return;
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_detail", value);
 }
 
 _gfx_entities(value)
 {
-    if(value < 0) return;
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("dynEnt_active", value);
 }
 
 _gfx_distance(value)
 {
-    if(value < 0) return;
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("r_zfar", value);
 }
 
 _gfx_blur(value)
 {
-    if(value < 0) return;
+    if(value < 0)
+    {
+        return;
+    }
     self setClientCvar("opencj_gfx_blur", value);
     if(value == 0)
+    {
         self setClientCvar("r_blur", 0);
+    }
     else
+    {
         self execClientCmd("setfromdvar r_blur opencj_gfx_map_blur");
+    }
 }
