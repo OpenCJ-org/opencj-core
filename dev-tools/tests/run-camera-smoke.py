@@ -2,6 +2,7 @@
 
 from compose_environment import workspace_path
 from pathlib import Path
+import re
 import argparse
 import shutil
 import subprocess
@@ -73,11 +74,22 @@ for mapname in options.maps or ['mp_killhouse']:
         zlib.compress(b'OCJ4' + struct.pack('<I', len(chunk)) + b''.join(chunk)).hex()
         for chunk in chunks
     ]
-    decode = '+'.join('demoDecodeChunk(id,"' + payload + '")' for payload in payloads)
     fixture = mod / 'opencj/platformtest.gsc'
-    fixture.write_text(
-        fixture.read_text().replace('demoDecodeChunk(id,"BODY_FIXTURE_HEX")', decode)
+
+    def decode_chunks(match):
+        demo_id = match.group(1)
+        return " + ".join(
+            'demoDecodeChunk(' + demo_id + ', "' + payload + '")' for payload in payloads
+        )
+
+    fixture_source, replacements = re.subn(
+        r'\bdemoDecodeChunk\s*\(\s*(\w+)\s*,\s*"BODY_FIXTURE_HEX"\s*\)',
+        decode_chunks,
+        fixture.read_text(),
     )
+    if replacements != 1:
+        raise RuntimeError("Expected one camera recording fixture placeholder")
+    fixture.write_text(fixture_source)
 
     settings = mod / 'opencj/settings.gsc'
     original = settings.read_text()
