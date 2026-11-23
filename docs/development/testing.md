@@ -61,6 +61,7 @@ to their listed harnesses, not standalone commands.
 | Client build scripts and private Windows helper | `client-build-unit`, `client-build-windows` and an actual asset build |
 | Menus or notification artwork | `compiled-menus`, `demo-menu-source`, `notification-assets` |
 | Query growth or capacity | `capacity` |
+| Shared route-catalogue refresh ownership | `map-routes`, `focused-gsc` |
 | Tutorial mode, automatic FPS or landing targets | `tutorial-mode` |
 | Discord listener | `discord-socket` |
 
@@ -380,3 +381,12 @@ menu palette selection, labels, bounded overview rows, and failed/empty reads.
 Synthetic metadata is combined with real installed-map discovery to verify
 ordinary and uber-admin map-pool access. It uses no database and does not test
 SQL execution or client menu rendering.
+
+The map-routes runner separately checks refresh ownership with real native SQL
+jobs in a disposable schema. Controlled SELECT queries make queued and running
+cancellation observable, and a fixture-only wrapper holds a completed reply to
+exercise the request-version guard. It checks that obsolete queued reads never
+execute, a cancelled running read settles within the fixture deadline, newer
+results remain visible, and the pool drains. Running queries retain the native
+adapter's SQL/socket limits; cancellation does not interrupt an active MySQL call.
+The controlled queries do not verify the production route-selection SQL.

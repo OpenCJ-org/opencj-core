@@ -702,6 +702,20 @@
       "commands": [
         "python3 -B -m unittest discover -s dev-tools/tests -p test_bouncer_art.py -v"
       ]
+    },
+    {
+      "id": "map-routes",
+      "category": "integration",
+      "description": "Queued route-read cancellation, bounded running-read completion, stale replies and SQL pool cleanup.",
+      "requires": "Initialized Compose test database, current engine and licensed mp_killhouse/mod assets; supports --binary and --scripts.",
+      "effects": "Owned temporary schema/account and isolated engine; controlled SELECT queries, transient fixture locks and private evidence. No gameplay data writes.",
+      "files": [
+        "dev-tools/tests/run-map-routes.py",
+        "dev-tools/tests/map-routes.gsc"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-map-routes.py"
+      ]
     }
   ]
 }

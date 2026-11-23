@@ -46,12 +46,21 @@ refresh()
     }
     level.mapRoutesRequest++;
     requestVersion = level.mapRoutesRequest;
-    rows = openCJ\mySQL::mysqlAsyncRead(query());
-    if(requestVersion != level.mapRoutesRequest)
+
+    // Menu policy supplies scoped disposable reads; this owner is the level.
+    // Cancel queued work and wake old callers. Running SQL keeps its bounded
+    // connection lifetime, then discards the obsolete result.
+    refreshScope = "map-routes";
+    mysql_async_cancel(refreshScope, level.sqlConstants.scopeExact,
+                       level.sqlConstants.retainCompletion);
+    result = openCJ\mySQL::_request(
+        query(), level.sqlConstants.policyMenu, "", refreshScope,
+        level.sqlConstants.defaultQueueWaitMs, true);
+    if(!isDefined(result) || requestVersion != level.mapRoutesRequest)
     {
         return;
     }
-    applyRows(rows);
+    applyRows(result.rows);
 }
 
 applyRows(rows)

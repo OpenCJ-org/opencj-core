@@ -13,23 +13,26 @@ above ten it explicitly says that the first ten are shown. Names longer than
 18 display characters end in an ellipsis to keep them inside their column.
 
 Routes come from the existing database tables, not a map-specific list:
-routes joins checkpoints and mapids. The alpha view includes normal routes
-with a non-retired start and matching non-retired finish on the same map.
-Private editor drafts, retired entries and bonus/secret routes are excluded.
-A legacy normal anchor on Bouncer Training has no separate finish and is not
-an extra route; its easy and hard routes remain visible.
+routes joins checkpoints and mapids. The overview includes named normal routes
+with at least one non-retired finish on the same map. Private editor drafts,
+routes without an active finish, and bonus/secret routes are excluded.
 
 The catalogue loads at map initialization. Successful checkpoint activation
 refreshes it automatically after publishing, including shared-section network
 routes that use the same activation path. Already-open map lists refresh too.
-Request versions stop an older database reply replacing a newer snapshot.
+A newer refresh cancels obsolete queued reads in a level-owned scope. Running
+reads retain the SQL adapter's execution/socket limits and discard their results
+when they settle; cancellation does not interrupt the active MySQL call. Request
+versions also reject replies that completed just before cancellation. The shared
+snapshot does not belong to one player's menu, so closing a menu does not cancel
+a refresh needed by other players. The queue deadline remains ten seconds.
 Temporary SQL errors retain the last valid snapshot; an unavailable initial
 snapshot and a genuinely empty route list have different messages.
 
 CoD4 menu expressions support dynamic alpha but not dynamic RGB. The menu uses
 twelve fixed palette colors selected from each route's stored RGB value. All
-current alpha route colors have exact entries; arbitrary custom shades use the
-nearest palette color. The original RGB data remains unchanged.
+colors matching those entries use their corresponding slots; arbitrary custom
+shades use the nearest palette color. The original RGB data remains unchanged.
 
 ## Implementation
 
