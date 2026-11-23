@@ -214,7 +214,7 @@ onMenuResponse()
     self endon("disconnect");
     level endon("game_ended");
 
-    for(;;)
+    for (;;)
     {
         self waittill("menuresponse", menu, response);
 
@@ -232,19 +232,21 @@ onMenuResponse()
         button = undefined;
         if (isSubStr(response, "click_"))
         {
-            button = getSubStr(response, 6); 
+            button = getSubStr(response, 6);
         }
         if (isDefined(button)) // A button on the current board was clicked
         {
-            if ((button == "time") || (button == "rpgs") || (button == "loads") || (button == "date")) // Sorting
+            if ((button == "time") || (button == "rpgs") || (button == "loads") ||
+                (button == "date")) // Sorting
             {
                 self handleSortChange(button);
             }
-            else if (getSubStr(button,0,8)=="playdemo")
+            else if (getSubStr(button, 0, 8) == "playdemo")
             {
                 self openCJ\menus\leaderboard::handleDemo(button);
             }
-            else if (isSubStr(button, "loadrun")) // Runs board has clickable 'name' to restore the run
+            else if (isSubStr(button,
+                              "loadrun")) // Runs board has clickable 'name' to restore the run
             {
                 self openCJ\menus\runsboard::handleRestoreRun(button);
             }
@@ -252,7 +254,8 @@ onMenuResponse()
             {
                 self handlePageChange(button);
             }
-            else if ((button == "ele") || (button == "any") || (button == "hb") || (button == "tas")) // Filter pressed
+            else if ((button == "ele") || (button == "any") || (button == "hb") ||
+                     (button == "tas")) // Filter pressed
             {
                 self handleFilterChange(button);
             }
@@ -272,17 +275,25 @@ onMenuResponse()
 
 updateBoard()
 {
-    sqlToken=self openCJ\mySQL::beginMenuRead("board");
-    if (!self openCJ\mySQL::menuReadCurrent(sqlToken)) return;
+    sqlToken = self openCJ\mySQL::beginMenuRead("board");
+    if (!self openCJ\mySQL::menuReadCurrent(sqlToken))
+    {
+        return;
+    }
     // Gets values and puts them in self vars
-    updated=self [[self.currentBoard["updateFunc"]]]();
-    if (isDefined(updated) && !updated) return;
+    updated = self [[self.currentBoard["updateFunc"]]] ();
+    if (isDefined(updated) && !updated)
+    {
+        return;
+    }
 
     // Update all dvars
-    self.currentBoard["page"]["max"] = max(1, ceil(self.currentBoard["nrTotalEntries"] / self.currentBoard["maxEntriesPerPage"]));
+    self.currentBoard["page"]["max"] =
+        max(1, ceil(self.currentBoard["nrTotalEntries"] / self.currentBoard["maxEntriesPerPage"]));
 
     // Update page text dvars after updating board
-    self setClientCvar(level.boardsDvarPrefix + "pagetxt", self.currentBoard["page"]["cur"] + "/" + self.currentBoard["page"]["max"]);
+    self setClientCvar(level.boardsDvarPrefix + "pagetxt",
+                       self.currentBoard["page"]["cur"] + "/" + self.currentBoard["page"]["max"]);
     self setClientCvar(level.boardsDvarPrefix + "page", self.currentBoard["page"]["cur"]);
     self setClientCvar(level.boardsDvarPrefix + "pagemax", self.currentBoard["page"]["max"]);
 
@@ -293,10 +304,14 @@ updateBoard()
     self setClientCvar(level.boardsDvarPrefix + "sort_loads", 0);
     self setClientCvar(level.boardsDvarPrefix + "sort_date", 0);
 
-    self setClientCvar(level.boardsDvarPrefix + "sort_" + self.currentBoard["sortBy"], self.currentBoard["sort"]);
+    self setClientCvar(level.boardsDvarPrefix + "sort_" + self.currentBoard["sortBy"],
+                       self.currentBoard["sort"]);
 
     // And now the actual board data
-    keys = getArrayKeys(self.currentBoard["cols"][0]); // Although empty when i >= self.currentBoard["nrEntriesThisPage"], can still be used for getArrayKeys
+    keys = getArrayKeys(
+        self.currentBoard
+            ["cols"]
+            [0]); // Although empty when i >= self.currentBoard["nrEntriesThisPage"], can still be used for getArrayKeys
     dvars = [];
     dvars["count"] = self.currentBoard["nrEntriesThisPage"];
     for (j = 0; j < keys.size; j++)
@@ -310,7 +325,9 @@ updateBoard()
             // Special conversion(s) without updating the original
             if (key == "time")
             {
-                val = timeToString(int((val / 1000) + 0.5)); // Round the time and convert it to a nicely readable string
+                val = timeToString(
+                    int((val / 1000) +
+                        0.5)); // Round the time and convert it to a nicely readable string
             }
             /*
             else if (key == "date")
@@ -578,11 +595,26 @@ fpsNameToIcon(name)
 {
     switch (name)
     {
-        case "Classic": return "opencj_icon_fps_classic";
-        case "Standard": return "opencj_icon_fps_standard";
-        case "Any": return "opencj_icon_fps_any";
-        case "Tutorial": return "opencj_icon_fps_tutorial";
-        default: return "";
+    case "Classic":
+    {
+        return "opencj_icon_fps_classic";
+    }
+    case "Standard":
+    {
+        return "opencj_icon_fps_standard";
+    }
+    case "Any":
+    {
+        return "opencj_icon_fps_any";
+    }
+    case "Tutorial":
+    {
+        return "opencj_icon_fps_tutorial";
+    }
+    default:
+    {
+        return "";
+    }
     }
 }
 
@@ -590,10 +622,19 @@ dbFPSToFullName(dbFPSName)
 {
     switch(dbFPSName)
     {
-        case "125": return "Classic";
-        case "mix": return "Standard";
-        case "hax": // Fallthrough
-        default:    return "Any";
+    case "125":
+    {
+        return "Classic";
+    }
+    case "mix":
+    {
+        return "Standard";
+    }
+    case "hax": // Fallthrough
+    default:
+    {
+        return "Any";
+    }
     }
 }
 

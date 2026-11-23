@@ -98,27 +98,28 @@ fetchUpdatedData()
         sortStr = getSortStr(self.currentBoard["sortBy"], self.currentBoard["sort"]);
         // Rank narrow indexed rows; fetch names/details only for this page.
         // Exact ties use the oldest run, then checkpoint ID, consistently with finish ranking.
-        query = "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.finishTimeStamp, r.FPSMode, r.ele, r.anyPct, r.hb, r.hardTAS, a.runID FROM (" +
+        query =
+            "SELECT a.totalNr, b.playerName, a.timePlayed, a.explosiveJumps, a.loadCount, a.finishTimeStamp, r.FPSMode, r.ele, r.anyPct, r.hb, r.hardTAS, a.runID FROM (" +
             "SELECT COUNT(*) OVER() AS totalNr, a.* FROM (" +
             "SELECT pr.playerID, cs.timePlayed, cs.explosiveJumps, cs.loadCount, pr.finishTimeStamp, cs.runID, cs.cpID, cs.saveCount, (" +
-                        "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY " + sortStr +
-                    ", cs.runID ASC, cs.cpID ASC)) AS rn " +
-                    "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID " +
-                    "WHERE cs.cpID IN " + finishCPIds +
-                    " AND pr.finishcpID IS NOT NULL" +
-                    " AND pr.finishTimeStamp IS NOT NULL" +
-                    " AND pr.ele <= " + self.currentBoard["filter"]["ele"] +
-                    " AND pr.anyPct <= " + self.currentBoard["filter"]["any"] +
-                    " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
-                    " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] +
-                    " AND pr.tutorial = 0" +
-                    " AND pr.FPSMode IN " + openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
-            ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" +
-            " LIMIT " + self.currentBoard["maxEntriesPerPage"] +
-            " OFFSET " + openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]) +
-        ") a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
-        "INNER JOIN (SELECT runID,FPSMode,ele,anyPct,hb,hardTAS FROM playerRuns) r ON r.runID = a.runID " +
-        "ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC";
+            "ROW_NUMBER() OVER (PARTITION BY pr.playerID ORDER BY " + sortStr +
+            ", cs.runID ASC, cs.cpID ASC)) AS rn " +
+            "FROM checkpointStatistics cs FORCE INDEX (checkpoint_time) STRAIGHT_JOIN playerRuns pr ON pr.runID = cs.runID " +
+            "WHERE cs.cpID IN " + finishCPIds + " AND pr.finishcpID IS NOT NULL" +
+            " AND pr.finishTimeStamp IS NOT NULL" +
+            " AND pr.ele <= " + self.currentBoard["filter"]["ele"] +
+            " AND pr.anyPct <= " + self.currentBoard["filter"]["any"] +
+            " AND pr.hb <= " + self.currentBoard["filter"]["hb"] +
+            " AND pr.hardTAS <= " + self.currentBoard["filter"]["tas"] + " AND pr.tutorial = 0" +
+            " AND pr.FPSMode IN " +
+            openCJ\menus\board_base::getFPSModeStr(self.currentBoard["filter"]["fps"]) +
+            ") a WHERE a.rn = 1 ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC" + " LIMIT " +
+            self.currentBoard["maxEntriesPerPage"] + " OFFSET " +
+            openCJ\menus\board_base::getOffsetFromPage(self.currentBoard["page"]["cur"],
+                                                       self.currentBoard["maxEntriesPerPage"]) +
+            ") a INNER JOIN playerDisplayNames b ON a.playerID = b.playerID " +
+            "INNER JOIN (SELECT runID,FPSMode,ele,anyPct,hb,hardTAS FROM playerRuns) r ON r.runID = a.runID " +
+            "ORDER BY " + sortStr + ", a.runID ASC, a.cpID ASC";
 
         // Example output (pretend there are 10 rows instead of 2 though):
         // -----------------------------------------------------------------------------------------------------------------------------|
@@ -134,7 +135,10 @@ fetchUpdatedData()
         printf("Leaderboard query:\n" + query + "\n"); // Debug
 
         rows = self openCJ\mySQL::mysqlAsyncMenuQuery(query, "board");
-    if (!isDefined(rows)) return false;
+        if (!isDefined(rows))
+        {
+            return false;
+        }
     }
 
     self.currentBoard["demoRunIDs"] = [];
@@ -152,7 +156,8 @@ fetchUpdatedData()
     }
 
     // Now that the data is there, we need to fill in the values into the local variables
-    firstItemOnPage = openCJ\menus\board_base::getAbsFirstItemNrCurrentPage(self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
+    firstItemOnPage = openCJ\menus\board_base::getAbsFirstItemNrCurrentPage(
+        self.currentBoard["page"]["cur"], self.currentBoard["maxEntriesPerPage"]);
     for (i = 0; i < self.currentBoard["maxEntriesPerPage"]; i++)
     {
         if (i < self.currentBoard["nrEntriesThisPage"])
@@ -164,7 +169,8 @@ fetchUpdatedData()
             self.currentBoard["cols"][i]["rpgs"] = int(rows[i][3]);
             self.currentBoard["cols"][i]["loads"] = int(rows[i][4]);
             self.currentBoard["cols"][i]["date"] = rows[i][5];
-            self.currentBoard["cols"][i]["fps"] = openCJ\menus\board_base::dbFPSToFullName(rows[i][6]);
+            self.currentBoard["cols"][i]["fps"] =
+                openCJ\menus\board_base::dbFPSToFullName(rows[i][6]);
             self.currentBoard["cols"][i]["ele"] = xOrEmpty(int(rows[i][7]));
             self.currentBoard["cols"][i]["any"] = xOrEmpty(int(rows[i][8]));
             self.currentBoard["cols"][i]["hb"] = xOrEmpty(int(rows[i][9]));
