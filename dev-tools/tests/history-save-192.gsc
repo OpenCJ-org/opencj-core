@@ -760,6 +760,11 @@ createRunWithDelayedReply(completionEvent)
 // Test-only observation after real SQL completion; scenarios choose which reply to delay.
 observeSQLResult(query)
 {
+    if(isDefined(level.history192ShopOwnershipReads) &&
+       isSubStr(query, "SELECT itemKey FROM shopPurchases"))
+    {
+        level.history192ShopOwnershipReads++;
+    }
     if(isDefined(level.history192DelayedQuery) && isSubStr(query, level.history192DelayedQuery))
     {
         self notify("history192_result_ready");

@@ -398,6 +398,11 @@ cancelMenuReads(menu)
         {
             scope = "clips";
         }
+        else if (menu == "opencj_shop" || menu == "opencj_shop_confirm" ||
+                 menu == "opencj_shop_inspect")
+        {
+            scope = "shop";
+        }
         else
         {
             return;

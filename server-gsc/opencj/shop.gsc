@@ -48,7 +48,7 @@ responses()
             self closeInGameMenu();self closeMenu();
             self.shopOpen=false;
             self stopInspect();
-            self notify("shop_refresh");
+            self openCJ\mySQL::cancelMenuReads("opencj_shop");
             self.shopSelection=undefined;
             continue;
         }
@@ -80,19 +80,45 @@ responses()
         }
     }
 }
+// Closing or replacing this screen cancels its reads; purchases have separate ownership.
 show()
 {
     self endon("disconnect");
-    self notify("shop_refresh");self endon("shop_refresh");
+    menuToken = self openCJ\mySQL::beginMenuRead("shop");
+    if(!self openCJ\mySQL::menuReadCurrent(menuToken))
+    {
+        return;
+    }
     self setClientCvar("ocj_shop_busy",1);
     self setClientCvar("ocj_shop_error","");
     if(!level.challengesReady || !self openCJ\login::isLoggedIn())
     {self setClientCvar("ocj_shop_error","Your account is loading. Reopen the shop in a moment.");return;}
     id=self openCJ\login::getPlayerID();
-    totals=self openCJ\mySQL::mysqlAsyncQuery("SELECT (SELECT COALESCE(SUM(pointsAwarded),0) FROM challengeCompletions WHERE playerID="+id+"),(SELECT COALESCE(SUM(pointsSpent),0) FROM shopPurchases WHERE playerID="+id+")");
-    owned=self openCJ\mySQL::mysqlAsyncQuery("SELECT itemKey FROM shopPurchases WHERE playerID="+id);
-    if(!isDefined(totals) || !totals.size || !isDefined(owned))
-    {self setClientCvar("ocj_shop_error","Shop data is unavailable. Please try again later.");return;}
+    totals = self openCJ\mySQL::mysqlAsyncMenuQuery(
+        "SELECT (SELECT COALESCE(SUM(pointsAwarded),0) FROM challengeCompletions WHERE playerID="
+        + id + "),(SELECT COALESCE(SUM(pointsSpent),0) FROM shopPurchases WHERE playerID="
+        + id + ")", "shop");
+    if(!self openCJ\mySQL::menuReadCurrent(menuToken))
+    {
+        return;
+    }
+    if(!isDefined(totals) || !totals.size)
+    {
+        self setClientCvar("ocj_shop_error", "Shop data is unavailable. Please try again later.");
+        return;
+    }
+
+    owned = self openCJ\mySQL::mysqlAsyncMenuQuery(
+        "SELECT itemKey FROM shopPurchases WHERE playerID=" + id, "shop");
+    if(!self openCJ\mySQL::menuReadCurrent(menuToken))
+    {
+        return;
+    }
+    if(!isDefined(owned))
+    {
+        self setClientCvar("ocj_shop_error", "Shop data is unavailable. Please try again later.");
+        return;
+    }
     total=int(totals[0][0]);spent=int(totals[0][1]);
     self.shopOwned=[];
     for(i=0;i<owned.size;i++)self.shopOwned[owned[i][0]]=true;

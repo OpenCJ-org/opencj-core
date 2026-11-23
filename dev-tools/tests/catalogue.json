@@ -481,7 +481,7 @@
     {
       "id": "sql-adapter",
       "category": "integration",
-      "description": "Save ownership, native demo/clip transfers, pool and VM behavior; publication races, rollback, lost replies and receipt recovery.",
+      "description": "Save ownership, native demo/clip transfers, pool and VM behavior; publication races, rollback, lost replies and receipt recovery. Shop reads stop after close or browser replacement and do not publish late results.",
       "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod. Optional --engine PATH selects a candidate inside the core checkout.",
       "effects": "Creates/removes a temporary schema, grants and engine; private output.",
       "files": [

@@ -45,6 +45,7 @@ run(player, otherPlayer)
     longQueryBuilderChecks();
     clipSessionChecks();
     clipPublicationChecks(player);
+    shopMenuChecks(player);
     demoTransferChecks();
     stats = mysql_async_stats();
     check(stats[0] == 4 && stats[4] == 0, "four workers and no uncollected GSC jobs");
@@ -334,4 +335,68 @@ clipPublicationChecks(player)
     destroyDemo(nativeID);
     check(!isDefined(numberOfDemoFrames(nativeID)),
           "published clip leaves no native upload pin behind");
+}
+
+// Hold a real completed query so menu replacement races are deterministic.
+shopMenuChecks(player)
+{
+    check(!openCJ\menus\helper::opensAnotherMenu("opencj_shop", "open"),
+          "shop open leaves cancellation to its own read scope");
+    level.challengesReady = true;
+    level.shopItems = [];
+    item = spawnStruct();
+    item.key = "pistol.fixture";
+    item.category = 1;
+    item.slot = "deserteagle_mp";
+    item.name = "Fixture pistol";
+    item.image = "weapon_desert_eagle";
+    item.price = 9999;
+    item.available = false;
+    level.shopItems[0] = item;
+
+    player verifyObsoleteShopRead(false);
+    player verifyObsoleteShopRead(true);
+    player.shopRows = [];
+    player openCJ\shop::show();
+    check(player.shopRows.size == 1 && player.shopRows[0].key == item.key,
+          "current shop read renders the requested catalogue");
+    check(player.scoreboardCache["ocj_shop_balance"] == "0 points available",
+          "current shop read decodes an empty purchase balance");
+    player openCJ\mySQL::cancelMenuReads();
+}
+
+// A close or another browser must prevent both rendering and the next SQL read.
+verifyObsoleteShopRead(openAnotherMenu)
+{
+    self.shopTab = 1;
+    self.shopRows = [];
+    previousRow = spawnStruct();
+    previousRow.key = "previous";
+    self.shopRows[0] = previousRow;
+    level.history192ShopOwnershipReads = 0;
+    level.history192DelayedQuery = "COALESCE(SUM(pointsAwarded),0) FROM challengeCompletions";
+    level.history192HoldReply = true;
+
+    self thread openCJ\shop::show();
+    self waittill("history192_result_ready");
+    if(openAnotherMenu)
+    {
+        self openCJ\mySQL::beginMenuRead("board");
+        scenario = "another browser replaces the shop";
+    }
+    else
+    {
+        self openCJ\mySQL::cancelMenuReads("opencj_shop");
+        scenario = "shop read scope closes";
+    }
+    level.history192DelayedQuery = undefined;
+    level.history192HoldReply = false;
+    self notify("history192_release_result");
+    wait 0.2;
+
+    check(self.shopRows.size == 1 && self.shopRows[0].key == "previous",
+          scenario + ": late result cannot replace rows");
+    check(level.history192ShopOwnershipReads == 0,
+          scenario + ": obsolete request starts no ownership read");
+    self openCJ\mySQL::cancelMenuReads();
 }

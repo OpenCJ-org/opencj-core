@@ -118,7 +118,7 @@ _clearSearchText()
         self notify("search_changed");
     }
 }
-// Clip and challenge browsers begin their own read scopes when they open.
+// These browsers begin their own read scopes; a second open handler must not cancel them.
 opensAnotherMenu(menu, response)
 {
     namedBrowserOpen = response == "open_leaderboard" || response == "open_runsboard" ||
@@ -127,5 +127,6 @@ opensAnotherMenu(menu, response)
     {
         return true;
     }
-    return response == "open" && menu != "opencj_clips" && menu != "opencj_challenges";
+    return response == "open" && menu != "opencj_clips" && menu != "opencj_challenges" &&
+           menu != "opencj_shop";
 }
