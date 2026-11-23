@@ -71,3 +71,6 @@ a91841703f5c045924098205a0438820e5d513ba
 
 # Expand position and run HUD control flow
 f342d9cf6db2744260d82b876ffaa1ea180fe9b6
+
+# Save/load layout; non-brace tokens verified unchanged.
+8239e745114e09ea703d6be360efa1966a0a3470
