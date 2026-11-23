@@ -1,236 +1,248 @@
-"""Run chat-only camera tests on an isolated server; no production database writes or live players."""
+"""Run camera and legacy animation scenarios on an isolated engine with no live clients."""
 
-from compose_environment import workspace_path
+import argparse
+from enum import IntFlag
+import hashlib
+import json
 from pathlib import Path
 import re
-import argparse
-import shutil
+import struct
 import subprocess
-import time
 import uuid
-import sys
+import zlib
 
-root = Path(__file__).resolve().parents[2]
-parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('maps', nargs='*', default=['mp_killhouse'])
-parser.add_argument(
-    '--binary',
-    default=str(root / 'cod4x-server/bin/cod4x18_dedrun'),
-    help='Matching current engine inside this checkout',
-)
-parser.add_argument(
-    '--plugin', help='Optional matching probe inside this checkout; otherwise build from source'
-)
-options = parser.parse_args()
-try:
-    options.binary = workspace_path(options.binary)
-    if options.plugin:
-        options.plugin = workspace_path(options.plugin)
-except ValueError as error:
-    parser.error(str(error))
-for mapname in options.maps or ['mp_killhouse']:
-    tag = 'camera-' + uuid.uuid4().hex[:8]
-    home = root / 'dev-tools/local' / tag
-    mod = home / 'mods/opencj'
-    mod.mkdir(parents=True)
-    for name in ['opencj', 'maps']:
-        shutil.copytree(root / 'server-gsc' / name, mod / name)
-    for name in ['mod.ff', 'z_opencj.iwd']:
-        (mod / name).symlink_to('/mod-assets/' + name)
-    (home / 'usermaps').symlink_to('/game/usermaps')
-    (home / 'plugins').mkdir()
+from compose_environment import workspace_file, workspace_path
+import gsc_fixture
 
-    (home / 'steamclient.so').symlink_to('/game/steamclient.so')
-    shutil.copyfile(root / 'dev-tools/tests/camera.gsc', mod / 'opencj/platformtest.gsc')
-    # Real older OCJ4 wire payload: no newly recorded animation metadata.
-    import struct
-    import zlib
+ROOT = Path(__file__).resolve().parents[2]
+BUILD_TIMEOUT_SECONDS = 120
+MAX_CHUNK_FRAMES = 64
+VISUAL_BYTES = 31
+VIEW_HEIGHT_OFFSET = 8
+VELOCITY_OFFSET = 11
+VIEW_HEIGHT_SCALE = 256
+VELOCITY_SCALE = 4
+HAS_VISUALS_EVENT = 8
+FRAME_FIELDS = struct.Struct("<3f3HHHiB")
 
-    frames = []
+
+class LegacyFlag(IntFlag):
+    LEFT = 1
+    RIGHT = 2
+    FORWARD = 4
+    BACKWARD = 8
+    SPRINT = 64
+    LADDER = 256
+    STANDING = 512
+    CROUCHED = 1024
+    PRONE = 2048
+    GROUNDED = 8192
+
+
+def movement_cases():
+    """Eleven movements followed by stable running, prone and standing segments."""
+    grounded = LegacyFlag.GROUNDED
+    standing = LegacyFlag.STANDING
+    forward = LegacyFlag.FORWARD
     cases = [
-        (8192 | 512, 0, 0, 0),
-        (8192 | 512 | 4, 90, 0, 0),
-        (8192 | 512 | 4, 190, 0, 0),
-        (8192 | 512 | 4 | 64, 280, 0, 0),
-        (8192 | 512 | 8, -190, 0, 0),
-        (8192 | 512 | 1, 0, 190, 0),
-        (8192 | 512 | 2, 0, -190, 0),
-        (8192 | 1024 | 4, 60, 0, 0),
-        (8192 | 2048 | 4, 25, 0, 0),
-        (512 | 256 | 4, 0, 0, 90),
-        (512 | 4, 190, 0, 120),
+        (grounded | standing, (0, 0, 0)),
+        (grounded | standing | forward, (90, 0, 0)),
+        (grounded | standing | forward, (190, 0, 0)),
+        (grounded | standing | forward | LegacyFlag.SPRINT, (280, 0, 0)),
+        (grounded | standing | LegacyFlag.BACKWARD, (-190, 0, 0)),
+        (grounded | standing | LegacyFlag.LEFT, (0, 190, 0)),
+        (grounded | standing | LegacyFlag.RIGHT, (0, -190, 0)),
+        (grounded | LegacyFlag.CROUCHED | forward, (60, 0, 0)),
+        (grounded | LegacyFlag.PRONE | forward, (25, 0, 0)),
+        (standing | LegacyFlag.LADDER | forward, (0, 0, 90)),
+        (standing | forward, (190, 0, 120)),
     ]
-    cases += [(8192 | 512 | 4, 190, 0, 0)] * 32  # Land, then resume running.
-    cases += [(8192 | 2048 | 4, 25, 0, 0)] * 32  # Enter prone, then crawl.
-    cases += [(8192 | 512, 0, 0, 0)] * 32  # Rise from prone, then stand.
-    for flags, vx, vy, vz in cases:
-        base = struct.pack('<3f3HHHiB', 0, 0, 100, 0, 0, 0, flags, 125, 17, 8)
-        visual = bytearray(31)
-        struct.pack_into('<h', visual, 8, 60 * 256)
-        struct.pack_into('<3h', visual, 11, vx * 4, vy * 4, vz * 4)
-        frames.append(base + visual + bytes([6]) + b'rpg_mp')
-    chunks = [frames[i : i + 64] for i in range(0, len(frames), 64)]
-    payloads = [
-        zlib.compress(b'OCJ4' + struct.pack('<I', len(chunk)) + b''.join(chunk)).hex()
-        for chunk in chunks
-    ]
-    fixture = mod / 'opencj/platformtest.gsc'
+    steady_segment_frames = 32
+    cases += [(grounded | standing | forward, (190, 0, 0))] * steady_segment_frames
+    cases += [(grounded | LegacyFlag.PRONE | forward, (25, 0, 0))] * steady_segment_frames
+    cases += [(grounded | standing, (0, 0, 0))] * steady_segment_frames
+    return cases
+
+
+def legacy_payloads():
+    """Encode actual OCJ4 bytes, without the newer stored animation metadata."""
+    frames = []
+    origin = (0, 0, 100)
+    angles = (0, 0, 0)
+    recorded_fps = 125
+    checkpoint_id = 17
+    view_height_units = 60
+    weapon_name = b"rpg_mp"
+    for flags, velocity in movement_cases():
+        base = FRAME_FIELDS.pack(
+            *origin, *angles, flags, recorded_fps, checkpoint_id, HAS_VISUALS_EVENT
+        )
+        visual = bytearray(VISUAL_BYTES)
+        struct.pack_into("<h", visual, VIEW_HEIGHT_OFFSET, view_height_units * VIEW_HEIGHT_SCALE)
+        quantized_velocity = [component * VELOCITY_SCALE for component in velocity]
+        struct.pack_into("<3h", visual, VELOCITY_OFFSET, *quantized_velocity)
+        frames.append(base + visual + bytes([len(weapon_name)]) + weapon_name)
+
+    payloads = []
+    for start in range(0, len(frames), MAX_CHUNK_FRAMES):
+        chunk = frames[start : start + MAX_CHUNK_FRAMES]
+        raw = b"OCJ4" + struct.pack("<I", len(chunk)) + b"".join(chunk)
+        payloads.append(zlib.compress(raw).hex())
+    return payloads
+
+
+def install_recording(mod):
+    fixture = mod / "opencj/platformtest.gsc"
+    payloads = legacy_payloads()
 
     def decode_chunks(match):
         demo_id = match.group(1)
         return " + ".join(
-            'demoDecodeChunk(' + demo_id + ', "' + payload + '")' for payload in payloads
+            "demoDecodeChunk(" + demo_id + ', "' + payload + '")' for payload in payloads
         )
 
-    fixture_source, replacements = re.subn(
+    source, count = re.subn(
         r'\bdemoDecodeChunk\s*\(\s*(\w+)\s*,\s*"BODY_FIXTURE_HEX"\s*\)',
         decode_chunks,
         fixture.read_text(),
     )
-    if replacements != 1:
+    if count != 1:
         raise RuntimeError("Expected one camera recording fixture placeholder")
-    fixture.write_text(fixture_source)
+    fixture.write_text(source)
 
-    settings = mod / 'opencj/settings.gsc'
-    original = settings.read_text()
-    needle = '    self thread writePlayerSettingToDb(name, self.settingValues[name]);'
-    # Retain the real SQL builder, redirect only its final write call.
-    sqlcall = '    self thread openCJ' + chr(92) + 'mySQL::mysqlAsyncQueryNosave(query);'
-    assert original.count(sqlcall) == 1
-    original = original.replace(sqlcall, '    level.cameraWrites[level.cameraWrites.size]=query;')
-    loadcall = '    rows = self openCJ' + chr(92) + 'mySQL::mysqlAsyncQuery(query);'
-    assert original.count(loadcall) == 1
-    original = original.replace(loadcall, '    rows = level.cameraStoredRows;')
-    original = original.replace(
-        '    self openCJ' + chr(92) + 'events' + chr(92) + 'playerLogin::main();',
-        '    // Account callbacks are outside this isolated setting fixture.',
-    )
-    settings.write_text(original)
-    if options.plugin:
-        (home / 'plugins/camera_engine.so').symlink_to(options.plugin)
-    else:
-        plugin_path = '/workspace/' + str(home.relative_to(root)) + '/plugins/camera_engine.so'
-        subprocess.run(
-            [
-                'docker',
-                'compose',
-                'run',
-                '--rm',
-                '--no-deps',
-                'build',
-                'g++',
-                '-m32',
-                '-std=c++11',
-                '-msse2',
-                '-mfpmath=sse',
-                '-fPIC',
-                '-shared',
-                '-DCOD4',
-                '/workspace/dev-tools/tests/camera-engine.cpp',
-                '-o',
-                plugin_path,
-            ],
-            cwd=root / 'dev-tools',
-            check=True,
-            capture_output=True,
-        )
-    init = mod / 'opencj/events/init.gsc'
-    s = init.read_text()
-    init.write_text(
-        s.replace('    level.playerCount = 0;', '    return;\n    level.playerCount = 0;', 1)
-    )
-    game = mod / 'maps/mp/gametypes/cj.gsc'
-    s = game.read_text()
-    game.write_text(
-        s.replace(
-            'main()\n{', 'main()\n{\n    thread openCJ' + chr(92) + 'platformTest::main();', 1
-        )
-    )
-    # Test clients must not reach account/database callbacks in this isolated fixture.
-    callback = mod / 'maps/mp/gametypes/_callbacksetup.gsc'
-    import re
 
-    source = re.sub(r'//[^\n]*', '', callback.read_text())
-    import re
+def install_settings_observers(mod):
+    """Keep the real SQL builders, replacing only database and account boundaries."""
+    path = mod / "opencj/settings.gsc"
+    source = path.read_text()
+    replacements = (
+        (
+            r"openCJ\\mySQL::mysqlAsyncQueryNosave\s*\(",
+            r"openCJ\platformTest::recordSettingWrite(",
+        ),
+        (
+            r"openCJ\\mySQL::mysqlAsyncQuery\s*\(",
+            r"openCJ\platformTest::readStoredSettings(",
+        ),
+        (
+            r"\bself\s+openCJ\\events\\playerLogin::main\s*\(\s*\)\s*;",
+            "// Account callbacks are outside this isolated settings fixture.",
+        ),
+    )
+    for pattern, replacement in replacements:
+        source, count = re.subn(pattern, lambda match: replacement, source)
+        if count == 0:
+            raise RuntimeError("Camera fixture boundary was not found: " + pattern)
+    path.write_text(source)
 
-    matches = list(re.finditer(r'(CodeCallback_\w+)\([^)]*\)\s*\{', source))
-    for match in reversed(matches):
-        if match.group(1) == 'CodeCallback_FragButton':
-            continue
-        start = match.end()
-        end = start
-        depth = 1
-        while depth:
-            if source[end] == '{':
-                depth += 1
-            elif source[end] == '}':
-                depth -= 1
-            end += 1
-        source = source[:start] + '\n' + source[end - 1 :]
-    callback.write_text(source)
-    name = 'opencj-' + tag
-    args = [
-        'docker',
-        'compose',
-        'run',
-        '-d',
-        '--no-deps',
-        '--name',
-        name,
-        "--workdir",
-        "/workspace/" + str(home.relative_to(root)),
-        'server',
-        options.binary,
+
+def build_probe(home):
+    destination = home / "plugins/camera_engine.so"
+    container_path = "/workspace/" + destination.relative_to(ROOT).as_posix()
+    command = [
+        "docker",
+        "compose",
+        "run",
+        "--rm",
+        "--no-deps",
+        "build",
+        "g++",
+        "-m32",
+        "-std=c++11",
+        "-msse2",
+        "-mfpmath=sse",
+        "-fPIC",
+        "-shared",
+        "-DCOD4",
+        "/workspace/dev-tools/tests/camera-engine.cpp",
+        "-o",
+        container_path,
     ]
-    for k, v in [
-        ('fs_basepath', '/game'),
-        ('fs_homepath', '/workspace/dev-tools/local/' + tag),
-        ('fs_game', 'mods/opencj'),
-        ('dedicated', '2'),
-        ('net_port', '28974'),
-        ('sv_maxclients', '2'),
-        ('sv_authorizemode', '0'),
-        ('com_hunkMegs', '1024'),
-        ('developer', '1'),
-        ('g_gametype', 'cj'),
-        ('opencj_isolated_camera_test', '1'),
-        ('cg_thirdPerson', '1'),
-    ]:
-        args += ['+set', k, v]
-    args += ['+loadplugin', 'camera_engine', '+map', mapname]
-    try:
-        subprocess.run(args, cwd=root / 'dev-tools', check=True, capture_output=True)
-        for _ in range(45):
-            time.sleep(1)
-            log = subprocess.check_output(
-                ['docker', 'logs', name], stderr=subprocess.STDOUT, text=True
-            )
-            if (
-                ('CAMERA TEST COMPLETE' in log and 'CAMERA NATIVE COMPLETE' in log)
-                or 'script compile error' in log
-                or 'script runtime error' in log
-            ):
-                break
-        if 'script compile error' in log or 'script runtime error' in log:
-            pos = (
-                log.index('script compile error')
-                if 'script compile error' in log
-                else log.index('script runtime error')
-            )
-            print(log[pos : pos + 1400], flush=True)
-        (home / 'console.log').write_text(log)
-        lines = [
-            l
-            for l in log.splitlines()
-            if 'CAMERA' in l
-            and 'SQL' not in l
-            or 'SUPPORT FACE' in l
-            or 'script' in l.lower()
-            and 'error' in l.lower()
-        ]
-        print(mapname + '\n' + '\n'.join(lines) + '\nEvidence: ' + str(home), flush=True)
-        assert (
-            'CAMERA TEST COMPLETE failures=0' in log and 'CAMERA NATIVE COMPLETE failures=0' in log
-        ), home
-    finally:
-        subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
+    result = subprocess.run(
+        command,
+        cwd=ROOT / "dev-tools",
+        text=True,
+        capture_output=True,
+        timeout=BUILD_TIMEOUT_SECONDS,
+    )
+    (home / "probe-build.log").write_text(result.stdout + result.stderr)
+    if result.returncode:
+        raise RuntimeError("Camera probe build failed; inspect " + str(home / "probe-build.log"))
+    return destination
+
+
+def parse_options():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("maps", nargs="*", default=["mp_killhouse"])
+    parser.add_argument("--binary", default="cod4x-server/bin/cod4x18_dedrun")
+    parser.add_argument("--scripts", type=Path, default=ROOT / "server-gsc")
+    parser.add_argument("--plugin", help="Optional matching probe inside the checkout")
+    options = parser.parse_args()
+    options.fixture = ROOT / "dev-tools/tests/camera.gsc"
+    options.completion_marker = "CAMERA TEST COMPLETE"
+    options.baseline = False
+    gsc_fixture.validate_options(parser, options)
+    if options.plugin:
+        try:
+            options.plugin = workspace_file(options.plugin)
+        except ValueError as error:
+            parser.error(str(error))
+    return options
+
+
+def run_camera(options, map_name):
+    home = ROOT / "dev-tools/local" / ("camera-" + uuid.uuid4().hex[:8])
+    source_hashes, _ = gsc_fixture.prepare_fixture(options, home)
+    mod = home / "mods/opencj"
+    install_recording(mod)
+    install_settings_observers(mod)
+    if options.plugin:
+        probe = options.plugin
+        (home / "plugins/camera_engine.so").symlink_to(workspace_path(probe))
+    else:
+        probe = build_probe(home)
+    (home / "probe-source.json").write_text(
+        json.dumps(
+            {
+                "pluginSha256": hashlib.sha256(probe.read_bytes()).hexdigest(),
+                "sourceSha256": (
+                    hashlib.sha256(
+                        (ROOT / "dev-tools/tests/camera-engine.cpp").read_bytes()
+                    ).hexdigest()
+                    if options.plugin is None
+                    else None
+                ),
+                "builtFromSource": options.plugin is None,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    report = gsc_fixture.run_prepared_fixture(
+        options,
+        home,
+        map_name,
+        source_hashes,
+        plugin_names=("camera_engine",),
+        extra_completion_markers=("CAMERA NATIVE COMPLETE",),
+        extra_settings={"opencj_isolated_camera_test": "1", "cg_thirdPerson": "1"},
+    )
+    log = (home / "console.log").read_text()
+    script_checks = sum(line.startswith("CAMERA TEST 1:") for line in log.splitlines())
+    native_checks = sum(line.startswith("CAMERA NATIVE 1:") for line in log.splitlines())
+    if script_checks == 0 or native_checks == 0:
+        raise RuntimeError("Camera fixture completed without both script and native checks.")
+    report.update(scriptChecks=script_checks, nativeChecks=native_checks)
+    (home / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(f"PASS: {script_checks} script and {native_checks} native camera checks", flush=True)
+
+
+def main():
+    options = parse_options()
+    for map_name in options.maps:
+        run_camera(options, map_name)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
