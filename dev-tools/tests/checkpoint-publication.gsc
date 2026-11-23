@@ -363,7 +363,13 @@ publicationQuery(query)
 checkFinalizationRun(editor)
 {
     editor.cpc = routeDraft("finalize_route");
-    editor.cpc.huds = [];
+    editor.cpc.routeColor = (0, 1, 0);
+    editor openCJ\checkpointCreation::createEditorHuds();
+    checkpointHud = editor.cpc.huds["checkpoint"];
+    actionsHud = editor.cpc.huds["actions"];
+    routeHud = editor.cpc.huds["route"];
+    check(isDefined(checkpointHud) && isDefined(actionsHud) && isDefined(routeHud),
+          "editor allocates its three named HUD panels");
     editor.cpc.positions = [];
     level.finalizeActivations = 0;
     level.finalizeRunCreated = 0;
@@ -376,6 +382,8 @@ checkFinalizationRun(editor)
     editor.cpc.routeHex = "#123456";
     editor openCJ\checkpointCreation::finalize();
     check(!isDefined(editor.cpc), "successful finalization closes the editor");
+    check(!isDefined(checkpointHud) && !isDefined(actionsHud) && !isDefined(routeHud),
+          "closing the editor releases all three HUD panels");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='finalize_route'", 4,
                 "finalization publishes the route before returning to gameplay");
     check(level.finalizeActivations == 1, "finalization requests one graph refresh");

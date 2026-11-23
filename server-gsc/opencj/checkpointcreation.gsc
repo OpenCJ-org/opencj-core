@@ -8,10 +8,15 @@ onInit()
     {
         return;
     }
+    maxCommandArguments = 17; // One operation followed by up to 16 network route names.
     commandDefinition = openCJ\commands_base::registerCommand(
         "checkpoint",
-        "!cp <route> [#RRGGBB] (start or continue your draft) | list | reset <route> | split <routes> | merge <routes> | rename <old> <new> | detect | corner | confirm | alternative | area | undo | finish | double | ele | ground | allowsave | height [units] | select <number> | new | discard | edit [number|last] | postsert | presert | insert (help) | replace | delete [area] | test | save | finalize | stop",
-        ::command, 0, 17, openCJ\commands_base::checkpointEditorLevel());
+        "!cp <route> [#RRGGBB] (start or continue your draft) | list | reset <route> | split " +
+        "<routes> | merge <routes> | rename <old> <new> | detect | corner | confirm | alternative " +
+        "| area | undo | finish | double | ele | ground | allowsave | height [units] | select " +
+        "<number> | new | discard | edit [number|last] | postsert | presert | insert (help) | " +
+        "replace | delete [area] | test | save | finalize | stop",
+        ::command, 0, maxCommandArguments, openCJ\commands_base::checkpointEditorLevel());
     openCJ\commands_base::addAlias(commandDefinition, "cp");
     openCJ\commands_base::addAlias(commandDefinition, "cpc");
 }
@@ -76,7 +81,9 @@ command(commandArguments)
     // Non-command names open the player's existing draft or create a new one.
     commandArguments[0] = toLower(commandArguments[0]);
     commands =
-        "|list|reset|rename|split|merge|edit|insert|postsert|presert|replace|deletearea|select|stop|save|finalize|publish|test|finish|double|ele|ground|allowsave|height|undo|discard|alternative|area|detect|corner|confirm|new|previous|next|delete|";
+        "|list|reset|rename|split|merge|edit|insert|postsert|presert|replace|deletearea|" +
+        "select|stop|save|finalize|publish|test|finish|double|ele|ground|allowsave|height|" +
+        "undo|discard|alternative|area|detect|corner|confirm|new|previous|next|delete|";
     if ((commandArguments.size == 1 || commandArguments.size == 2) &&
        !isSubStr(commands, "|" + commandArguments[0] + "|"))
     {
@@ -86,7 +93,8 @@ command(commandArguments)
     if (commandArguments[0] == "insert")
     {
         self sendLocalChatMessage(
-            "To add after the selected checkpoint, use !cpc postsert. To add before it, use !cpc presert. Select it with !cpc edit first.");
+            "To add after the selected checkpoint, use !cpc postsert. To add before it, use !cpc " +
+            "presert. Select it with !cpc edit first.");
         return;
     }
     if (!self isEditing())
@@ -436,7 +444,9 @@ _decode(row)
     }
     if (fields.size == 7 || (fields.size == 8 && fields[6] != "-"))
     {
-        if (fields[6].size < 2 || fields[6].size > 101 ||
+        // One kind prefix plus at most 100 targetname characters, matching the writer.
+        maxPlatformReferenceLength = 101;
+        if (fields[6].size < 2 || fields[6].size > maxPlatformReferenceLength ||
            (fields[6][0] != "b" && fields[6][0] != "n"))
         {
             return undefined;
@@ -598,9 +608,11 @@ _start(routeName, routeHex)
     self execClientCmd(
         "bind KP_INS say !cp detect; bind KP_5 say !cp detect; " +
         "bind KP_ENTER say !cp confirm; bind KP_PLUS say !cp corner; bind KP_MINUS say !cp undo; " +
-        "bind KP_UPARROW say !cp ele; bind KP_END say !cp double; bind KP_PGUP say !cp finish; bind KP_DOWNARROW say !cp ground; bind KP_PGDN say !cp allowsave; " +
+        "bind KP_UPARROW say !cp ele; bind KP_END say !cp double; bind KP_PGUP say !cp finish; " +
+        "bind KP_DOWNARROW say !cp ground; bind KP_PGDN say !cp allowsave; " +
         "bind KP_LEFTARROW say !cp previous; bind KP_RIGHTARROW say !cp next; " +
-        "bind KP_DEL say !cp discard; bind KP_HOME say !cp height; bind KP_SLASH say !cp alternative; bind KP_STAR say !cp area");
+        "bind KP_DEL say !cp discard; bind KP_HOME say !cp height; bind KP_SLASH say !cp " +
+        "alternative; bind KP_STAR say !cp area");
     self thread _loop();
 }
 
@@ -653,23 +665,21 @@ restoreDraftSnapshots(routeName)
 createEditorHuds()
 {
     self.cpc.huds = [];
-    for (i = 0; i < 4; i++)
+    panelNames = strTok("checkpoint actions route", " ");
+    for (i = 0; i < panelNames.size; i++)
     {
-        if (i == 2)
-        {
-            continue;
-        } // Properties use the client HUD for smaller, crisp text.
-        self.cpc.huds[i] = newClientHudElem(self);
-        self.cpc.huds[i].lastText = "";
-        configureHud(self.cpc.huds[i]);
+        panelName = panelNames[i];
+        self.cpc.huds[panelName] = newClientHudElem(self);
+        self.cpc.huds[panelName].lastText = "";
+        configureHud(self.cpc.huds[panelName]);
     }
     // Two compact columns: headers share the top row, body starts below them.
-    self.cpc.huds[0].x = 282;
-    self.cpc.huds[0].font = "objective";
-    self.cpc.huds[0].color = (0.75, 0.85, 1);
-    self.cpc.huds[1].y = 30;
-    self.cpc.huds[3].fontScale = 1.4;
-    self.cpc.huds[3].color = self.cpc.routeColor;
+    self.cpc.huds["checkpoint"].x = 282;
+    self.cpc.huds["checkpoint"].font = "objective";
+    self.cpc.huds["checkpoint"].color = (0.75, 0.85, 1);
+    self.cpc.huds["actions"].y = 30;
+    self.cpc.huds["route"].fontScale = 1.4;
+    self.cpc.huds["route"].color = self.cpc.routeColor;
     self setClientCvar("developer", 1);
 }
 
@@ -1703,7 +1713,7 @@ _close()
     self notify("cpc_stopped");
     self setClientCvar("developer", 0);
     self setClientCvar("opencj_cpc_properties", "");
-    // Properties use a client menu, leaving a hole in the HUD array.
+    // Release only the HUDs owned by this editor.
     keys = getArrayKeys(self.cpc.huds);
     for (i = 0; i < keys.size; i++)
     {
@@ -1865,8 +1875,8 @@ previewSelection()
 _draw()
 {
     preview = self previewSelection();
-    self.cpc.huds[3].color = preview.displayColor;
-    self.cpc.huds[3] _setPanelText(getSubStr(preview.displayRoute, 0, 16) + " (" +
+    self.cpc.huds["route"].color = preview.displayColor;
+    self.cpc.huds["route"] _setPanelText(getSubStr(preview.displayRoute, 0, 16) + " (" +
                                    self.cpc.rows.size + ")");
     self drawCheckpointProperties(preview);
     self drawCheckpointActions(preview);
@@ -1896,7 +1906,7 @@ drawCheckpointProperties(preview)
     {
         heading = "Moving platform";
     }
-    self.cpc.huds[0] _setPanelText(heading);
+    self.cpc.huds["checkpoint"] _setPanelText(heading);
     panelText = self propertyPanelText(propertyCheckpoint);
     if (!isDefined(self.cpc.propertiesText) || self.cpc.propertiesText != panelText)
     {
@@ -2040,7 +2050,7 @@ actionPanelText(preview)
 drawCheckpointActions(preview)
 {
     panelText = self actionPanelText(preview);
-    self.cpc.huds[1] _setPanelText(panelText);
+    self.cpc.huds["actions"] _setPanelText(panelText);
     // Fit the current action list; do not reserve empty rows in shorter states.
     lineCount = 1;
     for (lineIndex = 0; lineIndex < panelText.size; lineIndex++)
