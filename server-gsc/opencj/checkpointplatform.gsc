@@ -10,9 +10,14 @@ getRectangularPlatformOrgs()
     }
     points = detectLandingAt(self.origin);
     if (!isDefined(points))
-        self iprintln("Could not identify a supported platform; use !cp corner for manual placement");
+    {
+        self iprintln(
+            "Could not identify a supported platform; use !cp corner for manual placement");
+    }
     else
+    {
         self iprintln("Detected platform edges from collision geometry");
+    }
     return points;
 }
 
@@ -21,12 +26,12 @@ getRectangularPlatformOrgs()
 // CoD2 retains its trace-based fallback.
 detectLandingAt(origin)
 {
-    top = bulletTrace(origin + (0,0,2), origin - (0,0,24), false, undefined);
+    top = bulletTrace(origin + (0, 0, 2), origin - (0, 0, 24), false, undefined);
     if (top["fraction"] < 1 && top["normal"][2] >= 0.7 && abs(top["position"][2] - origin[2]) <= 0.5)
     {
         points = platformBrushFace(top["position"], top["normal"], false, true);
         if (isDefined(points) && openCJ\checkpointArea::validate(points) == "" &&
-            openCJ\checkpointArea::contains(points, origin, true))
+           openCJ\checkpointArea::contains(points, origin, true))
         {
             return points;
         }
@@ -34,18 +39,26 @@ detectLandingAt(origin)
     // A grounded player's center may hang over an edge. Find a walkable face
     // within the same 15-unit circular edge contact and slope-height allowance
     // used by gameplay. The native broad-phase box is not itself support.
-    supported = platformBrushFace(origin, (0,0,1), true, true);
+    supported = platformBrushFace(origin, (0, 0, 1), true, true);
     if (isDefined(supported) && openCJ\checkpointArea::validate(supported) == "")
+    {
         return supported;
+    }
     // CoD4's native path covers brushes, terrain and static-model collision.
     // A rejected/over-budget result must not fall through to a sampled rectangle.
     if (getCodVersion() == 4)
+    {
         return undefined;
+    }
     // Preserve CoD2's legacy trace detector until its native geometry is available.
-    if (isDefined(platformBrushFace(origin, (0,0,1), true)))
+    if (isDefined(platformBrushFace(origin, (0, 0, 1), true)))
+    {
         return undefined;
+    }
     if (top["fraction"] < 1 && abs(top["position"][2] - origin[2]) <= 0.5)
+    {
         return detectAt(origin);
+    }
     return undefined;
 }
 
@@ -53,14 +66,20 @@ detectAt(origin)
 {
     top = bulletTrace(origin + (0, 0, 2), origin - (0, 0, 24), false, undefined);
     if (top["fraction"] == 1 || top["normal"][2] < 0.7)
+    {
         return undefined;
+    }
     normal = top["normal"];
     start = top["position"] - normal;
     face = _side(start, vectorNormalize((normal[2], 0, 0 - normal[0])), normal);
     if (!isDefined(face))
+    {
         face = _side(start, vectorNormalize((0, normal[2], 0 - normal[1])), normal);
+    }
     if (!isDefined(face))
+    {
         return undefined;
+    }
     axis = face["normal"];
     side = openCJ\checkpointArea::crossProduct(normal, axis);
     // On a skewed slope, follow the adjacent edge instead of assuming a
@@ -68,7 +87,9 @@ detectAt(origin)
     // Allow up to about 18 degrees of skew; all corner/edge support checks remain.
     adjacent = _side(start, side, normal);
     if (!isDefined(adjacent) || vectorDot(adjacent["normal"], side) < 0.95)
+    {
         return undefined;
+    }
     along = openCJ\checkpointArea::crossProduct(adjacent["normal"], normal);
     directions = [];
     directions[0] = along;
@@ -81,11 +102,15 @@ detectAt(origin)
     {
         hit = _side(start, directions[i], normal);
         if (!isDefined(hit) || vectorDot(hit["normal"], directions[i]) < 0.95)
+        {
             return undefined;
+        }
         faces[i] = hit["normal"];
         distances[i] = vectorDot(hit["position"] - top["position"], faces[i]);
         if (distances[i] <= 0 || distances[i] >= 4096)
+        {
             return undefined;
+        }
     }
     // A wall can overlap only part of an edge. Tighten to that wall's face,
     // then verify again; never accept a corner merely because it is obstructed.
@@ -105,7 +130,9 @@ detectAt(origin)
             for (j = 0; j < probes.size; j++)
             {
                 if (_sameTop(probes[j], normal))
+                {
                     continue;
+                }
                 above = top["position"] + normal;
                 wall = bulletTrace(above, probes[j] + normal, false, undefined);
                 // A missing corner is an exposed edge, not necessarily a wall.
@@ -116,15 +143,21 @@ detectAt(origin)
                     wall["normal"] = vectorScale(wall["normal"], -1);
                 }
                 if (wall["fraction"] == 1 || abs(vectorDot(wall["normal"], normal)) > 0.99)
+                {
                     return undefined;
+                }
                 for (k = 0; k < 4; k++)
                 {
                     faceNormal = _tangent(wall["normal"], normal);
                     denominator = vectorDot(wall["normal"], directions[k]);
                     if (abs(denominator) < 0.001)
+                    {
                         continue;
-                    limit = vectorDot(wall["position"] - top["position"], wall["normal"]) / denominator;
-                    if (vectorDot(faceNormal, faces[k]) < -0.95 && limit > 0 && limit < distances[k] - 0.01)
+                    }
+                    limit =
+                        vectorDot(wall["position"] - top["position"], wall["normal"]) / denominator;
+                    if (vectorDot(faceNormal, faces[k]) < -0.95 && limit > 0 &&
+                       limit < distances[k] - 0.01)
                     {
                         boundary = _boundary(wall, top["position"], directions[k], normal);
                         faces[k] = vectorScale(boundary["normal"], -1);
@@ -137,14 +170,20 @@ detectAt(origin)
                 // boundary of the landing. Keep the original checkpoint plane;
                 // standing on top of the obstruction does not pass this area.
                 if (!trimmed && _solidAt(probes[j], normal))
+                {
                     continue;
+                }
                 if (!trimmed)
+                {
                     return undefined;
+                }
                 break;
             }
         }
         if (!trimmed)
+        {
             return points;
+        }
     }
     return undefined;
 }
@@ -152,7 +191,9 @@ detectAt(origin)
 _side(start, direction, normal)
 {
     if (!isDefined(normal))
+    {
         normal = (0, 0, 1);
+    }
     // Walk outward on this top first. Tracing back from a distant wall can hit
     // a different brush behind the platform, even when its normal looks correct.
     top = start + normal;
@@ -167,7 +208,9 @@ _side(start, direction, normal)
         // the hit one unit above it. Check support just inside the actual seam.
         denominator = vectorDot(wall["normal"], direction);
         if (abs(denominator) > 0.001)
+        {
             wallDistance = vectorDot(wall["position"] - top, wall["normal"]) / denominator;
+        }
     }
     near = 0;
     far = 4;
@@ -188,19 +231,27 @@ _side(start, direction, normal)
             return _boundary(wall, top, direction, normal);
         }
         if (!_sameTop(top + vectorScale(direction, far), normal))
+        {
             break;
+        }
         near = far;
         far += 4;
     }
     if (far > 4096)
+    {
         return undefined;
+    }
     for (i = 0; i < 8; i++)
     {
         mid = (near + far) * 0.5;
         if (_sameTop(top + vectorScale(direction, mid), normal))
+        {
             near = mid;
+        }
         else
+        {
             far = mid;
+        }
     }
     outside = start + vectorScale(direction, far + 0.25);
     hit = bulletTrace(outside, start, false, undefined);
@@ -212,28 +263,41 @@ _side(start, direction, normal)
         hit = bulletTrace(shallow + vectorScale(direction, far + 0.25), shallow, false, undefined);
     }
     if (hit["fraction"] == 1 || abs(vectorDot(hit["normal"], normal)) > 0.99)
+    {
         return undefined;
+    }
     boundary = _boundary(hit, top, direction, normal);
     if (!isDefined(boundary))
+    {
         return undefined;
+    }
     // At a thin tapered edge, collision padding on the underside is amplified
     // when intersected with the top plane. Never extrapolate past the measured
     // surface edge; retain the face orientation but use the last supported point.
     if (vectorDot(boundary["position"] - top, direction) > far + 0.25)
+    {
         boundary["position"] = top + vectorScale(direction, near);
+    }
     return boundary;
 }
 
 _sameTop(point, normal)
 {
     if (!isDefined(normal))
+    {
         normal = (0, 0, 1);
-    hit = bulletTrace(point + vectorScale(normal, 2), point - vectorScale(normal, 2), false, undefined);
+    }
+    hit = bulletTrace(point + vectorScale(normal, 2), point - vectorScale(normal, 2), false,
+                      undefined);
     // A tall probe can start inside an adjoining inclined wall even though the
     // landing itself is clear. Retry close to the surface before rejecting it.
     if (hit["fraction"] < 1 && vectorDot(hit["normal"], normal) < 0.999)
-        hit = bulletTrace(point + vectorScale(normal, 0.25), point - vectorScale(normal, 2), false, undefined);
-    return hit["fraction"] < 1 && vectorDot(hit["normal"], normal) > 0.999 && distanceSquared(hit["position"], point) < 0.0625;
+    {
+        hit = bulletTrace(point + vectorScale(normal, 0.25), point - vectorScale(normal, 2), false,
+                          undefined);
+    }
+    return hit["fraction"] < 1 && vectorDot(hit["normal"], normal) > 0.999 &&
+           distanceSquared(hit["position"], point) < 0.0625;
 }
 
 _tangent(vector, normal)
@@ -246,7 +310,9 @@ _boundary(hit, top, direction, normal)
 {
     denominator = vectorDot(hit["normal"], direction);
     if (abs(denominator) < 0.001)
+    {
         return undefined;
+    }
     distance = vectorDot(hit["position"] - top, hit["normal"]) / denominator;
     hit["position"] = top + vectorScale(direction, distance);
     hit["normal"] = _tangent(hit["normal"], normal);
@@ -275,10 +341,10 @@ _corners(origin, axis, side, faces, distances)
         b = vectorDot(faces[i], side);
         c = vectorDot(faces[j], axis);
         d = vectorDot(faces[j], side);
-        determinant = a*d - b*c;
-        x = (distances[i]*d - b*distances[j]) / determinant;
-        y = (a*distances[j] - distances[i]*c) / determinant;
-        points[i] = origin + vectorScale(axis,x) + vectorScale(side,y);
+        determinant = a * d - b * c;
+        x = (distances[i] * d - b * distances[j]) / determinant;
+        y = (a * distances[j] - distances[i] * c) / determinant;
+        points[i] = origin + vectorScale(axis, x) + vectorScale(side, y);
     }
     return points;
 }
@@ -287,6 +353,7 @@ _corners(origin, axis, side, faces, distances)
 // Do not treat a missing surface (fraction one) as an obstruction.
 _solidAt(point, normal)
 {
-    hit = bulletTrace(point + vectorScale(normal, 0.125), point - vectorScale(normal, 0.125), false, undefined);
+    hit = bulletTrace(point + vectorScale(normal, 0.125), point - vectorScale(normal, 0.125), false,
+                      undefined);
     return hit["fraction"] == 0 && vectorDot(hit["normal"], hit["normal"]) < 0.001;
 }
