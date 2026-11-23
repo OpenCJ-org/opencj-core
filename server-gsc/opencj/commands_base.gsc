@@ -3,36 +3,34 @@
 onInit()
 {
     level.commands = [];
-    cmd = registerCommand(
+    helpCommand = registerCommand(
         "help", "Browse commands, or show help for a command or alias. Usage: !help [command]",
         ::_showHelp, 0, 1, 0);
-    addAlias(cmd, "commands");
+    addAlias(helpCommand, "commands");
 }
 
-registerCommand(name, help, func, minArgs, maxArgs, minAdminLevel, settingName)
+registerCommand(commandName, description, callback, minArgs, maxArgs, minAdminLevel, settingName)
 {
-    name = toLower(name);
-    cmd = spawnStruct();
-    cmd.name = name;
-    cmd.help = help;
-    cmd.func = func;
-    cmd.minArgs = minArgs;
-    cmd.maxArgs = maxArgs;
-    cmd.minAdminLevel = minAdminLevel;
-    cmd.settingName = settingName;
-    level.commands[name] = cmd;
+    commandName = toLower(commandName);
+    command = spawnStruct();
+    command.name = commandName;
+    command.help = description;
+    command.func = callback;
+    command.minArgs = minArgs;
+    command.maxArgs = maxArgs;
+    command.minAdminLevel = minAdminLevel;
+    command.settingName = settingName;
+    level.commands[commandName] = command;
 
-    return level.commands[name];
+    return level.commands[commandName];
 }
 
-addAlias(cmd, alias)
+addAlias(command, aliasName)
 {
-    // Just register a new command with the same variables. Can't re-use command, because any
-    // changes we do in here..
-    // ..such as setting a flag that this is an alias, would apply to the original command as well
-    aliasCmd = spawnStruct();
-    aliasCmd.cmd = cmd;
-    level.commands[toLower(alias)] = aliasCmd;
+    // Keep alias metadata separate so registering an alias cannot modify its primary command.
+    aliasCommand = spawnStruct();
+    aliasCommand.cmd = command;
+    level.commands[toLower(aliasName)] = aliasCommand;
 }
 
 // Permission levels: editor 20, moderator 40, admin 60, uber-admin 100.
@@ -54,97 +52,93 @@ isUberAdminLevel(value)
 setAdminLevel(value)
 {
     self.adminLevel = value;
-    if(isDefined(self.currentMenu) && self.currentMenu == "opencj_commands")
+    if (isDefined(self.currentMenu) && self.currentMenu == "opencj_commands")
     {
         self openCJ\menus\commands::refresh(false);
     }
 }
 
-onPlayerCommand(fullArgs)
+// Return true for recognized commands, including permission/argument failures, to suppress chat.
+onPlayerCommand(chatArguments)
 {
     if(!self isPlayerReady())
     {
         return;
     }
-    // fullArgs will contain the player command, such as say or say_team as well
-    // "say !command" is the minimum
-    if(fullArgs.size < 2)
+    // The chat verb precedes the command token, for example: say !help.
+    if(chatArguments.size < 2)
     {
         return false;
     }
 
-    // If first argument is say or say_team, it means there is possibly a command afterwards
-    if((fullArgs[0] != "say") && (fullArgs[0] != "say_team"))
+    chatVerb = chatArguments[0];
+    commandToken = chatArguments[1];
+    if((chatVerb != "say" && chatVerb != "say_team") || commandToken.size == 0)
     {
         return false;
     }
 
-    if((fullArgs[1][0] != "!") && (fullArgs[1][0] != ".") && (fullArgs[1][0] != "/") &&
-       (fullArgs[1][0] != "$"))
+    commandPrefix = commandToken[0];
+    if(commandPrefix != "!" && commandPrefix != "." && commandPrefix != "/" && commandPrefix != "$")
     {
         return false;
     }
-    fullArgs[1] = getsubstr(tolower(fullArgs[1]), 1);
+    chatArguments[1] = getsubstr(tolower(commandToken), 1);
 
-    fullMsg = arrayConcat(subArray(fullArgs, 1));
-
-    // self sendLocalChatMessage(fullMsg);
+    commandText = arrayConcat(subArray(chatArguments, 1));
 
     // Is it even a command we support?
-    cmd = level.commands[fullArgs[1]];
-    if(!isDefined(cmd))
+    command = level.commands[chatArguments[1]];
+    if(!isDefined(command))
     {
         return false;
     }
-    if(isDefined(cmd.cmd))
+    if(isDefined(command.cmd))
     {
-        cmd = cmd.cmd; // Redirect alias commands to their real command counterpart
+        command = command.cmd; // Redirect alias commands to their real command counterpart
     }
 
-    if(isDefined(cmd.redactArgs) && cmd.redactArgs)
+    if(isDefined(command.redactArgs) && command.redactArgs)
     {
-        printf("Player " + self openCJ\login::getPlayerID() + " used !" + cmd.name +
+        printf("Player " + self openCJ\login::getPlayerID() + " used !" + command.name +
                " (arguments withheld)\n");
     }
     else
     {
-        printf(self.name + " is executing command: " + fullMsg + "\n");
+        printf(self.name + " is executing command: " + commandText + "\n");
     }
 
     // Does the player have sufficient permissions?
-    if(self.adminLevel < cmd.minAdminLevel)
+    if(self.adminLevel < command.minAdminLevel)
     {
         self sendLocalChatMessage("You do not have sufficient permissions to execute this command",
                                   true);
-        return true; // It was a command, but permissions were incorrect. Don't interpret this as a
-                     // chat message anymore.
+        return true;
     }
 
     // Get rid of say/say_team and the command itself
-    args = subArray(fullArgs, 2);
+    commandArguments = subArray(chatArguments, 2);
 
     // Check the number of arguments is correct for this command
-    if(isDefined(cmd.minArgs) && (args.size < cmd.minArgs))
+    if(isDefined(command.minArgs) && (commandArguments.size < command.minArgs))
     {
-        self sendLocalChatMessage(cmd.help);
-        return true; // It was a command, but arguments were incorrect. Don't interpret this as a
-                     // chat message anymore.
+        self sendLocalChatMessage(command.help);
+        return true;
     }
-    if(isDefined(cmd.maxArgs) && (args.size > cmd.maxArgs))
+    if(isDefined(command.maxArgs) && (commandArguments.size > command.maxArgs))
     {
-        return true; // It was a command, but arguments were incorrect. Don't interpret this as a
-                     // chat message anymore.
+        return true;
     }
 
     // Command might be a setting, if so, let the settings handler deal with it
-    if(isDefined(cmd.settingName))
+    if(isDefined(command.settingName))
     {
-        self openCJ\settings::onSetting(cmd.settingName, args); // Name of setting and the arguments
+        self openCJ\settings::onSetting(command.settingName, commandArguments); // Name of setting and the arguments
     }
-    if(isDefined(cmd.func))
+    if(isDefined(command.func))
     {
         // Execute the command with any arguments that may have been passed
-        self [[cmd.func]] (args);
+        self [[command.func]] (commandArguments);
     }
 
     return true;
@@ -153,133 +147,136 @@ onPlayerCommand(fullArgs)
 // Read the live registry, including aliases registered after initialization.
 availableCommands(adminLevel, search)
 {
-    if(!isDefined(adminLevel))
+    if (!isDefined(adminLevel))
     {
         adminLevel = 0;
     }
-    if(!isDefined(search))
+    if (!isDefined(search))
     {
         search = "";
     }
     search = toLower(search);
-    names = sortedNames(getArrayKeys(level.commands));
-    entries = [];
+    commandNames = sortedNames(getArrayKeys(level.commands));
+    exactEntries = [];
     partialEntries = [];
-    for(i = 0; i < names.size; i++)
+    for (i = 0; i < commandNames.size; i++)
     {
-        cmd = level.commands[names[i]];
-        if(isDefined(cmd.cmd) || adminLevel < cmd.minAdminLevel)
+        command = level.commands[commandNames[i]];
+        if (isDefined(command.cmd) || adminLevel < command.minAdminLevel)
         {
             continue;
         }
-        entry = spawnStruct();
-        entry.name = names[i];
-        entry.help = cmd.help;
-        if(!isDefined(entry.help) || entry.help == "")
+        entry = describeCommand(commandNames[i], command, commandNames);
+        exactMatch = search == entry.name || isInArray(search, entry.aliases);
+        searchableNames = toLower(entry.name + " " + entry.aliasText);
+        if (exactMatch)
         {
-            entry.help = "No description provided.";
+            exactEntries[exactEntries.size] = entry;
         }
-        entry.aliases = [];
-        entry.aliasText = "";
-        exactMatch = search == entry.name;
-        for(a = 0; a < names.size; a++)
-        {
-            alias = level.commands[names[a]];
-            if(!isDefined(alias.cmd) || alias.cmd != cmd)
-            {
-                continue;
-            }
-            if(search == names[a])
-            {
-                exactMatch = true;
-            }
-            entry.aliases[entry.aliases.size] = names[a];
-            if(entry.aliasText != "")
-            {
-                entry.aliasText += ", ";
-            }
-            entry.aliasText += "!" + names[a];
-        }
-        haystack = toLower(entry.name + " " + entry.aliasText);
-        if(exactMatch)
-        {
-            entries[entries.size] = entry;
-        }
-        else if(search == "" || isSubStr(haystack, search))
+        else if (search == "" || isSubStr(searchableNames, search))
         {
             partialEntries[partialEntries.size] = entry;
         }
     }
-    // Stable groups: exact command/alias first, then alphabetical partial matches.
-    for(i = 0; i < partialEntries.size; i++)
+    // Exact command/alias matches come first; each group keeps alphabetical order.
+    for (i = 0; i < partialEntries.size; i++)
     {
-        entries[entries.size] = partialEntries[i];
+        exactEntries[exactEntries.size] = partialEntries[i];
     }
-    return entries;
+    return exactEntries;
 }
 
-helpText(name, adminLevel)
+// Describe one primary command and its aliases without exposing a second menu entry per alias.
+describeCommand(commandName, command, registeredNames)
 {
-    name = toLower(name);
-    cmd = level.commands[name];
-    if(!isDefined(cmd))
+    entry = spawnStruct();
+    entry.name = commandName;
+    entry.help = command.help;
+    if (!isDefined(entry.help) || entry.help == "")
+    {
+        entry.help = "No description provided.";
+    }
+    entry.aliases = [];
+    entry.aliasText = "";
+    for (i = 0; i < registeredNames.size; i++)
+    {
+        aliasCommand = level.commands[registeredNames[i]];
+        if (!isDefined(aliasCommand.cmd) || aliasCommand.cmd != command)
+        {
+            continue;
+        }
+        entry.aliases[entry.aliases.size] = registeredNames[i];
+        if (entry.aliasText != "")
+        {
+            entry.aliasText += ", ";
+        }
+        entry.aliasText += "!" + registeredNames[i];
+    }
+    return entry;
+}
+
+helpText(commandName, adminLevel)
+{
+    commandName = toLower(commandName);
+    command = level.commands[commandName];
+    if (!isDefined(command))
     {
         return "Command not found.";
     }
-    heading = "!" + name;
-    if(isDefined(cmd.cmd))
+    heading = "!" + commandName;
+    if (isDefined(command.cmd))
     {
-        cmd = cmd.cmd;
-        heading += " (alias for !" + cmd.name + ")";
+        command = command.cmd;
+        heading += " (alias for !" + command.name + ")";
     }
-    if(!isDefined(adminLevel) || adminLevel < cmd.minAdminLevel)
+    if (!isDefined(adminLevel) || adminLevel < command.minAdminLevel)
     {
         return "You do not have sufficient permissions to use this command.";
     }
-    help = cmd.help;
-    if(!isDefined(help) || help == "")
+    description = command.help;
+    if (!isDefined(description) || description == "")
     {
-        help = "No description provided.";
+        description = "No description provided.";
     }
-    return heading + ": " + help;
+    return heading + ": " + description;
 }
 
-sortedNames(names)
+sortedNames(commandNames)
 {
     // GSC does not compare strings with <; use the runtime's character codes.
-    for(i = 1; i < names.size; i++)
+    for (i = 1; i < commandNames.size; i++)
     {
-        value = names[i];
+        commandName = commandNames[i];
         j = i;
-        while(j > 0 && nameBefore(value, names[j - 1]))
+        while (j > 0 && nameBefore(commandName, commandNames[j - 1]))
         {
-            names[j] = names[j - 1];
+            commandNames[j] = commandNames[j - 1];
             j--;
         }
-        names[j] = value;
+        commandNames[j] = commandName;
     }
-    return names;
+    return commandNames;
 }
 
-nameBefore(a, b)
+nameBefore(firstName, secondName)
 {
-    a = toLower(a);
-    b = toLower(b);
-    for(i = 0; i < min(a.size, b.size); i++)
+    firstName = toLower(firstName);
+    secondName = toLower(secondName);
+    for (i = 0; i < min(firstName.size, secondName.size); i++)
     {
-        if(a[i] != b[i])
+        if (firstName[i] != secondName[i])
         {
-            return getAscii(a[i]) < getAscii(b[i]);
+            return getAscii(firstName[i]) < getAscii(secondName[i]);
         }
     }
-    return a.size < b.size;
+    return firstName.size < secondName.size;
 }
 
-_showHelp(args)
+_showHelp(commandArguments)
 {
-    if(isDefined(args) && args.size > 0)
+    if (isDefined(commandArguments) && commandArguments.size > 0)
     {
-        self sendLocalChatMessage(helpText(args[0], self.adminLevel));
+        self sendLocalChatMessage(helpText(commandArguments[0], self.adminLevel));
     }
     else
     {

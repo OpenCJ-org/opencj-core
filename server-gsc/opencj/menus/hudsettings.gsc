@@ -2,15 +2,18 @@
 
 onInit()
 {
-    if(getCodVersion() == 4)
+    if (getCodVersion() == 4)
     {
         precacheMenu("opencj_hudsettings");
         precacheMenu("opencj_exitconfirm");
     }
-    // Register after the final settings registry reset in events/init.
-    openCJ\settings::addSettingInt("checkpointicons", 0, 2, 2,
-                                   "Checkpoint icons: 0 off, 1 locations only, 2 all markers.",
-                                   openCJ\checkpointPointers::onIconSetting);
+    // Register after the final settings reset; checkpointPointers already defines these modes.
+    openCJ\settings::addSettingInt(
+        "checkpointicons", level.checkpointIconsOff, level.checkpointIconsAll,
+        level.checkpointIconsAll, "Checkpoint icons: 0 off, 1 locations only, 2 all markers.",
+        openCJ\checkpointPointers::onIconSetting);
+    // Choice order matches the client menu. These strings are stored setting values,
+    // while responses contain their zero-based positions in each row.
     level.hudMenuSettings = [];
     addRow("fpshud", "0 2 1");
     addRow("speedometer", "0 1");
@@ -28,55 +31,56 @@ onInit()
     addRow("checkpointicons", "0 1 2");
 }
 
-addRow(key, values)
+addRow(settingName, choiceValues)
 {
-    level.hudMenuSettings[key] = strTok(values, " ");
+    level.hudMenuSettings[settingName] = strTok(choiceValues, " ");
 }
 
 responses()
 {
     self endon("disconnect");
     level endon("game_ended");
-    for(;;)
+    for (;;)
     {
         self waittill("menuresponse", menu, response);
-        if(toLower(menu) == "opencj_hudsettings")
+        if (toLower(menu) == "opencj_hudsettings")
         {
             self handleResponse(response);
         }
     }
 }
 
+// Accept only a registered setting row and a canonical choice index.
 handleResponse(response)
 {
-    if(!self openCJ\settings::areSettingsLoaded())
+    if (!self openCJ\settings::areSettingsLoaded())
     {
         return;
     }
-    if(response == "begin")
+    if (response == "begin")
     {
         self publish();
         return;
     }
-    parts = strTok(response, ":");
-    if(parts.size != 2 || response != parts[0] + ":" + parts[1] ||
-       !isDefined(level.hudMenuSettings[parts[0]]))
+    responseParts = strTok(response, ":");
+    if (responseParts.size != 2 || response != responseParts[0] + ":" + responseParts[1] ||
+       !isDefined(level.hudMenuSettings[responseParts[0]]))
     {
         return;
     }
-    key = parts[0];
-    values = level.hudMenuSettings[key];
+    settingName = responseParts[0];
+    choiceValues = level.hudMenuSettings[settingName];
     // Match a canonical index, rejecting floats, extra arguments and arbitrary settings.
-    for(i = 0; i < values.size; i++)
+    for (i = 0; i < choiceValues.size; i++)
     {
-        if(parts[1] == "" + i)
+        if (responseParts[1] == "" + i)
         {
-            value = values[i];
-            if(("" + self openCJ\settings::getSetting(key)) != value)
+            selectedValue = choiceValues[i];
+            if (("" + self openCJ\settings::getSetting(settingName)) != selectedValue)
             {
-                self openCJ\settings::setSettingByScript(key, value);
+                self openCJ\settings::setSettingByScript(settingName, selectedValue);
             }
-            self publishRow(key);
+            self publishRow(settingName);
             self setClientCvar("opencj_hud_ready", 1);
             return;
         }
@@ -85,27 +89,27 @@ handleResponse(response)
 
 publish()
 {
-    keys = getArrayKeys(level.hudMenuSettings);
-    for(i = 0; i < keys.size; i++)
+    settingNames = getArrayKeys(level.hudMenuSettings);
+    for (i = 0; i < settingNames.size; i++)
     {
-        self publishRow(keys[i]);
+        self publishRow(settingNames[i]);
     }
     self setClientCvar("opencj_hud_ready", 1);
 }
 
-publishRow(key)
+publishRow(settingName)
 {
-    values = level.hudMenuSettings[key];
-    value = "" + self openCJ\settings::getSetting(key);
-    if(key == "specfps" && value == "live")
+    choiceValues = level.hudMenuSettings[settingName];
+    currentValue = "" + self openCJ\settings::getSetting(settingName);
+    if (settingName == "specfps" && currentValue == "live")
     {
-        value = "detailed";
+        currentValue = "detailed";
     }
-    for(j = 0; j < values.size; j++)
+    for (j = 0; j < choiceValues.size; j++)
     {
-        if(value == values[j])
+        if (currentValue == choiceValues[j])
         {
-            self setClientCvar("opencj_hud_edit_" + key, j);
+            self setClientCvar("opencj_hud_edit_" + settingName, j);
         }
     }
 }

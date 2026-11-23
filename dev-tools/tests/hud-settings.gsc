@@ -6,8 +6,8 @@ main()
     level.commands = [];
     level.pointerCenterLookups = 0;
     openCJ\settings::onInit();
-    openCJ\menus\hudSettings::onInit();
     openCJ\checkpointPointers::onInit();
+    openCJ\menus\hudSettings::onInit();
     openCJ\settings::addSettingInt("fpshud", 0, 2, 0, "", ::changed);
     openCJ\settings::addSettingBool("speedometer", false, "", ::changed);
     openCJ\settings::addSettingBool("poshud", false, "", ::changed);

@@ -1,4 +1,4 @@
-// #217: exercise the real registry, permission checks and menu handlers.
+// Exercise the real registry, permission checks and menu handlers.
 main()
 {
     level.commandChecks = 0;
@@ -10,6 +10,30 @@ main()
     openCJ\scoreboard::onInit();
     openCJ\menus\commands::onInit();
     wait 1;
+    checkProductionCommands();
+    checkSearchRanking();
+    checkRegistryDescriptions();
+    player = addTestClient();
+    wait 0.2;
+    check(isDefined(player), "isolated menu test client connected");
+    if (!isDefined(player))
+    {
+        finish();
+        return;
+    }
+    player.adminLevel = 0;
+    player openCJ\menus\helper::onPlayerConnected();
+    player openCJ\menus\commands::onPlayerConnected();
+    checkCommandPages(player);
+    checkPermissionChanges(player);
+    checkHelpPages(player);
+    checkExactAliasSelection(player);
+    checkChatNotifications(player);
+    finish();
+}
+
+checkProductionCommands()
+{
     check(!isDefined(level.commands["scoreboard"]),
           "obsolete scoreboard setup command not registered");
     check(openCJ\commands_base::availableCommands(0, "ban").size == 0,
@@ -19,7 +43,10 @@ main()
     check(openCJ\commands_base::helpText("RP", 0) ==
               "!rp (alias for !restoreposition): Restore your last used run",
           "production alias help resolves case and canonical name");
+}
 
+checkSearchRanking()
+{
     // Reported regression: an exact alias must beat an earlier substring.
     openCJ\commands_base::registerCommand("doublerpgsstring", "Partial match fixture.", undefined,
                                           0, 0, 0);
@@ -31,9 +58,9 @@ main()
     check(matches[0].name == "restoreposition",
           "exact rp alias ranks restoreposition before partial matches, case-insensitively");
     alphabetical = true;
-    for(i = 2; i < matches.size; i++)
+    for (i = 2; i < matches.size; i++)
     {
-        if(openCJ\commands_base::nameBefore(matches[i].name, matches[i - 1].name))
+        if (openCJ\commands_base::nameBefore(matches[i].name, matches[i - 1].name))
         {
             alphabetical = false;
         }
@@ -50,24 +77,27 @@ main()
     matches = openCJ\commands_base::availableCommands(70, "ban");
     check(matches[0].name == "ban" && matches[1].name == "banner",
           "permitted exact match precedes partial match");
+}
 
+checkRegistryDescriptions()
+{
     // Deterministic registry covers ordering independently of registration order.
     level.commands = [];
-    z = openCJ\commands_base::registerCommand(
+    openCJ\commands_base::registerCommand(
         "zulu", "Last command. Mentions rp in its description.", undefined, 0, 0, 0);
-    a = openCJ\commands_base::registerCommand("alpha", "First command. Usage: !alpha", undefined, 0,
+    alphaCommand = openCJ\commands_base::registerCommand("alpha", "First command. Usage: !alpha", undefined, 0,
                                               0, 0);
-    openCJ\commands_base::addAlias(a, "ZAlias");
-    openCJ\commands_base::addAlias(a, "aAlias");
-    ab = openCJ\commands_base::registerCommand("alphabet", "Prefix ordering.", undefined, 0, 0, 0);
-    admin = openCJ\commands_base::registerCommand("admin", "Restricted description.", undefined, 0,
+    openCJ\commands_base::addAlias(alphaCommand, "ZAlias");
+    openCJ\commands_base::addAlias(alphaCommand, "aAlias");
+    openCJ\commands_base::registerCommand("alphabet", "Prefix ordering.", undefined, 0, 0, 0);
+    adminCommand = openCJ\commands_base::registerCommand("admin", "Restricted description.", undefined, 0,
                                                   0, 60);
-    openCJ\commands_base::addAlias(admin, "secret");
-    rows = openCJ\commands_base::availableCommands(0, "");
-    check(rows.size == 3, "one entry per primary command; aliases and restricted commands omitted");
-    check(rows[0].name == "alpha" && rows[1].name == "alphabet" && rows[2].name == "zulu",
+    openCJ\commands_base::addAlias(adminCommand, "secret");
+    entries = openCJ\commands_base::availableCommands(0, "");
+    check(entries.size == 3, "one entry per primary command; aliases and restricted commands omitted");
+    check(entries[0].name == "alpha" && entries[1].name == "alphabet" && entries[2].name == "zulu",
           "alphabetical order including prefixes");
-    check(rows[0].aliasText == "!aalias, !zalias", "aliases sorted and shown once");
+    check(entries[0].aliasText == "!aalias, !zalias", "aliases sorted and shown once");
     check(openCJ\commands_base::availableCommands(0, "ZALIAS").size == 1,
           "case-insensitive alias search");
     check(openCJ\commands_base::availableCommands(0, "rp").size == 0,
@@ -88,9 +118,9 @@ main()
           "quick alias help does not reveal restricted details");
     check(openCJ\commands_base::helpText("missing", 0) == "Command not found.",
           "unknown quick-help command");
-    late = openCJ\commands_base::registerCommand("late", "Added after first listing.", undefined, 0,
+    lateCommand = openCJ\commands_base::registerCommand("late", "Added after first listing.", undefined, 0,
                                                  0, 0);
-    openCJ\commands_base::addAlias(late, "newalias");
+    openCJ\commands_base::addAlias(lateCommand, "newalias");
     check(openCJ\commands_base::availableCommands(0, "").size == 4,
           "new registration appears without a menu catalogue change");
     check(openCJ\commands_base::availableCommands(0, "newalias").size == 1,
@@ -99,22 +129,14 @@ main()
     openCJ\settings::addSettingBool("fixture", false, "Fixture setting.", ::noop);
     check(openCJ\commands_base::availableCommands(0, "fixture").size == 1,
           "command-backed settings automatically listed");
+}
 
-    player = addTestClient();
-    wait 0.2;
-    check(isDefined(player), "isolated menu test client connected");
-    if(!isDefined(player))
-    {
-        finish();
-        return;
-    }
-    player.adminLevel = 0;
-    player openCJ\menus\helper::onPlayerConnected();
-    player openCJ\menus\commands::onPlayerConnected();
+checkCommandPages(player)
+{
     player openCJ\menus\commands::handleResponse("open_commands");
     check(player.commandMenu.total == 5 && player.commandMenu.selectedName == "alpha",
           "opening builds live registry and selects first command");
-    for(i = 0; i < 25; i++)
+    for (i = 0; i < 25; i++)
     {
         openCJ\commands_base::registerCommand("fixture" + i, "Page fixture.", undefined, 0, 0, 0);
     }
@@ -151,6 +173,10 @@ main()
           "clear search restores all permitted entries");
     player openCJ\menus\commands::handleResponse("select_1");
     check(player.commandMenu.selectedName == "alphabet", "row selection opens matching details");
+}
+
+checkPermissionChanges(player)
+{
     player openCJ\commands_base::setAdminLevel(60);
     player.searchText = "secret";
     player openCJ\menus\commands::refresh(true);
@@ -163,12 +189,16 @@ main()
     player openCJ\menus\commands::handleResponse("select_0");
     check(player.commandMenu.total == 0 && !isDefined(player.commandMenu.selectedName),
           "stale selection rechecks current permissions");
-    longHelp = "";
-    for(i = 0; i < 100; i++)
+}
+
+checkHelpPages(player)
+{
+    longHelpText = "";
+    for (i = 0; i < 100; i++)
     {
-        longHelp += "word" + i + " ";
+        longHelpText += "word" + i + " ";
     }
-    openCJ\commands_base::registerCommand("long", longHelp, undefined, 0, 0, 0);
+    openCJ\commands_base::registerCommand("long", longHelpText, undefined, 0, 0, 0);
     player.searchText = "long";
     player openCJ\menus\commands::refresh(true);
     check(player.commandMenu.maxDetailPage > 1, "long help gets extra detail pages");
@@ -178,20 +208,24 @@ main()
           "end of long help retained");
     player openCJ\menus\commands::handleResponse("detail_prev");
     check(player.commandMenu.detailPage == 1, "detail previous page");
-    lines = openCJ\menus\commands::wrapText("abcd efgh\n\nijklmnopqrstuvwxyz", 5);
-    check(lines.size == 7 && lines[0] == "abcd" && lines[1] == "efgh" && lines[2] == "" &&
-              lines[6] == "xyz",
+    wrappedLines = openCJ\menus\commands::wrapText("abcd efgh\n\nijklmnopqrstuvwxyz", 5);
+    check(wrappedLines.size == 7 && wrappedLines[0] == "abcd" && wrappedLines[1] == "efgh" && wrappedLines[2] == "" &&
+              wrappedLines[6] == "xyz",
           "wrapping preserves blank lines and splits long words");
     player openCJ\menus\commands::handleResponse("close_commands");
     player openCJ\menus\commands::handleResponse("next");
     check(player.currentMenu == "" && player.commandMenu.page == 1,
           "closed menu ignores navigation");
+}
+
+checkExactAliasSelection(player)
+{
     level.commands = [];
     openCJ\commands_base::registerCommand("doublerpgsstring", "Partial match fixture.", undefined,
                                           0, 0, 0);
-    restore = openCJ\commands_base::registerCommand("restoreposition", "Exact-alias fixture.",
+    restoreCommand = openCJ\commands_base::registerCommand("restoreposition", "Exact-alias fixture.",
                                                     undefined, 0, 0, 0);
-    openCJ\commands_base::addAlias(restore, "rp");
+    openCJ\commands_base::addAlias(restoreCommand, "rp");
     player openCJ\menus\commands::handleResponse("open_commands");
     player.searchText = "rp";
     player openCJ\menus\commands::refresh(true);
@@ -199,7 +233,10 @@ main()
               player.commandMenu.selectedName == "restoreposition",
           "rp search selects exact alias result first in menu");
     player openCJ\menus\commands::handleResponse("close_commands");
+}
 
+checkChatNotifications(player)
+{
     // Exercise chat dispatch and the same menu/search notifications as the client.
     openCJ\commands_base::onInit();
     player.login_playerID = 1;
@@ -207,6 +244,9 @@ main()
     player.sessionState = "spectator";
     chatArgs = [];
     chatArgs[0] = "say";
+    chatArgs[1] = "";
+    check(!player openCJ\commands_base::onPlayerCommand(chatArgs),
+          "empty chat text is not treated as a command");
     chatArgs[1] = "!commands";
     check(player openCJ\commands_base::onPlayerCommand(chatArgs),
           "!commands resolves through the registered help alias");
@@ -232,8 +272,8 @@ main()
     player notify("menuresponse", "opencj_commands", "close_commands");
     wait 0.05;
     check(player.currentMenu == "", "client close notification ends command-menu handling");
-    finish();
 }
+
 
 noop()
 {
@@ -242,7 +282,7 @@ noop()
 check(ok, label)
 {
     level.commandChecks++;
-    if(!ok)
+    if (!ok)
     {
         level.commandFailures++;
     }

@@ -297,3 +297,12 @@ exercise header/length preservation, selected-entry replacement, failed-build
 preservation and source/output aliases. This group does not load game assets or
 replace deployed map files. A real rebuild additionally requires the original
 IWD and the [artwork procedure](../../client-mod/assets/map-previews/README.md).
+
+### Command browser
+
+The command-menu runner exercises registration, alias ranking, live permissions,
+list/detail pages and real menu/search notifications with a synthetic client.
+It initializes SQL cancellation constants without connecting to a database.
+Its empty-chat check covers dispatch before command-token indexing. The fixture
+uses the shared runner's engine/source selection, bounded wait and owned-container
+cleanup; it does not inspect the client's rendered menu.

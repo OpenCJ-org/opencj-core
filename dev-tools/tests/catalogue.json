@@ -304,7 +304,7 @@
       "category": "integration",
       "description": "Command menu, download cvars, finish aliases, FPS registration, connecting scoreboard and specular settings. FPS and scoreboard connection scenarios use the shared isolated-server harness.",
       "requires": "Initialized Compose, matching engine and licensed game/compiled assets; specular checks also use mp_crash.",
-      "effects": "Shared isolated engine runner, synthetic registry/client and cancellation constants; no gameplay database connection or writes.",
+      "effects": "Isolated servers and synthetic clients; private outputs. Command-menu tests initialize cancellation constants without opening a database.",
       "files": [
         "dev-tools/tests/run-command-menu-smoke.py",
         "dev-tools/tests/command-menu.gsc",
