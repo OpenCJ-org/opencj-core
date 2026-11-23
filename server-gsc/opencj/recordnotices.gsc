@@ -242,7 +242,16 @@ onRunFinished(runID)
     }
     self.notificationFinishedRun = runID;
     ownerPlayerID = self openCJ\login::getPlayerID();
-    rows = self openCJ\mySQL::mysqlAsyncRead(finishQuery(runID));
+    // This saved finish still matters after a new run starts, but not after disconnect.
+    self.notificationRecordScope = "record-notice:" + self getEntityNumber();
+    result = self openCJ\mySQL::_request(
+        finishQuery(runID), level.sqlConstants.policyMenu, "", self.notificationRecordScope,
+        level.sqlConstants.defaultQueueWaitMs, true);
+    rows = undefined;
+    if(isDefined(result))
+    {
+        rows = result.rows;
+    }
     records = decodeRecords(rows);
     if(!isDefined(records))
     {
@@ -323,10 +332,25 @@ checkpoint(runID, cpID, timePlayed)
             metric = "rpgs";
         }
     }
-    rows = self openCJ\mySQL::mysqlAsyncRead(
-        checkpointQuery(runID, cpID, fpsMode, usedElevators, anyPercent, halfbeat, hardTAS, metric));
-    if(self openCJ\playerRuns::getRunID() != runID ||
-       self openCJ\playerRuns::getRunInstanceNumber() != runInstance ||
+    // Closing a menu must not cancel the checkpoint comparison for the current run.
+    self.notificationCheckpointScope = "checkpoint-notice:" + self getEntityNumber();
+    query = checkpointQuery(runID, cpID, fpsMode, usedElevators, anyPercent, halfbeat, hardTAS, metric);
+    result = self openCJ\mySQL::_request(
+        query, level.sqlConstants.policyMenu, "", self.notificationCheckpointScope,
+        level.sqlConstants.defaultQueueWaitMs, true);
+    self.notificationCheckpointScope = undefined;
+    rows = undefined;
+    if(isDefined(result))
+    {
+        rows = result.rows;
+    }
+    currentRunID = self openCJ\playerRuns::getRunID();
+    currentInstance = self openCJ\playerRuns::getRunInstanceNumber();
+    if(!isDefined(currentRunID) || !isDefined(currentInstance))
+    {
+        return;
+    }
+    if(currentRunID != runID || currentInstance != runInstance ||
        level.checkpointLayoutEpoch != layoutEpoch || self openCJ\demos::isPlayingDemo() ||
        !self openCJ\notifications::wantsText("checkpoint"))
     {
@@ -376,4 +400,15 @@ checkpointMessage(rows, metric, timePlayed, rpgCount)
         }
     }
     return message;
+}
+
+// The scope covers every outstanding finish read owned by this connection.
+cancelFinishReads()
+{
+    if(isDefined(self.notificationRecordScope))
+    {
+        mysql_async_cancel(self.notificationRecordScope, level.sqlConstants.scopeExact,
+                           level.sqlConstants.retainCompletion);
+        self.notificationRecordScope = undefined;
+    }
 }

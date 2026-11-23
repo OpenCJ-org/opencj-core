@@ -87,12 +87,17 @@ first result in a category do not claim a beaten record.
 Server records use global iprintln and the player's record display name.
 Personal bests and challenge rewards use private iprintln. A finish improving
 both a server record and personal best produces both messages, but one result
-flash. Loads and saves are not record announcement metrics.
+flash. Loads and saves are not record announcement metrics. Starting another
+run keeps a pending announcement for the saved finish; disconnecting cancels it.
 
 Checkpoint text compares matching-mode splits from completed runs using
 the player's time/RPG leaderboard sort. It does not claim a completed-run
-record. Stale checkpoint replies are cancelled or rejected after relevant
-run, layout, load, settings and demo changes.
+record. Loading, stopping or replacing a run, changing feedback settings,
+entering a demo, passing another checkpoint, or disconnecting removes obsolete
+checkpoint comparisons from the SQL queue. Closing a menu leaves them active.
+A running SQL read retains its connection until completion within the pool's
+read deadline. Late replies still check the run, instance and checkpoint layout;
+a cleared run identity is rejected safely.
 
 ## Implementation
 
@@ -103,4 +108,8 @@ run, layout, load, settings and demo changes.
 - Existing save/load, checkpoint, finish, challenge, demo and disconnect hooks.
 - client-mod/source/build_notification_glow.py: reproducible mirrored gradient
   IWI images and 2D alpha-blended material bindings, included by cod4/mod.csv.
-- No engine, movement-physics or database schema changes.
+The glow builder accepts an optional `--output` directory for an isolated
+rebuild. It uses the existing compiled rank material and its properties as
+templates, validates their layout before writing, and preserves the package
+manifest entries. Rebuild the client package with `makeMod.py` when generated
+assets change.

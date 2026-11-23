@@ -364,6 +364,7 @@ restoreRun(runID)
 _clearRunVars()
 {
     self _invalidatePendingCreation();
+    self openCJ\notifications::cancelAll();
     self openCJ\historySave::cancelPendingPage();
     self.playerRuns_runFinishing = false;
     self.playerRuns_runStarted = false;
@@ -415,6 +416,7 @@ isRunFinished()
 setRunIDAndInstanceNumber(runID, instanceNumber)
 {
     self _invalidatePendingCreation();
+    self openCJ\notifications::cancelAll();
     self.playerRuns_runID = runID;
     self.runInstanceNumber = instanceNumber;
 }

@@ -273,8 +273,13 @@ result(event, runID)
     {
         return;
     }
-    currentRun = self openCJ\playerRuns::getRunID() == runID &&
-                 self openCJ\playerRuns::getRunInstanceNumber() == self.notificationResultInstance;
+    currentRunID = self openCJ\playerRuns::getRunID();
+    currentInstance = self openCJ\playerRuns::getRunInstanceNumber();
+    if(!isDefined(currentRunID) || !isDefined(currentInstance))
+    {
+        return;
+    }
+    currentRun = currentRunID == runID && currentInstance == self.notificationResultInstance;
     if(!currentRun || !self openCJ\playerRuns::isRunFinished())
     {
         return;
@@ -461,14 +466,23 @@ cancelFlash()
     self.notificationFlashResult = undefined;
 }
 
+// Stop the waiter and remove queued work. Running reads retain their worker-owned
+// connection until the pool's read deadline; their obsolete reply is discarded.
 cancelCheckpoint()
 {
     self notify("notificationCheckpointStop");
+    if(isDefined(self.notificationCheckpointScope))
+    {
+        mysql_async_cancel(self.notificationCheckpointScope, level.sqlConstants.scopeExact,
+                           level.sqlConstants.retainCompletion);
+        self.notificationCheckpointScope = undefined;
+    }
 }
 
 onDisconnect()
 {
     self cancelAll();
+    self openCJ\recordNotices::cancelFinishReads();
 }
 
 cancelAll()

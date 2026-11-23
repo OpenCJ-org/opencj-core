@@ -27,6 +27,13 @@ main()
     verifyRecordMessages(player);
     verifyChallengeAwards(player);
     verifyCheckpointReplies(player);
+    verifyRunFeedbackCleanup(player);
+    verifyCheckpointQueueLifecycle(player, "menu");
+    verifyCheckpointQueueLifecycle(player, "load");
+    verifyCheckpointQueueLifecycle(player, "run");
+    verifyCheckpointQueueLifecycle(player, "stop");
+    verifyCheckpointQueueLifecycle(player, "disconnect");
+    verifyFinishQueueLifecycle(player);
     printf("N72 COMPLETE failures=" + level.n72Failures + " checks=" + level.n72Checks + "\n");
 }
 
@@ -238,6 +245,12 @@ verifyResultPriority(player)
     player.runInstanceNumber = 2;
     player openCJ\notifications::result("record", 1002);
     check(player.notificationResultPriority == 1, "old-instance record cannot upgrade flash");
+    player.playerRuns_runID = undefined;
+    player.runInstanceNumber = undefined;
+    player openCJ\notifications::result("record", 1002);
+    check(player.notificationResultPriority == 1,
+          "cleared run identity cannot upgrade a result overlay");
+    player.playerRuns_runID = 1002;
     player.runInstanceNumber = 1;
     player.notificationResultUntil = getTime() - 1;
     player openCJ\notifications::result("record", 1002);
@@ -376,6 +389,18 @@ verifyCheckpointReplies(player)
     level.n72CheckpointWaiting = false;
     player thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
     waitForCheckpoint();
+    // Bypass cancellation to exercise the late-result guard itself.
+    player.playerRuns_runID = undefined;
+    player.runInstanceNumber = undefined;
+    wait .30;
+    check(level.n72Private.size == privateMessageCount,
+          "late checkpoint reply tolerates a cleared run identity");
+
+    player.playerRuns_runID = 1002;
+    player.runInstanceNumber = 1;
+    level.n72CheckpointWaiting = false;
+    player thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
+    waitForCheckpoint();
     player openCJ\notifications::action("load");
     wait .30;
     check(level.n72Private.size == privateMessageCount, "load cancels pending checkpoint message");
@@ -427,4 +452,144 @@ observeSQLResult(query)
     }
     level.n72CheckpointWaiting = true;
     wait .20;
+}
+
+// Keep every worker occupied so removal from the queue cannot be mistaken for execution.
+verifyCheckpointQueueLifecycle(player, cancellation)
+{
+    player.playerRuns_runID = 1002;
+    player.runInstanceNumber = 1;
+    privateMessageCount = level.n72Private.size;
+    workerCount = occupySQLWorkers();
+
+    player thread openCJ\recordNotices::checkpoint(1002, 1, 8000);
+    wait .05;
+    stats = mysql_async_stats();
+    check(stats[1] == 1, cancellation + " checkpoint waits in native queue");
+    if(cancellation == "menu")
+    {
+        player openCJ\mySQL::cancelMenuReads();
+    }
+    else if(cancellation == "load")
+    {
+        player openCJ\notifications::action("load");
+    }
+    else if(cancellation == "run")
+    {
+        player openCJ\playerRuns::setRunIDAndInstanceNumber(9999, 1);
+    }
+    else if(cancellation == "stop")
+    {
+        player openCJ\playerRuns::_clearRunVars();
+    }
+    else
+    {
+        player openCJ\notifications::onDisconnect();
+    }
+    wait .10;
+    stats = mysql_async_stats();
+    expectedQueued = 0;
+    if(cancellation == "menu")
+    {
+        expectedQueued = 1;
+    }
+    check(stats[1] == expectedQueued && stats[2] == workerCount,
+          cancellation + " keeps only relevant checkpoint work before a worker is free");
+
+    waitForSQLWorkers(workerCount);
+    expectedMessageCount = privateMessageCount;
+    if(cancellation == "menu")
+    {
+        expectedMessageCount++;
+    }
+    check(level.n72Private.size == expectedMessageCount,
+          cancellation + " prints only a relevant checkpoint reply");
+}
+
+awaitBlocker(jobID)
+{
+    openCJ\mySQL::awaitNative(jobID);
+    level.n72BlockersDone++;
+}
+
+occupySQLWorkers()
+{
+    workerCount = level.sqlConstants.workerCount;
+    level.n72BlockersDone = 0;
+    for(i = 0; i < workerCount; i++)
+    {
+        jobID = mysql_async_submit("SELECT SLEEP(1)", level.sqlConstants.policyProgress,
+                                  "", "", level.sqlConstants.defaultQueueWaitMs, true);
+        check(isDefined(jobID) && jobID > 0, "queue blocker admitted");
+        thread awaitBlocker(jobID);
+    }
+    stats = mysql_async_stats();
+    for(attempt = 0; attempt < 10; attempt++)
+    {
+        stats = mysql_async_stats();
+        if(stats[2] == workerCount)
+        {
+            break;
+        }
+        wait .05;
+    }
+    check(stats[2] == workerCount, "queue blockers occupy all workers");
+
+    return workerCount;
+}
+
+waitForSQLWorkers(workerCount)
+{
+    stats = mysql_async_stats();
+    for(attempt = 0; attempt < 40 && level.n72BlockersDone < workerCount; attempt++)
+    {
+        wait .05;
+    }
+    wait .10;
+    stats = mysql_async_stats();
+    check(level.n72BlockersDone == workerCount && stats[4] == 0,
+          "queue scenario releases all results");
+}
+
+verifyRunFeedbackCleanup(player)
+{
+    player.playerRuns_runID = 1002;
+    player.runInstanceNumber = 1;
+    player.playerRuns_runFinished = true;
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\playerRuns::setRunIDAndInstanceNumber(9999, 1);
+    check(!isDefined(player.notificationFlash) && !isDefined(player.notificationResultRun),
+          "replacing a run removes its active result feedback");
+
+    player.playerRuns_runID = 1002;
+    player.playerRuns_runFinished = true;
+    player openCJ\notifications::beginResults(1002);
+    player openCJ\playerRuns::_clearRunVars();
+    check(!isDefined(player.notificationFlash) && !isDefined(player.notificationResultRun),
+          "stopping a run removes its active result feedback");
+}
+
+// A new run keeps a saved finish announcement; disconnect removes its queued read.
+verifyFinishQueueLifecycle(player)
+{
+    workerCount = occupySQLWorkers();
+    publicMessageCount = level.n72Public.size;
+    privateMessageCount = level.n72Private.size;
+    player.notificationFinishedRun = undefined;
+    player thread openCJ\recordNotices::onRunFinished(1002);
+    wait .05;
+    stats = mysql_async_stats();
+    check(stats[1] == 1, "finished record waits in native queue");
+
+    player openCJ\playerRuns::setRunIDAndInstanceNumber(9999, 1);
+    stats = mysql_async_stats();
+    check(stats[1] == 1, "new run keeps the saved finish announcement");
+    player openCJ\notifications::onDisconnect();
+    wait .10;
+    stats = mysql_async_stats();
+    check(stats[1] == 0 && stats[2] == workerCount,
+          "disconnect removes the finish query before a worker is free");
+    waitForSQLWorkers(workerCount);
+    check(level.n72Public.size == publicMessageCount && level.n72Private.size == privateMessageCount,
+          "disconnected finish read cannot publish a late announcement");
 }
