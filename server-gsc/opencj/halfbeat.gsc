@@ -24,7 +24,7 @@ onPlayerConnected()
     self.allowHalfBeat = false;
     self.hbMessagePrinted = false;
     self disableCorrection();
-    self.hbLastCorrection=0;
+    self.hbLastCorrection = 0;
     thread _detectHalfBeat();
 }
 
@@ -61,27 +61,28 @@ setAllowHalfBeat(val)
 // This lightweight loop synchronizes run policy and reports the first correction.
 syncPolicy()
 {
-    enabled=self isPlayerReady(true) && self openCJ\playerRuns::modeDetectionActive() && !self isHalfBeatAllowed();
-    if(!isDefined(self.hbCorrectionEnabled) || self.hbCorrectionEnabled!=enabled)
+    enabled = self isPlayerReady(true) && self openCJ\playerRuns::modeDetectionActive() &&
+              !self isHalfBeatAllowed();
+    if(!isDefined(self.hbCorrectionEnabled) || self.hbCorrectionEnabled != enabled)
     {
         self setHalfbeatCorrection(int(enabled));
-        self.hbCorrectionEnabled=enabled;
+        self.hbCorrectionEnabled = enabled;
     }
 }
 
 disableCorrection()
 {
     self setHalfbeatCorrection(0);
-    self.hbCorrectionEnabled=false;
+    self.hbCorrectionEnabled = false;
     self resetStrafeTracking();
 }
 
 resetTracking()
 {
-    self.hbMessagePrinted=false;
+    self.hbMessagePrinted = false;
     self resetStrafeTracking();
-    stats=self getHalfbeatStats();
-    self.hbLastCorrection=stats[0];
+    stats = self getHalfbeatStats();
+    self.hbLastCorrection = stats[0];
     self syncPolicy();
 }
 
@@ -91,13 +92,14 @@ _detectHalfBeat()
     while(true)
     {
         self syncPolicy();
-        stats=self getHalfbeatStats();
-        if(isDefined(self.hbLastCorrection) && stats[0]>self.hbLastCorrection && !self.hbMessagePrinted)
+        stats = self getHalfbeatStats();
+        if(isDefined(self.hbLastCorrection) && stats[0] > self.hbLastCorrection &&
+           !self.hbMessagePrinted)
         {
             self iprintln("Limited halfbeat acceleration (^5!allowhalfbeat^7)");
-            self.hbMessagePrinted=true;
+            self.hbMessagePrinted = true;
         }
-        self.hbLastCorrection=stats[0];
+        self.hbLastCorrection = stats[0];
         wait .05;
     }
 }

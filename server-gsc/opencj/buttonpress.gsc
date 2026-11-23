@@ -75,7 +75,10 @@ onAttackButton()
 resetButtons()
 {
     self.buttons_lastFrag = undefined;
-    if (isDefined(self.eventQueue)) self.eventQueue["aimTeleport"] = undefined;
+    if(isDefined(self.eventQueue))
+    {
+        self.eventQueue["aimTeleport"] = undefined;
+    }
     self.buttons_lastMelee = undefined;
     self.buttons_lastUse = undefined;
 }
@@ -101,13 +104,16 @@ onJump(time)
 // A released-and-pressed pair within 300 ms is deliberate but comfortable.
 onFragButton()
 {
-    if (!self isPlayerReady() || self.sessionState != "playing" || self openCJ\demos::isPlayingDemo())
+    if(!self isPlayerReady() || self.sessionState != "playing" ||
+       self openCJ\demos::isPlayingDemo())
     {
         self.buttons_lastFrag = undefined;
         return;
     }
-    if (!self registerFragTap(getTime()))
+    if(!self registerFragTap(getTime()))
+    {
         return;
+    }
     // Input callbacks run outside the movement/animation context. Queue only;
     // setOriginAndAngles invokes Pmove and must run from the normal game frame.
     request = spawnStruct();
@@ -118,12 +124,21 @@ onFragButton()
 
 processFragTeleport()
 {
-    if (!isDefined(self.eventQueue["aimTeleport"])) return;
+    if(!isDefined(self.eventQueue["aimTeleport"]))
+    {
+        return;
+    }
     request = self.eventQueue["aimTeleport"];
     self.eventQueue["aimTeleport"] = undefined;
-    if (!self isPlayerReady() || self.sessionState != "playing" || self openCJ\demos::isPlayingDemo()) return;
-    destination = aimTeleportDestination(request.eye, request.eye + vectorScale(anglesToForward(request.angles), 100000), self getEntityNumber());
-    if (!isDefined(destination))
+    if(!self isPlayerReady() || self.sessionState != "playing" ||
+       self openCJ\demos::isPlayingDemo())
+    {
+        return;
+    }
+    destination = aimTeleportDestination(
+        request.eye, request.eye + vectorScale(anglesToForward(request.angles), 100000),
+        self getEntityNumber());
+    if(!isDefined(destination))
     {
         self sendLocalChatMessage("No clear teleport destination at that surface", true);
         return;
@@ -137,7 +152,8 @@ processFragTeleport()
 
 registerFragTap(now)
 {
-    if (!isDefined(self.buttons_lastFrag) || now < self.buttons_lastFrag || now - self.buttons_lastFrag > 300)
+    if(!isDefined(self.buttons_lastFrag) || now < self.buttons_lastFrag ||
+       now - self.buttons_lastFrag > 300)
     {
         self.buttons_lastFrag = now;
         return false;
