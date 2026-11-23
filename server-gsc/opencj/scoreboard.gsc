@@ -51,67 +51,73 @@ onPlayerConnected()
     self thread scrollInput();
 }
 
+// Poll the held scoreboard only after client setup; send fresh values at most once a second.
 watch()
 {
     self endon("disconnect");
     self openCJ\clientInit::waitUntilFinished();
-    nextUpdate = 0;
-    inputOpen = false;
+    refreshIntervalMs = 1000;
+    inputPollSeconds = 0.2;
+    nextRefreshMs = 0;
+    inputMenuOpen = false;
     for(;;)
     {
         if(self getUserinfo("opencj_sb_active") == "1")
         {
-            if(!inputOpen)
+            if(!inputMenuOpen)
             {
                 self openMenu("opencj_scoreboard_input");
-                inputOpen = true;
+                inputMenuOpen = true;
             }
-            if(getTime() >= nextUpdate)
+            if(getTime() >= nextRefreshMs)
             {
                 self update();
-                nextUpdate = getTime() + 1000;
+                nextRefreshMs = getTime() + refreshIntervalMs;
             }
         }
         else
         {
-            nextUpdate = 0;
+            nextRefreshMs = 0;
             self.scoreboardOffset = 0;
-            if(inputOpen)
+            if(inputMenuOpen)
             {
                 self closeMenu("opencj_scoreboard_input");
-                inputOpen = false;
+                inputMenuOpen = false;
             }
         }
-        wait 0.2;
+        wait inputPollSeconds;
     }
 }
 
 scrollInput()
 {
     self endon("disconnect");
+    scrollCooldownMs = 75;
+    rowsPerScroll = 3;
     for(;;)
     {
-        self waittill("menuresponse", menu, response);
-        if(menu != "opencj_scoreboard_input")
+        self waittill("menuresponse", menuName, menuResponse);
+        if(menuName != "opencj_scoreboard_input")
         {
             continue;
         }
-        if(response == "close")
+        if(menuResponse == "close")
         {
             self setClientCvar("opencj_sb_held", 0);
             self setClientCvar("opencj_sb_active", 0);
-            self closeMenu(menu);
+            self closeMenu(menuName);
             continue;
         }
         if(self getUserinfo("opencj_sb_active") != "1")
         {
             continue;
         }
-        if(response != "up" && response != "down")
+        if(menuResponse != "up" && menuResponse != "down")
         {
             continue;
         }
-        if(isDefined(self.scoreboardScrollTime) && getTime() - self.scoreboardScrollTime < 75)
+        if(isDefined(self.scoreboardScrollTime) &&
+           getTime() - self.scoreboardScrollTime < scrollCooldownMs)
         {
             continue;
         }
@@ -120,13 +126,13 @@ scrollInput()
         {
             self.scoreboardOffset = 0;
         }
-        if(response == "up")
+        if(menuResponse == "up")
         {
-            self.scoreboardOffset -= 3;
+            self.scoreboardOffset -= rowsPerScroll;
         }
         else
         {
-            self.scoreboardOffset += 3;
+            self.scoreboardOffset += rowsPerScroll;
         }
         self update();
     }
@@ -203,195 +209,248 @@ status(player)
 }
 
 // Quoted engine dvar transport must never contain player-controlled delimiters.
-clean(text, limit)
+clean(inputText, maxLength)
 {
-    if(!isDefined(text))
+    if(!isDefined(inputText))
     {
         return "";
     }
-    text = "" + text;
-    out = "";
-    for(i = 0; i < text.size && out.size < limit; i++)
+    inputText = "" + inputText;
+    cleanText = "";
+    for(i = 0; i < inputText.size && cleanText.size < maxLength; i++)
     {
-        if(text[i] != "\"" && text[i] != "\\" && text[i] != "\n" && text[i] != "\r")
+        if(inputText[i] != "\"" && inputText[i] != "\\" && inputText[i] != "\n" &&
+           inputText[i] != "\r")
         {
-            out += text[i];
+            cleanText += inputText[i];
         }
     }
-    if(out.size && out[out.size - 1] == "^")
+    if(cleanText.size && cleanText[cleanText.size - 1] == "^")
     {
-        out = getSubStr(out, 0, out.size - 1);
+        cleanText = getSubStr(cleanText, 0, cleanText.size - 1);
     }
-    return out;
+    return cleanText;
 }
 
 // Safe before player initialization: no login, gameplay or network stats needed.
 connectingRow(name)
 {
-    r = [];
-    r["name"] = clean(name, 20);
-    r["points"] = 0;
-    r["rank"] = "";
-    r["country"] = "";
-    flag = openCJ\flagAtlas::resolve("??");
-    r["flag"] = flag.material;
-    r["flagSelector"] = flag.selector;
-    r["ping"] = -1;
-    r["pingText"] = "-";
-    r["route"] = "^3Connecting...";
-    r["progress"] = -1;
-    r["time"] = "-";
-    r["rpg"] = "-";
-    r["fps"] = 0;
-    r["ele"] = 0;
-    r["hb"] = 0;
-    r["tas"] = 0;
-    r["any"] = 0;
-    return r;
+    values = emptyRow(name);
+    values["route"] = "^3Connecting...";
+    return values;
 }
 
+// Reset every displayed field so a recycled viewport row cannot retain an old player's badges.
+emptyRow(name)
+{
+    nameLengthLimit = 20;
+    unavailablePing = -1;
+    hiddenProgress = -1;
+    values = [];
+    values["name"] = clean(name, nameLengthLimit);
+    values["points"] = 0;
+    values["rank"] = "";
+    values["country"] = "";
+    countryFlag = openCJ\flagAtlas::resolve("??");
+    values["flag"] = countryFlag.material;
+    values["flagSelector"] = countryFlag.selector;
+    values["ping"] = unavailablePing;
+    values["pingText"] = "-";
+    values["route"] = "-";
+    values["progress"] = hiddenProgress;
+    values["time"] = "-";
+    values["rpg"] = "-";
+    values["fps"] = 0;
+    values["ele"] = 0;
+    values["hb"] = 0;
+    values["tas"] = 0;
+    values["any"] = 0;
+    return values;
+}
+
+// Build one player's row without reading gameplay state before connection setup finishes.
 row(player)
 {
     if(connecting(player))
     {
         return connectingRow(player.name);
     }
-    r = [];
-    r["name"] = clean(player.name, 20);
-    r["points"] = points(player);
-    rank = 1;
+    values = emptyRow(player.name);
+    values["points"] = points(player);
+    challengeRank = 1;
     if(isDefined(player.challengeRank))
     {
-        rank = player.challengeRank;
+        challengeRank = player.challengeRank;
     }
-    r["rank"] = "opencj_rank_" + rank;
-    r["country"] = clean(player openCJ\country::getCountry(), 2);
-    flag = openCJ\flagAtlas::resolve(r["country"]);
-    r["flag"] = flag.material;
-    r["flagSelector"] = flag.selector;
-    r["ping"] = "" + player getPing();
-    variation = player getPingVariation();
-    r["pingText"] = r["ping"];
-    if(variation >= 0)
+    values["rank"] = "opencj_rank_" + challengeRank;
+    values["country"] = clean(player openCJ\country::getCountry(), 2);
+    countryFlag = openCJ\flagAtlas::resolve(values["country"]);
+    values["flag"] = countryFlag.material;
+    values["flagSelector"] = countryFlag.selector;
+    values["ping"] = "" + player getPing();
+    pingVariationMs = player getPingVariation();
+    values["pingText"] = values["ping"];
+    if(pingVariationMs >= 0)
     {
-        r["pingText"] += " (+/- " + variation + " ms)";
+        values["pingText"] += " (+/- " + pingVariationMs + " ms)";
     }
-    r["route"] = "-";
-    r["progress"] = -1;
-    r["time"] = "-";
-    r["rpg"] = "-";
-    r["fps"] = 0;
-    r["ele"] = 0;
-    r["hb"] = 0;
-    r["tas"] = 0;
-    r["any"] = 0;
     if(isDefined(player.cpc))
     {
-        r["route"] = player.cpc.route;
-        return r;
+        values["route"] = player.cpc.route;
+        return values;
     }
     if(player openCJ\demos::isPlayingDemo() || spectatorRow(player))
     {
-        return r;
+        return values;
     }
     if(!player openCJ\playerRuns::hasRunID() || !player openCJ\playerRuns::hasRunStarted())
     {
-        return r;
+        return values;
     }
+    return addRunValues(values, player);
+}
+
+// Add progress and run-category badges only for a started gameplay run.
+addRunValues(values, player)
+{
+    hiddenProgress = -1;
     if(isDefined(player.route))
     {
-        r["route"] = player.route;
+        values["route"] = player.route;
     }
-    current = player openCJ\checkpoints::getCurrentCheckpoint();
-    if(isDefined(current))
+    currentCheckpoint = player openCJ\checkpoints::getCurrentCheckpoint();
+    if(isDefined(currentCheckpoint))
     {
-        route = openCJ\checkpoints::getRouteNameForCheckpoint(current);
-        if(isDefined(route))
+        routeName = openCJ\checkpoints::getRouteNameForCheckpoint(currentCheckpoint);
+        if(isDefined(routeName))
         {
-            r["route"] = route;
+            values["route"] = routeName;
         }
         if(!player openCJ\anyPct::hasAnyPct())
         {
-            passed = openCJ\checkpoints::getPassedCheckpointCount(current);
-            remaining = openCJ\checkpoints::getRemainingCheckpointCount(current);
-            if(isDefined(remaining) && passed + remaining > 0)
+            passedCount = openCJ\checkpoints::getPassedCheckpointCount(currentCheckpoint);
+            remainingCount = openCJ\checkpoints::getRemainingCheckpointCount(currentCheckpoint);
+            if(isDefined(remainingCount) && passedCount + remainingCount > 0)
             {
-                r["progress"] = int(100.0 * passed / (passed + remaining));
+                values["progress"] = int(100.0 * passedCount / (passedCount + remainingCount));
             }
         }
     }
     if(player openCJ\anyPct::hasAnyPct())
     {
-        r["progress"] = -1;
+        values["progress"] = hiddenProgress;
     }
     else if(player openCJ\playerRuns::isRunFinished())
     {
-        r["progress"] = 100;
+        values["progress"] = 100;
     }
-    r["time"] = formatTimeString(player openCJ\playTime::getTimePlayed(), true);
-    r["rpg"] = player openCJ\statistics::getExplosiveJumps();
-    fps = player openCJ\fps::getCurrentFPSMode();
-    r["fps"] = 1;
-    if(fps == "mix")
+    values["time"] = formatTimeString(player openCJ\playTime::getTimePlayed(), true);
+    values["rpg"] = player openCJ\statistics::getExplosiveJumps();
+    values["fps"] = fpsBadge(player);
+    values["ele"] = int(player openCJ\elevate::hasUsedEle());
+    values["hb"] = int(player openCJ\halfBeat::isHalfBeatAllowed());
+    values["tas"] = int(player openCJ\tas::hasHardTAS());
+    values["any"] = int(player openCJ\anyPct::hasAnyPct());
+    return values;
+}
+
+// These selector values are shared with the compiled scoreboard menu.
+fpsBadge(player)
+{
+    standardFPSBadge = 1;
+    mixedFPSBadge = 2;
+    hackedFPSBadge = 3;
+    tutorialBadge = 4;
+    fpsMode = player openCJ\fps::getCurrentFPSMode();
+    badge = standardFPSBadge;
+    if(fpsMode == "mix")
     {
-        r["fps"] = 2;
+        badge = mixedFPSBadge;
     }
-    if(fps == "hax")
+    if(fpsMode == "hax")
     {
-        r["fps"] = 3;
+        badge = hackedFPSBadge;
     }
-    // 4: tutorial badge in the FPS slot; the server picks a tutorial run's FPS
+    // The server chooses FPS for tutorial runs, so their badge replaces the usual FPS badge.
     if(player openCJ\tutorial::isTutorialRun())
     {
-        r["fps"] = 4;
+        badge = tutorialBadge;
     }
-    r["ele"] = int(player openCJ\elevate::hasUsedEle());
-    r["hb"] = int(player openCJ\halfBeat::isHalfBeatAllowed());
-    r["tas"] = int(player openCJ\tas::hasHardTAS());
-    r["any"] = int(player openCJ\anyPct::hasAnyPct());
-    return r;
+    return badge;
 }
 
 // A fixed viewport keeps ranks, modes and player text readable at full capacity.
-viewLayout(offset, total, jumpers)
+viewLayout(offset, totalPlayers, jumperCount)
 {
-    v = spawnStruct();
-    v.maxOffset = total - 15;
-    if(v.maxOffset < 0)
+    viewport = spawnStruct();
+    viewport.capacity = 15;
+    viewport.rowHeight = 22;
+    viewport.iconSize = 20;
+    viewport.sectionGap = 17;
+    headerHeight = 43;
+    // Space reserved for the title, column headers and footer.
+    frameHeight = 69;
+    footerInset = 16;
+    virtualScreenHeight = 480;
+    maximumTop = 90;
+    viewport.maxOffset = totalPlayers - viewport.capacity;
+    if(viewport.maxOffset < 0)
     {
-        v.maxOffset = 0;
+        viewport.maxOffset = 0;
     }
-    v.first = offset;
-    if(v.first < 0)
+    viewport.first = offset;
+    if(viewport.first < 0)
     {
-        v.first = 0;
+        viewport.first = 0;
     }
-    if(v.first > v.maxOffset)
+    if(viewport.first > viewport.maxOffset)
     {
-        v.first = v.maxOffset;
+        viewport.first = viewport.maxOffset;
     }
-    v.count = total - v.first;
-    if(v.count > 15)
+    viewport.count = totalPlayers - viewport.first;
+    if(viewport.count > viewport.capacity)
     {
-        v.count = 15;
+        viewport.count = viewport.capacity;
     }
-    v.split = jumpers > v.first && jumpers < v.first + v.count;
-    v.height = 69 + v.count * 22;
-    if(v.split)
+    viewport.split = jumperCount > viewport.first && jumperCount < viewport.first + viewport.count;
+    viewport.height = frameHeight + viewport.count * viewport.rowHeight;
+    if(viewport.split)
     {
-        v.height += 17;
+        viewport.height += viewport.sectionGap;
     }
-    v.top = (480 - v.height) / 2;
-    if(v.top > 90)
+    viewport.top = (virtualScreenHeight - viewport.height) / 2;
+    if(viewport.top > maximumTop)
     {
-        v.top = 90;
+        viewport.top = maximumTop;
     }
-    return v;
+    viewport.footer = viewport.top + viewport.height - footerInset;
+    viewport.rowsTop = viewport.top + headerHeight;
+    viewport.sectionTop = viewport.rowsTop + (jumperCount - viewport.first) * viewport.rowHeight;
+
+    viewport.trackHeight = viewport.count * viewport.rowHeight;
+    if(viewport.split)
+    {
+        viewport.trackHeight += viewport.sectionGap;
+    }
+    viewport.thumbHeight = viewport.trackHeight;
+    if(totalPlayers > 0)
+    {
+        viewport.thumbHeight = viewport.trackHeight * viewport.count / totalPlayers;
+    }
+    viewport.thumbTop = viewport.rowsTop;
+    if(viewport.maxOffset > 0)
+    {
+        viewport.thumbTop +=
+            (viewport.trackHeight - viewport.thumbHeight) * viewport.first / viewport.maxOffset;
+    }
+    return viewport;
 }
 
+// Share one cached snapshot while keeping scroll position and highlighting specific to each viewer.
 update()
 {
-    if(self getQueuedReliableMessages() > 16)
+    reliableBacklogLimit = 16;
+    if(self getQueuedReliableMessages() > reliableBacklogLimit)
     {
         return;
     }
@@ -404,69 +463,61 @@ update()
     {
         self.scoreboardOffset = 0;
     }
-    v = viewLayout(self.scoreboardOffset, level.scoreboardPlayers.size,
-                   level.scoreboardJumperCount);
-    self.scoreboardOffset = v.first;
-    personal = [];
-    personal["opencj_sb_rowheight"] = 22;
-    personal["opencj_sb_iconsize"] = 20;
-    personal["opencj_sb_top"] = v.top;
-    personal["opencj_sb_height"] = v.height;
-    personal["opencj_sb_footer"] = v.top + v.height - 16;
-    personal["opencj_sb_spec_visible"] = int(v.split);
-    personal["opencj_sb_specy"] = v.top + 43 + (level.scoreboardJumperCount - v.first) * 22;
-    title = "Jumpers (" + level.scoreboardJumperCount + ")";
-    if(v.first >= level.scoreboardJumperCount && v.count > 0)
+    viewport = viewLayout(self.scoreboardOffset, level.scoreboardPlayers.size,
+                          level.scoreboardJumperCount);
+    self.scoreboardOffset = viewport.first;
+    self sendChanged(self viewerValues(viewport));
+}
+
+// Translate the layout and visible player rows into the client menu's existing cvar names.
+viewerValues(viewport)
+{
+    values = [];
+    values["opencj_sb_rowheight"] = viewport.rowHeight;
+    values["opencj_sb_iconsize"] = viewport.iconSize;
+    values["opencj_sb_top"] = viewport.top;
+    values["opencj_sb_height"] = viewport.height;
+    values["opencj_sb_footer"] = viewport.footer;
+    values["opencj_sb_spec_visible"] = int(viewport.split);
+    values["opencj_sb_specy"] = viewport.sectionTop;
+    sectionTitle = "Jumpers (" + level.scoreboardJumperCount + ")";
+    if(viewport.first >= level.scoreboardJumperCount && viewport.count > 0)
     {
-        title = level.scoreboardValues["opencj_sb_spectators"];
+        sectionTitle = level.scoreboardValues["opencj_sb_spectators"];
     }
-    personal["opencj_sb_section"] = title;
-    personal["opencj_sb_scroll_visible"] = int(v.maxOffset > 0);
-    personal["opencj_sb_scroll_label"] = (v.first + 1) + "-" + (v.first + v.count) + " / " +
-                                         level.scoreboardPlayers.size + "   Mouse wheel";
-    personal["opencj_sb_track_y"] = v.top + 43;
-    trackHeight = v.count * 22;
-    if(v.split)
+    values["opencj_sb_section"] = sectionTitle;
+    values["opencj_sb_scroll_visible"] = int(viewport.maxOffset > 0);
+    values["opencj_sb_scroll_label"] = (viewport.first + 1) + "-" +
+                                       (viewport.first + viewport.count) + " / " +
+                                       level.scoreboardPlayers.size + "   Mouse wheel";
+    values["opencj_sb_track_y"] = viewport.rowsTop;
+    values["opencj_sb_track_h"] = viewport.trackHeight;
+    values["opencj_sb_thumb_h"] = viewport.thumbHeight;
+    values["opencj_sb_thumb_y"] = viewport.thumbTop;
+    for(i = 0; i < viewport.capacity; i++)
     {
-        trackHeight += 17;
-    }
-    personal["opencj_sb_track_h"] = trackHeight;
-    thumbHeight = trackHeight;
-    if(level.scoreboardPlayers.size > 0)
-    {
-        thumbHeight = trackHeight * v.count / level.scoreboardPlayers.size;
-    }
-    personal["opencj_sb_thumb_h"] = thumbHeight;
-    thumbY = v.top + 43;
-    if(v.maxOffset > 0)
-    {
-        thumbY += (trackHeight - thumbHeight) * v.first / v.maxOffset;
-    }
-    personal["opencj_sb_thumb_y"] = thumbY;
-    for(i = 0; i < 15; i++)
-    {
-        key = "opencj_sb_r" + i + "_";
-        personal[key + "exists"] = int(i < v.count);
-        if(i >= v.count)
+        rowPrefix = "opencj_sb_r" + i + "_";
+        values[rowPrefix + "exists"] = int(i < viewport.count);
+        if(i >= viewport.count)
         {
             continue;
         }
-        index = v.first + i;
-        y = v.top + 43 + i * 22;
-        if(v.split && index >= level.scoreboardJumperCount)
+        playerIndex = viewport.first + i;
+        rowTop = viewport.rowsTop + i * viewport.rowHeight;
+        if(viewport.split && playerIndex >= level.scoreboardJumperCount)
         {
-            y += 17;
+            rowTop += viewport.sectionGap;
         }
-        personal[key + "y"] = y;
-        personal[key + "self"] = int(level.scoreboardPlayers[index] == self);
-        data = level.scoreboardRows[index];
-        keys = getArrayKeys(data);
-        for(j = 0; j < keys.size; j++)
+        values[rowPrefix + "y"] = rowTop;
+        values[rowPrefix + "self"] = int(level.scoreboardPlayers[playerIndex] == self);
+        rowValues = level.scoreboardRows[playerIndex];
+        fields = getArrayKeys(rowValues);
+        for(j = 0; j < fields.size; j++)
         {
-            personal[key + keys[j]] = data[keys[j]];
+            values[rowPrefix + fields[j]] = rowValues[fields[j]];
         }
     }
-    self sendChanged(personal);
+    return values;
 }
 
 points(player)
@@ -478,39 +529,43 @@ points(player)
     return 0;
 }
 
+// Stable insertion sort keeps the existing player order when point totals tie.
 sortByPoints(players)
 {
     for(i = 1; i < players.size; i++)
     {
         player = players[i];
-        j = i;
-        while(j > 0 && points(players[j - 1]) < points(player))
+        insertIndex = i;
+        while(insertIndex > 0 && points(players[insertIndex - 1]) < points(player))
         {
-            players[j] = players[j - 1];
-            j--;
+            players[insertIndex] = players[insertIndex - 1];
+            insertIndex--;
         }
-        players[j] = player;
+        players[insertIndex] = player;
     }
     return players;
 }
 
+// Partition connected slots by activity and cache their rows for all visible scoreboards.
 buildSnapshot()
 {
+    snapshotPlayerLimit = 32;
+    refreshIntervalMs = 1000;
     players = [];
     jumpers = [];
     spectators = [];
     if(isDefined(level.scoreboardClients))
     {
-        slots = getArrayKeys(level.scoreboardClients);
-        for(i = 0; i < slots.size; i++)
+        clientSlots = getArrayKeys(level.scoreboardClients);
+        for(i = 0; i < clientSlots.size; i++)
         {
-            if(isDefined(level.scoreboardClients[slots[i]]))
+            if(isDefined(level.scoreboardClients[clientSlots[i]]))
             {
-                players[players.size] = level.scoreboardClients[slots[i]];
+                players[players.size] = level.scoreboardClients[clientSlots[i]];
             }
         }
     }
-    // Stable point ordering within each team; tied players retain entity order.
+    // Stable point ordering within each team; tied players retain their existing slot order.
     for(i = 0; i < players.size; i++)
     {
         if(spectatorRow(players[i]))
@@ -524,20 +579,21 @@ buildSnapshot()
     }
     jumpers = sortByPoints(jumpers);
     spectators = sortByPoints(spectators);
-    values = [];
+    sharedValues = [];
     level.scoreboardPlayers = [];
     level.scoreboardRows = [];
-    total = jumpers.size + spectators.size;
-    if(total > 32)
+    playerCount = jumpers.size + spectators.size;
+    if(playerCount > snapshotPlayerLimit)
     {
-        total = 32;
+        playerCount = snapshotPlayerLimit;
     }
     level.scoreboardJumperCount = jumpers.size;
-    values["opencj_sb_map"] = getCvar("mapname");
-    values["opencj_sb_servername"] = getCvar("sv_hostname");
-    values["opencj_sb_hostname"] = getCvar("opencj_public_hostname") + ":" + getCvar("net_port");
-    values["opencj_sb_spectators"] = "Spectators (" + spectators.size + ")";
-    for(i = 0; i < total; i++)
+    sharedValues["opencj_sb_map"] = getCvar("mapname");
+    sharedValues["opencj_sb_servername"] = getCvar("sv_hostname");
+    sharedValues["opencj_sb_hostname"] =
+        getCvar("opencj_public_hostname") + ":" + getCvar("net_port");
+    sharedValues["opencj_sb_spectators"] = "Spectators (" + spectators.size + ")";
+    for(i = 0; i < playerCount; i++)
     {
         if(i < jumpers.size)
         {
@@ -550,36 +606,40 @@ buildSnapshot()
         level.scoreboardPlayers[i] = player;
         level.scoreboardRows[i] = row(player);
     }
-    level.scoreboardValues = values;
-    level.scoreboardNextUpdate = getTime() + 1000;
+    level.scoreboardValues = sharedValues;
+    level.scoreboardNextUpdate = getTime() + refreshIntervalMs;
 }
 
-sendChanged(values)
+// Send only changed values, in batches kept below the reliable-command string limit.
+sendChanged(cvarValues)
 {
+    maxValueBytes = 160;
+    maxCommandBytes = 800;
     if(!isDefined(self.scoreboardCache))
     {
         self.scoreboardCache = [];
     }
-    keys = getArrayKeys(values);
-    command = "v";
-    for(i = 0; i < keys.size; i++)
+    cvarNames = getArrayKeys(cvarValues);
+    commandBuffer = "v";
+    for(i = 0; i < cvarNames.size; i++)
     {
-        value = clean(values[keys[i]], 160);
-        if(isDefined(self.scoreboardCache[keys[i]]) && self.scoreboardCache[keys[i]] == value)
+        cvarValue = clean(cvarValues[cvarNames[i]], maxValueBytes);
+        if(isDefined(self.scoreboardCache[cvarNames[i]]) &&
+           self.scoreboardCache[cvarNames[i]] == cvarValue)
         {
             continue;
         }
-        pair = " " + keys[i] + " \"" + value + "\"";
-        if(command.size + pair.size > 800)
+        assignment = " " + cvarNames[i] + " \"" + cvarValue + "\"";
+        if(commandBuffer.size + assignment.size > maxCommandBytes)
         {
-            self SV_GameSendServerCommand(command, true);
-            command = "v";
+            self SV_GameSendServerCommand(commandBuffer, true);
+            commandBuffer = "v";
         }
-        command += pair;
-        self.scoreboardCache[keys[i]] = value;
+        commandBuffer += assignment;
+        self.scoreboardCache[cvarNames[i]] = cvarValue;
     }
-    if(command != "v")
+    if(commandBuffer != "v")
     {
-        self SV_GameSendServerCommand(command, true);
+        self SV_GameSendServerCommand(commandBuffer, true);
     }
 }
