@@ -1,25 +1,25 @@
-isPoolMap(name)
+isPoolMap(mapName)
 {
-    return isDefined(level.poolMapNames) && isDefined(level.poolMapNames[toLower(name)]);
+    return isDefined(level.poolMapNames) && isDefined(level.poolMapNames[toLower(mapName)]);
 }
 
-previewImage(name)
+previewImage(mapName)
 {
-    if (isPoolMap(name))
+    if (isPoolMap(mapName))
     {
-        return "loadscreen_" + toLower(name);
+        return "loadscreen_" + toLower(mapName);
     }
     return "opencj_missing_image";
 }
 
-canVoteMap(name, adminLevel)
+canVoteMap(mapName, adminLevel)
 {
-    name = toLower(name);
-    if (!openCJ\commands_base::isUberAdminLevel(adminLevel) && !isPoolMap(name))
+    mapName = toLower(mapName);
+    if (!openCJ\commands_base::isUberAdminLevel(adminLevel) && !isPoolMap(mapName))
     {
         return false;
     }
-    return opencjMapExists(name);
+    return opencjMapExists(mapName);
 }
 
 onInit()
@@ -31,75 +31,99 @@ onInit()
     openCJ\mapRoutes::onInit();
 }
 
+// One catalogue supplies map voting and browser metadata, including admin-only maps.
 fetchAllMaps()
 {
-    // One shared pool for voting and the future download catalogue (#203).
-    // Keep metadata for installed maps outside the pool for uber-admin menus.
-    rows = openCJ\mysql::mysqlAsyncRead(
-        "SELECT m.mapname, COALESCE(m.releaseDate, 'Unknown'), m.inRotation, COALESCE(GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', '), 'Unknown') FROM mapids m LEFT JOIN mapMappers mm ON mm.mapID = m.mapID LEFT JOIN mappers a ON a.mapperID = mm.mapperID GROUP BY m.mapID, m.mapname, m.releaseDate, m.inRotation ORDER BY m.mapname ASC");
+    query = "SELECT m.mapname, COALESCE(m.releaseDate, 'Unknown'), m.inRotation, " +
+        "COALESCE(GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', '), 'Unknown') " +
+        "FROM mapids m " +
+        "LEFT JOIN mapMappers mm ON mm.mapID = m.mapID " +
+        "LEFT JOIN mappers a ON a.mapperID = mm.mapperID " +
+        "GROUP BY m.mapID, m.mapname, m.releaseDate, m.inRotation " +
+        "ORDER BY m.mapname ASC";
+    rows = openCJ\mysql::mysqlAsyncRead(query);
     loadMapRows(rows);
-    printf("[OpenCJ] Map catalogue: " + level.maps.size + " installed, " + voteMaps(0).size +
-           " in pool\n");
+
+    printf("[OpenCJ] Map catalogue: " + level.maps.size + " installed, " +
+           voteMaps(0).size + " in pool\n");
     thread openCJ\menus\endMapVote::fillRandomMaps();
 }
 
+// Discovery yields, so publish all three indexes only after the snapshot is complete.
 loadMapRows(rows)
 {
-    // Build a complete snapshot before publishing it: discovery yields.
     catalogue = spawnStruct();
     catalogue.maps = [];
-    catalogue.names = [];
-    catalogue.pool = [];
+    catalogue.mapNames = [];
+    catalogue.poolMapNames = [];
+    rowBatchSize = 100;
+    scanPauseSeconds = 0.05;
+
     if (isDefined(rows))
     {
         for (i = 0; i < rows.size; i++)
         {
-            _addMap(catalogue, toLower(rows[i][0]), rows[i][1], rows[i][2], rows[i][3]);
-            if (i % 100 == 99)
+            mapName = toLower(rows[i][0]);
+            releaseDate = rows[i][1];
+            inRotation = rows[i][2];
+            author = rows[i][3];
+            _addMap(catalogue, mapName, releaseDate, inRotation, author);
+            if (i % rowBatchSize == rowBatchSize - 1)
             {
-                wait 0.05;
+                wait scanPauseSeconds;
             }
         }
     }
+
     _addUsermaps(catalogue, getCvar("fs_basepath") + "/usermaps");
     _addUsermaps(catalogue, getCvar("fs_homepath") + "/usermaps");
     _addStockMaps(catalogue, getCvar("fs_basepath") + "/zone");
     _addStockMaps(catalogue, getCvar("fs_homepath") + "/zone");
-    // No hard-coded fallback: unavailable/empty DB rows grant no pool access.
+
+    // Installed files alone grant no pool access when database metadata is unavailable.
     level.maps = catalogue.maps;
-    level.mapNames = catalogue.names;
-    level.poolMapNames = catalogue.pool;
+    level.mapNames = catalogue.mapNames;
+    level.poolMapNames = catalogue.poolMapNames;
 }
 
-_addUsermaps(catalogue, path)
+_addUsermaps(catalogue, directoryPath)
 {
-    entries = opencjScanDir(path);
+    entries = opencjScanDir(directoryPath);
     if (!isDefined(entries))
     {
         return;
     }
+
+    entryBatchSize = 100;
+    scanPauseSeconds = 0.05;
     for (i = 0; i < entries.size; i++)
     {
         _addMap(catalogue, toLower(entries[i]), undefined, undefined, undefined);
-        if (i % 100 == 99)
+        if (i % entryBatchSize == entryBatchSize - 1)
         {
-            wait 0.05;
+            wait scanPauseSeconds;
         }
     }
 }
 
-_addStockMaps(catalogue, path)
+// Language folders can differ; the native check decides which candidates are loadable.
+_addStockMaps(catalogue, directoryPath)
 {
-    directories = opencjScanDir(path);
-    if (!isDefined(directories))
+    languageDirectories = opencjScanDir(directoryPath);
+    if (!isDefined(languageDirectories))
     {
         return;
     }
-    for (i = 0; i < directories.size; i++)
+
+    mapPrefix = "mp_";
+    fastfileExtension = ".ff";
+    minimumFilenameLength = mapPrefix.size + 1 + fastfileExtension.size;
+    entryBatchSize = 100;
+    scanPauseSeconds = 0.05;
+
+    for (i = 0; i < languageDirectories.size; i++)
     {
-        // Scan language folders; the native existence check below decides
-        // whether the engine can actually load a candidate in this setup.
-        entries = opencjScanDir(path + "/" + directories[i]);
+        entries = opencjScanDir(directoryPath + "/" + languageDirectories[i]);
         if (!isDefined(entries))
         {
             continue;
@@ -107,33 +131,37 @@ _addStockMaps(catalogue, path)
         for (j = 0; j < entries.size; j++)
         {
             filename = toLower(entries[j]);
-            if (filename.size <= 6 || getSubStr(filename, 0, 3) != "mp_" ||
-                getSubStr(filename, filename.size - 3) != ".ff")
+            if (filename.size < minimumFilenameLength ||
+                getSubStr(filename, 0, mapPrefix.size) != mapPrefix ||
+                getSubStr(filename, filename.size - fastfileExtension.size) != fastfileExtension)
             {
                 continue;
             }
-            _addMap(catalogue, getSubStr(filename, 0, filename.size - 3), undefined, undefined,
-                    undefined);
-            if (j % 100 == 99)
+
+            mapName = getSubStr(filename, 0, filename.size - fastfileExtension.size);
+            _addMap(catalogue, mapName, undefined, undefined, undefined);
+            if (j % entryBatchSize == entryBatchSize - 1)
             {
-                wait 0.05;
+                wait scanPauseSeconds;
             }
         }
     }
 }
 
-_addMap(catalogue, name, date, inRotation, author)
+// Database rows are added first, so file discovery cannot overwrite their metadata.
+_addMap(catalogue, mapName, releaseDate, inRotation, author)
 {
-    if (isDefined(catalogue.names[name]) || !opencjMapExists(name))
+    if (isDefined(catalogue.mapNames[mapName]) || !opencjMapExists(mapName))
     {
         return;
     }
+
     entry = [];
-    entry["name"] = name;
+    entry["name"] = mapName;
     entry["date"] = "Unknown";
-    if (isDefined(date))
+    if (isDefined(releaseDate))
     {
-        entry["date"] = date;
+        entry["date"] = releaseDate;
     }
     entry["desc"] = "";
     entry["author"] = "Unknown";
@@ -142,26 +170,26 @@ _addMap(catalogue, name, date, inRotation, author)
         entry["author"] = author;
     }
     catalogue.maps[catalogue.maps.size] = entry;
-    catalogue.names[name] = true;
+    catalogue.mapNames[mapName] = true;
     if (isDefined(inRotation) && int(inRotation) == 1)
     {
-        catalogue.pool[name] = true;
+        catalogue.poolMapNames[mapName] = true;
     }
 }
 
 voteMaps(adminLevel)
 {
-    maps = [];
+    eligibleMaps = [];
     if (!isDefined(level.maps))
     {
-        return maps;
+        return eligibleMaps;
     }
     for (i = 0; i < level.maps.size; i++)
     {
         if (canVoteMap(level.maps[i]["name"], adminLevel))
         {
-            maps[maps.size] = level.maps[i];
+            eligibleMaps[eligibleMaps.size] = level.maps[i];
         }
     }
-    return maps;
+    return eligibleMaps;
 }

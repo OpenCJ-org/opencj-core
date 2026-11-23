@@ -1,4 +1,4 @@
-// #109: the map browser reads the same published normal routes as gameplay.
+// The map browser reads the same published normal routes as gameplay.
 onInit()
 {
     level.mapRoutes = [];
@@ -6,14 +6,38 @@ onInit()
     level.mapRoutesRequest = 0;
     level thread refresh();
 }
+
+// Named difficulty routes precede custom names; row order resolves duplicate labels.
 query()
 {
-    return "SELECT m.mapname,r.routeName,COALESCE(r.colorRGB,16777215) " +
-           "FROM routes r JOIN mapids m ON m.mapID=r.mapID " +
-           "WHERE r.routeType='normal' AND r.routeName IS NOT NULL AND r.routeName<>'' " +
-           "AND EXISTS(SELECT 1 FROM checkpoints e WHERE e.mapID=r.mapID AND e.retired=0 AND e.finishRouteID=r.routeID) " +
-           "ORDER BY m.mapname,CASE LOWER(r.routeName) WHEN 'normal' THEN 0 WHEN 'basic' THEN 1 WHEN 'easy' THEN 2 WHEN 'inter' THEN 3 WHEN 'inter+' THEN 4 WHEN 'hard' THEN 5 WHEN 'hard+' THEN 6 WHEN 'adv' THEN 7 WHEN 'advanced' THEN 7 WHEN 'adv+' THEN 8 WHEN 'advanced+' THEN 8 ELSE 9 END,LOWER(r.routeName),r.colorRGB IS NULL,r.routeID";
+    return "SELECT m.mapname, r.routeName, COALESCE(r.colorRGB, 16777215) " +
+        "FROM routes r " +
+        "JOIN mapids m ON m.mapID = r.mapID " +
+        "WHERE r.routeType = 'normal' " +
+        "AND r.routeName IS NOT NULL AND r.routeName <> '' " +
+        "AND EXISTS (" +
+            "SELECT 1 FROM checkpoints e " +
+            "WHERE e.mapID = r.mapID AND e.retired = 0 AND e.finishRouteID = r.routeID" +
+        ") " +
+        "ORDER BY m.mapname, " +
+            "CASE LOWER(r.routeName) " +
+                "WHEN 'normal' THEN 0 " +
+                "WHEN 'basic' THEN 1 " +
+                "WHEN 'easy' THEN 2 " +
+                "WHEN 'inter' THEN 3 " +
+                "WHEN 'inter+' THEN 4 " +
+                "WHEN 'hard' THEN 5 " +
+                "WHEN 'hard+' THEN 6 " +
+                "WHEN 'adv' THEN 7 " +
+                "WHEN 'advanced' THEN 7 " +
+                "WHEN 'adv+' THEN 8 " +
+                "WHEN 'advanced+' THEN 8 " +
+                "ELSE 9 " +
+            "END, " +
+            "LOWER(r.routeName), r.colorRGB IS NULL, r.routeID";
 }
+
+// A later refresh owns publication even if an older database reply arrives last.
 refresh()
 {
     if(!isDefined(level.mapRoutesRequest))
@@ -21,14 +45,15 @@ refresh()
         level.mapRoutesRequest = 0;
     }
     level.mapRoutesRequest++;
-    request = level.mapRoutesRequest;
+    requestVersion = level.mapRoutesRequest;
     rows = openCJ\mySQL::mysqlAsyncRead(query());
-    if(request != level.mapRoutesRequest)
+    if(requestVersion != level.mapRoutesRequest)
     {
         return;
     }
     applyRows(rows);
 }
+
 applyRows(rows)
 {
     if(!loadRows(rows))
@@ -45,74 +70,99 @@ applyRows(rows)
     }
     return true;
 }
+
+// Keep the last complete snapshot when a read fails; a successful empty read replaces it.
 loadRows(rows)
 {
-    // A temporary read failure retains the last complete snapshot.
     if(!isDefined(rows))
     {
         return false;
     }
-    maps = [];
-    seen = [];
+
+    routesByMap = [];
+    seenRoutes = [];
     for(i = 0; i < rows.size; i++)
     {
-        map = toLower(rows[i][0]);
-        name = rows[i][1];
-        key = map + ":" + toLower(name);
-        if(name == "" || isDefined(seen[key]))
+        mapName = toLower(rows[i][0]);
+        routeName = rows[i][1];
+        packedColor = rows[i][2];
+        routeKey = mapName + ":" + toLower(routeName);
+        if(routeName == "" || isDefined(seenRoutes[routeKey]))
         {
             continue;
         }
-        seen[key] = true;
-        if(!isDefined(maps[map]))
+        seenRoutes[routeKey] = true;
+        if(!isDefined(routesByMap[mapName]))
         {
-            maps[map] = [];
+            routesByMap[mapName] = [];
         }
+
         route = spawnStruct();
-        route.name = name;
-        route.label = label(name);
-        packed = 16777215;
-        if(isDefined(rows[i][2]))
-        {
-            packed = int(rows[i][2]);
-        }
-        if(packed < 0 || packed > 16777215)
-        {
-            packed = 16777215;
-        }
-        route.color = (int(packed / 65536) / 255.0, (int(packed / 256) % 256) / 255.0,
-                       (packed % 256) / 255.0);
+        route.name = routeName;
+        route.label = label(routeName);
+        route.color = unpackColor(packedColor);
         route.palette = paletteIndex(route.color);
-        maps[map][maps[map].size] = route;
+        routesByMap[mapName][routesByMap[mapName].size] = route;
     }
-    level.mapRoutes = maps;
+
+    level.mapRoutes = routesByMap;
     level.mapRoutesReady = true;
     return true;
 }
-label(name)
+
+// Decode the database's packed 24-bit RGB into the engine's normalized channels.
+unpackColor(packedColor)
 {
-    text = "";
-    for(i = 0; i < name.size; i++)
+    maximumPackedRgb = 16777215;
+    if(!isDefined(packedColor))
     {
-        c = name[i];
-        if(c == "^")
+        return (1, 1, 1);
+    }
+    packedColor = int(packedColor);
+    if(packedColor < 0 || packedColor > maximumPackedRgb)
+    {
+        return (1, 1, 1);
+    }
+
+    byteRadix = 256;
+    maximumChannelValue = 255.0;
+    red = int(packedColor / (byteRadix * byteRadix)) / maximumChannelValue;
+    green = (int(packedColor / byteRadix) % byteRadix) / maximumChannelValue;
+    blue = (packedColor % byteRadix) / maximumChannelValue;
+    return (red, green, blue);
+}
+
+// Route labels must fit the menu row and cannot inject game color codes.
+label(routeName)
+{
+    plainText = "";
+    firstPrintableAscii = 32;
+    lastPrintableAscii = 126;
+    maximumLabelCharacters = 18;
+    ellipsis = "...";
+
+    for(i = 0; i < routeName.size; i++)
+    {
+        character = routeName[i];
+        if(character == "^")
         {
             i++;
             continue;
         }
-        n = getAscii(c);
-        if(n < 32 || n > 126)
+        asciiCode = getAscii(character);
+        if(asciiCode < firstPrintableAscii || asciiCode > lastPrintableAscii)
         {
             continue;
         }
-        text += c;
+        plainText += character;
     }
-    if(text.size > 18)
+    if(plainText.size > maximumLabelCharacters)
     {
-        text = getSubStr(text, 0, 15) + "...";
+        plainText = getSubStr(plainText, 0, maximumLabelCharacters - ellipsis.size) + ellipsis;
     }
-    return text;
+    return plainText;
 }
+
 overview(mapName)
 {
     view = spawnStruct();
@@ -130,55 +180,58 @@ overview(mapName)
         view.message = "Routes unavailable";
         return view;
     }
+
     routes = level.mapRoutes[toLower(mapName)];
     if(!isDefined(routes) || !routes.size)
     {
         view.message = "No routes available";
         return view;
     }
+
+    maximumVisibleRoutes = 10;
     view.total = routes.size;
     view.title = "Routes (" + view.total + ")";
-    if(view.total > 10)
+    if(view.total > maximumVisibleRoutes)
     {
-        view.title = "Routes (first 10 of " + view.total + ")";
+        view.title = "Routes (first " + maximumVisibleRoutes + " of " + view.total + ")";
     }
-    for(i = 0; i < min(10, routes.size); i++)
+    for(i = 0; i < min(maximumVisibleRoutes, routes.size); i++)
     {
         view.rows[view.rows.size] = routes[i];
     }
     return view;
 }
-// CoD4 menu expressions support dynamic alpha, not dynamic RGB. Keep these
-// exact standard route colors aligned with ROUTE_ROW in opencj_maplist.menu;
-// custom colors use the nearest palette entry.
+
+// CoD4 menus support dynamic alpha, not RGB. Palette slots match ROUTE_ROW in
+// opencj_maplist.menu; custom colors select the nearest normalized RGB value.
 paletteIndex(color)
 {
-    packed = [];
-    packed[0] = 16777215;
-    packed[1] = 255;
-    packed[2] = 65535;
-    packed[3] = 65280;
-    packed[4] = 16776960;
-    packed[5] = 16746496;
-    packed[6] = 16742263;
-    packed[7] = 11163135;
-    packed[8] = 52479;
-    packed[9] = 16711680;
-    packed[10] = 11141120;
-    packed[11] = 16744652;
-    best = 0;
-    distance = 999;
-    for(i = 0; i < packed.size; i++)
+    packedColors = [];
+    packedColors[0] = 16777215;
+    packedColors[1] = 255;
+    packedColors[2] = 65535;
+    packedColors[3] = 65280;
+    packedColors[4] = 16776960;
+    packedColors[5] = 16746496;
+    packedColors[6] = 16742263;
+    packedColors[7] = 11163135;
+    packedColors[8] = 52479;
+    packedColors[9] = 16711680;
+    packedColors[10] = 11141120;
+    packedColors[11] = 16744652;
+
+    nearestPaletteIndex = 0;
+    // The initial value exceeds any squared distance between normalized RGB colors (at most 3).
+    nearestDistanceSquared = 999;
+    for(i = 0; i < packedColors.size; i++)
     {
-        value = packed[i];
-        candidate =
-            (int(value / 65536) / 255.0, (int(value / 256) % 256) / 255.0, (value % 256) / 255.0);
-        d = distanceSquared(color, candidate);
-        if(d < distance)
+        paletteColor = unpackColor(packedColors[i]);
+        candidateDistanceSquared = distanceSquared(color, paletteColor);
+        if(candidateDistanceSquared < nearestDistanceSquared)
         {
-            distance = d;
-            best = i;
+            nearestDistanceSquared = candidateDistanceSquared;
+            nearestPaletteIndex = i;
         }
     }
-    return best;
+    return nearestPaletteIndex;
 }
