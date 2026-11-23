@@ -10,6 +10,12 @@
 #include "opencj_demo_technique.hpp"
 #include "mysql_async_pool.hpp"
 #include <chrono>
+// Read zlib declarations before CoD2 defines its legacy "level" macro.
+#ifdef COD4
+#include "../cod4x-server/src/zlib/zlib.h"
+#else
+#include <zlib.h>
+#endif
 #include "shared.hpp"
 
 #include <cstring>
@@ -30,11 +36,6 @@ int BG_AnimScriptAnimation(playerState_t *, int, int, int);
 int BG_AnimScriptEvent(playerState_t *, int, int, int);
 void BG_SetConditionValue(int, int, unsigned long long);
 }
-#endif
-#ifdef COD4
-#include "../cod4x-server/src/zlib/zlib.h"
-#else
-#include <zlib.h>
 #endif
 
 /**************************************************************************
@@ -1258,109 +1259,198 @@ void Gsc_Demo_ReadFrame_PrevKeyFrame(int playerId)
 // OCJ1: 27 bytes/frame. OCJ2: optional 31-byte presentation and weapon names
 // only on changes (plus a chunk-start anchor). Both formats use zlib.
 // Hex is only the GSC/SQL transport; MySQL stores UNHEX(payload) as binary.
-static void putDemoInt(unsigned char *p, uint32_t n, int bytes)
+static void putDemoInt(unsigned char *destination, uint32_t value, int byteCount)
 {
-    for (int i = 0; i < bytes; ++i)
+    for (int byte = 0; byte < byteCount; ++byte)
     {
-        p[i] = (n >> (8 * i)) & 255;
+        destination[byte] = (value >> (8 * byte)) & 255;
     }
 }
 
-static uint32_t getDemoInt(const unsigned char *p, int bytes)
+static uint32_t getDemoInt(const unsigned char *source, int byteCount)
 {
-    uint32_t n = 0;
-    for (int i = 0; i < bytes; ++i)
+    uint32_t value = 0;
+    for (int byte = 0; byte < byteCount; ++byte)
     {
-        n |= uint32_t(p[i]) << (8 * i);
+        value |= uint32_t(source[byte]) << (8 * byte);
     }
-    return n;
+    return value;
 }
 
-static const int demoChunkFrames = 64;
-static const int demoWireFrameSize = 27;
-static const int demoVisualWireSize = 31;
-static const int demoChunkBufferSize = 8192;
+// Stored OCJ1-5 layouts are little-endian. These offsets and flags are part of
+// existing recordings, not the native struct layout.
+namespace DemoWire {
+constexpr size_t HEADER_SIZE = 8;
+constexpr size_t FRAME_COUNT = 4;
+constexpr int MAX_FRAMES = 64;
+constexpr int FRAME_SIZE = 27;
+constexpr int VISUAL_SIZE = 31;
+constexpr int BUFFER_SIZE = 8192;
+constexpr size_t MAX_WEAPON_NAME = 63;
+constexpr int LANDING_SIZE = 2;
+constexpr int COMPRESSION_LEVEL = 6;
+constexpr float ANGLE_STEPS_PER_TURN = 65536.0f;
+constexpr float VIEW_HEIGHT_SCALE = 256.0f;
+constexpr float ADS_SCALE = 255.0f;
+constexpr float MAX_ORIGIN_COORDINATE = 131072;
+constexpr float MAX_VIEW_HEIGHT = 100;
+constexpr unsigned MAX_WEAPON_STATE = 32;
+constexpr unsigned FIRST_LANDING_EVENT = 77;
+constexpr unsigned LAST_LANDING_EVENT = 105;
+constexpr unsigned MAX_LANDING_IMPACT = 24;
 
-static bool encodeDemoChunk(sDemo_t *demo, int first, int count, std::string &output)
+enum FrameOffset {
+    ORIGIN = 0,
+    ANGLES = 12,
+    FLAGS = 18,
+    FPS = 20,
+    CHECKPOINT = 22,
+    EVENTS = 26
+};
+
+enum VisualOffset {
+    WEAPON_TIME = 0,
+    WEAPON_DELAY = 2,
+    WEAPON_ANIMATION = 4,
+    WEAPON_STATE = 6,
+    BOB_CYCLE = 7,
+    VIEW_HEIGHT = 8,
+    ADS = 10,
+    VELOCITY = 11,
+    LADDER = 17,
+    SPRINT_ELAPSED = 23,
+    MANTLE_TIMER = 25,
+    MANTLE_YAW = 27,
+    MANTLE_TRANSITION = 29,
+    MANTLE_FLAGS = 30
+};
+
+enum FrameEvent {
+    SAVE = 1,
+    LOAD = 2,
+    RPG = 4,
+    VISUAL = 8,
+    LANDING = 16,
+    FAILED_PATH = 32,
+    ELEVATION_KNOWN = 64,
+    ELEVATION_USED = 128
+};
+
+static_assert(HEADER_SIZE + MAX_FRAMES *
+              (FRAME_SIZE + VISUAL_SIZE + 1 + MAX_WEAPON_NAME + LANDING_SIZE) <= BUFFER_SIZE,
+              "A complete demo chunk must fit before compression");
+}
+
+static void encodeDemoFrameFields(const sDemoFrame_t &frame, unsigned char *encodedFrame)
 {
-    if (!demo || first < 0 || count < 1 || count > demoChunkFrames || first > demo->size - count)
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        uint32_t bits;
+        memcpy(&bits, &frame.origin[axis], 4);
+        putDemoInt(encodedFrame + DemoWire::ORIGIN + axis * 4, bits, 4);
+        putDemoInt(encodedFrame + DemoWire::ANGLES + axis * 2, uint16_t(int(frame.angles[axis] * DemoWire::ANGLE_STEPS_PER_TURN / 360.0f)), 2);
+    }
+    putDemoInt(encodedFrame + DemoWire::FLAGS, uint16_t(frame.flags), 2);
+    putDemoInt(encodedFrame + DemoWire::FPS, uint16_t(frame.fps), 2);
+    putDemoInt(encodedFrame + DemoWire::CHECKPOINT, frame.checkpointId, 4);
+    encodedFrame[DemoWire::EVENTS] = (frame.saveNow ? DemoWire::SAVE : 0) | (frame.loadNow ? DemoWire::LOAD : 0) | (frame.rpgNow ? DemoWire::RPG : 0) |
+            (frame.isKeyFrame ? 0 : DemoWire::FAILED_PATH) | (frame.eleKnown ? DemoWire::ELEVATION_KNOWN : 0) | (frame.eleUsed ? DemoWire::ELEVATION_USED : 0);
+}
+
+// Keep the weapon anchor within each chunk so chunks can load independently.
+struct DemoEncodeBuffer {
+    unsigned char bytes[DemoWire::BUFFER_SIZE] = {'O', 'C', 'J', '5'};
+    size_t used = DemoWire::HEADER_SIZE;
+    uint16_t previousWeapon = 0;
+    bool hasWeapon = false;
+};
+
+#ifdef COD4
+static void encodeDemoVisualFields(const DemoVisual &visual, unsigned char *encodedVisual)
+{
+    putDemoInt(encodedVisual + DemoWire::WEAPON_TIME, visual.weaponTime, 2);
+    putDemoInt(encodedVisual + DemoWire::WEAPON_DELAY, visual.weaponDelay, 2);
+    putDemoInt(encodedVisual + DemoWire::WEAPON_ANIMATION, visual.animation, 2);
+    encodedVisual[DemoWire::WEAPON_STATE] = visual.weaponState;
+    encodedVisual[DemoWire::BOB_CYCLE] = visual.bobCycle;
+    putDemoInt(encodedVisual + DemoWire::VIEW_HEIGHT, int(visual.viewHeight * DemoWire::VIEW_HEIGHT_SCALE), 2);
+    encodedVisual[DemoWire::ADS] = std::max(0, std::min(255, int(std::lround(visual.ads * DemoWire::ADS_SCALE))));
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        putDemoInt(encodedVisual + DemoWire::VELOCITY + axis * 2, uint16_t(visual.velocity[axis]), 2);
+        putDemoInt(encodedVisual + DemoWire::LADDER + axis * 2, uint16_t(visual.ladder[axis]), 2);
+    }
+    putDemoInt(encodedVisual + DemoWire::SPRINT_ELAPSED, visual.sprintElapsed, 2);
+    putDemoInt(encodedVisual + DemoWire::MANTLE_TIMER, visual.mantleTimer, 2);
+    putDemoInt(encodedVisual + DemoWire::MANTLE_YAW, visual.mantleYaw, 2);
+    encodedVisual[DemoWire::MANTLE_TRANSITION] = visual.mantleTransition;
+    encodedVisual[DemoWire::MANTLE_FLAGS] = visual.mantleFlags;
+}
+
+static bool encodeDemoVisual(const DemoVisual &visual, DemoEncodeBuffer &buffer,
+                             unsigned char &events)
+{
+    events |= DemoWire::VISUAL;
+    encodeDemoVisualFields(visual, buffer.bytes + buffer.used);
+    buffer.used += DemoWire::VISUAL_SIZE;
+    const char *weaponName = "";
+    if (!buffer.hasWeapon || buffer.previousWeapon != visual.weapon)
+    {
+        weaponName = demoWeaponName(visual.weapon);
+    }
+    const size_t nameLength = strlen(weaponName);
+    if (nameLength > DemoWire::MAX_WEAPON_NAME ||
+        buffer.used + 1 + nameLength > sizeof(buffer.bytes))
     {
         return false;
     }
-    unsigned char raw[demoChunkBufferSize] = {'O', 'C', 'J', '5'};
-    size_t used = 8;
-    uint16_t previousWeapon = 0;
-    bool haveWeapon = false;
-    putDemoInt(raw + 4, count, 4);
-    for (int i = 0; i < count; ++i)
+    buffer.bytes[buffer.used++] = nameLength;
+    memcpy(buffer.bytes + buffer.used, weaponName, nameLength);
+    buffer.used += nameLength;
+    buffer.previousWeapon = visual.weapon;
+    buffer.hasWeapon = true;
+    if (visual.landingEvent)
     {
-        const sDemoFrame_t &frame = demo->pDemoFrames[first + i];
-        unsigned char *p = raw + used;
-        used += demoWireFrameSize;
-        for (int axis = 0; axis < 3; ++axis)
-        {
-            uint32_t bits;
-            memcpy(&bits, &frame.origin[axis], 4);
-            putDemoInt(p + axis * 4, bits, 4);
-            putDemoInt(p + 12 + axis * 2, uint16_t(int(frame.angles[axis] * 65536.0f / 360.0f)), 2);
-        }
-        putDemoInt(p + 18, uint16_t(frame.flags), 2);
-        putDemoInt(p + 20, uint16_t(frame.fps), 2);
-        putDemoInt(p + 22, frame.checkpointId, 4);
-        p[26] = (frame.saveNow ? 1 : 0) | (frame.loadNow ? 2 : 0) | (frame.rpgNow ? 4 : 0) |
-                (frame.isKeyFrame ? 0 : 32) | (frame.eleKnown ? 64 : 0) | (frame.eleUsed ? 128 : 0);
+        events |= DemoWire::LANDING;
+        buffer.bytes[buffer.used++] = visual.landingEvent;
+        buffer.bytes[buffer.used++] = visual.landingImpact;
+    }
+    return true;
+}
+#endif
+
+// Encode only a validated frame range. The caller owns the returned compressed bytes.
+static bool encodeDemoChunk(sDemo_t *demo, int first, int count, std::string &output)
+{
+    if (!demo || first < 0 || count < 1 || count > DemoWire::MAX_FRAMES ||
+        first > demo->size - count)
+    {
+        return false;
+    }
+    DemoEncodeBuffer buffer;
+    putDemoInt(buffer.bytes + DemoWire::FRAME_COUNT, count, 4);
+    for (int index = first; index < first + count; ++index)
+    {
+        const sDemoFrame_t &frame = demo->pDemoFrames[index];
+        unsigned char *encodedFrame = buffer.bytes + buffer.used;
+        buffer.used += DemoWire::FRAME_SIZE;
+        encodeDemoFrameFields(frame, encodedFrame);
 #ifdef COD4
-        if (frame.visual.valid)
+        if (frame.visual.valid &&
+            !encodeDemoVisual(frame.visual, buffer, encodedFrame[DemoWire::EVENTS]))
         {
-            p[26] |= 8;
-            const DemoVisual &v = frame.visual;
-            unsigned char *q = raw + used;
-            used += demoVisualWireSize;
-            putDemoInt(q, v.weaponTime, 2);
-            putDemoInt(q + 2, v.weaponDelay, 2);
-            putDemoInt(q + 4, v.animation, 2);
-            q[6] = v.weaponState;
-            q[7] = v.bobCycle;
-            putDemoInt(q + 8, int(v.viewHeight * 256), 2);
-            q[10] = std::max(0, std::min(255, int(std::lround(v.ads * 255))));
-            for (int a = 0; a < 3; ++a)
-            {
-                putDemoInt(q + 11 + a * 2, uint16_t(v.velocity[a]), 2);
-                putDemoInt(q + 17 + a * 2, uint16_t(v.ladder[a]), 2);
-            }
-            putDemoInt(q + 23, v.sprintElapsed, 2);
-            putDemoInt(q + 25, v.mantleTimer, 2);
-            putDemoInt(q + 27, v.mantleYaw, 2);
-            q[29] = v.mantleTransition;
-            q[30] = v.mantleFlags;
-            const char *name =
-                (!haveWeapon || previousWeapon != v.weapon) ? demoWeaponName(v.weapon) : "";
-            size_t length = strlen(name);
-            if (length > 63 || used + 1 + length > sizeof(raw))
-            {
-                return false;
-            }
-            raw[used++] = length;
-            memcpy(raw + used, name, length);
-            used += length;
-            previousWeapon = v.weapon;
-            haveWeapon = true;
-            if (v.landingEvent)
-            {
-                p[26] |= 16;
-                raw[used++] = v.landingEvent;
-                raw[used++] = v.landingImpact;
-            }
+            return false;
         }
 #endif
     }
-    unsigned char packed[demoChunkBufferSize];
-    uLongf size = sizeof(packed);
-    if (compress2(packed, &size, raw, used, 6) != Z_OK)
+    unsigned char packed[DemoWire::BUFFER_SIZE];
+    uLongf packedSize = sizeof(packed);
+    if (compress2(packed, &packedSize, buffer.bytes, buffer.used,
+                  DemoWire::COMPRESSION_LEVEL) != Z_OK)
     {
         return false;
     }
-    output.assign(reinterpret_cast<const char *>(packed), size);
+    output.assign(reinterpret_cast<const char *>(packed), packedSize);
     return true;
 }
 
@@ -1410,139 +1500,175 @@ static int demoHexDigit(char c)
     return -1;
 }
 
+// Borrow the decompressed buffer only while validating a chunk. No frame is
+// published until the complete cursor has been consumed and capacity reserved.
+struct DemoDecodeCursor {
+    const unsigned char *bytes;
+    size_t size;
+    char version;
+    size_t used = DemoWire::HEADER_SIZE;
+    uint16_t previousWeapon = 0;
+    bool hasWeapon = false;
+
+    const unsigned char *take(size_t length)
+    {
+        if (length > size - used)
+        {
+            return nullptr;
+        }
+        const unsigned char *field = bytes + used;
+        used += length;
+        return field;
+    }
+};
+
+static bool decodeDemoFrameFields(const unsigned char *encodedFrame, char version,
+                                  sDemoFrame_t &frame)
+{
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        uint32_t bits = getDemoInt(encodedFrame + DemoWire::ORIGIN + axis * 4, 4);
+        memcpy(&frame.origin[axis], &bits, 4);
+        if (!std::isfinite(frame.origin[axis]) || fabs(frame.origin[axis]) > DemoWire::MAX_ORIGIN_COORDINATE)
+        {
+            return false;
+        }
+        frame.angles[axis] = getDemoInt(encodedFrame + DemoWire::ANGLES + axis * 2, 2) * 360.0f / DemoWire::ANGLE_STEPS_PER_TURN;
+    }
+    frame.flags = getDemoInt(encodedFrame + DemoWire::FLAGS, 2);
+    frame.fps = getDemoInt(encodedFrame + DemoWire::FPS, 2);
+    frame.checkpointId = getDemoInt(encodedFrame + DemoWire::CHECKPOINT, 4);
+    frame.saveNow = encodedFrame[DemoWire::EVENTS] & DemoWire::SAVE;
+    frame.loadNow = encodedFrame[DemoWire::EVENTS] & DemoWire::LOAD;
+    frame.rpgNow = encodedFrame[DemoWire::EVENTS] & DemoWire::RPG;
+    frame.isKeyFrame = version < '4' || !(encodedFrame[DemoWire::EVENTS] & DemoWire::FAILED_PATH);
+    frame.eleKnown = version >= '5' && (encodedFrame[DemoWire::EVENTS] & DemoWire::ELEVATION_KNOWN);
+    frame.eleUsed = frame.eleKnown && (encodedFrame[DemoWire::EVENTS] & DemoWire::ELEVATION_USED);
+    return true;
+}
+
+static void decodeDemoVisualFields(const unsigned char *encodedVisual, DemoVisual &visual)
+{
+    visual.weaponTime = getDemoInt(encodedVisual + DemoWire::WEAPON_TIME, 2);
+    visual.weaponDelay = getDemoInt(encodedVisual + DemoWire::WEAPON_DELAY, 2);
+    visual.animation = getDemoInt(encodedVisual + DemoWire::WEAPON_ANIMATION, 2);
+    visual.weaponState = encodedVisual[DemoWire::WEAPON_STATE];
+    visual.bobCycle = encodedVisual[DemoWire::BOB_CYCLE];
+    visual.viewHeight = int16_t(getDemoInt(encodedVisual + DemoWire::VIEW_HEIGHT, 2)) / DemoWire::VIEW_HEIGHT_SCALE;
+    visual.ads = encodedVisual[DemoWire::ADS] / DemoWire::ADS_SCALE;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        visual.velocity[axis] = getDemoInt(encodedVisual + DemoWire::VELOCITY + axis * 2, 2);
+        visual.ladder[axis] = getDemoInt(encodedVisual + DemoWire::LADDER + axis * 2, 2);
+    }
+    visual.sprintElapsed = getDemoInt(encodedVisual + DemoWire::SPRINT_ELAPSED, 2);
+    visual.mantleTimer = getDemoInt(encodedVisual + DemoWire::MANTLE_TIMER, 2);
+    visual.mantleYaw = getDemoInt(encodedVisual + DemoWire::MANTLE_YAW, 2);
+    visual.mantleTransition = encodedVisual[DemoWire::MANTLE_TRANSITION];
+    visual.mantleFlags = encodedVisual[DemoWire::MANTLE_FLAGS];
+}
+
+static bool decodeDemoVisual(DemoDecodeCursor &cursor, unsigned char events, DemoVisual &visual)
+{
+    const unsigned char *encodedVisual = cursor.take(DemoWire::VISUAL_SIZE);
+    const unsigned char *encodedNameLength = cursor.take(1);
+    if (!encodedVisual || !encodedNameLength)
+    {
+        return false;
+    }
+    visual.valid = true;
+    decodeDemoVisualFields(encodedVisual, visual);
+    const size_t nameLength = *encodedNameLength;
+    if (nameLength > DemoWire::MAX_WEAPON_NAME || (!nameLength && !cursor.hasWeapon) ||
+        visual.viewHeight < 0 || visual.viewHeight > DemoWire::MAX_VIEW_HEIGHT ||
+        visual.weaponState > DemoWire::MAX_WEAPON_STATE)
+    {
+        return false;
+    }
+    const unsigned char *encodedName = cursor.take(nameLength);
+    if (!encodedName)
+    {
+        return false;
+    }
+#ifdef COD4
+    if (nameLength)
+    {
+        char weaponName[DemoWire::MAX_WEAPON_NAME + 1];
+        memcpy(weaponName, encodedName, nameLength);
+        weaponName[nameLength] = 0;
+        if (strlen(weaponName) != nameLength)
+        {
+            return false;
+        }
+        cursor.previousWeapon = !strcmp(weaponName, "none") ? 0 : G_GetWeaponIndexForName(weaponName);
+        cursor.hasWeapon = true;
+    }
+#endif
+    visual.weapon = cursor.previousWeapon;
+    if (cursor.version >= '3' && (events & DemoWire::LANDING))
+    {
+        const unsigned char *landing = cursor.take(DemoWire::LANDING_SIZE);
+        if (!landing || landing[0] < DemoWire::FIRST_LANDING_EVENT ||
+            landing[0] > DemoWire::LAST_LANDING_EVENT || !landing[1] ||
+            landing[1] > DemoWire::MAX_LANDING_IMPACT)
+        {
+            return false;
+        }
+        visual.landingEvent = landing[0];
+        visual.landingImpact = landing[1];
+    }
+    return true;
+}
+
+// Reject malformed or unaffordable chunks without changing the target recording.
 static int decodeDemoChunk(sDemo_t *demo, const unsigned char *packed, size_t length)
 {
-    if (!demo || demo->isComplete || !length || length > demoChunkBufferSize)
+    if (!demo || demo->isComplete || !length || length > DemoWire::BUFFER_SIZE)
     {
         return 0;
     }
-    unsigned char raw[demoChunkBufferSize];
-    uLongf size = sizeof(raw);
-    if (uncompress(raw, &size, packed, length) != Z_OK || size < 8 ||
-        (memcmp(raw, "OCJ1", 4) && memcmp(raw, "OCJ2", 4) && memcmp(raw, "OCJ3", 4) &&
-         memcmp(raw, "OCJ4", 4) && memcmp(raw, "OCJ5", 4)))
+    unsigned char raw[DemoWire::BUFFER_SIZE];
+    uLongf rawSize = sizeof(raw);
+    if (uncompress(raw, &rawSize, packed, length) != Z_OK || rawSize < DemoWire::HEADER_SIZE ||
+        memcmp(raw, "OCJ", 3) || raw[3] < '1' || raw[3] > '5')
     {
         return 0;
     }
-    uint32_t count = getDemoInt(raw + 4, 4);
-    bool modern = raw[3] != '1';
-    size_t used = 8;
-    uint16_t weapon = 0;
-    bool haveWeapon = false;
-    if (!count || count > demoChunkFrames || (!modern && size != 8 + count * demoWireFrameSize))
+    const uint32_t frameCount = getDemoInt(raw + DemoWire::FRAME_COUNT, 4);
+    DemoDecodeCursor cursor{raw, rawSize, static_cast<char>(raw[3])};
+    if (!frameCount || frameCount > DemoWire::MAX_FRAMES ||
+        (cursor.version == '1' &&
+         rawSize != DemoWire::HEADER_SIZE + frameCount * DemoWire::FRAME_SIZE))
     {
         return 0;
     }
-    sDemoFrame_t frames[demoChunkFrames] = {};
-    for (uint32_t i = 0; i < count; ++i)
+    sDemoFrame_t frames[DemoWire::MAX_FRAMES] = {};
+    for (uint32_t index = 0; index < frameCount; ++index)
     {
-        if (used + demoWireFrameSize > size)
+        const unsigned char *encodedFrame = cursor.take(DemoWire::FRAME_SIZE);
+        if (!encodedFrame || !decodeDemoFrameFields(encodedFrame, cursor.version, frames[index]))
         {
             return 0;
         }
-        unsigned char *p = raw + used;
-        used += demoWireFrameSize;
-        sDemoFrame_t &frame = frames[i];
-        for (int axis = 0; axis < 3; ++axis)
-        {
-            uint32_t bits = getDemoInt(p + axis * 4, 4);
-            memcpy(&frame.origin[axis], &bits, 4);
-            if (!std::isfinite(frame.origin[axis]) || fabs(frame.origin[axis]) > 131072)
-            {
-                return 0;
-            }
-            frame.angles[axis] = getDemoInt(p + 12 + axis * 2, 2) * 360.0f / 65536.0f;
-        }
-        frame.flags = getDemoInt(p + 18, 2);
-        frame.fps = getDemoInt(p + 20, 2);
-        frame.checkpointId = getDemoInt(p + 22, 4);
-        frame.saveNow = p[26] & 1;
-        frame.loadNow = p[26] & 2;
-        frame.rpgNow = p[26] & 4;
-        frame.isKeyFrame = raw[3] < '4' || !(p[26] & 32);
-        frame.eleKnown = raw[3] >= '5' && (p[26] & 64);
-        frame.eleUsed = frame.eleKnown && (p[26] & 128);
-        if (modern && (p[26] & 8))
-        {
-            if (used + demoVisualWireSize + 1 > size)
-            {
-                return 0;
-            }
-            unsigned char *q = raw + used;
-            used += demoVisualWireSize;
-            DemoVisual &v = frame.visual;
-            v.valid = true;
-            v.weaponTime = getDemoInt(q, 2);
-            v.weaponDelay = getDemoInt(q + 2, 2);
-            v.animation = getDemoInt(q + 4, 2);
-            v.weaponState = q[6];
-            v.bobCycle = q[7];
-            v.viewHeight = int16_t(getDemoInt(q + 8, 2)) / 256.0f;
-            v.ads = q[10] / 255.0f;
-            for (int a = 0; a < 3; ++a)
-            {
-                v.velocity[a] = getDemoInt(q + 11 + a * 2, 2);
-                v.ladder[a] = getDemoInt(q + 17 + a * 2, 2);
-            }
-            v.sprintElapsed = getDemoInt(q + 23, 2);
-            v.mantleTimer = getDemoInt(q + 25, 2);
-            v.mantleYaw = getDemoInt(q + 27, 2);
-            v.mantleTransition = q[29];
-            v.mantleFlags = q[30];
-            unsigned length = raw[used++];
-            if (length > 63 || used + length > size || (!length && !haveWeapon) ||
-                v.viewHeight < 0 || v.viewHeight > 100 || v.weaponState > 32)
-            {
-                return 0;
-            }
-#ifdef COD4
-            if (length)
-            {
-                char name[64];
-                memcpy(name, raw + used, length);
-                name[length] = 0;
-                if (strlen(name) != length)
-                {
-                    return 0;
-                }
-                weapon = !strcmp(name, "none") ? 0 : G_GetWeaponIndexForName(name);
-                haveWeapon = true;
-            }
-#endif
-            used += length;
-            v.weapon = weapon;
-            if (raw[3] >= '3' && (p[26] & 16))
-            {
-                if (used + 2 > size)
-                {
-                    return 0;
-                }
-                v.landingEvent = raw[used++];
-                v.landingImpact = raw[used++];
-                if (v.landingEvent < 77 || v.landingEvent > 105 || !v.landingImpact ||
-                    v.landingImpact > 24)
-                {
-                    return 0;
-                }
-            }
-        }
-    }
-    if (used != size)
-    {
-        return 0;
-    }
-    if (!reserveDemoFrames(demo, size_t(demo->size) + count))
-    {
-        return 0;
-    }
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        if (!appendDemoFrame(demo, frames[i]))
+        const unsigned char events = encodedFrame[DemoWire::EVENTS];
+        if (cursor.version != '1' && (events & DemoWire::VISUAL) &&
+            !decodeDemoVisual(cursor, events, frames[index].visual))
         {
             return 0;
         }
     }
-    return count;
+    if (cursor.used != cursor.size || !reserveDemoFrames(demo, size_t(demo->size) + frameCount))
+    {
+        return 0;
+    }
+    for (uint32_t index = 0; index < frameCount; ++index)
+    {
+        if (!appendDemoFrame(demo, frames[index]))
+        {
+            return 0;
+        }
+    }
+    return frameCount;
 }
 
 void Gsc_Demo_DecodeChunk()
@@ -1554,11 +1680,11 @@ void Gsc_Demo_DecodeChunk()
     }
     stackGetParamString(1, &hex);
     size_t length = strlen(hex);
-    if (!length || length > demoChunkBufferSize * 2 || length % 2) {
+    if (!length || length > DemoWire::BUFFER_SIZE * 2 || length % 2) {
         stackPushUndefined();
         return;
     }
-    unsigned char packed[demoChunkBufferSize];
+    unsigned char packed[DemoWire::BUFFER_SIZE];
     for (size_t i = 0; i < length; i += 2) {
         int a = demoHexDigit(hex[i]);
         int b = demoHexDigit(hex[i + 1]);
