@@ -1,238 +1,200 @@
-"""Read-only MySQL fixtures for production #72 exact-category comparison SQL."""
+"""Read-only exact-category record scenarios using the production ranking SQL."""
 
-from compose_environment import database_container
-from query_sql import gsc_expression
-from pathlib import Path
-import re
-import subprocess
+from dataclasses import replace
 
-ROOT = Path(__file__).resolve().parents[2]
+from sql_run_fixture import RUN_COLUMNS
+from sql_run_fixture import RunFixture
+from sql_run_fixture import fixture_cte
+from sql_run_fixture import prepend_fixture_tables
+from sql_run_fixture import query_runtime_database
+from sql_run_fixture import read_run_query
+
+
+def run_fixture(run_id, **overrides):
+    """Use one prior owner and a ten-second finish unless a scenario says otherwise."""
+    return replace(RunFixture(run_id, player_id=1, time_ms=10000), **overrides)
+
+
+def record_tables(runs):
+    statistics = []
+    player_ids = set()
+    for run in runs:
+        player_ids.add(run.owner_id)
+        if run.with_statistics:
+            statistics.append(run.statistics_row())
+    return [
+        fixture_cte(
+            "playerRuns",
+            RUN_COLUMNS,
+            [run.player_run_row("2026-11-13 12:00:00") for run in runs],
+        ),
+        fixture_cte(
+            "checkpoints",
+            ["cpID", "finishRouteID", "retired"],
+            [[1, 1, 0], [2, 1, 0], [3, 2, 0], [4, 1, 1]],
+        ),
+        fixture_cte("routes", ["routeID", "routeName"], [[1, "easy"], [2, "hard"]]),
+        fixture_cte(
+            "checkpointStatistics",
+            ["runID", "cpID", "timePlayed", "explosiveJumps"],
+            statistics or [[0, 0, 0, 0]],
+        ),
+        fixture_cte(
+            "playerDisplayNames",
+            ["playerID", "playerName"],
+            [[player_id, "Fixture " + str(player_id)] for player_id in sorted(player_ids)],
+        ),
+    ]
 
 
 def cases():
-    source = (ROOT / "server-gsc/opencj/recordnotices.gsc").read_text()
-    # Read the public query builder, independent of its line wrapping.
-    builder = re.search(r"(?ms)^finishQuery\s*\([^)]*\)\s*\{.*?^\}", source)
-    if not builder:
-        raise RuntimeError("Production finishQuery was not found")
-    expression = re.search(r'\breturn\s+((?:"(?:[^"\\]|\\.)*"|[^;])+);', builder[0])
-    if not expression:
-        raise RuntimeError("Production finishQuery return was not found")
-    query = gsc_expression(expression[1], {"runID": 100})
-    cols = [
-        'runID',
-        'playerID',
-        'mapID',
-        'finishcpID',
-        'finishTimeStamp',
-        'FPSMode',
-        'ele',
-        'anyPct',
-        'hb',
-        'hardTAS',
-        'tutorial',
-    ]
+    production_query = read_run_query("recordnotices.gsc", "finishQuery", 100)
+    scenarios = []
 
-    def run(
-        id,
-        pid=1,
-        time=10000,
-        rpg=10,
-        cp=1,
-        map=1,
-        fps='mix',
-        ele=0,
-        anyPct=0,
-        hb=0,
-        tas=0,
-        tutorial=0,
-        finished=True,
-        stats=True,
-    ):
-        return {
-            'values': [
-                id,
-                pid,
-                map,
-                cp,
-                '2026-11-13 12:00:00' if finished else None,
-                fps,
-                ele,
-                anyPct,
-                hb,
-                tas,
-                tutorial,
-            ],
-            'time': time,
-            'rpg': rpg,
-            'stats': stats,
-        }
+    def add_scenario(name, others=(), current=None, server=None, personal=None, empty=False):
+        if current is None:
+            current = run_fixture(100, player_id=10, time_ms=8000, rpg_count=8)
+        runs = [current] + list(others)
+        query = prepend_fixture_tables(production_query, record_tables(runs))
+        scenarios.append((name, query, server, personal, empty))
 
-    def lit(v):
-        return (
-            'NULL'
-            if v is None
-            else str(v) if isinstance(v, int) else "'" + v.replace("'", "''") + "'"
-        )
-
-    def cte(name, columns, rows):
-        return (
-            name
-            + ' AS ('
-            + ' UNION ALL '.join(
-                'SELECT '
-                + ','.join(lit(v) + (' AS ' + c if n == 0 else '') for c, v in zip(columns, row))
-                for n, row in enumerate(rows)
-            )
-            + ')'
-        )
-
-    result = []
-
-    def add(name, others=(), current=None, server=None, personal=None, empty=False):
-        runs = [current or run(100, pid=10, time=8000, rpg=8)] + list(others)
-        fixtures = [
-            cte('playerRuns', cols, [x['values'] for x in runs]),
-            cte(
-                'checkpoints',
-                ['cpID', 'finishRouteID', 'retired'],
-                [[1, 1, 0], [2, 1, 0], [3, 2, 0], [4, 1, 1]],
-            ),
-            cte('routes', ['routeID', 'routeName'], [[1, 'easy'], [2, 'hard']]),
-            cte(
-                'checkpointStatistics',
-                ['runID', 'cpID', 'timePlayed', 'explosiveJumps'],
-                [[x['values'][0], x['values'][3], x['time'], x['rpg']] for x in runs if x['stats']]
-                or [[0, 0, 0, 0]],
-            ),
-            cte(
-                'playerDisplayNames',
-                ['playerID', 'playerName'],
-                [[i, 'Fixture ' + str(i)] for i in sorted({x['values'][1] for x in runs})],
-            ),
-        ]
-        result.append(
-            (name, 'WITH ' + ','.join(fixtures) + ',' + query[5:] + ';', server, personal, empty)
-        )
-
-    add('first category finish has no prior record')
-    add('ordinary comparable finish', [run(1)], server=[(10000, 10)] * 2)
-    add('own previous best', [run(1, pid=10)], server=[(10000, 10)] * 2, personal=[(10000, 10)] * 2)
-    add(
-        'separate time and RPG leaders',
-        [run(1, time=6000, rpg=12), run(2, time=12000, rpg=6)],
+    add_scenario("first category finish has no prior record")
+    add_scenario("ordinary comparable finish", [run_fixture(1)], server=[(10000, 10)] * 2)
+    add_scenario(
+        "own previous best",
+        [run_fixture(1, player_id=10)],
+        server=[(10000, 10)] * 2,
+        personal=[(10000, 10)] * 2,
+    )
+    add_scenario(
+        "separate time and RPG leaders",
+        [run_fixture(1, time_ms=6000, rpg_count=12), run_fixture(2, time_ms=12000, rpg_count=6)],
         server=[(6000, 12), (12000, 6)],
     )
-    add(
-        'personal baseline differs from server',
-        [run(1, time=6000, rpg=6), run(2, pid=10, time=9000, rpg=9)],
+    add_scenario(
+        "personal baseline differs from server",
+        [
+            run_fixture(1, time_ms=6000, rpg_count=6),
+            run_fixture(2, player_id=10, time_ms=9000, rpg_count=9),
+        ],
         server=[(6000, 6)] * 2,
         personal=[(9000, 9)] * 2,
     )
-    add(
-        'time tie uses RPG tiebreak',
-        [run(1, time=6000, rpg=12), run(2, time=6000, rpg=10)],
+    add_scenario(
+        "time tie uses RPG tiebreak",
+        [run_fixture(1, time_ms=6000, rpg_count=12), run_fixture(2, time_ms=6000, rpg_count=10)],
         server=[(6000, 10)] * 2,
     )
-    add(
-        'RPG tie uses time tiebreak',
-        [run(1, time=9000, rpg=6), run(2, time=6000, rpg=6)],
+    add_scenario(
+        "RPG tie uses time tiebreak",
+        [run_fixture(1, time_ms=9000, rpg_count=6), run_fixture(2, time_ms=6000, rpg_count=6)],
         server=[(6000, 6)] * 2,
     )
-    add('alternate end on same route', [run(1, cp=2)], server=[(10000, 10)] * 2)
+    add_scenario(
+        "alternate end on same route", [run_fixture(1, checkpoint_id=2)], server=[(10000, 10)] * 2
+    )
     for name, other in [
-        ('other route', run(1, cp=3)),
-        ('other map', run(1, map=2)),
-        ('retired finish', run(1, cp=4)),
-        ('unfinished', run(1, finished=False)),
-        ('missing stats', run(1, stats=False)),
+        ("other route", run_fixture(1, checkpoint_id=3)),
+        ("other map", run_fixture(1, map_id=2)),
+        ("retired finish", run_fixture(1, checkpoint_id=4)),
+        ("unfinished", run_fixture(1, finished=False)),
+        ("missing stats", run_fixture(1, with_statistics=False)),
     ]:
-        add(name + ' excluded', [other])
-    for mode in ['ele', 'anyPct', 'hb', 'tas']:
-        add(
-            mode + ' relaxed cannot beat strict baseline',
-            [run(1)],
-            current=run(100, pid=10, time=1, **{mode: 1}),
+        add_scenario(name + " excluded", [other])
+    for mode, attribute in [
+        ("ele", "used_elevators"),
+        ("anyPct", "any_percent"),
+        ("hb", "halfbeat"),
+        ("tas", "hard_tas"),
+    ]:
+        add_scenario(
+            mode + " relaxed cannot beat strict baseline",
+            [run_fixture(1)],
+            current=run_fixture(100, player_id=10, time_ms=1, **{attribute: 1}),
         )
-        add(mode + ' strict does not compare to relaxed baseline', [run(1, **{mode: 1})])
-        add(
-            mode + ' matching mode compares',
-            [run(1, **{mode: 1})],
-            current=run(100, pid=10, **{mode: 1}),
+        add_scenario(
+            mode + " strict does not compare to relaxed baseline",
+            [run_fixture(1, **{attribute: 1})],
+        )
+        add_scenario(
+            mode + " matching mode compares",
+            [run_fixture(1, **{attribute: 1})],
+            current=run_fixture(100, player_id=10, **{attribute: 1}),
             server=[(10000, 10)] * 2,
         )
-    for a, b in [
-        ('125', 'mix'),
-        ('mix', '125'),
-        ('125', 'hax'),
-        ('hax', '125'),
-        ('mix', 'hax'),
-        ('hax', 'mix'),
+    for prior_fps, current_fps in [
+        ("125", "mix"),
+        ("mix", "125"),
+        ("125", "hax"),
+        ("hax", "125"),
+        ("mix", "hax"),
+        ("hax", "mix"),
     ]:
-        add(
-            a + ' vs ' + b + ' separate FPS categories',
-            [run(1, fps=a)],
-            current=run(100, pid=10, fps=b),
+        add_scenario(
+            prior_fps + " vs " + current_fps + " separate FPS categories",
+            [run_fixture(1, fps_mode=prior_fps)],
+            current=run_fixture(100, player_id=10, fps_mode=current_fps),
         )
-    add(
-        'combined mode exact match',
-        [run(1, anyPct=1, hb=1)],
-        current=run(100, pid=10, anyPct=1, hb=1),
+    add_scenario(
+        "combined mode exact match",
+        [run_fixture(1, any_percent=1, halfbeat=1)],
+        current=run_fixture(100, player_id=10, any_percent=1, halfbeat=1),
         server=[(10000, 10)] * 2,
     )
-    add(
-        'combined mode partial overlap excluded',
-        [run(1, anyPct=1)],
-        current=run(100, pid=10, anyPct=1, hb=1),
+    add_scenario(
+        "combined mode partial overlap excluded",
+        [run_fixture(1, any_percent=1)],
+        current=run_fixture(100, player_id=10, any_percent=1, halfbeat=1),
     )
-    add(
-        'current unfinished gives no announcement',
-        current=run(100, pid=10, finished=False),
+    add_scenario(
+        "current unfinished gives no announcement",
+        current=run_fixture(100, player_id=10, finished=False),
         empty=True,
     )
-    add(
-        'current missing stats gives no announcement',
-        current=run(100, pid=10, stats=False),
+    add_scenario(
+        "current missing stats gives no announcement",
+        current=run_fixture(100, player_id=10, with_statistics=False),
         empty=True,
     )
-    add('current retired finish gives no announcement', current=run(100, pid=10, cp=4), empty=True)
-    add('tutorial prior finish excluded', [run(1, tutorial=1)])
-    add('current tutorial gives no announcement', current=run(100, pid=10, tutorial=1), empty=True)
-    return result
+    add_scenario(
+        "current retired finish gives no announcement",
+        current=run_fixture(100, player_id=10, checkpoint_id=4),
+        empty=True,
+    )
+    add_scenario("tutorial prior finish excluded", [run_fixture(1, tutorial=1)])
+    add_scenario(
+        "current tutorial gives no announcement",
+        current=run_fixture(100, player_id=10, tutorial=1),
+        empty=True,
+    )
+    return scenarios
 
 
 def verify(sql):
+    """Compare the prior time/RPG leaders; the VM checks audience and message text."""
     checks = 0
+    # The production query returns two server boards followed by two personal boards.
+    board_count = 4
+    prior_time_column = 10
+    prior_rpg_column = 11
     for name, query, server, personal, empty in cases():
-        text = sql(query)
-        rows = [x.split('\t') for x in text.splitlines()] if text else []
-        assert len(rows) == (0 if empty else 4), (name, rows)
+        output = sql(query)
+        rows = [line.split("\t") for line in output.splitlines()] if output else []
+        expected_rows = 0 if empty else board_count
+        assert len(rows) == expected_rows, (name, "row count", len(rows), expected_rows)
         if not empty:
             expected = (server or [(None, None)] * 2) + (personal or [(None, None)] * 2)
-            actual = [tuple(None if x == 'NULL' else int(x) for x in row[10:12]) for row in rows]
+            actual = []
+            for row in rows:
+                prior_values = []
+                for column in (prior_time_column, prior_rpg_column):
+                    value = row[column]
+                    prior_values.append(None if value == "NULL" else int(value))
+                actual.append(tuple(prior_values))
             assert actual == expected, (name, actual, expected)
         checks += 1
     return checks
 
 
-if __name__ == '__main__':
-
-    def sql(query):
-        p = subprocess.run(
-            [
-                'docker',
-                'exec',
-                '-i',
-                database_container(),
-                'sh',
-                '-c',
-                'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -N -u opencj openCJ_cod4',
-            ],
-            input=query,
-            text=True,
-            capture_output=True,
-        )
-        assert p.returncode == 0, p.stderr
-        return p.stdout.strip()
-
-    print('NOTIFICATION SQL PASS', verify(sql))
+if __name__ == "__main__":
+    print("NOTIFICATION SQL PASS", verify(query_runtime_database))

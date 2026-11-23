@@ -118,11 +118,12 @@
     {
       "id": "notification-sql",
       "category": "integration",
-      "description": "Exact-category notification SQL cases.",
+      "description": "Exact-category record SQL cases; owns the synthetic-run/CTE helper shared with finish ranking.",
       "requires": "Selected disposable Compose database with current schema.",
       "effects": "Connection-local read-only CTE fixtures using the runtime account.",
       "files": [
-        "dev-tools/tests/record-notices-72.py"
+        "dev-tools/tests/record-notices-72.py",
+        "dev-tools/tests/sql_run_fixture.py"
       ],
       "commands": [
         "python3 -B dev-tools/tests/record-notices-72.py"
