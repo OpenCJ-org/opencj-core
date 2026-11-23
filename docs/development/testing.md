@@ -90,6 +90,10 @@ The platform support runner accepts the same `--engine PATH` option. Choose one
 fixture variant per run; conflicting variant flags are rejected before creating
 a fixture server.
 
+The aim-teleport runner uses the measured `mp_dark` fixture. Its optional
+`--engine PATH` selects an existing candidate inside the checkout; another map
+is rejected because the fixture's platform and wall coordinates would be invalid.
+
 The tutorial auto-FPS runner accepts a candidate engine path inside the checkout,
 either as a host path or its `/workspace/...` container path. It checks movement
 choices and shot timing through a native plugin. The paired GSC fixture checks

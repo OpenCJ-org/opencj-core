@@ -17,6 +17,7 @@ def main():
     sources = [
         "demo-technique-24.cpp",
         "native-player.cpp",
+        "engine-input.cpp",
         "platform-wall-geometry.cpp",
         "platform-collision-sources.cpp",
     ]
@@ -30,6 +31,7 @@ def main():
                 "-O2",
                 "-m32",
                 "-DCOD4",
+                "-I" + str(ROOT / "cod4x-server"),
                 "-ffunction-sections",
                 "-fdata-sections",
                 "-Wl,--gc-sections",

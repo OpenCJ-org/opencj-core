@@ -197,7 +197,7 @@
       "id": "movement-engine",
       "category": "integration",
       "description": "Aim teleport, measurement, moon boost and FPS history.",
-      "requires": "Initialized Compose, matching engine, game/compiled mod and relevant maps; FPS history compiles a plugin.",
+      "requires": "Initialized Compose, matching engine, game/compiled mod and relevant maps; FPS history compiles a plugin. Aim-teleport coordinates require mp_dark.",
       "effects": "Isolated fixture servers, synthetic players and private logs; no gameplay database.",
       "files": [
         "dev-tools/tests/run-aim-teleport-smoke.py",
@@ -211,7 +211,7 @@
         "dev-tools/tests/strafe-engine.cpp"
       ],
       "commands": [
-        "python3 -B dev-tools/tests/run-aim-teleport-smoke.py mp_killhouse",
+        "python3 -B dev-tools/tests/run-aim-teleport-smoke.py mp_dark",
         "python3 -B dev-tools/tests/run-measure-smoke.py mp_killhouse",
         "python3 -B dev-tools/tests/run-moon-boost-smoke.py",
         "python3 -B dev-tools/tests/run-fps-history-smoke.py mp_killhouse"
@@ -559,7 +559,7 @@
     {
       "id": "native-unit",
       "category": "integration",
-      "description": "Current demo technique, wall geometry and collision source regressions. Native player visibility and ping-sample behavior.",
+      "description": "Current demo technique, wall geometry and collision source regressions. Native player visibility and ping-sample behavior. Engine movement-input change and callback ownership checks.",
       "requires": "g++ with C++17 and 32-bit development libraries; initialized CoD4 headers, no game assets.",
       "effects": "Temporary binaries removed on success/failure; no application services.",
       "commands": [
@@ -570,7 +570,8 @@
         "dev-tools/tests/platform-collision-sources.cpp",
         "dev-tools/tests/platform-wall-geometry.cpp",
         "dev-tools/tests/run-native-unit.py",
-        "dev-tools/tests/native-player.cpp"
+        "dev-tools/tests/native-player.cpp",
+        "dev-tools/tests/engine-input.cpp"
       ]
     },
     {

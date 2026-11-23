@@ -9,6 +9,7 @@ main()
     level.helperChecks = 0;
     level.helperFailures = 0;
     checkAsciiConversions();
+    checkPlayerNameCleanup();
     checkHudRegistrations();
     checkConfigstringLookup();
     checkMapAndTextHelpers();
@@ -16,6 +17,15 @@ main()
     checkNonPlayerHelpers();
     printf("NATIVE HELPERS COMPLETE failures=" + level.helperFailures
            + " checks=" + level.helperChecks + "\n");
+}
+
+checkPlayerNameCleanup()
+{
+    originalName = "  Spaced";
+    check(cleanPlayerName(originalName) == "Spaced", "native name cleanup trims leading spaces");
+    check(originalName == "  Spaced", "native name cleanup preserves interned input");
+    check(cleanPlayerName("Candidate") == "Candidate", "ordinary name remains unchanged");
+    check(cleanPlayerName("") == "012", "empty name gets the established minimum-length fallback");
 }
 
 checkAsciiConversions()
