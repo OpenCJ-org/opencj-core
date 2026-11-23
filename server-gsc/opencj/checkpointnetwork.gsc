@@ -268,7 +268,9 @@ fail(message)
 
 newSection(name, hex, pending)
 {
-    if (isDefined(self readSection(name)))
+    // An unreadable snapshot still belongs to an existing draft and may be recoverable.
+    path = self basePath() + name;
+    if (FS_TestFile(path + ".a") || FS_TestFile(path + ".b"))
     {
         return false;
     }
@@ -542,6 +544,10 @@ publish()
     names = getArrayKeys(n.paths);
     drafts = [];
     root = self readSection(n.root);
+    if(!isDefined(root) || root.rows.size == 0)
+    {
+        return self fail("Complete the shared opening before finalizing the network.");
+    }
     for(i = 0; i < names.size; i++)
     {
         name = names[i];

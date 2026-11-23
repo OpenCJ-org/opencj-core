@@ -231,3 +231,13 @@ The engine account is restricted to that fixture schema. The runner deletes its
 schema, account and temporary credential file on exit; logs and draft snapshots
 remain under ignored `dev-tools/local/`. This does not exercise a live player's
 editor UI or concurrent publishers.
+
+The same runner accepts the section-network fixture:
+
+```sh
+python3 -B dev-tools/tests/run-checkpoint-publication.py --fixture dev-tools/tests/checkpoint-network.gsc --completion-marker "NETWORK SELFTEST COMPLETE"
+```
+
+This exercises shared-section publication, repeated publication, pending-edit
+rejection, alternating-manifest recovery, damaged snapshot preservation and a
+missing opening. It uses the same owned schema/account and isolated file tree.

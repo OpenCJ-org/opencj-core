@@ -666,10 +666,12 @@
       "effects": "Creates a uniquely named empty schema and restricted account, isolated engine and private draft/log files. Deletes owned SQL resources and credentials on exit; no gameplay record writes.",
       "files": [
         "dev-tools/tests/run-checkpoint-publication.py",
-        "dev-tools/tests/checkpoint-publication.gsc"
+        "dev-tools/tests/checkpoint-publication.gsc",
+        "dev-tools/tests/checkpoint-network.gsc"
       ],
       "commands": [
-        "python3 -B dev-tools/tests/run-checkpoint-publication.py"
+        "python3 -B dev-tools/tests/run-checkpoint-publication.py",
+        "python3 -B dev-tools/tests/run-checkpoint-publication.py --fixture dev-tools/tests/checkpoint-network.gsc --completion-marker \"NETWORK SELFTEST COMPLETE\""
       ]
     }
   ]

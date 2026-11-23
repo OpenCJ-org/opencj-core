@@ -42,7 +42,8 @@ def main():
             fixture.database,
         )
         source_hashes, _ = gsc_fixture.prepare_fixture(options, fixture.home, retained_callbacks=())
-        install_commit_observer(fixture.home)
+        if options.fixture.name == "checkpoint-publication.gsc":
+            install_commit_observer(fixture.home)
         fixture.write_engine_config()
         result = gsc_fixture.run_prepared_fixture(
             options,
