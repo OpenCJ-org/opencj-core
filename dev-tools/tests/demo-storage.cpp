@@ -10,6 +10,11 @@ static int returnedInteger;
 static float returnedVector[3];
 
 extern "C" {
+int G_GetWeaponIndexForName(const char *)
+{
+    return 0;
+}
+
 void Scr_AddUndefined()
 {
     returnedUndefined = true;
@@ -124,9 +129,51 @@ static void extremeFrameSkips()
     clearDemoById(2);
 }
 
+static std::string legacyChunk(unsigned frameCount)
+{
+    std::vector<unsigned char> raw(8 + frameCount * demoWireFrameSize);
+    std::memcpy(raw.data(), "OCJ1", 4);
+    putDemoInt(raw.data() + 4, frameCount, 4);
+    std::string packed(compressBound(raw.size()), '\\0');
+    uLongf packedSize = packed.size();
+    assert(compress2(reinterpret_cast<unsigned char *>(packed.data()), &packedSize,
+                     raw.data(), raw.size(), 6) == Z_OK);
+    packed.resize(packedSize);
+    return packed;
+}
+
+static void rejectedChunkLeavesRecordingUnchanged()
+{
+    sDemo_t *demo = createDemo(3, 4);
+    assert(demo);
+    sDemoFrame_t frame = {};
+    frame.isKeyFrame = true;
+    for (int index = 0; index < 3; ++index)
+    {
+        assert(appendDemoFrame(demo, frame));
+    }
+    const std::string packed = legacyChunk(2);
+    // Reserve the remaining budget on another slot without allocating 128 MiB.
+    // It participates only in accounting; no frame access uses this slot.
+    sDemo_t &budgetHolder = opencj_demos[MAX_NR_DEMOS_PER_MAP - 1];
+    budgetHolder.nrAllocatedFrames = (demoMemoryLimit - allocatedDemoBytes()) / sizeof(frame);
+    const int decoded = decodeDemoChunk(
+        demo, reinterpret_cast<const unsigned char *>(packed.data()), packed.size());
+    budgetHolder.nrAllocatedFrames = 0;
+    assert(decoded == 0);
+    assert(demo->size == 3 && demo->currentFrame == 2 && demo->lastKeyFrame == 2);
+    assert(demo->pDemoFrames[2].nextKeyFrame == 2);
+
+    assert(decodeDemoChunk(demo, reinterpret_cast<const unsigned char *>(packed.data()),
+                           packed.size()) == 2);
+    assert(demo->size == 5);
+    clearDemoById(3);
+}
+
 int main()
 {
     emptyAndShortenedPlayback();
     extremeFrameSkips();
+    rejectedChunkLeavesRecordingUnchanged();
     std::puts("DEMO STORAGE PASS empty, shortened and extreme playback seeks");
 }

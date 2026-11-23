@@ -548,33 +548,37 @@ static sDemo_t *createDemo(int demoId, int capacity = 1024)
     return pDemo;
 }
 
-static bool appendDemoFrame(sDemo_t *demo, const sDemoFrame_t &frame)
+// Reserve a whole operation before changing its frames or key-frame links.
+// Both buffers coexist while copying, so the memory budget includes that peak.
+static bool reserveDemoFrames(sDemo_t *demo, size_t requiredFrames)
 {
-    if (demo->isComplete)
+    if (requiredFrames <= size_t(demo->nrAllocatedFrames))
+    {
+        return true;
+    }
+    const size_t capacity = std::max(size_t(demo->nrAllocatedFrames) * 2, requiredFrames);
+    if (capacity > demoMemoryLimit / sizeof(sDemoFrame_t) ||
+        allocatedDemoBytes() + capacity * sizeof(sDemoFrame_t) > demoMemoryLimit)
     {
         return false;
     }
-    if (demo->size == demo->nrAllocatedFrames)
+    sDemoFrame_t *frames = new (std::nothrow) sDemoFrame_t[capacity]();
+    if (!frames)
     {
-        const int capacity = demo->nrAllocatedFrames * 2;
-        size_t allocated = 0;
-        for (int i = 0; i < MAX_NR_DEMOS_PER_MAP; ++i)
-        {
-            allocated += opencj_demos[i].nrAllocatedFrames * sizeof(sDemoFrame_t);
-        }
-        if (allocated + capacity * sizeof(sDemoFrame_t) > demoMemoryLimit)
-        {
-            return false;
-        }
-        sDemoFrame_t *frames = new (std::nothrow) sDemoFrame_t[capacity]();
-        if (!frames)
-        {
-            return false;
-        }
-        memcpy(frames, demo->pDemoFrames, demo->size * sizeof(*frames));
-        delete[] demo->pDemoFrames;
-        demo->pDemoFrames = frames;
-        demo->nrAllocatedFrames = capacity;
+        return false;
+    }
+    memcpy(frames, demo->pDemoFrames, demo->size * sizeof(*frames));
+    delete[] demo->pDemoFrames;
+    demo->pDemoFrames = frames;
+    demo->nrAllocatedFrames = capacity;
+    return true;
+}
+
+static bool appendDemoFrame(sDemo_t *demo, const sDemoFrame_t &frame)
+{
+    if (demo->isComplete || !reserveDemoFrames(demo, size_t(demo->size) + 1))
+    {
+        return false;
     }
     const int index = demo->size;
     sDemoFrame_t &next = demo->pDemoFrames[index];
@@ -946,6 +950,7 @@ void Gsc_Demo_AddFrame()
         stackGetParamInt(9, &frame.checkpointId);
     }
 #ifdef COD4
+    const playerState_t *capturedPlayer = nullptr;
     if (nrExpectedArgs >= 11)
     {
         int client;
@@ -965,9 +970,7 @@ void Gsc_Demo_AddFrame()
         frame.visual = captureDemoVisual(ps, (flags & 4096) != 0,
                                          continuous && !frame.loadNow ? pDemo->captureEventSequence
                                                                       : ps.eventSequence);
-        pDemo->captureEventSequence = ps.eventSequence;
-        pDemo->captureTime = ps.commandTime;
-        pDemo->captureTeleportBit = ps.eFlags & 2;
+        capturedPlayer = &ps;
     }
 #endif
     if (nrExpectedArgs >= 12)
@@ -979,6 +982,14 @@ void Gsc_Demo_AddFrame()
     }
     if (appendDemoFrame(pDemo, frame))
     {
+#ifdef COD4
+        if (capturedPlayer)
+        {
+            pDemo->captureEventSequence = capturedPlayer->eventSequence;
+            pDemo->captureTime = capturedPlayer->commandTime;
+            pDemo->captureTeleportBit = capturedPlayer->eFlags & 2;
+        }
+#endif
         stackPushInt(demoId);
     }
     else
@@ -1517,6 +1528,10 @@ static int decodeDemoChunk(sDemo_t *demo, const unsigned char *packed, size_t le
         }
     }
     if (used != size)
+    {
+        return 0;
+    }
+    if (!reserveDemoFrames(demo, size_t(demo->size) + count))
     {
         return 0;
     }
