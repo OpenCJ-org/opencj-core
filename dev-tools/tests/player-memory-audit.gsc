@@ -1,62 +1,91 @@
 // No account callbacks or database access. Measure production initializers/functions.
 main()
 {
-    openCJ\settings::onInit();openCJ\commands_base::onInit();
+    openCJ\settings::onInit();
+    openCJ\commands_base::onInit();
     openCJ\huds\infiniteHuds::onInit();
     openCJ\huds\hudOnScreenKeyboard::onInit();
-    openCJ\huds\hudFps::onInit();openCJ\huds\hudFPSHistory::onInit();
-    openCJ\huds\hudProgressBar::onInit();openCJ\huds\hudRunInfo::onInit();
-    openCJ\huds\hudSpeedometer::onInit();openCJ\huds\hudPosition::onInit();
+    openCJ\huds\hudFps::onInit();
+    openCJ\huds\hudFPSHistory::onInit();
+    openCJ\huds\hudProgressBar::onInit();
+    openCJ\huds\hudRunInfo::onInit();
+    openCJ\huds\hudSpeedometer::onInit();
+    openCJ\huds\hudPosition::onInit();
     openCJ\showRecords::onInit();
     // Decode production frame flags without starting database-backed recording.
     openCJ\demoRecording::_initConstants();
-    level.weapons_rpgs=[];level.weapons_rpgs["default"]="rpg_mp";
+    level.weapons_rpgs = [];
+    level.weapons_rpgs["default"] = "rpg_mp";
     wait 1;
-    p=addTestClient();wait .1;
-    p.sessionTeam="allies";p.sessionState="playing";p.pers["team"]="allies";
-    p spawn((0,0,500),(0,0,0));p freezeControls(true);p.FPS=333;p.isFirstSpawn=false;
-    memoryAudit("entity",p);
-    p openCJ\settings::onPlayerConnect();p openCJ\huds\base::onPlayerConnect();
-    memoryAudit("settings",p);
+    p = addTestClient();
+    wait .1;
+    p.sessionTeam = "allies";
+    p.sessionState = "playing";
+    p.pers["team"] = "allies";
+    p spawn((0, 0, 500), (0, 0, 0));
+    p freezeControls(true);
+    p.FPS = 333;
+    p.isFirstSpawn = false;
+    memoryAudit("entity", p);
+    p openCJ\settings::onPlayerConnect();
+    p openCJ\huds\base::onPlayerConnect();
+    memoryAudit("settings", p);
     p openCJ\huds\hudOnScreenKeyboard::onPlayerConnect();
-    memoryAudit("keyboard",p);
-    p openCJ\huds\hudGrenadeTimers::onPlayerConnect();p openCJ\huds\hudFps::onPlayerConnect();
+    memoryAudit("keyboard", p);
+    p openCJ\huds\hudGrenadeTimers::onPlayerConnect();
+    p openCJ\huds\hudFps::onPlayerConnect();
     p openCJ\huds\hudFPSHistory::onPlayerConnect();
-    memoryAudit("fps_initial",p);
+    memoryAudit("fps_initial", p);
     p openCJ\huds\hudJumpSlowdown::onPlayerConnect();
     p openCJ\huds\hudSpeedometer::onPlayerConnect();
-    memoryAudit("speed_first",p);
+    memoryAudit("speed_first", p);
     p openCJ\huds\hudProgressBar::onPlayerConnect();
-    memoryAudit("progress",p);
+    memoryAudit("progress", p);
     p openCJ\huds\hudSpeedometer::onPlayerConnect();
-    memoryAudit("speed_duplicate",p);
+    memoryAudit("speed_duplicate", p);
     p openCJ\huds\hudPosition::onPlayerConnect();
     p openCJ\huds\hudTimeLimit::onPlayerConnect();
     p openCJ\huds\hudRunInfo::onPlayerConnect();
     p openCJ\showRecords::onPlayerConnect();
-    memoryAudit("connect_huds",p);
-    p.settingValues["poshud"]=true;p openCJ\huds\hudPosition::whileAlive();
-    memoryAudit("position_enabled",p);
-    p.settingValues["poshud"]=false;p openCJ\huds\hudPosition::whileAlive();
-    memoryAudit("position_disabled",p);
+    memoryAudit("connect_huds", p);
+    p.settingValues["poshud"] = true;
+    p openCJ\huds\hudPosition::whileAlive();
+    memoryAudit("position_enabled", p);
+    p.settingValues["poshud"] = false;
+    p openCJ\huds\hudPosition::whileAlive();
+    memoryAudit("position_disabled", p);
     p demoFPSReset();
-    p.fpsHistoryText="32-323";p.fpsHistoryDetailedText="WA 32 > BOUNCE > WD 3 > WA 2 > WD 3";
-    memoryAudit("cache_empty",p);
-    for(i=0;i<512;i++)p openCJ\demos::cacheDemoFPS(i);
-    memoryAudit("cache_512_unchanged",p);
-    stats=p demoFPSStats();printf("MEM NATIVE changes="+stats[0]+" samples="+stats[1]+"\n");
+    p.fpsHistoryText = "32-323";
+    p.fpsHistoryDetailedText = "WA 32 > BOUNCE > WD 3 > WA 2 > WD 3";
+    memoryAudit("cache_empty", p);
+    for(i = 0; i < 512; i++)
+    {
+        p openCJ\demos::cacheDemoFPS(i);
+    }
+    memoryAudit("cache_512_unchanged", p);
+    stats = p demoFPSStats();
+    printf("MEM NATIVE changes=" + stats[0] + " samples=" + stats[1] + "\n");
     p demoFPSReset();
-    memoryAudit("cache_cleared",p);
+    memoryAudit("cache_cleared", p);
     createDemo(770001);
-    for(i=0;i<600;i++)addFrameToDemo(770001,(i*.5,0,500),(0,i,0),1,517,0,0,0,333,1,p getEntityNumber());
-    completeDemo(770001);p selectPlaybackDemo(770001);
-    p.demoID=770001;p.demoBegin=0;p.demoEnd=599;p.demoStyle=0;p.playingDemo=true;
+    for(i = 0; i < 600; i++)
+    {
+        addFrameToDemo(770001, (i * .5, 0, 500), (0, i, 0), 1, 517, 0, 0, 0, 333, 1,
+                       p getEntityNumber());
+    }
+    completeDemo(770001);
+    p selectPlaybackDemo(770001);
+    p.demoID = 770001;
+    p.demoBegin = 0;
+    p.demoEnd = 599;
+    p.demoStyle = 0;
+    p.playingDemo = true;
     p skipPlaybackFrames(599);
-    memoryAudit("before_seek",p);
+    memoryAudit("before_seek", p);
     p openCJ\demos::syncDemoFPSHistory(599);
-    memoryAudit("after_seek",p);
+    memoryAudit("after_seek", p);
     p demoFPSReset();
-    memoryAudit("seek_cleared",p);
+    memoryAudit("seek_cleared", p);
     destroyDemo(770001);
     printf("MEM COMPLETE\n");
 }
