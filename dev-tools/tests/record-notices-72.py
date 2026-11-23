@@ -28,6 +28,7 @@ def cases():
         'anyPct',
         'hb',
         'hardTAS',
+        'tutorial',
     ]
 
     def run(
@@ -42,6 +43,7 @@ def cases():
         anyPct=0,
         hb=0,
         tas=0,
+        tutorial=0,
         finished=True,
         stats=True,
     ):
@@ -57,6 +59,7 @@ def cases():
                 anyPct,
                 hb,
                 tas,
+                tutorial,
             ],
             'time': time,
             'rpg': rpg,
@@ -191,6 +194,8 @@ def cases():
         empty=True,
     )
     add('current retired finish gives no announcement', current=run(100, pid=10, cp=4), empty=True)
+    add('tutorial prior finish excluded', [run(1, tutorial=1)])
+    add('current tutorial gives no announcement', current=run(100, pid=10, tutorial=1), empty=True)
     return result
 
 

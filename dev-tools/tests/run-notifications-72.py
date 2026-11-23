@@ -137,7 +137,8 @@ try:
     )
     sql(
         "INSERT INTO mapids(mapID,mapname) VALUES(1,'mp_killhouse');"
-        "INSERT INTO checkpoints(cpID,mapID,ender) VALUES(1,1,'easy');"
+        "INSERT INTO routes(routeID,mapID,routeName) VALUES(1,1,'easy');"
+        "INSERT INTO checkpoints(cpID,mapID,finishRouteID) VALUES(1,1,1);"
         + "INSERT INTO playerInformation(playerID,playerName) VALUES"
         + ",".join(f"({i},'Notification fixture {i}')" for i in range(1, 33))
         + ";"
@@ -147,7 +148,7 @@ try:
         "(1000,1,9000,1,1,8,8,0),(1001,1,610000,1,1,9,9,0),(1002,1,8000,1,1,7,7,0),(2002,1,1000,1,1,0,0,0);"
     )
     sql(
-        "INSERT INTO challenges(challengeKey,tier,points,mapName,routeLabel,routeName) VALUES ('notify-fixture',1,10,'mp_killhouse','Easy','easy');"
+        "INSERT INTO challenges(challengeKey,tier,points,mapID,routeLabel,routeHint,routeID) VALUES ('notify-fixture',1,10,1,'Easy','easy',1);"
     )
     spec = importlib.util.spec_from_file_location(
         "record72", ROOT / "dev-tools/tests/record-notices-72.py"
