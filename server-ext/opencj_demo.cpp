@@ -2223,8 +2223,24 @@ void Gsc_Demo_BeginPresentation(int client)
     {
         return;
     }
-    delete demoReturnVisual[client];
-    demoReturnVisual[client] = new (std::nothrow) playerState_t(*SV_GameClientNum(client));
+    if (!g_entities[client].client)
+    {
+        stackPushBool(false);
+        return;
+    }
+    // Repeated starts must retain the state from before playback began.
+    if (demoReturnVisual[client])
+    {
+        stackPushBool(true);
+        return;
+    }
+    playerState_t *returnState = new (std::nothrow) playerState_t(*SV_GameClientNum(client));
+    if (!returnState)
+    {
+        stackPushBool(false);
+        return;
+    }
+    demoReturnVisual[client] = returnState;
     demoPresentedWeapon[client] = -1;
     demoPresentedFrame[client] = -1;
     demoPresentedBody[client] = {};

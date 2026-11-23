@@ -9,7 +9,23 @@ static bool returnedUndefined;
 static int returnedInteger;
 static float returnedVector[3];
 
+static playerState_t playerState;
+static gclient_t gameClient;
+
 extern "C" {
+gentity_t g_entities[MAX_CLIENTS] = {};
+
+playerState_t *SV_GameClientNum(int client)
+{
+    assert(client == 0);
+    return &playerState;
+}
+
+void SV_GameSendServerCommand(int client, int, const char *)
+{
+    assert(client == 0);
+}
+
 int G_GetWeaponIndexForName(const char *)
 {
     return 0;
@@ -134,7 +150,7 @@ static std::string legacyChunk(unsigned frameCount)
     std::vector<unsigned char> raw(8 + frameCount * demoWireFrameSize);
     std::memcpy(raw.data(), "OCJ1", 4);
     putDemoInt(raw.data() + 4, frameCount, 4);
-    std::string packed(compressBound(raw.size()), '\\0');
+    std::string packed(compressBound(raw.size()), char{});
     uLongf packedSize = packed.size();
     assert(compress2(reinterpret_cast<unsigned char *>(packed.data()), &packedSize,
                      raw.data(), raw.size(), 6) == Z_OK);
@@ -170,10 +186,38 @@ static void rejectedChunkLeavesRecordingUnchanged()
     clearDemoById(3);
 }
 
+static void repeatedPresentationKeepsOriginalState()
+{
+    constexpr int client = 0;
+    g_entities[client].client = &gameClient;
+    gameClient.bFrozen = qfalse;
+    playerState.weaponTime = 123;
+    playerState.velocity[0] = 25;
+    playerState.commandTime = 1000;
+    Gsc_Demo_BeginPresentation(client);
+    assert(!returnedUndefined && returnedInteger == 1);
+
+    playerState.weaponTime = 999;
+    playerState.velocity[0] = 0;
+    gameClient.bFrozen = qtrue;
+    Gsc_Demo_BeginPresentation(client);
+    assert(!returnedUndefined && returnedInteger == 1);
+    Gsc_Demo_EndPresentation(client);
+    assert(playerState.weaponTime == 123 && playerState.velocity[0] == 25);
+    assert(gameClient.bFrozen == qfalse && demoReturnVisual[client] == nullptr);
+
+    Gsc_Demo_EndPresentation(client);
+    assert(playerState.weaponTime == 123);
+    g_entities[client].client = nullptr;
+    Gsc_Demo_BeginPresentation(client);
+    assert(!returnedUndefined && returnedInteger == 0);
+}
+
 int main()
 {
     emptyAndShortenedPlayback();
     extremeFrameSkips();
     rejectedChunkLeavesRecordingUnchanged();
+    repeatedPresentationKeepsOriginalState();
     std::puts("DEMO STORAGE PASS empty, shortened and extreme playback seeks");
 }
