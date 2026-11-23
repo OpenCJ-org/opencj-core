@@ -108,6 +108,7 @@ hud.write_text(source)
 fixture = r"""
 main()
 {
+    openCJ\demoRecording::_initConstants();
     level.fpsTraceTime=0;level.fpsTraceFrame=0;
     openCJ\settings::onInit();openCJ\commands_base::onInit();
     openCJ\huds\infiniteHuds::onInit();openCJ\huds\hudFPSHistory::onInit();
