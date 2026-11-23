@@ -45,6 +45,10 @@
 </a>
 {%- endmacro %}
 
+{% macro connect_command(address, element_id) -%}
+<span class="copy-row"><code id="{{ element_id }}">/connect {{ address }}</code><button type="button" class="copy-button" data-copy-target="{{ element_id }}" hidden>Copy</button></span>
+{%- endmacro %}
+
 {% macro plays_text(summary) -%}
 {% if summary.plays is none %}<span class="muted" title="Not counted yet">–</span>{% else %}{{ summary.plays }}{% endif %}
 {%- endmacro %}

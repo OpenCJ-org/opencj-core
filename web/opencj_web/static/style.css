@@ -91,6 +91,20 @@ h3 { font-size: 1.1rem; margin-top: 4px; }
 }
 .button:hover { text-decoration: none; filter: brightness(1.08); }
 .button.secondary { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.copy-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.copy-button {
+  font: 600 0.7rem var(--heading-font);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  padding: 3px 8px;
+  cursor: pointer;
+  min-width: 5.5em;
+}
+.copy-button:hover { background: var(--accent); color: var(--on-accent); }
+
 /* Discord's own brand color, so the link is recognisable at a glance. */
 .button.discord { display: inline-flex; align-items: center; gap: 8px; background: var(--discord); color: #ffffff; }
 .button.discord svg { width: 18px; height: 18px; fill: currentColor; }

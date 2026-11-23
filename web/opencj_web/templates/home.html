@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import release_body, ranking_table, plays_text, discord_button %}
+{% from "macros.html" import release_body, ranking_table, plays_text, discord_button, connect_command %}
 {% block content %}
 <div class="grid-2">
   <section class="card" aria-labelledby="latest-release">
@@ -26,7 +26,7 @@
     <div class="big-number offline">Offline</div>
     <div class="muted">The server did not answer the last status check.</div>
     {% endif %}
-    <div>Join from the game console: <code>/connect {{ connect_address }}</code></div>
+    <div>Join from the game console: {{ connect_command(connect_address, "connect-command") }}</div>
     <div class="actions">
       <a class="button" href="{{ root }}downloads/">Download maps</a>
       {% if discord_invite_url %}{{ discord_button(discord_invite_url) }}{% endif %}
