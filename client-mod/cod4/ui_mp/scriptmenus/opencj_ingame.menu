@@ -356,16 +356,6 @@
             UI_FONT_NORMAL, 0.19, NO_COLOR,
             IG_MUTED_COLOR, MOTD_DATE_ORG_X, MOTD_DATE_ORG_Y, MOTD_DATE_SIZE_X, MOTD_DATE_SIZE_Y)
 
-        // Page button: forward in time (not implemented yet)
-
-        // Page button: backward in time(not implemented yet)
-
-        // Page button: give feedback
-        //BUTTON_RECT_TXT(btn_feedback, "Give feedback", "", IBTN_BACKCOLOR, BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_FEEDBACK_ORG_X, BTN_FEEDBACK_ORG_Y, BTN_FEEDBACK_SIZE_X, BTN_FEEDBACK_SIZE_Y)
-
-        // Page button: contribute (not implemented yet)
-
-
     // Right side frame
         // Background
         FIXED_RECT(IG_NAV_COLOR, RIGHT_FRAME_ORG_X, RIGHT_FRAME_ORG_Y, RIGHT_FRAME_SIZE_X, RIGHT_FRAME_SIZE_Y)
