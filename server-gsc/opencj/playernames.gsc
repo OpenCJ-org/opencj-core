@@ -9,22 +9,24 @@ onInit()
     }
     level.recordNameOverrides = [];
     openCJ\namePolicy::onInit();
-    cmd = openCJ\commands_base::registerCommand(
+    moderatorRank = 40;
+    policyAdminRank = 60;
+    command = openCJ\commands_base::registerCommand(
         "prefname",
         "Persistent record name. Usage: !prefname [set <name>|reset] (3-15 characters, no colors; changes once per hour)",
         ::_onPreferredName, 0, undefined, 0);
-    cmd.redactArgs = true;
-    cmd = openCJ\commands_base::registerCommand(
+    command.redactArgs = true;
+    command = openCJ\commands_base::registerCommand(
         "frename", "Force/reset an online player's regular name. Usage: !frename <player> [name]",
-        ::_onFRenameCommand, 1, undefined, 40);
-    cmd.redactArgs = true;
+        ::_onFRenameCommand, 1, undefined, moderatorRank);
+    command.redactArgs = true;
     openCJ\commands_base::registerCommand(
         "resetprefname",
         "Remove an account's preferred name and start its one-hour cooldown. Usage: !resetprefname <playerID>",
-        ::_onResetPreferredName, 1, 1, 40);
+        ::_onResetPreferredName, 1, 1, moderatorRank);
     openCJ\commands_base::registerCommand("reloadnamerules",
                                           "Reload the server's private name-moderation rules.",
-                                          ::_onReloadRules, 0, 0, 60);
+                                          ::_onReloadRules, 0, 0, policyAdminRank);
 }
 
 onPlayerConnect()
@@ -36,6 +38,7 @@ onPlayerConnect()
         self onUserInfoChanged();
     }
 }
+
 onPlayerLogin()
 {
     self.forcedName = undefined;
@@ -58,112 +61,141 @@ _initRegularName()
         self _restoreRegularName(_cachedRegularName(self.nameGuidKey));
     }
 }
+
 onAccountIdentified()
 {
     self _initRegularName();
-    requested = self getUserInfo("name");
+    requestedName = self getUserInfo("name");
     self.nameAccountKey = "p:" + self openCJ\login::getPlayerID();
     self _restoreRegularName(_cachedRegularName(self.nameAccountKey));
-    self _rename(requested);
+    self _rename(requestedName);
     self _rememberRegularName();
     self thread _loadPreferredName();
 }
-_cachedRegularName(key)
+
+_cachedRegularName(identityKey)
 {
-    if(!isDefined(key) || !isDefined(game["nameCooldowns"]))
+    if(!isDefined(identityKey) || !isDefined(game["nameCooldowns"]))
     {
         return undefined;
     }
-    entry = game["nameCooldowns"][key];
-    if(isDefined(entry) && getRealTime() - entry[2] < 60)
+    cachedName = game["nameCooldowns"][identityKey];
+    if(!isDefined(cachedName))
     {
-        return entry;
+        return undefined;
+    }
+    lastSeenSeconds = cachedName[2];
+    cacheLifetimeSeconds = 60;
+    if(getRealTime() - lastSeenSeconds < cacheLifetimeSeconds)
+    {
+        return cachedName;
     }
     return undefined;
 }
-_restoreRegularName(entry)
+
+_restoreRegularName(cachedName)
 {
-    if(!isDefined(entry))
+    if(!isDefined(cachedName))
     {
         return;
     }
-    self.nameAccepted = entry[0];
-    self.nameLastChange = entry[1];
+    self.nameAccepted = cachedName[0];
+    self.nameLastChange = cachedName[1];
 }
+
+// Plain arrays keep accepted names and cooldowns across map changes without retaining entities.
 _rememberRegularName()
 {
     if(!isDefined(self.nameAccepted))
     {
         return;
     }
-    now = getRealTime();
-    // Drop expired disconnected entries so the cache cannot grow forever.
-    if(!isDefined(game["nameCooldownPruned"]) || now - game["nameCooldownPruned"] >= 60)
-    {
-        keys = getArrayKeys(game["nameCooldowns"]);
-        for(i = 0; i < keys.size; i++)
-        {
-            if(now - game["nameCooldowns"][keys[i]][2] >= 60)
-            {
-                game["nameCooldowns"][keys[i]] = undefined;
-            }
-        }
-        game["nameCooldownPruned"] = now;
-    }
-    entry = [];
-    entry[0] = self.nameAccepted;
-    entry[1] = self.nameLastChange;
-    entry[2] = now;
+    nowSeconds = getRealTime();
+    _pruneRegularNames(nowSeconds);
+    // Retain the existing cache layout: accepted name, last change, last seen.
+    cachedName = [];
+    cachedName[0] = self.nameAccepted;
+    cachedName[1] = self.nameLastChange;
+    cachedName[2] = nowSeconds;
     if(isDefined(self.nameGuidKey))
     {
-        game["nameCooldowns"][self.nameGuidKey] = entry;
+        game["nameCooldowns"][self.nameGuidKey] = cachedName;
     }
     if(isDefined(self.nameAccountKey))
     {
-        game["nameCooldowns"][self.nameAccountKey] = entry;
+        game["nameCooldowns"][self.nameAccountKey] = cachedName;
     }
 }
-_loadPreferredName()
+
+// Bound disconnected-identity memory without scanning the cache on every userinfo event.
+_pruneRegularNames(nowSeconds)
 {
-    self endon("disconnect");
-    id = self openCJ\login::getPlayerID();
-    version = _recordNameVersion(id);
-    rows = self openCJ\mySQL::mysqlAsyncRead(
-        "SELECT preferredName FROM playerNamePreferences WHERE playerID=" + id);
-    if(!isDefined(rows) || _recordNameVersion(id) != version)
+    pruneIntervalSeconds = 60;
+    cacheLifetimeSeconds = 60;
+    if(isDefined(game["nameCooldownPruned"]) &&
+       nowSeconds - game["nameCooldownPruned"] < pruneIntervalSeconds)
     {
         return;
     }
-    name = undefined;
+    identityKeys = getArrayKeys(game["nameCooldowns"]);
+    for(i = 0; i < identityKeys.size; i++)
+    {
+        cachedName = game["nameCooldowns"][identityKeys[i]];
+        lastSeenSeconds = cachedName[2];
+        if(nowSeconds - lastSeenSeconds >= cacheLifetimeSeconds)
+        {
+            game["nameCooldowns"][identityKeys[i]] = undefined;
+        }
+    }
+    game["nameCooldownPruned"] = nowSeconds;
+}
+
+// A later successful change takes precedence over an older account-load reply.
+_loadPreferredName()
+{
+    self endon("disconnect");
+    playerID = self openCJ\login::getPlayerID();
+    nameVersion = _recordNameVersion(playerID);
+    rows = self openCJ\mySQL::mysqlAsyncRead(
+        "SELECT preferredName FROM playerNamePreferences WHERE playerID=" + playerID);
+    if(!isDefined(rows) || _recordNameVersion(playerID) != nameVersion)
+    {
+        return;
+    }
+    preferredName = undefined;
     if(hasResult(rows))
     {
-        name = rows[0][0];
+        preferredName = rows[0][0];
     }
-    _publishPreferredName(id, name);
+    _publishPreferredName(playerID, preferredName);
 }
-_recordNameVersion(id)
+
+_recordNameVersion(playerID)
 {
-    entry = level.recordNameOverrides["p:" + id];
-    if(!isDefined(entry))
+    nameOverride = level.recordNameOverrides["p:" + playerID];
+    if(!isDefined(nameOverride))
     {
         return 0;
     }
-    return entry.version;
+    return nameOverride.version;
 }
-_publishPreferredName(id, name, fallback)
+
+// Publish one account's record-name override and redraw panels that already show it.
+_publishPreferredName(playerID, preferredName, fallbackName)
 {
-    previous = level.recordNameOverrides["p:" + id];
-    if(!isDefined(fallback) && isDefined(previous))
+    previousOverride = level.recordNameOverrides["p:" + playerID];
+    if(!isDefined(fallbackName) && isDefined(previousOverride))
     {
-        fallback = previous.fallback;
+        fallbackName = previousOverride.fallback;
     }
-    entry = spawnStruct();
-    entry.version = _recordNameVersion(id) + 1;
-    entry.name = name;
-    entry.fallback = fallback;
-    level.recordNameOverrides["p:" + id] = entry;
+    nameOverride = spawnStruct();
+    nameOverride.version = _recordNameVersion(playerID) + 1;
+    nameOverride.name = preferredName;
+    nameOverride.fallback = fallbackName;
+    level.recordNameOverrides["p:" + playerID] = nameOverride;
     openCJ\showRecords::onRecordNameChanged();
 }
+
 getRecordName()
 {
     if(self openCJ\login::isLoggedIn())
@@ -172,33 +204,35 @@ getRecordName()
     }
     return self.name;
 }
-recordName(id, fallback)
+
+recordName(playerID, fallbackName)
 {
-    entry = level.recordNameOverrides["p:" + id];
-    if(isDefined(entry) && isDefined(entry.name))
+    nameOverride = level.recordNameOverrides["p:" + playerID];
+    if(isDefined(nameOverride) && isDefined(nameOverride.name))
     {
-        return entry.name;
+        return nameOverride.name;
     }
-    if(isDefined(entry) && isDefined(entry.fallback))
+    if(isDefined(nameOverride) && isDefined(nameOverride.fallback))
     {
-        return entry.fallback;
+        return nameOverride.fallback;
     }
-    return fallback;
+    return fallbackName;
 }
-_recordNameFallback(name)
+
+_recordNameFallback(fallbackName)
 {
     if(!self openCJ\login::isLoggedIn())
     {
         return;
     }
-    key = "p:" + self openCJ\login::getPlayerID();
-    if(!isDefined(level.recordNameOverrides[key]))
+    playerKey = "p:" + self openCJ\login::getPlayerID();
+    if(!isDefined(level.recordNameOverrides[playerKey]))
     {
-        entry = spawnStruct();
-        entry.version = 0;
-        level.recordNameOverrides[key] = entry;
+        nameOverride = spawnStruct();
+        nameOverride.version = 0;
+        level.recordNameOverrides[playerKey] = nameOverride;
     }
-    level.recordNameOverrides[key].fallback = name;
+    level.recordNameOverrides[playerKey].fallback = fallbackName;
 }
 
 onUserInfoChanged()
@@ -210,35 +244,40 @@ onUserInfoChanged()
     }
     self _rename(self getUserInfo("name"));
 }
+
+// Apply moderation and the regular-name cooldown before changing the public engine name.
 _rename(newName)
 {
+    regularCooldownSeconds = 60;
     self _initRegularName();
-    cleaned = cleanPlayerName(newName);
-    if(!isDefined(cleaned))
+    cleanedName = cleanPlayerName(newName);
+    if(!isDefined(cleanedName))
     {
         return;
     }
-    initial = !isDefined(self.nameAccepted);
-    if(!initial && cleaned == self.nameAccepted)
+    isInitialName = !isDefined(self.nameAccepted);
+    if(!isInitialName && cleanedName == self.nameAccepted)
     {
-        if(newName != cleaned)
+        if(newName != cleanedName)
         {
-            self _applyName(cleaned, false);
+            self _applyName(cleanedName, false);
         }
         return;
     }
-    if(!initial && isDefined(self.nameLastChange) && getRealTime() - self.nameLastChange < 60)
+    if(!isInitialName && isDefined(self.nameLastChange) &&
+       getRealTime() - self.nameLastChange < regularCooldownSeconds)
     {
         self _applyName(self.nameAccepted, false);
-        self _nameNotice("Please wait " + (60 - (getRealTime() - self.nameLastChange)) +
+        self _nameNotice("Please wait " +
+                         (regularCooldownSeconds - (getRealTime() - self.nameLastChange)) +
                          " seconds before changing your name.");
         return;
     }
-    rule = openCJ\namePolicy::blockedRule(cleaned);
-    if(rule != 0)
+    blockedRuleID = openCJ\namePolicy::blockedRule(cleanedName);
+    if(blockedRuleID != 0)
     {
-        cleaned = self openCJ\namePolicy::fallbackName();
-        if(rule < 0)
+        cleanedName = self openCJ\namePolicy::fallbackName();
+        if(blockedRuleID < 0)
         {
             self _nameNotice("Name checks are unavailable; a temporary name has been assigned.");
         }
@@ -248,25 +287,27 @@ _rename(newName)
                 "That name is not allowed. A temporary name has been assigned; choose a different name.");
         }
     }
-    if(!initial && cleaned == self.nameAccepted)
+    if(!isInitialName && cleanedName == self.nameAccepted)
     {
-        self _applyName(cleaned, false);
+        self _applyName(cleanedName, false);
         return;
     }
-    // Only a genuinely new connection identity gets the initial-name exemption.
-    if(!initial)
+    // Only a new connection identity gets the initial-name exemption.
+    if(!isInitialName)
     {
         self.nameLastChange = getRealTime();
     }
-    self _applyName(cleaned, true);
+    self _applyName(cleanedName, true);
 }
-_applyName(name, persist)
+
+// Update the live name and cooldown cache; persistForRecords also schedules its database write.
+_applyName(acceptedName, persistForRecords)
 {
-    self.nameAccepted = name;
-    cleaned = self renameClient(name);
-    if(isDefined(cleaned))
+    self.nameAccepted = acceptedName;
+    publishedName = self renameClient(acceptedName);
+    if(isDefined(publishedName))
     {
-        self.nameAccepted = cleaned;
+        self.nameAccepted = publishedName;
     }
     self.currentName = self.nameAccepted;
     self _rememberRegularName();
@@ -275,69 +316,77 @@ _applyName(name, persist)
     {
         self setClientCvar("name", self.nameAccepted);
     }
-    if(persist && self openCJ\login::isLoggedIn())
+    if(persistForRecords && self openCJ\login::isLoggedIn())
     {
         self thread _storeNewName(self.nameAccepted);
     }
 }
-_storeNewName(name)
+
+_storeNewName(recordName)
 {
     // Actual accepted changes are rate-limited before publication. Submit the
     // write immediately, so a disconnect cannot discard a debounce timer.
     self openCJ\mySQL::mysqlAsyncWriteNosave("CALL setName(" + self openCJ\login::getPlayerID() +
-                                                 ", '" + openCJ\mySQL::escapeString(name) + "')",
+                                                 ", '" + openCJ\mySQL::escapeString(recordName) +
+                                                 "')",
                                              "name:" + self openCJ\login::getPlayerID());
 }
+
 _nameNotice(message)
 {
-    if(isDefined(self.nameNoticeTime) && getTime() - self.nameNoticeTime < 3000)
+    noticeIntervalMs = 3000;
+    if(isDefined(self.nameNoticeTime) && getTime() - self.nameNoticeTime < noticeIntervalMs)
     {
         return;
     }
     self.nameNoticeTime = getTime();
     self sendLocalChatMessage(message, true);
 }
+
 getForcedName()
 {
     return self.forcedName;
 }
-setForcedName(name)
+
+setForcedName(forcedName)
 {
     if(!self openCJ\login::isLoggedIn())
     {
         return;
     }
-    if(!isDefined(name))
+    if(!isDefined(forcedName))
     {
         self.forcedName = undefined;
         return;
     }
-    name = cleanPlayerName(name);
-    if(openCJ\namePolicy::blockedRule(name) != 0)
+    forcedName = cleanPlayerName(forcedName);
+    if(openCJ\namePolicy::blockedRule(forcedName) != 0)
     {
-        name = self openCJ\namePolicy::fallbackName();
+        forcedName = self openCJ\namePolicy::fallbackName();
     }
-    self.forcedName = name;
-    self _applyName(name, true);
+    self.forcedName = forcedName;
+    self _applyName(forcedName, true);
 }
+
 _onFRenameCommand(args)
 {
-    player = findPlayerByArg(args[0]);
-    if(!isDefined(player) || !player openCJ\login::isLoggedIn())
+    targetPlayer = findPlayerByArg(args[0]);
+    if(!isDefined(targetPlayer) || !targetPlayer openCJ\login::isLoggedIn())
     {
         self sendLocalChatMessage("Cannot find player.", true);
         return;
     }
     if(args.size < 2)
     {
-        player setForcedName();
+        targetPlayer setForcedName();
         self sendLocalChatMessage("Forced name removed.");
         return;
     }
-    name = arrayConcat(subArray(args, 1));
-    player setForcedName(name);
+    forcedName = arrayConcat(subArray(args, 1));
+    targetPlayer setForcedName(forcedName);
     self sendLocalChatMessage("Player name updated.");
 }
+
 _onPreferredName(args)
 {
     if(!self openCJ\login::isLoggedIn())
@@ -353,98 +402,132 @@ _onPreferredName(args)
     self _preferredNameRequest(args);
     self.preferredNameBusy = false;
 }
+
+// Validate first, then let the database own uniqueness, moderation and cooldown enforcement.
 _preferredNameRequest(args)
 {
-    id = self openCJ\login::getPlayerID();
     if(args.size == 0)
     {
-        rows = self openCJ\mySQL::mysqlAsyncRead(
-            "SELECT n.preferredName,GREATEST(0,3600-TIMESTAMPDIFF(SECOND,n.changedAt,UTC_TIMESTAMP(6))) FROM playerInformation p LEFT JOIN playerNamePreferences n ON n.playerID=p.playerID WHERE p.playerID=" +
-            id);
-        if(!hasResult(rows))
-        {
-            self sendLocalChatMessage("Name service unavailable. Please try again.", true);
-            return;
-        }
-        text = "No preferred name set; records use your current name.";
-        if(isDefined(rows[0][0]))
-        {
-            text = "Preferred record name: " + rows[0][0];
-        }
-        if(isDefined(rows[0][1]) && int(rows[0][1]) > 0)
-        {
-            text += ". Next change in " + rows[0][1] + " seconds.";
-        }
-        self sendLocalChatMessage(text);
+        self _showPreferredName();
         return;
     }
-    reset = args.size == 1 && toLower(args[0]) == "reset";
-    value = "NULL";
-    name = "";
-    if(!reset)
+    playerID = self openCJ\login::getPlayerID();
+    resetRequested = args.size == 1 && toLower(args[0]) == "reset";
+    preferredName = undefined;
+    preferredNameSQL = "NULL";
+    if(!resetRequested)
     {
-        offset = 0;
-        if(toLower(args[0]) == "set")
+        preferredName = self _requestedPreferredName(args);
+        if(!isDefined(preferredName))
         {
-            offset = 1;
-        }
-        name = openCJ\namePolicy::preferredName(arrayConcat(subArray(args, offset)));
-        if(!isDefined(name))
-        {
-            self sendLocalChatMessage(
-                "Use 3-15 printable characters, including a letter or number. Color codes are not allowed.",
-                true);
             return;
         }
-        if(openCJ\namePolicy::blockedRule(name) != 0)
-        {
-            self sendLocalChatMessage(
-                "That name cannot be used. Choose a different name or contact a moderator.", true);
-            return;
-        }
-        value = "'" + openCJ\mySQL::escapeString(name) + "'";
+        preferredNameSQL = "'" + openCJ\mySQL::escapeString(preferredName) + "'";
     }
-    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT setPreferredName(" + id + "," + value + ")",
-                                              "prefname:" + id);
+    rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT setPreferredName(" + playerID + "," +
+                                                  preferredNameSQL + ")",
+                                              "prefname:" + playerID);
     if(!hasResult(rows))
     {
         self sendLocalChatMessage(
             "Name service unavailable. Please query !prefname before retrying.", true);
         return;
     }
-    result = int(rows[0][0]);
-    if(result == 0)
+    resultCode = int(rows[0][0]);
+    self _reportPreferredNameResult(playerID, preferredName, resultCode);
+}
+
+_showPreferredName()
+{
+    playerID = self openCJ\login::getPlayerID();
+    preferredCooldownSeconds = 60 * 60;
+    rows = self openCJ\mySQL::mysqlAsyncRead(
+        "SELECT n.preferredName," + " GREATEST(0," + preferredCooldownSeconds +
+        "-TIMESTAMPDIFF(SECOND,n.changedAt,UTC_TIMESTAMP(6)))" + " FROM playerInformation p" +
+        " LEFT JOIN playerNamePreferences n ON n.playerID=p.playerID" +
+        " WHERE p.playerID=" + playerID);
+    if(!hasResult(rows))
     {
-        preferred = undefined;
-        if(!reset)
-        {
-            preferred = name;
-        }
-        _publishPreferredName(id, preferred);
+        self sendLocalChatMessage("Name service unavailable. Please try again.", true);
+        return;
+    }
+    preferredName = rows[0][0];
+    remainingSeconds = rows[0][1];
+    message = "No preferred name set; records use your current name.";
+    if(isDefined(preferredName))
+    {
+        message = "Preferred record name: " + preferredName;
+    }
+    if(isDefined(remainingSeconds) && int(remainingSeconds) > 0)
+    {
+        message += ". Next change in " + remainingSeconds + " seconds.";
+    }
+    self sendLocalChatMessage(message);
+}
+
+// Return the requested visible name, or explain why this request must stop.
+_requestedPreferredName(args)
+{
+    firstNameArgument = 0;
+    if(toLower(args[0]) == "set")
+    {
+        firstNameArgument = 1;
+    }
+    preferredName =
+        openCJ\namePolicy::preferredName(arrayConcat(subArray(args, firstNameArgument)));
+    if(!isDefined(preferredName))
+    {
+        self sendLocalChatMessage(
+            "Use 3-15 printable characters, including a letter or number. Color codes are not allowed.",
+            true);
+        return undefined;
+    }
+    if(openCJ\namePolicy::blockedRule(preferredName) != 0)
+    {
+        self sendLocalChatMessage(
+            "That name cannot be used. Choose a different name or contact a moderator.", true);
+        return undefined;
+    }
+    return preferredName;
+}
+
+// Stored-function results are status codes, except positive values which are seconds remaining.
+// An undefined preferredName means reset was requested; resultCode still decides success.
+_reportPreferredNameResult(playerID, preferredName, resultCode)
+{
+    saved = 0;
+    unchanged = -1;
+    alreadyTaken = -3;
+    blocked = -5;
+    if(resultCode == saved)
+    {
+        _publishPreferredName(playerID, preferredName);
         self _recordNameFallback(self.name);
-        if(reset)
+        if(!isDefined(preferredName))
         {
             self sendLocalChatMessage("Preferred name cleared. Records now use your current name.");
         }
         else
         {
-            self sendLocalChatMessage("Preferred record name set to " + name + ".");
+            self sendLocalChatMessage("Preferred record name set to " + preferredName + ".");
         }
     }
-    else if(result == -1)
+    else if(resultCode == unchanged)
     {
         self sendLocalChatMessage("Your preferred name is already set that way.");
     }
-    else if(result == -3)
+    else if(resultCode == alreadyTaken)
     {
         self sendLocalChatMessage("That preferred name is already taken.", true);
     }
-    else if(result > 0)
+    else if(resultCode > 0)
     {
-        self sendLocalChatMessage(
-            "Please wait " + result + " seconds before changing your preferred name.", true);
+        remainingSeconds = resultCode;
+        self sendLocalChatMessage("Please wait " + remainingSeconds +
+                                      " seconds before changing your preferred name.",
+                                  true);
     }
-    else if(result == -5)
+    else if(resultCode == blocked)
     {
         self sendLocalChatMessage("That name is not allowed. Choose a different name.", true);
     }
@@ -453,6 +536,7 @@ _preferredNameRequest(args)
         self sendLocalChatMessage("That preferred name could not be saved.", true);
     }
 }
+
 _onResetPreferredName(args)
 {
     targetPlayerID = parsePlayerID(args[0]);
@@ -469,12 +553,12 @@ _onResetPreferredName(args)
     {
         rows = self openCJ\mySQL::mysqlAsyncRead(
             "SELECT playerName FROM playerInformation WHERE playerID=" + targetPlayerID);
-        fallback = undefined;
+        fallbackName = undefined;
         if(hasResult(rows))
         {
-            fallback = rows[0][0];
+            fallbackName = rows[0][0];
         }
-        _publishPreferredName(targetPlayerID, undefined, fallback);
+        _publishPreferredName(targetPlayerID, undefined, fallbackName);
         self sendLocalChatMessage("Preferred name removed; one-hour cooldown applied.");
     }
     else
@@ -482,6 +566,7 @@ _onResetPreferredName(args)
         self sendLocalChatMessage("Could not reset that account's preferred name.", true);
     }
 }
+
 _onReloadRules(args)
 {
     if(openCJ\namePolicy::reload())
@@ -504,16 +589,18 @@ _onReloadRules(args)
                                   true);
     }
 }
-digits(value)
+
+digits(decimalText)
 {
-    if(value.size == 0 || value.size > 10)
+    maximumDecimalDigits = 10;
+    if(decimalText.size == 0 || decimalText.size > maximumDecimalDigits)
     {
         return false;
     }
-    for(i = 0; i < value.size; i++)
+    for(i = 0; i < decimalText.size; i++)
     {
-        n = getAscii(value[i]);
-        if(n < 48 || n > 57)
+        characterCode = getAscii(decimalText[i]);
+        if(characterCode < getAscii("0") || characterCode > getAscii("9"))
         {
             return false;
         }
