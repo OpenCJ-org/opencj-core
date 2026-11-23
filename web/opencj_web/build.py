@@ -24,6 +24,9 @@ TEMPLATES_DIR = PACKAGE_DIR / "templates"
 STATIC_DIR = PACKAGE_DIR / "static"
 STATUS_TIMEOUT_SECONDS = 2.0
 STATIC_VERSION_LENGTH = 10
+# The homepage shows the latest release up to this many lines (paragraphs,
+# headings and list items), so it stays about as tall as the side column.
+HOME_RELEASE_LINE_BUDGET = 16
 # Keep the live build plus one older build, so a reader mid-request is never cut off.
 KEPT_BUILD_COUNT = 2
 BUILDS_FOLDER = "builds"
@@ -86,8 +89,16 @@ def collect_site_data(settings):
     maps_by_popularity = site_model.rank_maps_by_popularity(map_summaries)
     profiles = site_model.build_player_profiles(challenge_ranking, map_summaries, ranked_by_route_id)
 
+    latest_release_preview = None
+    latest_release_shortened = False
+    if release_list:
+        latest_release_preview, latest_release_shortened = releases.preview_blocks(
+            release_list[0].blocks, HOME_RELEASE_LINE_BUDGET)
+
     return {
         "generated_at": datetime.datetime.now(datetime.timezone.utc),
+        "latest_release_preview": latest_release_preview,
+        "latest_release_shortened": latest_release_shortened,
         "static_version": static_files_version(),
         "connect_address": settings.connect_address,
         "discord_invite_url": settings.discord_invite_url,
@@ -98,6 +109,7 @@ def collect_site_data(settings):
         "active_challenge_count": snapshot.active_challenge_count,
         "active_challenge_points": snapshot.active_challenge_points,
         "maps": map_summaries,
+        "checkpointed_map_count": snapshot.checkpointed_pool_map_count,
         "maps_by_popularity": maps_by_popularity,
         "popular_maps": maps_by_popularity[:site_model.HOME_POPULAR_MAP_COUNT],
         "plays_available": snapshot.plays_by_map_id is not None,

@@ -95,6 +95,32 @@ class ReleaseNoteTests(unittest.TestCase):
         self.assertIn("bad.md", problems[0])
 
 
+class ReleasePreviewTests(unittest.TestCase):
+    NOTE = (
+        "# Title\nVersion: 1.0\nReleased: 2026-11-20\n\n"
+        "Summary.\n\n## First\n- a\n- b\n- c\n\n## Second\n- d\n- e\n"
+    )
+
+    def test_short_note_is_shown_whole(self):
+        release = releases.parse_release(self.NOTE, "note.md")
+        blocks, shortened = releases.preview_blocks(release.blocks, 20)
+        self.assertFalse(shortened)
+        self.assertEqual(len(blocks), len(release.blocks))
+
+    def test_long_list_is_cut_between_items(self):
+        release = releases.parse_release(self.NOTE, "note.md")
+        blocks, shortened = releases.preview_blocks(release.blocks, 4)
+        self.assertTrue(shortened)
+        self.assertEqual([block.kind for block in blocks], ["paragraph", "heading", "list"])
+        self.assertEqual(len(blocks[-1].items), 2)
+
+    def test_never_ends_on_a_lone_heading(self):
+        release = releases.parse_release(self.NOTE, "note.md")
+        blocks, shortened = releases.preview_blocks(release.blocks, 6)
+        self.assertTrue(shortened)
+        self.assertNotEqual(blocks[-1].kind, "heading")
+
+
 class SharedPositionTests(unittest.TestCase):
     def test_equal_scores_share_and_next_skips(self):
         scores = [50, 40, 40, 30]

@@ -2,9 +2,9 @@
 {% for part in parts %}{% if part.is_code %}<code>{{ part.text }}</code>{% else %}{{ part.text }}{% endif %}{% endfor %}
 {%- endmacro %}
 
-{% macro release_body(release) -%}
+{% macro release_body(release, blocks=none) -%}
 <div class="prose">
-{% for block in release.blocks %}
+{% for block in (blocks if blocks is not none else release.blocks) %}
   {% if block.kind == "heading" %}
   <h3>{{ segments(block.segments) }}</h3>
   {% elif block.kind == "list" %}

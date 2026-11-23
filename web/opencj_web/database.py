@@ -43,6 +43,16 @@ GROUP BY m.mapID, m.mapname, m.releaseDate
 ORDER BY m.mapname ASC
 """
 
+# A pool map counts as checkpointed once at least one of its routes has an
+# active finish checkpoint, the point from which runs can be completed.
+CHECKPOINTED_POOL_MAPS_SQL = """
+SELECT COUNT(DISTINCT m.mapID) AS checkpointedMaps
+FROM mapids m
+JOIN routes r ON r.mapID = m.mapID
+JOIN checkpoints c ON c.finishRouteID = r.routeID AND c.retired = 0
+WHERE m.inRotation = 1
+"""
+
 MAP_PLAYS_SQL = """
 SELECT mapID, COUNT(*) AS plays, MAX(startedAt) AS lastPlayedAt
 FROM mapPlays
@@ -127,6 +137,7 @@ class DatabaseSnapshot:
     active_challenge_count: int
     active_challenge_points: int
     pool_maps: list
+    checkpointed_pool_map_count: int
     plays_by_map_id: dict  # None when the mapPlays table does not exist yet
     players_by_map_id: dict
     pool_routes: list
@@ -181,6 +192,8 @@ def read_snapshot(connection):
             active_challenge_count=int(challenge_totals["challengeCount"]),
             active_challenge_points=int(challenge_totals["totalPoints"]),
             pool_maps=_fetch_all(connection, POOL_MAPS_SQL),
+            checkpointed_pool_map_count=int(
+                _fetch_all(connection, CHECKPOINTED_POOL_MAPS_SQL)[0]["checkpointedMaps"]),
             plays_by_map_id=_fetch_map_plays(connection),
             players_by_map_id={row["mapID"]: row for row in _fetch_all(connection, MAP_PLAYERS_SQL)},
             pool_routes=_fetch_all(connection, POOL_ROUTES_SQL),

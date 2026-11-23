@@ -103,6 +103,38 @@ def _read_blocks(lines):
     return blocks
 
 
+def preview_blocks(blocks, line_budget):
+    """Return (blocks, was_shortened) using at most line_budget lines.
+
+    A paragraph, a heading and each list item count as one line. A list is cut
+    between items; a heading is never left as the last block without content.
+    """
+    preview = []
+    lines_used = 0
+    for block in blocks:
+        if block.kind == "list":
+            remaining = line_budget - lines_used
+            if remaining <= 0:
+                return _drop_trailing_heading(preview), True
+            if len(block.items) > remaining:
+                preview.append(ReleaseBlock("list", items=block.items[:remaining]))
+                return preview, True
+            preview.append(block)
+            lines_used += len(block.items)
+        else:
+            if lines_used + 1 > line_budget:
+                return _drop_trailing_heading(preview), True
+            preview.append(block)
+            lines_used += 1
+    return preview, False
+
+
+def _drop_trailing_heading(blocks):
+    if blocks and blocks[-1].kind == "heading":
+        return blocks[:-1]
+    return blocks
+
+
 def parse_release(text, source_name):
     """Parse one release note; raise ValueError naming the file when the header is invalid."""
     lines = text.splitlines()

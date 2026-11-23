@@ -4,7 +4,7 @@
 {% block content %}
 <header>
   <h1>Maps</h1>
-  <p class="lead">Every map in the current OpenCJ pool. Open a map for its routes and leaderboards.</p>
+  <p class="lead">Every map in the current OpenCJ pool. {{ checkpointed_map_count }} {{ "map is" if checkpointed_map_count == 1 else "maps are" }} checkpointed so far, and more are added over time. Open a map for its routes and leaderboards.</p>
 </header>
 <div class="grid-maps">
 {% for summary in maps %}
