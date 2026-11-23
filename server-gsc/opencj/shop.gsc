@@ -145,18 +145,80 @@ show()
     self setClientCvar("ocj_shop_busy",0);
 }
 
-// Load before the spawn is created; never flash a default model while awaiting SQL.
+// Load before spawning so a default model is never shown while SQL is pending.
+// A newer load owns the cache; an older reply cannot replace its selection.
 loadEquipment()
 {
-    if(getCodVersion()!=4)return true;
-    if(isDefined(self.shopLoaded) && self.shopLoaded)return true;
-    rows=self openCJ\mySQL::mysqlAsyncQuery("SELECT 'ready','ready' UNION ALL SELECT e.slot,e.itemKey FROM shopEquipped e JOIN shopPurchases p ON p.playerID=e.playerID AND p.itemKey=e.itemKey WHERE e.playerID="+self openCJ\login::getPlayerID());
-    if(!isDefined(rows) || !rows.size || rows[0][0]!="ready")return false;
-    self.shopEquipped=[];
-    for(i=1;i<rows.size;i++)self.shopEquipped[rows[i][0]]=rows[i][1];
-    self.shopLoaded=true;
+    if(getCodVersion() != 4)
+    {
+        return true;
+    }
+    self endon("disconnect");
+    if(!self openCJ\login::isLoggedIn())
+    {
+        return false;
+    }
+    accountID = self openCJ\login::getPlayerID();
+    if(isDefined(self.shopLoaded) && self.shopLoaded &&
+       isDefined(self.shopEquipmentAccountID) && self.shopEquipmentAccountID == accountID)
+    {
+        return true;
+    }
+
+    self cancelEquipmentRead();
+    requestVersion = self.shopEquipmentVersion;
+    scope = "equipment:" + self getEntityNumber();
+    // The pool's menu policy provides cancellable reads. A separate scope lets
+    // equipment finish when a UI closes, while replacement and disconnect cancel it.
+    result = self openCJ\mySQL::_request(
+        "SELECT 'ready','ready' UNION ALL"
+        + " SELECT e.slot,e.itemKey FROM shopEquipped e"
+        + " JOIN shopPurchases p ON p.playerID=e.playerID AND p.itemKey=e.itemKey"
+        + " WHERE e.playerID=" + accountID,
+        level.sqlConstants.policyMenu, "", scope, level.sqlConstants.defaultQueueWaitMs, true);
+    if(requestVersion != self.shopEquipmentVersion ||
+       !self openCJ\login::isLoggedIn() || self openCJ\login::getPlayerID() != accountID)
+    {
+        return false;
+    }
+    if(!isDefined(result) || !isDefined(result.rows))
+    {
+        return false;
+    }
+    rows = result.rows;
+    if(!rows.size || rows[0][0] != "ready")
+    {
+        return false;
+    }
+
+    equipment = [];
+    for(i = 1; i < rows.size; i++)
+    {
+        slot = rows[i][0];
+        itemKey = rows[i][1];
+        equipment[slot] = itemKey;
+    }
+    self.shopEquipped = equipment;
+    self.shopEquipmentAccountID = accountID;
+    self.shopLoaded = true;
     return true;
 }
+
+cancelEquipmentRead()
+{
+    if(getCodVersion() != 4)
+    {
+        return;
+    }
+    if(!isDefined(self.shopEquipmentVersion))
+    {
+        self.shopEquipmentVersion = 0;
+    }
+    self.shopEquipmentVersion++;
+    mysql_async_cancel("equipment:" + self getEntityNumber(), level.sqlConstants.scopeExact,
+                       level.sqlConstants.retainCompletion);
+}
+
 findItem(key)
 {
     for(i=0;i<level.shopItems.size;i++)if(level.shopItems[i].key==key)return level.shopItems[i];

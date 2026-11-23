@@ -7,6 +7,7 @@ main() // Threaded
     self openCJ\mySQL::cancelMenuReads();
     self openCJ\mapBoost::cancel();
     self openCJ\scoreboard::onPlayerDisconnected();
+    self openCJ\shop::cancelEquipmentRead();
     self openCJ\shop::stopInspect();
     level.playerCount--;
     self openCJ\clips::onDisconnect();

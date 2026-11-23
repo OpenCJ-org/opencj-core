@@ -46,6 +46,7 @@ run(player, otherPlayer)
     clipSessionChecks();
     clipPublicationChecks(player);
     shopMenuChecks(player);
+    shopEquipmentChecks(player);
     demoTransferChecks();
     stats = mysql_async_stats();
     check(stats[0] == 4 && stats[4] == 0, "four workers and no uncollected GSC jobs");
@@ -399,4 +400,131 @@ verifyObsoleteShopRead(openAnotherMenu)
     check(level.history192ShopOwnershipReads == 0,
           scenario + ": obsolete request starts no ownership read");
     self openCJ\mySQL::cancelMenuReads();
+}
+
+// Two reads can overlap while login, respawn, or a purchase refresh waits for SQL.
+shopEquipmentChecks(player)
+{
+    openCJ\mySQL::mysqlSyncQuery(
+        "INSERT INTO shopCatalog(itemKey,category,slot,price,available)"
+        + " VALUES('pistol.equipment-fixture',1,'deserteagle_mp',0,0)");
+    openCJ\mySQL::mysqlSyncQuery(
+        "INSERT INTO shopPurchases(playerID,itemKey,pointsSpent)"
+        + " VALUES(1,'pistol.equipment-fixture',0)");
+    player.shopLoaded = false;
+    player.shopEquipped = [];
+    player.shopTestLoadResult = undefined;
+    level.history192DelayedQuery = "SELECT 'ready','ready' UNION ALL";
+    level.history192HoldReply = true;
+
+    player thread readEquipmentForTest();
+    player waittill("history192_result_ready");
+    // The old result is already empty. Change storage, then finish a newer read first.
+    level.history192DelayedQuery = undefined;
+    openCJ\mySQL::mysqlSyncQuery(
+        "INSERT INTO shopEquipped(playerID,slot,itemKey)"
+        + " VALUES(1,'deserteagle_mp','pistol.equipment-fixture')");
+    loaded = player openCJ\shop::loadEquipment();
+    check(loaded && player.shopEquipped["deserteagle_mp"] == "pistol.equipment-fixture",
+          "newer equipment read installs the current selection");
+    player notify("history192_release_result");
+    wait 0.1;
+    check(isDefined(player.shopTestLoadResult) && !player.shopTestLoadResult,
+          "superseded equipment read reports no usable result");
+    check(isDefined(player.shopEquipped["deserteagle_mp"]) &&
+          player.shopEquipped["deserteagle_mp"] == "pistol.equipment-fixture",
+          "old equipment reply cannot erase a newer selection");
+
+    player.shopLoaded = false;
+    player.shopTestLoadResult = undefined;
+    level.history192DelayedQuery = "SELECT 'ready','ready' UNION ALL";
+    player thread readEquipmentForTest();
+    player waittill("history192_result_ready");
+    player.login_playerID = 2;
+    player.shopEquipped = [];
+    player.shopEquipped["deserteagle_mp"] = "replacement-account";
+    level.history192DelayedQuery = undefined;
+    player notify("history192_release_result");
+    wait 0.1;
+    check(isDefined(player.shopTestLoadResult) && !player.shopTestLoadResult,
+          "equipment reply from the previous account is rejected");
+    check(player.shopEquipped["deserteagle_mp"] == "replacement-account",
+          "previous account's equipment cannot replace current account state");
+
+    player.login_playerID = 1;
+    player.shopLoaded = false;
+    player.shopTestLoadResult = undefined;
+    level.history192DelayedQuery = "SELECT 'ready','ready' UNION ALL";
+    player thread readEquipmentForTest();
+    player waittill("history192_result_ready");
+    player openCJ\mySQL::cancelMenuReads();
+    level.history192DelayedQuery = undefined;
+    player notify("history192_release_result");
+    wait 0.1;
+    check(isDefined(player.shopTestLoadResult) && player.shopTestLoadResult,
+          "closing menus leaves needed equipment loading active");
+
+    player.shopLoaded = false;
+    player.shopTestLoadResult = undefined;
+    level.history192DelayedQuery = "SELECT 'ready','ready' UNION ALL";
+    player thread readEquipmentForTest();
+    player waittill("history192_result_ready");
+    player openCJ\shop::cancelEquipmentRead();
+    level.history192DelayedQuery = undefined;
+    player notify("history192_release_result");
+    wait 0.1;
+    check(isDefined(player.shopTestLoadResult) && !player.shopTestLoadResult && !player.shopLoaded,
+          "disconnect cancellation rejects an equipment reply already in delivery");
+
+    player.shopLoaded = false;
+    player.shopEquipped = [];
+    level.history192HoldReply = false;
+    player verifyQueuedEquipmentCancellation();
+    openCJ\mySQL::mysqlSyncQuery(
+        "DELETE FROM shopEquipped WHERE itemKey='pistol.equipment-fixture'");
+    openCJ\mySQL::mysqlSyncQuery(
+        "DELETE FROM shopPurchases WHERE itemKey='pistol.equipment-fixture'");
+    openCJ\mySQL::mysqlSyncQuery(
+        "DELETE FROM shopCatalog WHERE itemKey='pistol.equipment-fixture'");
+}
+
+readEquipmentForTest()
+{
+    self.shopTestLoadResult = self openCJ\shop::loadEquipment();
+}
+
+// Occupy the four pool workers so the equipment request is still queued at cancellation.
+verifyQueuedEquipmentCancellation()
+{
+    workerCount = 4;
+    level.shopEquipmentBlockersDone = 0;
+    for(i = 0; i < workerCount; i++)
+    {
+        job = mysql_async_submit("SELECT SLEEP(0.5)", level.sqlConstants.policyRead,
+                                 "", "", level.sqlConstants.defaultQueueWaitMs, true);
+        check(isDefined(job) && job > 0, "equipment cancellation blocker admitted");
+        thread awaitEquipmentBlocker(job);
+    }
+    wait 0.05;
+    self.shopLoaded = false;
+    self.shopTestLoadResult = undefined;
+    self thread readEquipmentForTest();
+    wait 0.05;
+    self openCJ\shop::cancelEquipmentRead();
+    wait 0.1;
+    check(isDefined(self.shopTestLoadResult) && !self.shopTestLoadResult,
+          "queued equipment cancellation wakes its caller before workers become available");
+
+    for(attempt = 0; attempt < 30 && level.shopEquipmentBlockersDone < workerCount; attempt++)
+    {
+        wait 0.05;
+    }
+    check(level.shopEquipmentBlockersDone == workerCount,
+          "equipment cancellation releases all unrelated blocker completions");
+}
+
+awaitEquipmentBlocker(job)
+{
+    openCJ\mySQL::awaitNative(job);
+    level.shopEquipmentBlockersDone++;
 }
