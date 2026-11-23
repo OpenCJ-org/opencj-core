@@ -265,7 +265,14 @@ static std::vector<int> demoPlaybackTimeline[MAX_CLIENTS];
 static DemoFPSText demoFPSText[MAX_CLIENTS];
 static unsigned long long demoGeneration=0;
 
-static bool Base_Gsc_IsValidClientNum(int clientNum);
+static bool rejectInvalidDemoClient(int clientNum);
+
+// A recording can be empty or shortened after this viewer selected it.
+static bool hasSelectedDemoFrame(const sDemoPlayback_t &playback)
+{
+    return playback.pDemo && playback.pDemo->pDemoFrames &&
+           playback.selectedFrame >= 0 && playback.selectedFrame < playback.pDemo->size;
+}
 
 // One transformed sample per viewer, never another copy of the full recording.
 struct DemoTechniqueState {
@@ -338,7 +345,7 @@ static sDemoFrame_t &techniqueFrame(int client, const sDemo_t &demo, int index)
 
 void Gsc_Demo_SetTechnique(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     int mode;
@@ -354,11 +361,11 @@ void Gsc_Demo_SetTechnique(int client)
 
 void Gsc_Demo_TechniqueFallback(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     const sDemoPlayback_t &play = opencj_playback[client];
-    if (!play.pDemo || !play.pDemo->size) {
+    if (!hasSelectedDemoFrame(play)) {
         stackPushBool(false);
         return;
     }
@@ -369,11 +376,11 @@ void Gsc_Demo_TechniqueFallback(int client)
 
 void Gsc_Demo_TechniquePhase(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     const sDemoPlayback_t &play = opencj_playback[client];
-    if (!play.pDemo || !play.pDemo->size) {
+    if (!hasSelectedDemoFrame(play)) {
         stackPushInt(0);
         return;
     }
@@ -394,11 +401,11 @@ void Gsc_Demo_TechniquePhase(int client)
 
 void Gsc_Demo_ReadFrame_Checkpoint(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     const sDemoPlayback_t &play = opencj_playback[client];
-    if (!play.pDemo || !play.pDemo->size) {
+    if (!hasSelectedDemoFrame(play)) {
         stackPushUndefined();
         return;
     }
@@ -592,7 +599,7 @@ static bool appendDemoFrame(sDemo_t *demo, const sDemoFrame_t &frame)
  * Helper functions                                                       *
  **************************************************************************/
 
-static bool Base_Gsc_IsValidClientNum(int clientNum)
+static bool rejectInvalidDemoClient(int clientNum)
 {
     if ((clientNum < 0) || (clientNum >= MAX_CLIENTS))
     {
@@ -635,103 +642,57 @@ static bool Base_Gsc_GetValidDemoId(int *pDemoId, int nrArgsExpected)
     return true;
 }
 
-static void
-Base_Gsc_Demo_FrameSkip(int playerId, int nrToSkip,
-                        bool areKeyFrames) // Helper function for skipping frames and keyframes
+// Follow at most one link per stored frame, even for an extreme script argument.
+static int skipDemoKeyFrames(const sDemo_t &demo, int selectedFrame, int framesToSkip)
 {
-    if (Base_Gsc_IsValidClientNum(playerId))
+    const bool reverse = framesToSkip < 0;
+    const long long requestedSteps = std::abs(static_cast<long long>(framesToSkip));
+    const long long steps = std::min(requestedSteps, static_cast<long long>(demo.size));
+    for (long long step = 0; step < steps; ++step)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[selectedFrame];
+        const int nextFrame = reverse ? frame.prevKeyFrame : frame.nextKeyFrame;
+        if (nextFrame == selectedFrame || nextFrame < 0 || nextFrame >= demo.size)
+        {
+            break;
+        }
+        selectedFrame = nextFrame;
+    }
+    return selectedFrame;
+}
+
+// Clamp seeks to recorded frames. Widen before adding or negating script integers.
+static void Base_Gsc_Demo_FrameSkip(int client, int framesToSkip, bool keyFrames)
+{
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
-
-    // printf("[%d] is skipping %d %sframes\n", playerId, nrToSkip, areKeyFrames ? "key" : "");
-
-    sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
-    const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    sDemoPlayback_t &playback = opencj_playback[client];
+    const sDemo_t *demo = playback.pDemo;
+    if (!demo || !demo->pDemoFrames || demo->size <= 0)
     {
         stackPushUndefined();
+        return;
     }
-    else
+
+    const int selectedFrame = std::clamp(playback.selectedFrame, 0, demo->size - 1);
+    long long requestedFrame = static_cast<long long>(selectedFrame) + framesToSkip;
+    const auto &timeline = demoPlaybackTimeline[client];
+    if (keyFrames && !timeline.empty())
     {
-        // If we're requested to skip n keyframes, then we need to figure out how many real frames
-        // that is
-        if (areKeyFrames && !demoPlaybackTimeline[playerId].empty())
-        {
-            const auto &timeline = demoPlaybackTimeline[playerId];
-            auto it = std::lower_bound(timeline.begin(), timeline.end(), pPlayback->selectedFrame);
-            int index = int(it - timeline.begin());
-            index = std::max(0, std::min(int(timeline.size()) - 1, index + nrToSkip));
-            nrToSkip = timeline[index] - pPlayback->selectedFrame;
-        }
-        else if (areKeyFrames)
-        {
-            if (nrToSkip != 0)
-            {
-                // printf("Trying to skip %d keyFrames\n", nrToSkip);
-                int nrKeyFramesToSkip =
-                    abs(nrToSkip);          // The total number of key frames we need to skip
-                int nrKeyFramesSkipped = 0; // The number of key frames skipped so far
-                int currFrame = pPlayback->selectedFrame; // The current frame being processed
-                bool isReverse =
-                    (nrToSkip <
-                     0); // Whether the skipping needs to be in reverse (true) or forward (false)
-                // OK, now for the actual key frame skipping
-                for (int i = 0; i < nrKeyFramesToSkip; i++)
-                {
-                    // First we select the "next" key frame (next can be previous as well if we are
-                    // searching in reverse)
-                    const sDemoFrame_t *pCurrFrame = &pDemo->pDemoFrames[currFrame];
-                    int nextKeyFrame =
-                        isReverse ? pCurrFrame->prevKeyFrame : pCurrFrame->nextKeyFrame;
-
-                    // Check if we skipped any frames
-                    if (nextKeyFrame == currFrame)
-                    {
-                        // We didn't get anywhere, so this must have been the last key frame
-                        break;
-                    }
-
-                    currFrame = nextKeyFrame;
-
-                    // Check if we skipped enough key frames
-                    if (++nrKeyFramesSkipped >= nrKeyFramesToSkip)
-                    {
-                        // printf("[%d] skipped enough keyframes (%d)\n", playerId,
-                        // nrKeyFramesSkipped);
-                        break;
-                    }
-                }
-
-                // We overwrite this with the number of frames to skip (rather than number of key
-                // frames), so we can re-use the code below No check for reverse, because we need
-                // this to be negative if skipping backwards, and positive if skipping forward
-                nrToSkip = (currFrame - pPlayback->selectedFrame);
-            }
-        }
-
-        int requestedFrame = pPlayback->selectedFrame + nrToSkip;
-        if (requestedFrame > (pDemo->size - 1)) // - 1 because we're comparing an index to a size
-        {
-            printf("[%d] can't select next frame, demo is finished\n", playerId);
-            requestedFrame = pDemo->size - 1;
-        }
-        else if (requestedFrame < 0) // TODO: start & end, 0 may not be begin
-        {
-            printf("[%d] can't select previous frame, demo is at start\n", playerId);
-            requestedFrame = 0;
-        }
-        else
-        {
-            // This is fine, not out of bounds
-        }
-
-        pPlayback->selectedFrame = requestedFrame;
-        stackPushInt(requestedFrame);
-
-        // printf("Requested frame skip %d -> %d, returned %d\n", pPlayback->selectedFrame,
-        // pPlayback->selectedFrame + nrToSkip, requestedFrame);
+        const auto selected = std::lower_bound(timeline.begin(), timeline.end(), selectedFrame);
+        const long long timelineIndex = selected - timeline.begin();
+        const long long requestedIndex = std::clamp(
+            timelineIndex + framesToSkip, 0LL, static_cast<long long>(timeline.size()) - 1);
+        requestedFrame = timeline[requestedIndex];
     }
+    else if (keyFrames)
+    {
+        requestedFrame = skipDemoKeyFrames(*demo, selectedFrame, framesToSkip);
+    }
+    playback.selectedFrame = std::clamp(requestedFrame, 0LL, static_cast<long long>(demo->size) - 1);
+    stackPushInt(playback.selectedFrame);
 }
 
 //==========================================================================
@@ -1049,7 +1010,7 @@ void Gsc_Demo_CompleteDemo()
 
 void Gsc_Demo_SelectPlaybackDemo(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId))
+    if (rejectInvalidDemoClient(playerId))
     {
         return;
     }
@@ -1082,11 +1043,14 @@ void Gsc_Demo_SelectPlaybackDemo(int playerId)
 
 void Gsc_Demo_ReadFrame_Origin(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId)) return;
+    if (rejectInvalidDemoClient(playerId))
+    {
+        return;
+    }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1099,11 +1063,14 @@ void Gsc_Demo_ReadFrame_Origin(int playerId)
 
 void Gsc_Demo_ReadFrame_SaveNow(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId)) return;
+    if (rejectInvalidDemoClient(playerId))
+    {
+        return;
+    }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1116,11 +1083,14 @@ void Gsc_Demo_ReadFrame_SaveNow(int playerId)
 
 void Gsc_Demo_ReadFrame_LoadNow(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId)) return;
+    if (rejectInvalidDemoClient(playerId))
+    {
+        return;
+    }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1133,11 +1103,14 @@ void Gsc_Demo_ReadFrame_LoadNow(int playerId)
 
 void Gsc_Demo_ReadFrame_FPS(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId)) return;
+    if (rejectInvalidDemoClient(playerId))
+    {
+        return;
+    }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1150,14 +1123,14 @@ void Gsc_Demo_ReadFrame_FPS(int playerId)
 
 void Gsc_Demo_ReadFrame_Flags(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId))
+    if (rejectInvalidDemoClient(playerId))
     {
         return;
     }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1171,11 +1144,14 @@ void Gsc_Demo_ReadFrame_Flags(int playerId)
 
 void Gsc_Demo_ReadFrame_RPGNow(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId)) return;
+    if (rejectInvalidDemoClient(playerId))
+    {
+        return;
+    }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1188,14 +1164,14 @@ void Gsc_Demo_ReadFrame_RPGNow(int playerId)
 
 void Gsc_Demo_ReadFrame_Angles(int playerId)
 {
-    if (Base_Gsc_IsValidClientNum(playerId))
+    if (rejectInvalidDemoClient(playerId))
     {
         return;
     }
 
     const sDemoPlayback_t *pPlayback = &opencj_playback[playerId];
     const sDemo_t *pDemo = pPlayback->pDemo;
-    if (!pDemo)
+    if (!hasSelectedDemoFrame(*pPlayback))
     {
         stackPushUndefined();
     }
@@ -1659,7 +1635,7 @@ static bool demoIdleTogether(const sDemoFrame_t &a, const sDemoFrame_t &b)
 // 2: successful walkthrough. Preserve positioning and shorten only true idle pauses.
 void Gsc_Demo_PlaybackStyle(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
@@ -1738,7 +1714,7 @@ void Gsc_Demo_PlaybackStyle(int client)
 
 void Gsc_Demo_PlaybackTime(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     int begin;
@@ -2228,7 +2204,7 @@ static void applyDemoBody(int client, const sDemo_t &demo, int index)
 void Gsc_Demo_BeginPresentation(int client)
 {
 #ifdef COD4
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
@@ -2247,12 +2223,12 @@ void Gsc_Demo_BeginPresentation(int client)
 void Gsc_Demo_ApplyPresentation(int client)
 {
 #ifdef COD4
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
     sDemoPlayback_t &play = opencj_playback[client];
-    if (!demoReturnVisual[client] || !play.pDemo)
+    if (!demoReturnVisual[client] || !hasSelectedDemoFrame(play))
     {
         stackPushBool(false);
         return;
@@ -2375,7 +2351,7 @@ void Gsc_Demo_ApplyPresentation(int client)
 // Find checkpoint boundaries in the retained recording, not the map's route graph.
 void Gsc_Demo_SeekCheckpoint(int client)
 {
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
@@ -2466,12 +2442,12 @@ void Gsc_Demo_SeekCheckpoint(int client)
 void Gsc_Demo_PlayLanding(int client)
 {
 #ifdef COD4
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
     const sDemoPlayback_t &play = opencj_playback[client];
-    if (demoReturnVisual[client] && play.pDemo)
+    if (demoReturnVisual[client] && hasSelectedDemoFrame(play))
     {
         const sDemoFrame_t &frame = play.pDemo->pDemoFrames[play.selectedFrame];
         if (frame.visual.landingEvent && !frame.loadNow)
@@ -2492,7 +2468,7 @@ void Gsc_Demo_PlayLanding(int client)
 void Gsc_Demo_EndPresentation(int client)
 {
 #ifdef COD4
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
@@ -2556,11 +2532,11 @@ void Gsc_Demo_EndPresentation(int client)
 void Gsc_Demo_ReadFrame_Weapon(int client)
 {
 #ifdef COD4
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     const sDemoPlayback_t &play = opencj_playback[client];
-    if (play.pDemo) {
+    if (hasSelectedDemoFrame(play)) {
         const DemoVisual &v = play.pDemo->pDemoFrames[play.selectedFrame].visual;
         if (v.valid) {
             stackPushString(demoWeaponName(v.weapon));
@@ -2574,12 +2550,12 @@ void Gsc_Demo_ReadFrame_Weapon(int client)
 void Gsc_Demo_ReadFrame_RPGSound(int client)
 {
 #ifdef COD4
-    if (Base_Gsc_IsValidClientNum(client))
+    if (rejectInvalidDemoClient(client))
     {
         return;
     }
     const sDemoPlayback_t &play = opencj_playback[client];
-    if (play.pDemo)
+    if (hasSelectedDemoFrame(play))
     {
         const sDemoFrame_t &f = play.pDemo->pDemoFrames[play.selectedFrame];
         if (f.visual.valid && f.rpgNow && (f.flags & 4096))
@@ -2780,14 +2756,14 @@ void Gsc_Demo_ClipInfo()
 }
 
 void Gsc_Demo_FPSReset(int client) {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     demoFPSText[client].clear();
 }
 
 void Gsc_Demo_FPSStore(int client) {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     int frame;
@@ -2801,7 +2777,7 @@ void Gsc_Demo_FPSStore(int client) {
 }
 
 void Gsc_Demo_FPSRead(int client) {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     int frame;
@@ -2818,7 +2794,7 @@ void Gsc_Demo_FPSRead(int client) {
 }
 
 void Gsc_Demo_FPSStats(int client) {
-    if (Base_Gsc_IsValidClientNum(client)) {
+    if (rejectInvalidDemoClient(client)) {
         return;
     }
     stackMakeArray();

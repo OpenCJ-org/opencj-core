@@ -571,6 +571,20 @@
         "dev-tools/tests/platform-wall-geometry.cpp",
         "dev-tools/tests/run-native-unit.py"
       ]
+    },
+    {
+      "id": "demo-storage",
+      "category": "integration",
+      "description": "Native demo frame boundaries, extreme seeks and allocation failures.",
+      "requires": "Initialized CoD4 headers and Compose build image; no game assets or database.",
+      "effects": "Temporary build containers and binaries removed after the run; no application services.",
+      "files": [
+        "dev-tools/tests/demo-storage.cpp",
+        "dev-tools/tests/run-demo-storage.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/run-demo-storage.py"
+      ]
     }
   ]
 }

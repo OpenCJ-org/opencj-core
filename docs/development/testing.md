@@ -48,7 +48,7 @@ to their listed harnesses, not standalone commands.
 | Challenge routes, shop or finish ranking | `feature-sql`, `notification-sql` |
 | Save ownership or SQL pool | `sql-adapter` |
 | Demo view receipts | `demo-view-sql` |
-| Demo playback or camera | `demo-engine`, `camera-engine`, `native-unit` |
+| Demo playback or camera | `demo-engine`, `camera-engine`, `native-unit`, `demo-storage` |
 | Checkpoint editor/contact/HUD | `checkpoint-engine`, `checkpoint-matching`, `focused-gsc` |
 | Platform or movement code | `platform-engine`, `movement-engine`, `sticky-walls`, `native-unit` |
 | Menus or notification artwork | `compiled-menus`, `demo-menu-source`, `notification-assets` |
@@ -85,7 +85,9 @@ a fixture server.
 
 The `camera-engine` runner builds its probe from tracked source by default.
 The `native-unit` command requires g++ with C++17 and 32-bit development libraries,
-but no game assets. Focused GSC commands name their fixture and completion marker;
+but no game assets. The `demo-storage` command uses the Compose build image to
+check native storage and script return values without a game server or database.
+Focused GSC commands name their fixture and completion marker;
 checkpoint contact uses `mp_futile_fixed`, not the stock map used by the other
 focused fixtures. The save-history native fixture checks invalid inputs, non-player
 calls and stale selections without a database. HUD observation wrappers are
