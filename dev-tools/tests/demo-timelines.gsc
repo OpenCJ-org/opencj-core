@@ -10,20 +10,34 @@ main()
     }
     level.demoTimelineFailures = 0;
     level.demoTimelineChecks = 0;
-    bot = addTestClient();
-    if(!isDefined(bot))
+    viewer = addTestClient();
+    if(!isDefined(viewer))
     {
         check(false, "create test viewer");
+        reportCompletion();
         return;
     }
     wait 1;
-    bot.sessionState = "playing";
-    bot.sessionTeam = "allies";
-    bot spawn((0, 0, 100), (0, 0, 0));
-    a = 1800000081;
-    b = 1800000082;
-    createDemo(a);
-    createDemo(b);
+    viewer.sessionState = "playing";
+    viewer.sessionTeam = "allies";
+    viewer spawn((0, 0, 100), (0, 0, 0));
+    verifyTimelineStyles(viewer);
+    verifyDestinationLoad(viewer);
+    verifyPhysicalSetup(viewer);
+    verifyIdleTrimming(viewer);
+    verifyActiveMotionRetention(viewer);
+    verifyAmmoRestoration(viewer);
+    viewer openCJ\demoSelectionTest::run();
+    reportCompletion();
+}
+
+// Compare original, successful-run and walkthrough timelines using the same recording.
+verifyTimelineStyles(viewer)
+{
+    sourceDemoID = 1800000081;
+    decodedDemoID = 1800000082;
+    createDemo(sourceDemoID);
+    createDemo(decodedDemoID);
     for(i = 0; i < 1300; i++)
     {
         flags = 8192;
@@ -35,128 +49,148 @@ main()
         {
             flags = 8192;
         } // Short bunny-hop ground contact.
-        cp = 17;
+        checkpointID = 17;
         if(i >= 1280)
         {
-            cp = 18;
+            checkpointID = 18;
         }
-        addFrameToDemo(a, (i % 20, 0, 100), (0, 0, 0), 1, flags, 0, int(i == 40), 0, 125, cp);
+        addFrameToDemo(sourceDemoID, (i % 20, 0, 100), (0, 0, 0), 1, flags, 0, int(i == 40), 0, 125,
+                       checkpointID);
         if(i == 39)
         {
-            check(demoMarkFailedSince(a, 20) == 40, "load retains failed frames");
+            check(demoMarkFailedSince(sourceDemoID, 20) == 40, "load retains failed frames");
         }
     }
-    check(numberOfDemoFrames(a) == 1300, "speedrun retains the complete recording");
+    check(numberOfDemoFrames(sourceDemoID) == 1300, "speedrun retains the complete recording");
     for(i = 0; i < 1300; i += 64)
     {
-        count = 1300 - i;
-        if(count > 64)
+        chunkFrames = 1300 - i;
+        if(chunkFrames > 64)
         {
-            count = 64;
+            chunkFrames = 64;
         }
-        check(demoDecodeChunk(b, demoEncodeChunk(a, i, count)) == count, "chunk roundtrip");
+        check(demoDecodeChunk(decodedDemoID, demoEncodeChunk(sourceDemoID, i, chunkFrames)) ==
+                  chunkFrames,
+              "chunk roundtrip");
     }
-    bot selectPlaybackDemo(b);
-    range = bot demoPlaybackStyle(0, 0, 1299);
-    time = bot demoPlaybackTime(0, 1299);
-    check(time[1] == 1299, "speedrun duration includes setup and failed attempts");
-    bot skipPlaybackFrames(20);
-    check(bot readPlaybackFrame_flags() == 0, "speedrun includes failed airborne attempt");
-    range = bot demoPlaybackStyle(1, 0, 1299);
-    time = bot demoPlaybackTime(0, 1299);
-    check(time[1] == 1279, "low-RPG skips failures but keeps setup");
-    check(bot skipPlaybackKeyFrames(20) == 40, "successful path crosses failed section");
-    range = bot demoPlaybackStyle(2, 0, 1299);
-    time = bot demoPlaybackTime(0, 1299);
-    check(time[1] == 1279, "walkthrough keeps positioning and removes only failed frames");
-    check(bot skipPlaybackFrames(0) == 0, "walkthrough retains approach to save location");
-    check(bot skipPlaybackKeyFrames(20) == 40, "walkthrough cuts only the failed attempt");
-    check(bot skipPlaybackKeyFrames(1200) == 1240, "walkthrough retains successful jump");
-    check(bot demoSeekCheckpoint(1) == 1280, "next checkpoint follows edited timeline");
-    check(bot demoSeekCheckpoint(-1) == 0, "previous checkpoint follows edited timeline");
-    range = demoFindSegment(b, 17, (0, 0, 100), 0, 1);
-    check(isDefined(range) && range[1] == 1289,
+    viewer selectPlaybackDemo(decodedDemoID);
+    frameRange = viewer demoPlaybackStyle(0, 0, 1299);
+    playbackTiming = viewer demoPlaybackTime(0, 1299);
+    check(playbackTiming[1] == 1299, "speedrun duration includes setup and failed attempts");
+    viewer skipPlaybackFrames(20);
+    check(viewer readPlaybackFrame_flags() == 0, "speedrun includes failed airborne attempt");
+    frameRange = viewer demoPlaybackStyle(1, 0, 1299);
+    playbackTiming = viewer demoPlaybackTime(0, 1299);
+    check(playbackTiming[1] == 1279, "low-RPG skips failures but keeps setup");
+    check(viewer skipPlaybackKeyFrames(20) == 40, "successful path crosses failed section");
+    frameRange = viewer demoPlaybackStyle(2, 0, 1299);
+    playbackTiming = viewer demoPlaybackTime(0, 1299);
+    check(playbackTiming[1] == 1279,
+          "walkthrough keeps positioning and removes only failed frames");
+    check(viewer skipPlaybackFrames(0) == 0, "walkthrough retains approach to save location");
+    check(viewer skipPlaybackKeyFrames(20) == 40, "walkthrough cuts only the failed attempt");
+    check(viewer skipPlaybackKeyFrames(1200) == 1240, "walkthrough retains successful jump");
+    check(viewer demoSeekCheckpoint(1) == 1280, "next checkpoint follows edited timeline");
+    check(viewer demoSeekCheckpoint(-1) == 0, "previous checkpoint follows edited timeline");
+    frameRange = demoFindSegment(decodedDemoID, 17, (0, 0, 100), 0, 1);
+    check(isDefined(frameRange) && frameRange[1] == 1289,
           "successful checkpoint segment includes grounded landing tail");
-    destroyDemo(a);
-    destroyDemo(b);
+    destroyDemo(sourceDemoID);
+    destroyDemo(decodedDemoID);
+}
 
+// A later load at the destination must not remove the preceding jump's arrival.
+verifyDestinationLoad(viewer)
+{
     // A load at the next checkpoint must not erase the arrival of this jump.
-    a = 1800000084;
-    createDemo(a);
+    sourceDemoID = 1800000084;
+    createDemo(sourceDemoID);
     for(i = 0; i < 120; i++)
     {
-        cp = 17;
+        checkpointID = 17;
         if(i >= 40)
         {
-            cp = 18;
+            checkpointID = 18;
         }
         flags = 8192;
         if(i >= 20 && i < 40)
         {
             flags = 0;
         }
-        addFrameToDemo(a, (0, 0, 100), (0, 0, 0), 1, flags, 0, int(i == 80), 0, 125, cp);
+        addFrameToDemo(sourceDemoID, (0, 0, 100), (0, 0, 0), 1, flags, 0, int(i == 80), 0, 125,
+                       checkpointID);
     }
-    bot selectPlaybackDemo(a);
-    segment = demoFindSegment(a, 17, (0, 0, 100), 0, 1);
-    check(segment[1] == 49, "segment stops after arrival, before later load");
-    edited = bot demoPlaybackStyle(2, segment[0], segment[1]);
-    check(edited[1] == 49, "walkthrough retains landing despite destination load");
-    current = bot skipPlaybackFrames(0);
-    bot skipPlaybackFrames(edited[1] - current);
-    check((bot readPlaybackFrame_flags() & 8192) != 0, "terminal frame is grounded");
-    edited = bot demoPlaybackStyle(2, 40, 119);
-    check(edited[0] == 40, "starting at destination preserves successful movement before saves");
-    destroyDemo(a);
+    viewer selectPlaybackDemo(sourceDemoID);
+    lessonRange = demoFindSegment(sourceDemoID, 17, (0, 0, 100), 0, 1);
+    check(lessonRange[1] == 49, "segment stops after arrival, before later load");
+    editedRange = viewer demoPlaybackStyle(2, lessonRange[0], lessonRange[1]);
+    check(editedRange[1] == 49, "walkthrough retains landing despite destination load");
+    currentFrame = viewer skipPlaybackFrames(0);
+    viewer skipPlaybackFrames(editedRange[1] - currentFrame);
+    check((viewer readPlaybackFrame_flags() & 8192) != 0, "terminal frame is grounded");
+    editedRange = viewer demoPlaybackStyle(2, 40, 119);
+    check(editedRange[0] == 40,
+          "starting at destination preserves successful movement before saves");
+    destroyDemo(sourceDemoID);
+}
 
+// Match physical setup near a checkpoint without trusting stale finish progress.
+verifyPhysicalSetup(viewer)
+{
     // Large platform: entry and setup can be far apart. Unrelated alternatives
     // and airborne fly-bys must still not count as a nearby setup.
-    a = 1800000085;
-    createDemo(a);
+    sourceDemoID = 1800000085;
+    createDemo(sourceDemoID);
     for(i = 0; i < 40; i++)
     {
-        cp = 17;
+        checkpointID = 17;
         if(i >= 30)
         {
-            cp = 18;
+            checkpointID = 18;
         }
         flags = 8192;
         if(i >= 20 && i < 30)
         {
             flags = 0;
         }
-        addFrameToDemo(a, (i * 50, 0, 100), (0, 0, 0), 1, flags, 0, 0, 0, 125, cp);
+        addFrameToDemo(sourceDemoID, (i * 50, 0, 100), (0, 0, 0), 1, flags, 0, 0, 0, 125,
+                       checkpointID);
     }
-    check(isDefined(demoFindSegment(a, 17, (900, 0, 100), 0, 1)),
+    check(isDefined(demoFindSegment(sourceDemoID, 17, (900, 0, 100), 0, 1)),
           "large checkpoint setup matches beyond arrival radius");
-    check(!isDefined(demoFindSegment(a, 17, (3000, 0, 100), 0, 1)), "distant alternative rejected");
-    check(!isDefined(demoFindSegment(a, 17, (1400, 0, 100), 0, 1)),
+    check(!isDefined(demoFindSegment(sourceDemoID, 17, (3000, 0, 100), 0, 1)),
+          "distant alternative rejected");
+    check(!isDefined(demoFindSegment(sourceDemoID, 17, (1400, 0, 100), 0, 1)),
           "airborne flyby is not a setup");
     // Stale finish progress after noclip must not select the finish segment.
-    cp = spawnStruct();
-    cp.id = 17;
-    cp.origin = (900, 0, 100);
-    cp.radius = 100;
-    cp.onGround = true;
+    checkpoint = spawnStruct();
+    checkpoint.id = 17;
+    checkpoint.origin = (900, 0, 100);
+    checkpoint.radius = 100;
+    checkpoint.onGround = true;
     finish = spawnStruct();
     finish.id = 18;
     finish.origin = (3000, 0, 100);
     finish.radius = 100;
     finish.onGround = true;
     level.checkpoints_checkpoints = [];
-    level.checkpoints_checkpoints[0] = cp;
+    level.checkpoints_checkpoints[0] = checkpoint;
     level.checkpoints_checkpoints[1] = finish;
-    bot.checkpoints_checkpoint = finish;
-    bot setOrigin((900, 0, 100));
-    segment = bot openCJ\demos::segmentAtPosition(a, 0, 1);
-    check(isDefined(segment) && segment[0] == 0,
+    viewer.checkpoints_checkpoint = finish;
+    viewer setOrigin((900, 0, 100));
+    lessonRange = viewer openCJ\demos::segmentAtPosition(sourceDemoID, 0, 1);
+    check(isDefined(lessonRange) && lessonRange[0] == 0,
           "physical checkpoint overrides stale finished run for lookup");
-    check(bot.checkpoints_checkpoint == finish, "lookup does not change run progress");
-    destroyDemo(a);
+    check(viewer.checkpoints_checkpoint == finish, "lookup does not change run progress");
+    destroyDemo(sourceDemoID);
+}
 
+// Shorten separate idle periods while preserving the movement between them.
+verifyIdleTrimming(viewer)
+{
     // Idle pauses on either side of real movement are shortened independently.
-    a = 1800000086;
-    createDemo(a);
+    sourceDemoID = 1800000086;
+    createDemo(sourceDemoID);
     for(i = 0; i < 120; i++)
     {
         x = 0;
@@ -168,81 +202,102 @@ main()
         {
             x = 20;
         }
-        addFrameToDemo(a, (x, 0, 100), (0, 0, 0), 1, 8192, 0, 0, 0, 125, 17);
+        addFrameToDemo(sourceDemoID, (x, 0, 100), (0, 0, 0), 1, 8192, 0, 0, 0, 125, 17);
     }
-    bot selectPlaybackDemo(a);
-    bot demoPlaybackStyle(2, 0, 119);
-    time = bot demoPlaybackTime(0, 119);
-    check(time[1] == 26, "two long idle pauses shortened without removing repositioning");
-    check(bot skipPlaybackKeyFrames(2) == 48, "first pause retains its end pose");
-    check(bot skipPlaybackKeyFrames(1) == 49, "pause ends before movement");
-    check(bot skipPlaybackKeyFrames(1) == 50, "first moving frame retained");
-    bot demoPlaybackStyle(0, 0, 119);
-    time = bot demoPlaybackTime(0, 119);
-    check(time[1] == 119, "speedrun retains idle pauses");
-    bot demoPlaybackStyle(1, 0, 119);
-    time = bot demoPlaybackTime(0, 119);
-    check(time[1] == 119, "low-RPG policy unchanged");
-    bot demoPlaybackStyle(2, 25, 90);
-    time = bot demoPlaybackTime(25, 90);
-    check(time[1] > 0, "partial checkpoint segment retains range boundaries");
-    destroyDemo(a);
+    viewer selectPlaybackDemo(sourceDemoID);
+    viewer demoPlaybackStyle(2, 0, 119);
+    playbackTiming = viewer demoPlaybackTime(0, 119);
+    check(playbackTiming[1] == 26, "two long idle pauses shortened without removing repositioning");
+    check(viewer skipPlaybackKeyFrames(2) == 48, "first pause retains its end pose");
+    check(viewer skipPlaybackKeyFrames(1) == 49, "pause ends before movement");
+    check(viewer skipPlaybackKeyFrames(1) == 50, "first moving frame retained");
+    viewer demoPlaybackStyle(0, 0, 119);
+    playbackTiming = viewer demoPlaybackTime(0, 119);
+    check(playbackTiming[1] == 119, "speedrun retains idle pauses");
+    viewer demoPlaybackStyle(1, 0, 119);
+    playbackTiming = viewer demoPlaybackTime(0, 119);
+    check(playbackTiming[1] == 119, "low-RPG policy unchanged");
+    viewer demoPlaybackStyle(2, 25, 90);
+    playbackTiming = viewer demoPlaybackTime(25, 90);
+    check(playbackTiming[1] > 0, "partial checkpoint segment retains range boundaries");
+    destroyDemo(sourceDemoID);
+}
+
+// Keep aiming, drift, airborne movement and brief pauses in walkthrough playback.
+verifyActiveMotionRetention(viewer)
+{
     // Mouse aiming, slow positional drift, airborne motion and short rests stay.
-    for(test = 0; test < 4; test++)
+    scenarios = [];
+    scenarios[0] = "aiming";
+    scenarios[1] = "drift";
+    scenarios[2] = "airborne";
+    scenarios[3] = "brief pause";
+    for(scenarioIndex = 0; scenarioIndex < scenarios.size; scenarioIndex++)
     {
-        a = 1800000086;
-        createDemo(a);
-        count = 50;
-        if(test == 3)
+        scenario = scenarios[scenarioIndex];
+        sourceDemoID = 1800000086;
+        createDemo(sourceDemoID);
+        frameCount = 50;
+        if(scenario == "brief pause")
         {
-            count = 10;
+            frameCount = 10;
         }
-        for(i = 0; i < count; i++)
+        for(i = 0; i < frameCount; i++)
         {
             x = 0;
             yaw = 0;
             flags = 8192;
-            if(test == 0)
+            if(scenario == "aiming")
             {
                 yaw = i * 0.1;
             }
-            if(test == 1)
+            if(scenario == "drift")
             {
                 x = i * 0.005;
             }
-            if(test == 2)
+            if(scenario == "airborne")
             {
                 flags = 0;
             }
-            addFrameToDemo(a, (x, 0, 100), (0, yaw, 0), 1, flags, 0, 0, 0, 125, 17);
+            addFrameToDemo(sourceDemoID, (x, 0, 100), (0, yaw, 0), 1, flags, 0, 0, 0, 125, 17);
         }
-        bot selectPlaybackDemo(a);
-        bot demoPlaybackStyle(2, 0, count - 1);
-        time = bot demoPlaybackTime(0, count - 1);
-        check(time[1] == count - 1, "preserve aiming/drift/airborne/brief pause case " + test);
-        destroyDemo(a);
+        viewer selectPlaybackDemo(sourceDemoID);
+        viewer demoPlaybackStyle(2, 0, frameCount - 1);
+        playbackTiming = viewer demoPlaybackTime(0, frameCount - 1);
+        check(playbackTiming[1] == frameCount - 1, "walkthrough preserves " + scenario);
+        destroyDemo(sourceDemoID);
     }
+}
 
+// Playback supplies visible rocket ammo and restores the viewer's exact original ammo.
+verifyAmmoRestoration(viewer)
+{
     // No ammo bytes are recorded. The renderer gets ammo only during playback.
-    a = 1800000083;
-    createDemo(a);
-    rpg = "rpg_mp";
-    bot giveWeapon(rpg);
-    bot setSpawnWeapon(rpg);
-    bot setWeaponAmmoClip(rpg, 0);
-    addFrameToDemo(a, bot.origin, bot getPlayerAngles(), 1, 8192 | 4096, 0, 0, 0, 125, 17,
-                   bot getEntityNumber());
-    bot selectPlaybackDemo(a);
-    check(bot demoBeginPresentation(), "save original presentation");
-    check(bot demoApplyPresentation(), "apply RPG presentation");
-    check(bot getWeaponAmmoClip(rpg) > 0, "playback supplies ammo for visible rocket");
-    bot demoEndPresentation();
-    check(bot getWeaponAmmoClip(rpg) == 0, "leaving playback restores exact original ammo");
-    destroyDemo(a);
-    bot openCJ\demoSelectionTest::run();
+    sourceDemoID = 1800000083;
+    createDemo(sourceDemoID);
+    rpgWeapon = "rpg_mp";
+    viewer giveWeapon(rpgWeapon);
+    viewer setSpawnWeapon(rpgWeapon);
+    viewer setWeaponAmmoClip(rpgWeapon, 0);
+    addFrameToDemo(sourceDemoID, viewer.origin, viewer getPlayerAngles(), 1, 8192 | 4096, 0, 0, 0,
+                   125, 17, viewer getEntityNumber());
+    viewer selectPlaybackDemo(sourceDemoID);
+    check(viewer demoBeginPresentation(), "save original presentation");
+    check(viewer demoApplyPresentation(), "apply RPG presentation");
+    check(viewer getWeaponAmmoClip(rpgWeapon) > 0, "playback supplies ammo for visible rocket");
+    viewer demoEndPresentation();
+    check(viewer getWeaponAmmoClip(rpgWeapon) == 0,
+          "leaving playback restores exact original ammo");
+    destroyDemo(sourceDemoID);
+}
+
+// Finish with the actual assertion count, including setup failures.
+reportCompletion()
+{
     printf("DEMO TIMELINE COMPLETE failures=" + level.demoTimelineFailures +
            " checks=" + level.demoTimelineChecks + "\n");
 }
+
 check(ok, label)
 {
     level.demoTimelineChecks++;
