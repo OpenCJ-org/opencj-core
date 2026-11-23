@@ -115,12 +115,13 @@ request(kind)
         self sendLocalChatMessage("Stand in a checkpoint to watch its demo.", true);
         return;
     }
-    fps = self openCJ\fps::getCurrentFPSMode();
-    mask = int(self openCJ\anyPct::hasAnyPct()) + 2 * int(self openCJ\elevate::hasUsedEle()) +
-           4 * int(self openCJ\halfBeat::isHalfBeatAllowed()) +
-           8 * int(self openCJ\tas::hasHardTAS());
+    fpsMode = self openCJ\fps::getCurrentFPSMode();
+    modeMask = level.demoModes.anyPercent * int(self openCJ\anyPct::hasAnyPct()) +
+               level.demoModes.elevators * int(self openCJ\elevate::hasUsedEle()) +
+               level.demoModes.halfbeat * int(self openCJ\halfBeat::isHalfBeatAllowed()) +
+               level.demoModes.hardTAS * int(self openCJ\tas::hasHardTAS());
     rows = self openCJ\mySQL::mysqlAsyncRead(
-        candidateQuery(location, kind, fps, mask, openCJ\mapID::getMapID()));
+        candidateQuery(location, kind, fpsMode, modeMask, openCJ\mapID::getMapID()));
     if(!isDefined(rows))
     {
         self sendLocalChatMessage("Could not look up demos. Please try again.", true);
@@ -140,44 +141,46 @@ request(kind)
     self releaseSelection();
 }
 
-candidateQuery(location, kind, fps, mask, mapID)
+candidateQuery(location, kind, fpsMode, allowedModes, mapID)
 {
     if(kind == "walkthrough")
     {
-        mask = 0;
-        if(fps == "hax")
+        allowedModes = 0;
+        if(fpsMode == "hax")
         {
-            fps = "mix";
+            fpsMode = "mix";
         }
-        fpsFilter = "(" + dbStr(fps) + ")";
+        fpsFilter = "(" + dbStr(fpsMode) + ")";
     }
     else
     {
-        fpsFilter = openCJ\menus\board_base::getFPSModeStr(fps);
+        fpsFilter = openCJ\menus\board_base::getFPSModeStr(fpsMode);
     }
-    routes = getArrayKeys(location.routes);
+    routeIDs = getArrayKeys(location.routes);
     routeFilter = "";
-    if(routes.size)
+    if(routeIDs.size)
     {
-        names = "";
-        for(i = 0; i < routes.size; i++)
+        routeIDList = "";
+        for(i = 0; i < routeIDs.size; i++)
         {
             if(i)
             {
-                names += ",";
+                routeIDList += ",";
             }
-            names += int(routes[i]);
+            routeIDList += int(routeIDs[i]);
         }
-        routeFilter = " AND w.routeID IN (" + names + ")";
+        routeFilter = " AND w.routeID IN (" + routeIDList + ")";
     }
-    order = "d.timePlayed,d.explosiveJumps";
+    winnerOrder = "d.timePlayed,d.explosiveJumps";
     if(kind == "lowrpg")
     {
-        order = "d.explosiveJumps,d.timePlayed";
+        winnerOrder = "d.explosiveJumps,d.timePlayed";
     }
-    return "SELECT d.runID,d.modeMask,d.frameCount FROM demoWinners w JOIN demoRuns d ON d.runID=w.runID WHERE d.ready=1 AND w.mapID=" +
-           mapID + routeFilter + " AND w.kind=" + dbStr(kind) + " AND (w.modeMask & " + mask +
-           ")=w.modeMask AND w.FPSMode IN " + fpsFilter + " ORDER BY " + order +
+    return "SELECT d.runID,d.modeMask,d.frameCount" +
+           " FROM demoWinners w JOIN demoRuns d ON d.runID=w.runID" +
+           " WHERE d.ready=1 AND w.mapID=" + mapID + routeFilter + " AND w.kind=" + dbStr(kind) +
+           " AND (w.modeMask & " + allowedModes + ")=w.modeMask" + " AND w.FPSMode IN " +
+           fpsFilter + " ORDER BY " + winnerOrder +
            ",BIT_COUNT(d.modeMask),FIELD(d.FPSMode,'125','mix','hax'),d.runID";
 }
 
@@ -192,95 +195,103 @@ selectionLocation()
     groundEntity = self getGroundEntity();
     for(i = 0; i < level.checkpoints_checkpoints.size; i++)
     {
-        cp = level.checkpoints_checkpoints[i];
-        if(!self openCJ\checkpoints::touchesArea(cp, true, groundEntity))
+        checkpoint = level.checkpoints_checkpoints[i];
+        if(!self openCJ\checkpoints::touchesArea(checkpoint, true, groundEntity))
         {
             continue;
         }
-        if(isDefined(cp.bigBrother))
+        if(isDefined(checkpoint.bigBrother))
         {
-            cp = cp.bigBrother;
+            checkpoint = checkpoint.bigBrother;
         }
-        location.checkpoints["" + cp.id] = cp.id;
-        ends = openCJ\checkpoints::getEndCheckpoints(cp);
-        if(!isDefined(ends))
+        location.checkpoints["" + checkpoint.id] = checkpoint.id;
+        endCheckpoints = openCJ\checkpoints::getEndCheckpoints(checkpoint);
+        if(!isDefined(endCheckpoints))
         {
             continue;
         }
-        for(j = 0; j < ends.size; j++)
+        for(j = 0; j < endCheckpoints.size; j++)
         {
-            if(isDefined(ends[j].finishRouteID))
+            if(isDefined(endCheckpoints[j].finishRouteID))
             {
-                location.routes["" + ends[j].finishRouteID] = true;
+                location.routes["" + endCheckpoints[j].finishRouteID] = true;
             }
         }
     }
     return location;
 }
 
-segmentAtLocation(id, any, skipFails, location)
+segmentAtLocation(runID, matchByPosition, skipFailedFrames, location)
 {
-    keys = getArrayKeys(location.checkpoints);
-    best = undefined;
-    for(i = 0; i < keys.size; i++)
+    checkpointKeys = getArrayKeys(location.checkpoints);
+    bestRange = undefined;
+    for(i = 0; i < checkpointKeys.size; i++)
     {
-        range =
-            demoFindSegment(id, location.checkpoints[keys[i]], location.origin, any, skipFails, 1);
-        if(isDefined(range) && betterLesson(range, best))
+        range = demoFindSegment(runID, location.checkpoints[checkpointKeys[i]], location.origin,
+                                matchByPosition, skipFailedFrames, 1);
+        if(isDefined(range) && betterLesson(range, bestRange))
         {
-            best = range;
+            bestRange = range;
         }
     }
-    if(keys.size)
+    if(checkpointKeys.size)
     {
-        return best;
+        return bestRange;
     }
     // Only speedrun requests reach this spatial fallback. Strict matching
     // rejects the legacy Any% fallback to an unrelated complete recording.
-    return demoFindSegment(id, 0, location.origin, 1, skipFails, 1);
+    return demoFindSegment(runID, 0, location.origin, 1, skipFailedFrames, 1);
 }
 
-betterLesson(range, best)
+betterLesson(candidateRange, previousRange)
 {
-    if(!isDefined(best))
+    if(!isDefined(previousRange))
     {
         return true;
     }
-    if(range[2] != best[2])
+    // demoFindSegment returns start, end, RPG shots, then successful frame count.
+    candidateRPGShots = candidateRange[2];
+    previousRPGShots = previousRange[2];
+    if(candidateRPGShots != previousRPGShots)
     {
-        return range[2] < best[2];
+        return candidateRPGShots < previousRPGShots;
     }
-    return range[3] < best[3];
+    candidateFrames = candidateRange[3];
+    previousFrames = previousRange[3];
+    return candidateFrames < previousFrames;
 }
 
 // The winner query is already ordered by full-run time/RPG policy. Walkthrough
 // choices instead compare the actual matching jump, not the length of its route.
 selectCandidate(rows, location, kind)
 {
-    best = undefined;
+    selectedCandidate = undefined;
     for(i = 0; i < rows.size; i++)
     {
-        id = int(rows[i][0]);
-        if(!self acquireCache(id, int(rows[i][2])))
+        runID = int(rows[i][0]);
+        modeMask = int(rows[i][1]);
+        frameCount = int(rows[i][2]);
+        if(!self acquireCache(runID, frameCount))
         {
             continue;
         }
-        range = segmentAtLocation(id, int(rows[i][1]) & 1, int(kind != "speedrun"), location);
+        range = segmentAtLocation(runID, modeMask & level.demoModes.anyPercent,
+                                  int(kind != "speedrun"), location);
         previousRange = undefined;
-        if(isDefined(best))
+        if(isDefined(selectedCandidate))
         {
-            previousRange = best.range;
+            previousRange = selectedCandidate.range;
         }
         if(isDefined(range) && (kind != "walkthrough" || betterLesson(range, previousRange)))
         {
             self releaseSelection();
-            self.demoSelectionId = id;
+            self.demoSelectionId = runID;
             self.demoSelectionCache = self.demoPendingCache;
             self.demoPendingId = undefined;
             self.demoPendingCache = undefined;
-            best = spawnStruct();
-            best.id = id;
-            best.range = range;
+            selectedCandidate = spawnStruct();
+            selectedCandidate.id = runID;
+            selectedCandidate.range = range;
             if(kind != "walkthrough")
             {
                 break;
@@ -291,7 +302,7 @@ selectCandidate(rows, location, kind)
             self releasePending();
         }
     }
-    return best;
+    return selectedCandidate;
 }
 
 // Each pending viewer holds this exact entry, so a reused run ID cannot inherit old work.
@@ -375,7 +386,7 @@ canWatch()
 }
 
 // Called by leaderboard row selection. Explicit rows always play the full run.
-playRun(id, full, kind, selectedRange)
+playRun(runID, playFullRun, kind, selectedRange)
 {
     self endon("disconnect");
     self endon("demo_request");
@@ -384,14 +395,12 @@ playRun(id, full, kind, selectedRange)
         return;
     }
     self sendLocalChatMessage("Loading demo...");
-    if(!isDefined(full))
+    if(!isDefined(playFullRun))
     {
-        full = true;
+        playFullRun = true;
     }
-    meta = self openCJ\mySQL::mysqlAsyncRead(
-        "SELECT frameCount,modeMask,EXISTS(SELECT 1 FROM demoWinners w WHERE w.runID=demoRuns.runID AND w.kind='walkthrough'),(SELECT p.playerName FROM playerRuns r JOIN playerDisplayNames p ON p.playerID=r.playerID WHERE r.runID=demoRuns.runID),(SELECT routeName FROM routes WHERE routeID=demoRuns.routeID),FPSMode,explosiveJumps FROM demoRuns WHERE ready=1 AND mapID=" +
-        openCJ\mapID::getMapID() + " AND runID=" + id);
-    if(!isDefined(meta) || !meta.size)
+    metadata = self readRunMetadata(runID);
+    if(!isDefined(metadata))
     {
         self sendLocalChatMessage("This run has no retained demo.", true);
         return;
@@ -400,9 +409,9 @@ playRun(id, full, kind, selectedRange)
     // retain their requested style, even when the same recording wins both.
     if(!isDefined(kind))
     {
-        kind = leaderboardKind(int(meta[0][2]) != 0);
+        kind = leaderboardKind(metadata.isWalkthrough);
     }
-    if(!self acquireCache(id, int(meta[0][0])))
+    if(!self acquireCache(runID, metadata.frameCount))
     {
         self sendLocalChatMessage("The recording could not be loaded.", true);
         return;
@@ -414,13 +423,14 @@ playRun(id, full, kind, selectedRange)
     }
     range = [];
     range[0] = 0;
-    range[1] = numberOfDemoFrames(id) - 1;
-    if(!full)
+    range[1] = numberOfDemoFrames(runID) - 1;
+    if(!playFullRun)
     {
         range = selectedRange;
         if(!isDefined(range))
         {
-            range = self segmentAtPosition(id, int(meta[0][1]) & 1, int(kind != "speedrun"));
+            range = self segmentAtPosition(runID, metadata.modeMask & level.demoModes.anyPercent,
+                                           int(kind != "speedrun"));
         }
         if(!isDefined(range))
         {
@@ -433,7 +443,7 @@ playRun(id, full, kind, selectedRange)
     // Start outside a client-command / movement callback.
     pendingCache = self.demoPendingCache;
     waittillframeend;
-    if(!self ownsPendingCache(id, pendingCache))
+    if(!self ownsPendingCache(runID, pendingCache))
     {
         return;
     }
@@ -444,15 +454,16 @@ playRun(id, full, kind, selectedRange)
     }
     self.demoPendingId = undefined;
     self.demoPendingCache = undefined;
-    self.demoAuthor = meta[0][3];
+    self.demoAuthor = metadata.authorName;
     if(!isDefined(self.demoAuthor) || self.demoAuthor == "")
     {
         self.demoAuthor = "Unknown player";
     }
     self.demoKind = kind;
-    self.demoRouteName = meta[0][4];
-    self.demoDetails = meta[0][4] + " | " + runModeLabel(meta[0][5], int(meta[0][1])) +
-                       " | Run: " + meta[0][6] + " RPG jumps";
+    self.demoRouteName = metadata.routeName;
+    self.demoDetails = metadata.routeName + " | " +
+                       runModeLabel(metadata.fpsMode, metadata.modeMask) +
+                       " | Run: " + metadata.rpgJumps + " RPG jumps";
     self.demoStyle = 0;
     if(kind == "lowrpg")
     {
@@ -464,38 +475,67 @@ playRun(id, full, kind, selectedRange)
     }
     self.demoBegin = range[0];
     self.demoEnd = range[1];
-    self.demoCheckpointed = (int(meta[0][1]) & 1) == 0;
-    self startDemo(id);
+    self.demoCheckpointed = (metadata.modeMask & level.demoModes.anyPercent) == 0;
+    self startDemo(runID);
+}
+
+// Decode the database projection once, before playback decisions use its fields.
+readRunMetadata(runID)
+{
+    rows = self openCJ\mySQL::mysqlAsyncRead(
+        "SELECT frameCount,modeMask," + "EXISTS(SELECT 1 FROM demoWinners w" +
+        " WHERE w.runID=demoRuns.runID AND w.kind='walkthrough')," +
+        "(SELECT p.playerName FROM playerRuns r" +
+        " JOIN playerDisplayNames p ON p.playerID=r.playerID" + " WHERE r.runID=demoRuns.runID)," +
+        "(SELECT routeName FROM routes WHERE routeID=demoRuns.routeID)," +
+        "FPSMode,explosiveJumps" + " FROM demoRuns WHERE ready=1 AND mapID=" +
+        openCJ\mapID::getMapID() + " AND runID=" + runID);
+    if(!isDefined(rows) || !rows.size)
+    {
+        return undefined;
+    }
+    row = rows[0];
+    metadata = spawnStruct();
+    metadata.frameCount = int(row[0]);
+    metadata.modeMask = int(row[1]);
+    metadata.isWalkthrough = int(row[2]) != 0;
+    metadata.authorName = row[3];
+    metadata.routeName = row[4];
+    metadata.fpsMode = row[5];
+    metadata.rpgJumps = row[6];
+    return metadata;
 }
 
 // Looking up a lesson must not depend on, or change, the viewer's run progress.
 // Noclip and returning after a finish leave that progress at an unrelated CP.
-segmentAtPosition(id, any, skipFails)
+segmentAtPosition(runID, matchByPosition, skipFailedFrames)
 {
     current = self openCJ\checkpoints::getCurrentCheckpoint();
     groundEntity = self getGroundEntity();
     for(i = -1; i < level.checkpoints_checkpoints.size; i++)
     {
-        cp = current;
+        checkpoint = current;
         if(i >= 0)
         {
-            cp = level.checkpoints_checkpoints[i];
+            checkpoint = level.checkpoints_checkpoints[i];
         }
-        if(!isDefined(cp) || !self openCJ\checkpoints::touchesArea(cp, true, groundEntity))
+        if(!isDefined(checkpoint) ||
+           !self openCJ\checkpoints::touchesArea(checkpoint, true, groundEntity))
         {
             continue;
         }
-        if(isDefined(cp.bigBrother))
+        if(isDefined(checkpoint.bigBrother))
         {
-            cp = cp.bigBrother;
+            checkpoint = checkpoint.bigBrother;
         }
-        range = demoFindSegment(id, cp.id, self.origin, any, skipFails);
+        range =
+            demoFindSegment(runID, checkpoint.id, self.origin, matchByPosition, skipFailedFrames);
         if(isDefined(range))
         {
             return range;
         }
     }
-    cpID = 0;
+    checkpointID = 0;
     if(isDefined(current))
     {
         if(isDefined(current.bigBrother))
@@ -504,10 +544,10 @@ segmentAtPosition(id, any, skipFails)
         }
         if(isDefined(current.id))
         {
-            cpID = current.id;
+            checkpointID = current.id;
         }
     }
-    return demoFindSegment(id, cpID, self.origin, any, skipFails);
+    return demoFindSegment(runID, checkpointID, self.origin, matchByPosition, skipFailedFrames);
 }
 
 leaderboardKind(isWalkthrough)
@@ -609,16 +649,9 @@ releaseCache(runID, expectedCache)
     level.demoCache[key] = undefined;
 }
 
-startDemo(demoID)
+// Save the live run before any playback state can replace it.
+captureDemoReturnState()
 {
-    self openCJ\mapBoost::cancel();
-    self openCJ\shop::stopInspect();
-    if(getCodVersion() == 4 && !(self demoBeginPresentation()))
-    {
-        releaseCache(demoID);
-        self sendLocalChatMessage("Could not prepare demo playback", true);
-        return;
-    }
     state = spawnStruct();
     state.origin = self.origin;
     state.angles = self getPlayerAngles();
@@ -639,6 +672,21 @@ startDemo(demoID)
     state.speed = self.currSpeed;
     state.maxSpeed = self.maxSpeed;
     state.started = getTime();
+    return state;
+}
+
+// Take ownership of a ready cache entry and pause the live run until stopDemo().
+startDemo(demoID)
+{
+    self openCJ\mapBoost::cancel();
+    self openCJ\shop::stopInspect();
+    if(getCodVersion() == 4 && !(self demoBeginPresentation()))
+    {
+        releaseCache(demoID);
+        self sendLocalChatMessage("Could not prepare demo playback", true);
+        return;
+    }
+    state = self captureDemoReturnState();
     self.demoReturn = state;
     self.checkpointContact = undefined;
     self openCJ\historySave::cancelPendingPage();
@@ -760,15 +808,15 @@ onPlayPauseDemo()
     }
 }
 
-_getDemoFrame(nrFramesToSkip, shouldSkipFails)
+_getDemoFrame(frameOffset, shouldSkipFails)
 {
     if(shouldSkipFails)
     {
-        newFrame = self skipPlaybackKeyFrames(nrFramesToSkip);
+        newFrame = self skipPlaybackKeyFrames(frameOffset);
     }
     else
     {
-        newFrame = self skipPlaybackFrames(nrFramesToSkip);
+        newFrame = self skipPlaybackFrames(frameOffset);
     }
 
     if(newFrame < self.demoBegin)
@@ -837,6 +885,7 @@ _getDemoFrame(nrFramesToSkip, shouldSkipFails)
     return frame;
 }
 
+// Advance or seek, present the selected sample, then handle the range endpoint.
 whilePlayingDemo()
 {
     if(isDefined(self.demoExitRequested) && self.demoExitRequested)
@@ -863,14 +912,14 @@ whilePlayingDemo()
                 self stopDemo();
                 return;
             }
-            current = self skipPlaybackFrames(0);
-            self skipPlaybackFrames(self.demoBegin - current);
+            currentFrame = self skipPlaybackFrames(0);
+            self skipPlaybackFrames(self.demoBegin - currentFrame);
             self.demoFirstFrame = true;
             self.demoLastPresentedFrame = undefined;
             self.maxSpeed = 0;
         }
     }
-    seek = false;
+    soughtCheckpoint = false;
     if(self.demoCheckpointRequest != 0)
     {
         if(isDefined(self.demoCheckpointed) && self.demoCheckpointed)
@@ -880,35 +929,48 @@ whilePlayingDemo()
             {
                 self.demoBegin = 0;
                 self.demoEnd = numberOfDemoFrames(self.demoID) - 1;
-                current = self skipPlaybackFrames(0);
-                self skipPlaybackFrames(target - current);
+                currentFrame = self skipPlaybackFrames(0);
+                self skipPlaybackFrames(target - currentFrame);
                 self.demoFirstFrame = true;
                 self.demoLastPresentedFrame = undefined;
-                seek = true;
+                soughtCheckpoint = true;
             }
         }
         self.demoCheckpointRequest = 0;
     }
     self demoUpdateOverlay();
-    if(self.playbackPaused && !seek && !self.demoFirstFrame)
+    if(self.playbackPaused && !soughtCheckpoint && !self.demoFirstFrame)
     {
         self demoApplyPresentation();
         return;
     }
-    currFrame = self advanceDemoFrame();
-    isInterpolatedFrame = currFrame.interpolated;
-    self syncDemoFPSHistory(currFrame.number);
+    frame = self advanceDemoFrame();
+    self syncDemoFPSHistory(frame.number);
 
-    self.demoLinker.origin = currFrame.origin;
-    self setPlayerAngles(currFrame.angles);
-    if(currFrame.stance != self.demoPreviousStance)
+    self presentDemoFrame(frame);
+
+    self demoUpdateOverlay();
+    if(!self.playbackPaused && ((self.demoRate > 0 && frame.number >= self.demoEnd) ||
+                                (self.demoRate < 0 && frame.number <= self.demoBegin)))
     {
-        self setStance(currFrame.stance);
+        self _endOfDemo();
+    }
+}
+
+// Apply the selected sample without replaying landing/RPG events during interpolation.
+presentDemoFrame(frame)
+{
+    isInterpolatedFrame = frame.interpolated;
+    self.demoLinker.origin = frame.origin;
+    self setPlayerAngles(frame.angles);
+    if(frame.stance != self.demoPreviousStance)
+    {
+        self setStance(frame.stance);
     }
     detailed = self demoApplyPresentation();
     if(!detailed)
     {
-        self openCJ\weapons::switchToDemoWeapon(currFrame.weapon == "rpg");
+        self openCJ\weapons::switchToDemoWeapon(frame.weapon == "rpg");
         self openCJ\huds\hudSpeedometer::_hideSpeedometer();
     }
     else
@@ -922,13 +984,13 @@ whilePlayingDemo()
             self openCJ\huds\hudSpeedometer::whileAlive();
         }
         sequential = !isDefined(self.demoLastPresentedFrame) ||
-                     currFrame.number == self.demoLastPresentedFrame + 1;
+                     frame.number == self.demoLastPresentedFrame + 1;
         if(isDefined(self.demoLastPresentedFrame) && sequential && !isInterpolatedFrame &&
-           !currFrame.loadNow)
+           !frame.loadNow)
         {
             self demoPlayLanding();
         }
-        if(currFrame.rpgNow && sequential && !isInterpolatedFrame)
+        if(frame.rpgNow && sequential && !isInterpolatedFrame)
         {
             sound = self readPlaybackFrame_rpgSound();
             if(isDefined(sound))
@@ -940,34 +1002,20 @@ whilePlayingDemo()
     self openCJ\clips::onPresented();
     if(!isInterpolatedFrame)
     {
-        self.demoLastPresentedFrame = currFrame.number;
+        self.demoLastPresentedFrame = frame.number;
     }
     if(!isDefined(self.clipEdit))
     {
-        self openCJ\huds\hudOnScreenKeyboard::showKeyboardDemo(currFrame.forward, currFrame.back,
-                                                               currFrame.left, currFrame.right,
-                                                               currFrame.jump, currFrame.sprint);
+        self openCJ\huds\hudOnScreenKeyboard::showKeyboardDemo(
+            frame.forward, frame.back, frame.left, frame.right, frame.jump, frame.sprint);
     }
-    if(currFrame.stance != self.demoPreviousStance)
+    if(frame.stance != self.demoPreviousStance)
     {
-        // self iprintlnbold("stance changed to " + currFrame.stance);
-        self.demoPreviousStance = currFrame.stance;
+        self.demoPreviousStance = frame.stance;
     }
-    if(currFrame.state != self.demoPreviousState)
+    if(frame.state != self.demoPreviousState)
     {
-        /*if((currFrame.state == "sprinting" && self.demoPreviousState == "none") ||
-        (currFrame.state == "none" && self.demoPreviousState == "sprinting")) self iprintln("state
-        changed to " + currFrame.state); else self iprintlnbold("state changed to " +
-        currFrame.state);*/
-        self.demoPreviousState = currFrame.state;
-    }
-
-    // Check if demo ended.
-    self demoUpdateOverlay();
-    if(!self.playbackPaused && ((self.demoRate > 0 && currFrame.number >= self.demoEnd) ||
-                                (self.demoRate < 0 && currFrame.number <= self.demoBegin)))
-    {
-        self _endOfDemo();
+        self.demoPreviousState = frame.state;
     }
 }
 
@@ -984,9 +1032,11 @@ _endOfDemo()
     // Let the client render the terminal snapshot before looping or exiting.
     // This is presentation time only; no frames are added to the recording.
     self.demoLoopPending = true;
-    self.demoLoopAt = getTime() + 200;
+    terminalFrameHoldMs = 200;
+    self.demoLoopAt = getTime() + terminalFrameHoldMs;
 }
 
+// Restore the saved live run before optionally loading the clip viewer's own save.
 stopDemo(loadClipSave)
 {
     if(!self isPlayingDemo())
@@ -1005,7 +1055,7 @@ stopDemo(loadClipSave)
     returnToSave =
         (!isDefined(loadClipSave) || loadClipSave) &&
         (isDefined(self.clipEdit) || isDefined(self.clipPlayback) || isDefined(self.clipPreview));
-    id = self.demoID;
+    demoID = self.demoID;
     self unlink();
     // Disable playback prediction/freeze before the normal teleport runs Pmove.
     self demoEndPresentation();
@@ -1038,15 +1088,15 @@ stopDemo(loadClipSave)
     self.activelyPlayingTimer = getTime() + 5000;
     self.previousOrigin = state.origin;
     self.previousOnground = self isOnGround();
-    elapsed = getTime() - state.started;
-    timestamps = [];
-    timestamps[0] = level.statisticsStrings_lastExplosiveFiredTime;
-    timestamps[1] = level.statisticsStrings_lastJumpTime;
-    for(i = 0; i < timestamps.size; i++)
+    viewingTimeMs = getTime() - state.started;
+    pausedStatistics = [];
+    pausedStatistics[0] = level.statisticsStrings_lastExplosiveFiredTime;
+    pausedStatistics[1] = level.statisticsStrings_lastJumpTime;
+    for(i = 0; i < pausedStatistics.size; i++)
     {
-        if(isDefined(self.statistics[timestamps[i]]))
+        if(isDefined(self.statistics[pausedStatistics[i]]))
         {
-            self.statistics[timestamps[i]] += elapsed;
+            self.statistics[pausedStatistics[i]] += viewingTimeMs;
         }
     }
     self.eventQueue = [];
@@ -1064,7 +1114,7 @@ stopDemo(loadClipSave)
     self demoFPSReset();
     self.demoFPSFloor = undefined;
     self.demoFPSWaiting = false;
-    releaseCache(id);
+    releaseCache(demoID);
     if(returnToSave && isDefined(self openCJ\savePosition::getSavedPosition(0)))
     {
         self openCJ\savePosition::resetBackwardsCount();
@@ -1121,7 +1171,7 @@ demoControls()
 {
     buttons = int(self leftButtonPressed()) + 2 * int(self rightButtonPressed()) +
               4 * int(self leanLeftButtonPressed()) + 8 * int(self leanRightButtonPressed());
-    pressed = buttons & ~self.demoControlButtons;
+    pressedButtons = buttons & ~self.demoControlButtons;
     self.demoControlButtons = buttons;
     rates = [];
     rates[0] = .25;
@@ -1129,32 +1179,32 @@ demoControls()
     rates[2] = 1;
     rates[3] = 2;
     rates[4] = 4;
-    index = 2;
+    rateIndex = 2;
     rate = abs(self.demoRate);
     for(i = 0; i < rates.size; i++)
     {
         if(rates[i] == rate)
         {
-            index = i;
+            rateIndex = i;
         }
     }
-    if((pressed & 1) && index > 0)
+    if((pressedButtons & 1) && rateIndex > 0)
     {
-        index--;
+        rateIndex--;
     }
-    if((pressed & 2) && index < 4)
+    if((pressedButtons & 2) && rateIndex < 4)
     {
-        index++;
+        rateIndex++;
     }
-    if(pressed & 3)
+    if(pressedButtons & 3)
     {
-        self setDemoSpeed("" + rates[index]);
+        self setDemoSpeed("" + rates[rateIndex]);
     }
-    if(pressed & 4)
+    if(pressedButtons & 4)
     {
         self.demoCheckpointRequest = -1;
     }
-    if(pressed & 8)
+    if(pressedButtons & 8)
     {
         self.demoCheckpointRequest = 1;
     }
@@ -1220,9 +1270,9 @@ advanceDemoFrame()
         frame.interpolated = false;
         return frame;
     }
-    step = self demoFrameStep();
-    frame = self _getDemoFrame(step, self.demoStyle != 0);
-    frame.interpolated = step == 0;
+    frameStep = self demoFrameStep();
+    frame = self _getDemoFrame(frameStep, self.demoStyle != 0);
+    frame.interpolated = frameStep == 0;
     if(self.demoStepRemainder > 0)
     {
         direction = 1;
@@ -1230,185 +1280,189 @@ advanceDemoFrame()
         {
             direction = -1;
         }
-        next = self _getDemoFrame(direction, self.demoStyle != 0);
+        nextFrame = self _getDemoFrame(direction, self.demoStyle != 0);
         // Peeking must leave native presentation, events and time on the anchor.
-        self skipPlaybackFrames(frame.number - next.number);
-        if(canBlendDemoFrames(frame, next))
+        self skipPlaybackFrames(frame.number - nextFrame.number);
+        if(canBlendDemoFrames(frame, nextFrame))
         {
-            fraction = self.demoStepRemainder;
-            frame.origin = frame.origin + (next.origin - frame.origin) * fraction;
-            frame.angles = (blendDemoAngle(frame.angles[0], next.angles[0], fraction),
-                            blendDemoAngle(frame.angles[1], next.angles[1], fraction),
-                            blendDemoAngle(frame.angles[2], next.angles[2], fraction));
+            interpolationFactor = self.demoStepRemainder;
+            frame.origin = frame.origin + (nextFrame.origin - frame.origin) * interpolationFactor;
+            frame.angles =
+                (blendDemoAngle(frame.angles[0], nextFrame.angles[0], interpolationFactor),
+                 blendDemoAngle(frame.angles[1], nextFrame.angles[1], interpolationFactor),
+                 blendDemoAngle(frame.angles[2], nextFrame.angles[2], interpolationFactor));
         }
     }
     return frame;
 }
 
-canBlendDemoFrames(a, b)
+canBlendDemoFrames(firstFrame, secondFrame)
 {
-    if(abs(a.number - b.number) != 1)
+    if(abs(firstFrame.number - secondFrame.number) != 1)
     {
         return false;
     }
-    later = b;
-    if(a.number > b.number)
+    laterFrame = secondFrame;
+    if(firstFrame.number > secondFrame.number)
     {
-        later = a;
+        laterFrame = firstFrame;
     }
-    if(later.loadNow)
+    if(laterFrame.loadNow)
     {
         return false;
     }
     // Legacy recordings have no explicit map-portal marker. Large single-sample
     // jumps stay discrete rather than drawing a path through the map.
-    return distance(a.origin, b.origin) <= 256;
+    maxBlendDistance = 256; // Map units between neighboring samples.
+    return distance(firstFrame.origin, secondFrame.origin) <= maxBlendDistance;
 }
 
-blendDemoAngle(a, b, fraction)
+blendDemoAngle(startDegrees, endDegrees, interpolationFactor)
 {
-    delta = b - a;
-    if(delta > 180)
+    angleDelta = endDegrees - startDegrees;
+    if(angleDelta > 180)
     {
-        delta -= 360;
+        angleDelta -= 360;
     }
-    else if(delta < (-180))
+    else if(angleDelta < (-180))
     {
-        delta += 360;
+        angleDelta += 360;
     }
-    return a + delta * fraction;
+    return startDegrees + angleDelta * interpolationFactor;
 }
 
 // FPS history follows recorded chronology, independently of displayed rate.
 // Cache rendered strings (not mutable event structs) for bounded reverse/seek
 // reuse. The live event builder remains at demoFPSStateFrame.
-syncDemoFPSHistory(target)
+syncDemoFPSHistory(targetFrame)
 {
-    mode = self.fpsHistoryMode;
-    if(!isDefined(mode))
+    historyMode = self.fpsHistoryMode;
+    if(!isDefined(historyMode))
     {
-        mode = "detailed";
+        historyMode = "detailed";
     }
-    if(mode == "off")
+    if(historyMode == "off")
     {
         return;
     }
     if(isDefined(self.demoFPSWaiting) && self.demoFPSWaiting)
     {
-        ground = (self readPlaybackFrame_flags() & 8192) != 0;
-        departed = isDefined(self.demoFPSWaitGround) && self.demoFPSWaitGround && !ground;
-        self.demoFPSWaitGround = ground;
-        if(!departed)
+        onGround = (self readPlaybackFrame_flags() & level.demoFlags.onGround) != 0;
+        leftGround = isDefined(self.demoFPSWaitGround) && self.demoFPSWaitGround && !onGround;
+        self.demoFPSWaitGround = onGround;
+        if(!leftGround)
         {
             return;
         }
         self.demoFPSWaiting = false;
-        self.demoFPSFloor = target;
+        self.demoFPSFloor = targetFrame;
     }
-    technique = 0;
+    techniqueMode = 0;
     if(isDefined(self.demoTechnique))
     {
-        technique = self.demoTechnique;
+        techniqueMode = self.demoTechnique;
     }
-    key = self.demoID + ":" + self.demoStyle + ":" + self.demoBegin + ":" + self.demoEnd + ":" +
-          mode + ":" + technique;
-    if(!isDefined(self.demoFPSCacheKey) || self.demoFPSCacheKey != key)
+    cacheKey = self.demoID + ":" + self.demoStyle + ":" + self.demoBegin + ":" + self.demoEnd +
+               ":" + historyMode + ":" + techniqueMode;
+    if(!isDefined(self.demoFPSCacheKey) || self.demoFPSCacheKey != cacheKey)
     {
-        self.demoFPSCacheKey = key;
+        self.demoFPSCacheKey = cacheKey;
         self demoFPSReset();
         self.demoFPSStateFrame = undefined;
     }
-    text = self demoFPSRead(target);
-    if(isDefined(text))
+    cachedText = self demoFPSRead(targetFrame);
+    if(isDefined(cachedText))
     {
-        self showDemoFPSCache(target);
+        self showDemoFPSCache(targetFrame);
         return;
     }
     self.fpsHistoryBatch = true;
-    if(isDefined(self.demoFPSStateFrame) && target > self.demoFPSStateFrame &&
-       target - self.demoFPSStateFrame <= 4)
+    maxIncrementalFrames = 4;
+    cachedHistoryFrames = 512; // Matches the native FPS text cache capacity.
+    if(isDefined(self.demoFPSStateFrame) && targetFrame > self.demoFPSStateFrame &&
+       targetFrame - self.demoFPSStateFrame <= maxIncrementalFrames)
     {
         // Cached reverse display never changes the event builder. Restore its
         // current text from those events before processing new source samples.
         self openCJ\huds\hudFPSHistory::_refresh();
         self skipPlaybackFrames(self.demoFPSStateFrame - (self skipPlaybackFrames(0)));
-        previous = self.demoFPSStateFrame;
+        previousFrame = self.demoFPSStateFrame;
     }
     else
     {
         self demoFPSReset();
         // Walk to the oldest relevant native sample, then process forward one
         // sample at a time. Never retain an array of 512 full GSC frame structs.
-        frame = self _getDemoFrame(-511, self.demoStyle != 0);
-        floor = self.demoBegin;
-        if(isDefined(self.demoFPSFloor) && self.demoFPSFloor > floor)
+        frame = self _getDemoFrame(1 - cachedHistoryFrames, self.demoStyle != 0);
+        firstRelevantFrame = self.demoBegin;
+        if(isDefined(self.demoFPSFloor) && self.demoFPSFloor > firstRelevantFrame)
         {
-            floor = self.demoFPSFloor;
+            firstRelevantFrame = self.demoFPSFloor;
         }
-        if(target < floor)
+        if(targetFrame < firstRelevantFrame)
         {
-            self skipPlaybackFrames(target - (self skipPlaybackFrames(0)));
+            self skipPlaybackFrames(targetFrame - (self skipPlaybackFrames(0)));
             self.fpsHistoryBatch = false;
             self openCJ\huds\hudFPSHistory::_hide();
             return;
         }
-        if(frame.number < floor)
+        if(frame.number < firstRelevantFrame)
         {
-            self skipPlaybackFrames(floor - frame.number);
+            self skipPlaybackFrames(firstRelevantFrame - frame.number);
             frame = self _getDemoFrame(0, false);
         }
         self openCJ\huds\hudFPSHistory::applyRecordedFrame(frame, false, false);
-        if(frame.number > floor && !frame.onGround)
+        if(frame.number > firstRelevantFrame && !frame.onGround)
         {
             self.fpsHistoryTruncated = true;
             self openCJ\huds\hudFPSHistory::_refresh();
         }
         self cacheDemoFPS(frame.number);
-        previous = frame.number;
+        previousFrame = frame.number;
     }
-    while(previous < target)
+    while(previousFrame < targetFrame)
     {
         frame = self _getDemoFrame(1, self.demoStyle != 0);
-        if(frame.number <= previous)
+        if(frame.number <= previousFrame)
         {
             break;
         }
-        self openCJ\huds\hudFPSHistory::applyRecordedFrame(frame, frame.number == previous + 1,
+        self openCJ\huds\hudFPSHistory::applyRecordedFrame(frame, frame.number == previousFrame + 1,
                                                            false);
         self cacheDemoFPS(frame.number);
-        previous = frame.number;
+        previousFrame = frame.number;
     }
-    self.demoFPSStateFrame = target;
+    self.demoFPSStateFrame = targetFrame;
     self.demoFPSFloor = undefined;
-    self skipPlaybackFrames(target - (self skipPlaybackFrames(0)));
+    self skipPlaybackFrames(targetFrame - (self skipPlaybackFrames(0)));
     self.fpsHistoryBatch = false;
-    self showDemoFPSCache(target);
+    self showDemoFPSCache(targetFrame);
 }
 
-cacheDemoFPS(frame)
+cacheDemoFPS(frameIndex)
 {
-    text = self.fpsHistoryText;
+    historyText = self.fpsHistoryText;
     if(!isDefined(self.fpsHistoryMode) || self.fpsHistoryMode == "detailed")
     {
-        text = self.fpsHistoryDetailedText;
+        historyText = self.fpsHistoryDetailedText;
     }
-    self demoFPSStore(frame, text);
+    self demoFPSStore(frameIndex, historyText);
 }
 
-showDemoFPSCache(frame)
+showDemoFPSCache(frameIndex)
 {
-    text = self demoFPSRead(frame);
-    if(!isDefined(text))
+    historyText = self demoFPSRead(frameIndex);
+    if(!isDefined(historyText))
     {
         return;
     }
     if(!isDefined(self.fpsHistoryMode) || self.fpsHistoryMode == "detailed")
     {
-        self.fpsHistoryDetailedText = text;
+        self.fpsHistoryDetailedText = historyText;
     }
     else
     {
-        self.fpsHistoryText = text;
+        self.fpsHistoryText = historyText;
     }
     self openCJ\huds\hudFPSHistory::_publish();
 }
@@ -1422,18 +1476,18 @@ demoFrameStep()
         self.demoStepRemainder = 0;
     }
     self.demoStepRemainder += abs(self.demoRate);
-    step = int(self.demoStepRemainder);
-    self.demoStepRemainder -= step;
+    frameStep = int(self.demoStepRemainder);
+    self.demoStepRemainder -= frameStep;
     if(self.demoRate < 0)
     {
-        step = 0 - step;
+        frameStep = 0 - frameStep;
     }
-    return step;
+    return frameStep;
 }
 
-demoTime(frame)
+demoTime(frameCount)
 {
-    seconds = int(frame / 20);
+    seconds = int(frameCount / 20);
     minutes = int(seconds / 60);
     seconds = seconds % 60;
     prefix = "";
@@ -1453,7 +1507,7 @@ demoUpdateOverlay()
         self.demoCheckpointText = checkpointText;
         self setClientCvar("opencj_demo_checkpoint", checkpointText);
     }
-    frame = self skipPlaybackFrames(0);
+    frameIndex = self skipPlaybackFrames(0);
     status = "PLAY";
     if(self.demoRate < 0)
     {
@@ -1463,51 +1517,52 @@ demoUpdateOverlay()
     {
         status = "PAUSED";
     }
-    rate = self.demoRate;
-    if(rate < 0)
+    playbackSpeed = self.demoRate;
+    if(playbackSpeed < 0)
     {
-        rate = 0 - rate;
+        playbackSpeed = 0 - playbackSpeed;
     }
     if(!isDefined(self.demoMenuRate) || self.demoMenuRate != self.demoRate)
     {
         self.demoMenuRate = self.demoRate;
         self setClientCvar("opencj_demo_reverse", int(self.demoRate < 0));
-        self setClientCvar("opencj_demo_speed", rate);
+        self setClientCvar("opencj_demo_speed", playbackSpeed);
     }
-    elapsed = frame - self.demoBegin;
-    duration = self.demoEnd - self.demoBegin;
-    timing = self demoPlaybackTime(self.demoBegin, self.demoEnd);
-    if(isDefined(timing))
+    elapsedFrames = frameIndex - self.demoBegin;
+    durationFrames = self.demoEnd - self.demoBegin;
+    playbackTiming = self demoPlaybackTime(self.demoBegin, self.demoEnd);
+    if(isDefined(playbackTiming))
     {
-        elapsed = timing[0];
-        duration = timing[1];
+        elapsedFrames = playbackTiming[0];
+        durationFrames = playbackTiming[1];
     }
-    text = demoTime(elapsed) + " / " + demoTime(duration);
+    statusText = demoTime(elapsedFrames) + " / " + demoTime(durationFrames);
     if(self.playbackPaused)
     {
-        if(isDefined(self.demoKind) && self.demoKind == "history" && frame == self.demoEnd)
+        if(isDefined(self.demoKind) && self.demoKind == "history" && frameIndex == self.demoEnd)
         {
-            text = "End  " + text;
+            statusText = "End  " + statusText;
         }
         else
         {
-            text = "Paused  " + text;
+            statusText = "Paused  " + statusText;
         }
     }
     if(isDefined(self.clipEdit))
     {
-        count = numberOfDemoFrames(self.demoID);
-        text = status + " " + rate + "x   Frame " + (frame + 1) + " / " + count;
-        if(!isDefined(self.demoClipCursor) || self.demoClipCursor != frame)
+        frameCount = numberOfDemoFrames(self.demoID);
+        statusText =
+            status + " " + playbackSpeed + "x   Frame " + (frameIndex + 1) + " / " + frameCount;
+        if(!isDefined(self.demoClipCursor) || self.demoClipCursor != frameIndex)
         {
-            self.demoClipCursor = frame;
-            self setClientCvar("opencj_clip_cursor_x", 20 + frame * 600 / count);
+            self.demoClipCursor = frameIndex;
+            self setClientCvar("opencj_clip_cursor_x", 20 + frameIndex * 600 / frameCount);
         }
     }
-    if(!isDefined(self.demoStatusText) || self.demoStatusText != text)
+    if(!isDefined(self.demoStatusText) || self.demoStatusText != statusText)
     {
-        self.demoStatusText = text;
-        self setClientCvar("opencj_demo_status", text);
+        self.demoStatusText = statusText;
+        self setClientCvar("opencj_demo_status", statusText);
     }
     if(!isDefined(self.demoMenuPaused) || self.demoMenuPaused != self.playbackPaused)
     {
@@ -1774,26 +1829,26 @@ updateTechniqueLabel()
 }
 
 // These labels describe the original run's rules, never the viewing technique.
-runModeLabel(fps, mask)
+runModeLabel(fpsMode, modeMask)
 {
-    text = fps + " FPS | CP";
-    if(mask & level.demoModes.anyPercent)
+    modeLabel = fpsMode + " FPS | CP";
+    if(modeMask & level.demoModes.anyPercent)
     {
-        text = fps + " FPS | Any%";
+        modeLabel = fpsMode + " FPS | Any%";
     }
-    if(mask & level.demoModes.elevators)
+    if(modeMask & level.demoModes.elevators)
     {
-        text += " / Ele";
+        modeLabel += " / Ele";
     }
-    if(mask & level.demoModes.halfbeat)
+    if(modeMask & level.demoModes.halfbeat)
     {
-        text += " / HB";
+        modeLabel += " / HB";
     }
-    if(mask & level.demoModes.hardTAS)
+    if(modeMask & level.demoModes.hardTAS)
     {
-        text += " / TAS";
+        modeLabel += " / TAS";
     }
-    return text;
+    return modeLabel;
 }
 
 rangeLabel(info)
@@ -1802,29 +1857,32 @@ rangeLabel(info)
     {
         return "Recording details unavailable";
     }
-    fps = "?";
-    if(info[1] == 0)
+    rpgShots = info[0];
+    fpsMode = info[1];
+    usedElevators = info[2];
+    fpsLabel = "?";
+    if(fpsMode == 0)
     {
-        fps = "125";
+        fpsLabel = "125";
     }
-    else if(info[1] == 1)
+    else if(fpsMode == 1)
     {
-        fps = "Mix";
+        fpsLabel = "Mix";
     }
-    else if(info[1] == 2)
+    else if(fpsMode == 2)
     {
-        fps = "Hax";
+        fpsLabel = "Hax";
     }
-    ele = "Ele unknown";
-    if(info[2] == 0)
+    elevatorLabel = "Ele unknown";
+    if(usedElevators == 0)
     {
-        ele = "No ele";
+        elevatorLabel = "No ele";
     }
-    else if(info[2] == 1)
+    else if(usedElevators == 1)
     {
-        ele = "Ele";
+        elevatorLabel = "Ele";
     }
-    return info[0] + " RPG shots | " + fps + " FPS | " + ele;
+    return rpgShots + " RPG shots | " + fpsLabel + " FPS | " + elevatorLabel;
 }
 
 _viewHistory(args)
@@ -1859,33 +1917,34 @@ viewHistory(args)
     {
         return;
     }
-    name = args[0];
+    playerName = args[0];
     for(i = 1; i < args.size; i++)
     {
-        name += " " + args[i];
+        playerName += " " + args[i];
     }
-    source = findHistoryPlayer(name);
-    if(!isDefined(source))
+    sourcePlayer = findHistoryPlayer(playerName);
+    if(!isDefined(sourcePlayer))
     {
         self sendLocalChatMessage("No unique player matches that name. Use more of their name.",
                                   true);
         return;
     }
-    if(source != self && !(source openCJ\settings::getSetting("sharehistory")))
+    if(sourcePlayer != self && !(sourcePlayer openCJ\settings::getSetting("sharehistory")))
     {
         self sendLocalChatMessage("This player has disabled run-history sharing.", true);
         return;
     }
-    rec = source openCJ\demoRecording::current();
-    if(!isDefined(rec) || rec.failed || rec.finishing || source openCJ\playerRuns::isRunFinished())
+    recording = sourcePlayer openCJ\demoRecording::current();
+    if(!isDefined(recording) || recording.failed || recording.finishing ||
+       sourcePlayer openCJ\playerRuns::isRunFinished())
     {
         self sendLocalChatMessage("This player has no current run recording to view.", true);
         return;
     }
     // No yield between copying and registering ownership. Native memory remains
     // separate from the source recording, including later rewinds/disconnects.
-    id = demoCopyHistory(rec.id);
-    if(!isDefined(id))
+    copyID = demoCopyHistory(recording.id);
+    if(!isDefined(copyID))
     {
         self sendLocalChatMessage(
             "Run history is too short or recording capacity is currently full.", true);
@@ -1895,31 +1954,31 @@ viewHistory(args)
     cache.ready = true;
     cache.loading = false;
     cache.refs = 1;
-    level.demoCache["" + id] = cache;
-    self.demoPendingId = id;
+    level.demoCache["" + copyID] = cache;
+    self.demoPendingId = copyID;
     self.demoPendingCache = cache;
-    author = source.name;
+    authorName = sourcePlayer.name;
     waittillframeend;
-    if(!self ownsPendingCache(id, cache))
+    if(!self ownsPendingCache(copyID, cache))
     {
         return;
     }
-    if(!self canWatch() || !isDefined(source) ||
-       (source != self && !(source openCJ\settings::getSetting("sharehistory"))))
+    if(!self canWatch() || !isDefined(sourcePlayer) ||
+       (sourcePlayer != self && !(sourcePlayer openCJ\settings::getSetting("sharehistory"))))
     {
         self releasePending();
         return;
     }
     self.demoPendingId = undefined;
     self.demoPendingCache = undefined;
-    self.demoHistorySource = source;
-    self.demoAuthor = author;
+    self.demoHistorySource = sourcePlayer;
+    self.demoAuthor = authorName;
     self.demoKind = "history";
     self.demoStyle = 0;
     self.demoBegin = 0;
-    self.demoEnd = numberOfDemoFrames(id) - 1;
+    self.demoEnd = numberOfDemoFrames(copyID) - 1;
     self.demoCheckpointed = false;
-    self startDemo(id);
+    self startDemo(copyID);
     if(!self isPlayingDemo())
     {
         self.demoHistorySource = undefined;
@@ -1928,37 +1987,37 @@ viewHistory(args)
     }
 }
 
-findHistoryPlayer(name)
+findHistoryPlayer(playerName)
 {
-    name = toLower(stripColors(name));
+    playerName = toLower(stripColors(playerName));
     players = getEntArray("player", "classname");
     match = undefined;
-    count = 0;
+    partialMatches = 0;
     exact = undefined;
-    exactCount = 0;
+    exactMatches = 0;
     for(i = 0; i < players.size; i++)
     {
-        candidate = toLower(stripColors(players[i].name));
-        if(candidate == name)
+        candidateName = toLower(stripColors(players[i].name));
+        if(candidateName == playerName)
         {
             exact = players[i];
-            exactCount++;
+            exactMatches++;
         }
-        for(j = 0; j <= candidate.size - name.size; j++)
+        for(j = 0; j <= candidateName.size - playerName.size; j++)
         {
-            if(getSubStr(candidate, j, j + name.size) == name)
+            if(getSubStr(candidateName, j, j + playerName.size) == playerName)
             {
                 match = players[i];
-                count++;
+                partialMatches++;
                 break;
             }
         }
     }
-    if(exactCount == 1)
+    if(exactMatches == 1)
     {
         return exact;
     }
-    if(!exactCount && count == 1)
+    if(!exactMatches && partialMatches == 1)
     {
         return match;
     }

@@ -1,6 +1,7 @@
 // Called only by the isolated, database-free timeline harness.
 run()
 {
+    openCJ\demoRecording::_initConstants();
     level.demoSelectionChecks=0;
     level.demoCache=[];
     cp=spawnStruct();cp.id=17;cp.origin=(0,0,100);cp.radius=100;cp.onGround=false;
