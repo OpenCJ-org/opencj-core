@@ -14,49 +14,60 @@ static const int COMPLETION_TIMEOUT_MS = 15000;
 static const int WORKER_START_TIMEOUT_MS = 1000;
 static const int POLL_INTERVAL_US = 1000;
 
-static long long nowMs() {
+static long long nowMs()
+{
     return chrono::duration_cast<chrono::milliseconds>(
                chrono::steady_clock::now().time_since_epoch())
         .count();
 }
 
-static void check(bool value, const char *label) {
+static void check(bool value, const char *label)
+{
     checks++;
     cout << "SQLPOOL CHECK " << value << ": " << label << endl;
-    if(!value) {
+    if(!value)
+    {
         throw runtime_error(label);
     }
 }
 
 static int submitQuery(const string &query, int policy = SQL_READ, const string &key = "",
-                       const string &scope = "", int deadlineMs = 10000) {
+                       const string &scope = "", int deadlineMs = 10000)
+{
     return sqlPoolSubmit(query.c_str(), true, policy, key.c_str(), scope.c_str(), deadlineMs);
 }
 
-struct Reply {
+struct Reply
+{
     SqlCompletion completion;
     vector<vector<string>> rows;
 };
 
 // Wait for the actual completion, copy its rows, and release the native result.
-static Reply takeReply(int id) {
+static Reply takeReply(int id)
+{
     check(id > 0, "request admitted");
     long long deadlineMs = nowMs() + COMPLETION_TIMEOUT_MS;
     SqlCompletion completion;
     MYSQL_RES *result = NULL;
-    while(!sqlPoolStatus(id, &completion) && nowMs() < deadlineMs) {
+    while(!sqlPoolStatus(id, &completion) && nowMs() < deadlineMs)
+    {
         usleep(POLL_INTERVAL_US);
     }
-    if(!sqlPoolTake(id, &result, &completion)) {
+    if(!sqlPoolTake(id, &result, &completion))
+    {
         throw runtime_error("completion deadline");
     }
     Reply reply;
     reply.completion = completion;
-    if(result) {
+    if(result)
+    {
         MYSQL_ROW row;
-        while((row = mysql_fetch_row(result))) {
+        while((row = mysql_fetch_row(result)))
+        {
             vector<string> fields;
-            for(unsigned i = 0; i < mysql_num_fields(result); i++) {
+            for(unsigned i = 0; i < mysql_num_fields(result); i++)
+            {
                 fields.push_back(row[i] ? row[i] : "NULL");
             }
             reply.rows.push_back(fields);
@@ -66,44 +77,56 @@ static Reply takeReply(int id) {
     return reply;
 }
 
-static Reply runQuery(const string &query, int policy = SQL_READ, const string &key = "") {
+static Reply runQuery(const string &query, int policy = SQL_READ, const string &key = "")
+{
     return takeReply(submitQuery(query, policy, key));
 }
 
-static int queryScalar(const string &query) {
+static int queryScalar(const string &query)
+{
     auto reply = runQuery(query);
-    if(reply.completion.outcome != SQL_OK || reply.rows.empty()) {
+    if(reply.completion.outcome != SQL_OK || reply.rows.empty())
+    {
         throw runtime_error("scalar failed");
     }
     return stoi(reply.rows[0][0]);
 }
 
-static void drainReplies(const vector<int> &ids) {
-    for(int id : ids) {
-        if(id > 0) {
+static void drainReplies(const vector<int> &ids)
+{
+    for(int id : ids)
+    {
+        if(id > 0)
+        {
             takeReply(id);
         }
     }
 }
 
-static void waitForRunningJobs(int count) {
+static void waitForRunningJobs(int count)
+{
     long long deadlineMs = nowMs() + WORKER_START_TIMEOUT_MS;
-    while(sqlPoolStats().running < count && nowMs() < deadlineMs) {
+    while(sqlPoolStats().running < count && nowMs() < deadlineMs)
+    {
         usleep(POLL_INTERVAL_US);
     }
     check(sqlPoolStats().running >= count, "blocking fixture occupies intended workers");
 }
 
 // Count this process's threads so a growing queue cannot hide extra workers.
-static int threadCount() {
+static int threadCount()
+{
     DIR *directory = opendir("/proc/self/task");
-    if(!directory) {
+    if(!directory)
+    {
         throw runtime_error("thread inventory");
     }
     int count = 0;
     dirent *entry;
-    while((entry = readdir(directory))) {
-        if(entry->d_name[0] != '.') {
+    while((entry = readdir(directory)))
+    {
+        if(entry->d_name[0] != '.')
+        {
             count++;
         }
     }
@@ -111,7 +134,8 @@ static int threadCount() {
     return count;
 }
 
-static void verifyPerRunOrdering() {
+static void verifyPerRunOrdering()
+{
     // Priority cannot overtake earlier work for the same run.
     int first =
         submitQuery("INSERT INTO adapter_probe(value) SELECT 10 FROM (SELECT SLEEP(0.15)) a",
@@ -124,16 +148,19 @@ static void verifyPerRunOrdering() {
           "per-run order survives priority differences");
 }
 
-static void verifyMenuCapacity() {
+static void verifyMenuCapacity()
+{
     vector<int> blockers;
-    for(int i = 0; i < 3; i++) {
+    for(int i = 0; i < 3; i++)
+    {
         blockers.push_back(
             submitQuery("SELECT SLEEP(0.6),1", SQL_MENU, "", "block:" + to_string(i)));
     }
     waitForRunningJobs(3);
     // Exceed the 64-menu contract while three workers are occupied.
     vector<int> storm;
-    for(int i = 0; i < 100; i++) {
+    for(int i = 0; i < 100; i++)
+    {
         storm.push_back(submitQuery("SELECT SLEEP(0.02),1", SQL_MENU, "", "storm:" + to_string(i)));
     }
     auto saturation = sqlPoolStats();
@@ -147,8 +174,10 @@ static void verifyMenuCapacity() {
           "progress completes while all three menu workers are busy");
     cout << "SQLPOOL METRIC progress_during_menu_burst_ms=" << latency << endl;
     sqlPoolCancel("storm:", SqlScopeMatch::Prefix, SqlCompletionHandling::Retain);
-    for(int id : storm) {
-        if(id > 0) {
+    for(int id : storm)
+    {
+        if(id > 0)
+        {
             check(takeReply(id).completion.outcome == SQL_CANCELLED,
                   "queued obsolete menu returns cancellation");
         }
@@ -157,13 +186,16 @@ static void verifyMenuCapacity() {
     check(sqlPoolStats().outstanding == 0, "all results collected after storm");
 }
 
-static void verifyCompletionCapacity() {
+static void verifyCompletionCapacity()
+{
     // Completed jobs occupy slots too. No consumer means bounded admission.
     // Submit beyond the 384 non-progress slots, without consuming results.
     vector<int> buffered;
-    for(int i = 0; i < 700; i++) {
+    for(int i = 0; i < 700; i++)
+    {
         int id = submitQuery("SELECT 1", SQL_READ);
-        if(id > 0) {
+        if(id > 0)
+        {
             buffered.push_back(id);
         }
     }
@@ -175,13 +207,16 @@ static void verifyCompletionCapacity() {
     drainReplies(buffered);
 }
 
-static void verifyQueryByteCapacity() {
+static void verifyQueryByteCapacity()
+{
     // Query bytes are a second independent admission bound.
     string large = "DO SLEEP(0.02) /*" + string(10000, 'x') + "*/";
     vector<int> largeJobs;
-    for(int i = 0; i < 400; i++) {
+    for(int i = 0; i < 400; i++)
+    {
         int id = submitQuery(large, SQL_BACKGROUND, "bulk");
-        if(id > 0) {
+        if(id > 0)
+        {
             largeJobs.push_back(id);
         }
     }
@@ -194,7 +229,8 @@ static void verifyQueryByteCapacity() {
     drainReplies(largeJobs);
 }
 
-static void verifyQueuedExpiry() {
+static void verifyQueuedExpiry()
+{
     int slow = submitQuery("DO SLEEP(0.2)", SQL_PROGRESS, "run:expire");
     int expired = submitQuery("INSERT INTO adapter_probe(value) VALUES(99)", SQL_PROGRESS,
                               "run:expire", "", 20);
@@ -204,7 +240,8 @@ static void verifyQueuedExpiry() {
           "expired queued write is rejected without execution");
 }
 
-static void verifyMapCancellation() {
+static void verifyMapCancellation()
+{
     int persistence =
         submitQuery("INSERT INTO adapter_probe(value) SELECT 30 FROM (SELECT SLEEP(0.2)) a",
                     SQL_PROGRESS, "run:map");
@@ -220,7 +257,8 @@ static void verifyMapCancellation() {
 }
 
 // Exact cancellation is for owned reads, without putting them in the menu quota.
-static void verifyOwnedReadCancellation() {
+static void verifyOwnedReadCancellation()
+{
     int active = submitQuery("SELECT SLEEP(0.15)", SQL_READ, "owned-read");
     waitForRunningJobs(1);
     int queued = submitQuery("SELECT 42", SQL_READ, "owned-read");
@@ -237,7 +275,8 @@ static void verifyOwnedReadCancellation() {
     int completed = submitQuery("SELECT 43");
     long long deadlineMs = nowMs() + COMPLETION_TIMEOUT_MS;
     SqlCompletion completion;
-    while(!sqlPoolStatus(completed, &completion) && nowMs() < deadlineMs) {
+    while(!sqlPoolStatus(completed, &completion) && nowMs() < deadlineMs)
+    {
         usleep(POLL_INTERVAL_US);
     }
     check(sqlPoolStatus(completed, &completion), "owned completed read is ready");
@@ -248,23 +287,27 @@ static void verifyOwnedReadCancellation() {
     int write = submitQuery("INSERT INTO adapter_probe(value) VALUES(987654)", SQL_WRITE);
     check(!sqlPoolCancelRead(write, SqlCompletionHandling::Discard),
           "read cancellation refuses accepted writes");
-    check(takeReply(write).completion.outcome == SQL_OK, "refused cancellation leaves write intact");
+    check(takeReply(write).completion.outcome == SQL_OK,
+          "refused cancellation leaves write intact");
     check(queryScalar("SELECT COUNT(*) FROM adapter_probe WHERE value=987654") == 1,
           "accepted write still executes once");
     check(!sqlPoolCancelRead(-1, SqlCompletionHandling::Discard),
           "unknown read cancellation is harmless");
 }
 
-static void verifyDisconnectCancellation() {
+static void verifyDisconnectCancellation()
+{
     int disconnected = submitQuery("SELECT SLEEP(0.2),1", SQL_MENU, "", "p:8:board");
     sqlPoolCancel("p:8:", SqlScopeMatch::Prefix, SqlCompletionHandling::Discard);
     usleep(250000);
     check(sqlPoolStats().outstanding == 0, "disconnect cancels scoped reads without leaking jobs");
 }
 
-static void verifyFairScheduling() {
+static void verifyFairScheduling()
+{
     vector<int> writes;
-    for(int i = 0; i < 100; i++) {
+    for(int i = 0; i < 100; i++)
+    {
         writes.push_back(submitQuery("DO SLEEP(0.01)", SQL_PROGRESS, "r:" + to_string(i)));
     }
     int background =
@@ -275,7 +318,8 @@ static void verifyFairScheduling() {
     drainReplies(writes);
 }
 
-static void verifyReadDeadline() {
+static void verifyReadDeadline()
+{
     auto timed = runQuery("SELECT SLEEP(10),1", SQL_READ);
     cout << "SQLPOOL METRIC slow_outcome=" << timed.completion.outcome
          << " error=" << timed.completion.error << " execution_ms=" << timed.completion.executionMs
@@ -286,7 +330,8 @@ static void verifyReadDeadline() {
     check(queryScalar("SELECT 1") == 1, "pool recovers after slow read");
 }
 
-static void verifyUncertainWrites() {
+static void verifyUncertainWrites()
+{
     // A long writing CALL may have committed before losing its reply.
     runQuery("CREATE PROCEDURE adapter_uncertain() BEGIN INSERT INTO adapter_probe(value) "
              "VALUES(50); DO SLEEP(10); END",
@@ -298,9 +343,12 @@ static void verifyUncertainWrites() {
           "uncertain write is never automatically replayed");
 }
 
-int main(int argc, char **argv) {
-    try {
-        if(argc != 2) {
+int main(int argc, char **argv)
+{
+    try
+    {
+        if(argc != 2)
+        {
             throw runtime_error("config path required");
         }
         ifstream config(argv[1]);
@@ -314,7 +362,8 @@ int main(int argc, char **argv) {
         getline(config, password);
         getline(config, database);
         getline(config, port);
-        if(database.find("opencj_verify_192_") != 0) {
+        if(database.find("opencj_verify_192_") != 0)
+        {
             throw runtime_error("unsafe test schema");
         }
         check(sqlPoolInit(host.c_str(), user.c_str(), password.c_str(), database.c_str(),
@@ -362,7 +411,9 @@ int main(int argc, char **argv) {
         sqlPoolShutdown();
         cout << "SQLPOOL COMPLETE checks=" << checks << endl;
         return 0;
-    } catch(const exception &error) {
+    }
+    catch(const exception &error)
+    {
         cout << "SQLPOOL FAILURE " << error.what() << endl;
         sqlPoolShutdown();
         return 1;
