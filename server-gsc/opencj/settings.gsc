@@ -46,7 +46,8 @@ loadSettingsFromDatabase()
                 {
                     continue;
                 }
-                value = parseSettingValue(level.settings[name], normalizeStoredValue(name, rows[i][1]));
+                storedValue = normalizeStoredValue(name, rows[i][1]);
+                value = parseSettingValue(level.settings[name], storedValue);
                 if(!isDefined(value))
                 {
                     self iprintln("Not setting " + name + " because it has an invalid stored value");
@@ -404,9 +405,16 @@ writePlayerSettingToDb(setting, value)
 // touching account records. The current UI and command accept only 0..5.
 normalizeStoredValue(name, value)
 {
-    if(name == "speclisthud" && isValidInt(value) && int(value) > 5 && int(value) <= 10)
+    if(name != "speclisthud" || !isValidInt(value))
     {
-        return "5";
+        return value;
+    }
+    currentMaximumNames = 5;
+    legacyMaximumNames = 10;
+    storedLimit = int(value);
+    if(storedLimit > currentMaximumNames && storedLimit <= legacyMaximumNames)
+    {
+        return "" + currentMaximumNames;
     }
     return value;
 }

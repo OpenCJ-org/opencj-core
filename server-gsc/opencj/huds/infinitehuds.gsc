@@ -43,8 +43,10 @@ setInfiniteHudText(text, player, reliable)
     }
     // Reliable command buffers hold 1024 bytes including the terminator.
     // Reserve the configstring command prefix before building the full string.
+    maximumCommandBytes = 1024;
+    terminatorBytes = 1;
     prefix = "d " + self.configstringIndex + " ";
-    textLimit = 1023 - prefix.size;
+    textLimit = maximumCommandBytes - terminatorBytes - prefix.size;
     if (text.size > textLimit)
     {
         text = getSubStr(text, 0, textLimit);

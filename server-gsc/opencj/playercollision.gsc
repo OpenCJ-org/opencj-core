@@ -2,24 +2,30 @@
 
 onInit()
 {
+    // These values are mirrored in the graphics menu's client dvar.
+    level.visibilityModeNone = 0;
+    level.visibilityModeNear = 1;
+    level.visibilityModeAll = 2;
+    maximumHideRadius = 4096;
+    defaultHideRadius = 60;
     openCJ\settings::addSettingBool("hideall", false, "Hide all players", ::_onSettingHideALl);
     openCJ\settings::addSettingBool("hidenear", true, "Hide near players", ::_onSettingHideNear);
     openCJ\settings::addSettingInt(
-        "hideradius", 0, 4096, 60,
+        "hideradius", 0, maximumHideRadius, defaultHideRadius,
         "Sets your radius for hiding nearby players. Usage !hideradius [0-4096]. 0 hides nobody by proximity. Default 60",
         ::_onSettingHideRadius);
 }
 
 _onSettingHideAll(newVal)
 {
-    mode = 0;
+    mode = level.visibilityModeNone;
     if(newVal)
     {
-        mode = 2;
+        mode = level.visibilityModeAll;
     }
     else if(self openCJ\settings::getSetting("hidenear"))
     {
-        mode = 1;
+        mode = level.visibilityModeNear;
     }
     self setClientCvar("opencj_gfx_hidemode", mode);
     if(newVal)
@@ -41,14 +47,14 @@ _onSettingHideAll(newVal)
 
 _onSettingHideNear(newVal)
 {
-    mode = 0;
+    mode = level.visibilityModeNone;
     if(self openCJ\settings::getSetting("hideall"))
     {
-        mode = 2;
+        mode = level.visibilityModeAll;
     }
     else if(newVal)
     {
-        mode = 1;
+        mode = level.visibilityModeNear;
     }
     self setClientCvar("opencj_gfx_hidemode", mode);
     if(self openCJ\settings::getSetting("hideall"))

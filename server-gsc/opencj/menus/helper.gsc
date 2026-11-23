@@ -24,9 +24,7 @@ onMenuResponse()
                 self.currentMenu = "";
             }
         }
-        if(response == "open_leaderboard" || response == "open_runsboard" ||
-           response == "open_maplist" || response == "open_commands" ||
-           (response == "open" && menu != "opencj_clips" && menu != "opencj_challenges"))
+        if(opensAnotherMenu(menu, response))
         {
             self openCJ\mySQL::cancelMenuReads();
         }
@@ -119,4 +117,15 @@ _clearSearchText()
         self.searchText = "";
         self notify("search_changed");
     }
+}
+// Clip and challenge browsers begin their own read scopes when they open.
+opensAnotherMenu(menu, response)
+{
+    namedBrowserOpen = response == "open_leaderboard" || response == "open_runsboard" ||
+                       response == "open_maplist" || response == "open_commands";
+    if(namedBrowserOpen)
+    {
+        return true;
+    }
+    return response == "open" && menu != "opencj_clips" && menu != "opencj_challenges";
 }
