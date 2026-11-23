@@ -50,3 +50,6 @@ e8aba6cc23e2df54b8b7f2cb72a090040623bcf6
 # Demo fixtures: complete-body braces and layout; other code tokens preserved.
 # Verified with lifecycle, viewing, timeline and selection engine checks.
 1937498a4439a10cd02b01dafa2e23aaa53fe1f1
+
+# FPS history layout; non-brace tokens preserved and engine regressions passed.
+4e78c101d43a68262eb3ed7e5e7071d2ee8c49f5
