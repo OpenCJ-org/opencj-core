@@ -1,0 +1,3 @@
+# Findings in published history that are not secrets (gitleaks fingerprints).
+# Made-up passwords in the crash-log masking test; the line now carries gitleaks:allow.
+f9192ecd714d4292f1bc2a83b269797f084b357e:dev-tools/tests/test_operations_setup.py:generic-api-key:178

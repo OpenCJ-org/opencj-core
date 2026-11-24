@@ -175,7 +175,8 @@ class FirewallTests(unittest.TestCase):
 
 
 class CrashAlertTests(unittest.TestCase):
-    settings = {'join_password': 'joinsecret123', 'rcon_password': 'rconsecret456',
+    # Made-up passwords: the test checks that crash logs never show them.
+    settings = {'join_password': 'joinsecret123', 'rcon_password': 'rconsecret456',  # gitleaks:allow
                 'database': {'password': 'dbsecret789'}}
 
     def metadata(self, restart_count):
