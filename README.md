@@ -19,7 +19,7 @@ retain their own build and runtime responsibilities.
 
 ## Start here
 
-The first release target is **beta-0.1.0**. Use `bash setup.sh` for the interactive
+The first release target is **beta-0.1.0**. Use `sudo bash opencj.sh install` for the interactive
 [server installer](docs/setup/server.md), including separate instances, shared
 databases and an optional independently supplied website.
 

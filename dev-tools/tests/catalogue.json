@@ -4,14 +4,17 @@
     {
       "id": "setup-unit",
       "category": "portable",
-      "description": "Setup preservation and explicit Compose/database target selection.",
+      "description": "Setup/migration preservation, backup limits, topology and explicit database target selection.",
       "requires": "Python 3 standard library; no initialized installation.",
-      "effects": "Temporary directories and mocked external commands.",
+      "effects": "Temporary files and bounded synthetic subprocesses; mocked external administration commands.",
       "files": [
         "dev-tools/tests/test_setup.py",
         "dev-tools/tests/test_bootstrap_target.py",
         "dev-tools/tests/test_compose_environment.py",
-        "dev-tools/tests/test_server_setup.py"
+        "dev-tools/tests/test_server_setup.py",
+        "dev-tools/tests/test_migration_setup.py",
+        "dev-tools/tests/test_operations_setup.py",
+        "dev-tools/tests/test_management_setup.py"
       ],
       "commands": [],
       "mode": "unit"
@@ -772,13 +775,13 @@
       "id": "server-setup",
       "category": "integration",
       "description": "Real release installation, repeat preservation, separate/shared databases, SSH forwarding and optional website.",
-      "requires": "Docker, Git, SSH keygen, network for images/packages and explicitly supplied licensed CoD4/compiled mod assets.",
-      "effects": "Builds images and starts owned Compose projects with synthetic databases; removes owned containers/volumes and credentials; private evidence under dev-tools/local.",
+      "requires": "Root on a disposable Ubuntu 24.04 host, Docker, Git, SSH keygen, network and supplied licensed CoD4/compiled mod assets.",
+      "effects": "Creates restricted fixture Linux users, images and owned Compose projects with synthetic databases; removes owned users, containers, volumes and credentials.",
       "files": [
         "dev-tools/tests/run-server-setup.py"
       ],
       "commands": [
-        "python3 -B dev-tools/tests/run-server-setup.py --game-dir GAME_DIR --mod-dir MOD_DIR"
+        "sudo python3 -B dev-tools/tests/run-server-setup.py --game-dir GAME_DIR --mod-dir MOD_DIR"
       ]
     }
   ]

@@ -44,6 +44,17 @@ def _require_positive_int(name):
     return value
 
 
+def read_database_password():
+    """Installed instances mount a secret file; standalone Compose keeps its existing environment input."""
+    secret_path = os.environ.get("WEB_DB_PASSWORD_FILE")
+    if secret_path:
+        password = Path(secret_path).read_text().strip()
+        if not password:
+            raise ValueError("WEB_DB_PASSWORD_FILE is empty")
+        return password
+    return _require_text("WEB_DB_PASSWORD")
+
+
 def read_discord_invite_url():
     """Return the optional invite link, or "" when unset; raise ValueError for anything else."""
     invite_url = os.environ.get("WEB_DISCORD_INVITE_URL", "").strip()
@@ -59,7 +70,7 @@ def load_settings():
         database_port=_require_positive_int("WEB_DB_PORT"),
         database_name=_require_text("WEB_DB_NAME"),
         database_user=_require_text("WEB_DB_USER"),
-        database_password=_require_text("WEB_DB_PASSWORD"),
+        database_password=read_database_password(),
         game_server_host=_require_text("WEB_GAME_HOST"),
         game_server_port=_require_positive_int("WEB_GAME_PORT"),
         connect_address=_require_text("WEB_CONNECT_ADDRESS"),

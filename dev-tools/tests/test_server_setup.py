@@ -33,12 +33,15 @@ class ServerSetupTests(unittest.TestCase):
         (self.mod / 'mod.ff').touch()
         (self.mod / 'mod.iwd').touch()
         self.answers = {'name': 'main', 'game_assets': str(self.game), 'mod_assets': str(self.mod),
-                        'database': {'mode': 'new'}}
+                        'database': {'mode': 'new'}, 'backups': {'enabled': False},
+                        'geoip': {'enabled': False}, 'pruning': {'enabled': False}}
         self.instance = self.root / 'instance'
         self.instance.mkdir()
 
     def prepared(self):
         settings = install.initialize_instance(self.instance, self.answers)
+        if settings['database'].get('transport') == 'ssh':
+            settings['linux_accounts'] = {'tunnel': {'uid': os.getuid(), 'gid': os.getgid()}}
         install.prepare_instance(self.instance, settings)
         return settings
 
@@ -62,6 +65,8 @@ class ServerSetupTests(unittest.TestCase):
         self.assertEqual(server['restart'], 'unless-stopped')
         self.assertEqual(document['volumes']['database']['name'], settings['volume'])
         self.assertTrue(document['volumes']['database']['external'])
+        storage = document['services']['db']['volumes'][0]
+        self.assertTrue(storage['volume']['nocopy'], 'Image copy-up must not replace owned data-directory permissions')
         self.assertIn('set g_password \"' + settings['join_password'] + '\"', (self.instance / 'server.cfg').read_text())
         self.assertNotIn(settings['root_password'], json.dumps(document))
         self.assertNotIn(settings['database']['password'], json.dumps(document))
@@ -225,7 +230,7 @@ class ServerSetupTests(unittest.TestCase):
             output.writestr('mod.iwd', b'fixture-iwd')
         installed = assets.prepare_assets(str(archive), 'mod', self.instance)
         self.assertEqual((installed / 'mod.ff').read_bytes(), b'fixture-fastfile')
-        self.assertEqual(list((self.instance / 'assets').glob('.mod-*')), [])
+        self.assertEqual(list(assets.shared_assets_root(self.instance).glob('.mod-*')), [])
 
     def test_failed_asset_import_releases_temporary_files(self):
         archive = self.root / 'incomplete.zip'
@@ -233,7 +238,7 @@ class ServerSetupTests(unittest.TestCase):
             output.writestr('mod.ff', b'fixture')
         with self.assertRaisesRegex(ValueError, 'IWD'):
             assets.prepare_assets(str(archive), 'mod', self.instance)
-        self.assertEqual(list((self.instance / 'assets').iterdir()), [])
+        self.assertEqual(list(assets.shared_assets_root(self.instance).iterdir()), [])
 
     def test_download_requires_https_and_a_known_checksum_before_network_access(self):
         for url, checksum in [('http://example.invalid/assets', '0' * 64),

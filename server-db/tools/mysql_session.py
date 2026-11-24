@@ -20,7 +20,7 @@ class MySQL:
             if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
                 raise ValueError("Invalid container/database identifier")
         identity = (
-            'MYSQL_PWD="${MYSQL_PASSWORD:-$(cat \"$MYSQL_PASSWORD_FILE\")}" exec mysql -u "$MYSQL_USER"'
+            'MYSQL_PWD="${MYSQL_PASSWORD:-$(cat \"${MYSQL_PASSWORD_FILE:-$OPENCJ_GAME_PASSWORD_FILE}\")}" exec mysql -u "${MYSQL_USER:-$OPENCJ_GAME_USER}"'
             if runtime
             else 'MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$(cat \"$MYSQL_ROOT_PASSWORD_FILE\")}" exec mysql -u root'
         )

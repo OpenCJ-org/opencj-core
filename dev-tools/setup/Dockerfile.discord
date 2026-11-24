@@ -1,0 +1,6 @@
+# Discord chat bridge for an installed OpenCJ server. Built by setup with
+# discord-integration/ as the context, so no other source enters the image.
+FROM python:3.12.8-slim-bookworm
+RUN pip install --no-cache-dir 'discord.py==2.4.0'
+COPY *.py /bridge/
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

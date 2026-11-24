@@ -11,9 +11,15 @@ from pathlib import Path
 import secrets
 import subprocess
 import sys
-import tempfile
 import time
 
+from operations import run, write_private
+from accounts import provision_owned_account, provision_game_account, GAME_CONNECTION_LIMIT
+import linux_accounts
+import database_owner
+import migration
+import website as managed_website
+from maintenance import configure_instance_jobs, prepare_offsite
 from assets import prepare_assets
 from assets import sha256_file
 from configuration import collect_configuration
@@ -33,46 +39,54 @@ import runtime_access
 spec = importlib.util.spec_from_file_location('setup_bootstrap', ROOT / 'dev-tools/scripts/bootstrap-db.py')
 bootstrap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bootstrap)
+spec = importlib.util.spec_from_file_location('geoip_provisioning', ROOT / 'server-db/tools/geoip/provision.py')
+geoip_provisioning = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(geoip_provisioning)
 DOCKER_TIMEOUT_SECONDS = 180
 BUILD_TIMEOUT_SECONDS = 1800
 
 
-def run(command, *, timeout=DOCKER_TIMEOUT_SECONDS, log=None):
-    """Keep command output private; errors name the stage without echoing SQL or secrets."""
-    if log:
-        with log.open('ab') as output:
-            result = subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=timeout)
-    else:
-        result = subprocess.run(command, capture_output=True, timeout=timeout)
-    if result.returncode:
-        detail = f'; see private log {log}' if log else ''
-        raise RuntimeError(f'{command[0]} {command[1]} failed{detail}')
-    if not log:
-        return result.stdout.decode().strip()
-    return ''
+def write_generated(path, text, *, owner=None, replace=False):
+    """Retry a partial preparation only when its existing generated file still agrees.
 
-
-def write_private(path, text, *, owner=None):
-    """Replace generated metadata atomically without exposing an intermediate public file."""
-    descriptor, temporary_name = tempfile.mkstemp(prefix='.' + path.name + '-', dir=path.parent)
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, 'w') as output:
-            output.write(text)
-        if owner and os.getuid() == 0:
-            os.chown(temporary, *owner)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def write_generated(path, text, *, owner=None):
-    """Retry a partial preparation only when its existing generated file still agrees."""
-    if path.exists():
+    replace=True is for an operator's deliberate settings change (opencj configure),
+    after verify_managed_files has confirmed nobody edited the generated files by hand.
+    """
+    if path.exists() and not replace:
         if path.read_text() != text:
             raise RuntimeError(f'{path.name} differs from setup choices; existing file preserved')
         return
     write_private(path, text, owner=owner)
+
+
+def download_cvars(downloads):
+    """Server settings for the chosen map-download mode (see configuration.collect_downloads)."""
+    if downloads['mode'] == 'website':
+        return {'sv_allowDownload': '1', 'sv_wwwDownload': '1', 'sv_wwwBaseURL': downloads['base_url'],
+                'sv_wwwDlDisconnected': '0'}
+    if downloads['mode'] == 'in-game':
+        return {'sv_allowDownload': '1', 'sv_wwwDownload': '0', 'sv_wwwBaseURL': ''}
+    return {'sv_allowDownload': '0', 'sv_wwwDownload': '0', 'sv_wwwBaseURL': ''}
+
+
+def write_discord_files(instance, settings, *, replace):
+    """Bridge configuration (secret) and the socket folder shared by the game and the bridge."""
+    discord = settings['discord']
+    identity = settings['linux_accounts']['discord']
+    owner = (identity['uid'], identity['gid'])
+    sockets = instance / 'sockets'
+    sockets.mkdir(mode=0o770, exist_ok=True)
+    # The bridge creates the socket; the game joins the bridge's group to connect.
+    os.chown(sockets, *owner)
+    sockets.chmod(0o770)
+    directory = instance / 'secrets/discord'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    os.chown(directory, *owner)
+    # The bridge keeps everything after '=' including a line break, so the token is
+    # written last without one; the numeric IDs tolerate a trailing line break.
+    contents = ('guildid=' + discord['guild_id'] + '\nchannelid=' + discord['channel_id']
+                + '\ntoken=' + discord['token'])
+    write_generated(directory / 'config_cod4', contents, owner=owner, replace=replace)
 
 
 def save_installation(instance, settings):
@@ -88,24 +102,31 @@ def mysql_option(value):
     return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
 
 
-def client_config(settings, *, administrator=False):
+def client_config(settings, *, administrator=False, website=False):
     database = settings['database']
     host = connection_host(settings)
     port = 3306 if database.get('transport') == 'ssh' else database['port']
     user = 'root' if administrator else database['user']
     password = settings['root_password'] if administrator else database['password']
+    if website:
+        user = settings['website']['user']
+        password = settings['website']['password']
+    # mysqldump (scheduled backups) also reads [client] but rejects connect-timeout,
+    # so that option belongs to the mysql client's own group.
     return '\n'.join(['[client]', 'host=' + mysql_option(host), 'port=' + str(port),
                       'user=' + mysql_option(user), 'password=' + mysql_option(password),
-                      'connect-timeout=10', 'protocol=TCP', ''])
+                      'protocol=TCP', '[mysql]', 'connect-timeout=10', ''])
 
 
 @contextmanager
-def database_client(instance, settings, *, administrator=False):
+def database_client(instance, settings, *, administrator=False, website=False):
     """Use the existing bounded SQL transport with credentials supplied as a read-only file."""
     filename = 'admin.cnf' if administrator else 'client.cnf'
+    if website:
+        filename = 'website.cnf'
     client_name = settings['project'] + '-sql-' + secrets.token_hex(4)
     command = [
-        'docker', 'run', '--rm', '--name', client_name, '-i', '--network', database_network(settings),
+        'docker', 'run', '--rm', '--log-driver', 'none', '--name', client_name, '-i', '--network', database_network(settings),
         '--label', 'org.opencj.setup=' + settings['project'],
         '--mount', f'type=bind,src={instance / "secrets" / filename},dst=/run/client.cnf,readonly',
         MYSQL_IMAGE, 'mysql', '--defaults-file=/run/client.cnf', '--batch', '--raw',
@@ -172,7 +193,7 @@ def wait_for_database(instance, settings):
     deadline = time.monotonic() + 120
     while True:
         try:
-            with database_client(instance, settings) as db:
+            with database_client(instance, settings, administrator=settings['database']['mode'] == 'new') as db:
                 db.query('SELECT 1;', timeout=15)
             return
         except (RuntimeError, TimeoutError):
@@ -182,29 +203,63 @@ def wait_for_database(instance, settings):
 
 
 def initialize_database(instance, settings):
-    """Initialize only an owned empty schema; joining never runs migrations or grants."""
+    """Initialize/restore only owned storage; joining an external database stays read-only."""
     database = settings['database']
-    wait_for_database(instance, settings)
+    if not database.get('owner_instance'):
+        wait_for_database(instance, settings)
     if database['mode'] == 'new':
         with database_client(instance, settings, administrator=True) as db:
             migrate.lock_database(db, database['name'])
-            objects = int(db.query(
-                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE();'))
-            if objects == 0:
-                bootstrap.bootstrap(db, database['name'], database['user'])
+            provision_owned_account(db, database['user'], database['password'], settings['project'],
+                                    connection_limit=GAME_CONNECTION_LIMIT)
+            if settings.get('migration'):
+                container = compose(instance, settings, 'ps', '--quiet', 'db')
+                migration.restore_database(instance, settings, db, container)
+                migrate.apply_migrations(db, migrate.load_migrations())
             else:
-                check_database(db)
-            # A completed ledger can precede a lost grant reply. Only this owned
-            # database may reapply the existing reviewed policy on a setup retry.
-            runtime_access.apply_policy(db, database['name'], account=database['user'])
+                objects = int(db.query(
+                    'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE();'))
+                if objects == 0:
+                    bootstrap.bootstrap(db, database['name'], database['user'])
+                else:
+                    check_database(db)
+            provision_game_account(db, settings)
+            if settings.get('website'):
+                managed_website.provision(db, settings)
+        if settings['geoip']['enabled']:
+            provision_geoip(instance, settings)
+    elif database.get('owner_instance'):
+        owner = Path(database['owner_instance'])
+        previous = load_installation(owner)
+        with database_client(owner, previous, administrator=True) as db:
+            check_database(db)
+            provision_game_account(db, settings)
+            if settings.get('website'):
+                managed_website.provision(db, settings)
     with database_client(instance, settings) as db:
-        migration_count = check_database(db)
+        settings['migrations'] = check_database(db)
         check_runtime_grants(db)
-    settings['migrations'] = migration_count
+    if settings.get('website'):
+        with database_client(instance, settings, website=True) as db:
+            managed_website.check_grants(db, settings)
 
 
-def write_instance_files(instance, settings):
-    """Create generated launch files once; the installation record owns subsequent retries."""
+def provision_geoip(instance, settings):
+    """An updater account limited to the GeoIP tables, via the maintained provisioning helper."""
+    container = compose(instance, settings, 'ps', '--quiet', 'db')
+    secret = instance / 'secrets/geoip-password'
+    geoip_provisioning.provision(container, settings['database']['name'], secret,
+                                 account=settings['geoip']['user'])
+    identity = settings['linux_accounts']['geoip']
+    os.chown(secret, identity['uid'], identity['gid'])
+
+
+def write_instance_files(instance, settings, *, replace=False):
+    """Create generated launch files once; the installation record owns subsequent retries.
+
+    replace=True rewrites the files that follow from operator choices (opencj
+    configure and upgrade); generated credentials never change.
+    """
     runtime = instance / 'runtime'
     runtime.mkdir(exist_ok=True)
     owner = (settings['uid'], settings['gid'])
@@ -215,29 +270,41 @@ def write_instance_files(instance, settings):
     write_generated(instance / 'secrets/client.cnf', client_config(settings))
     if database['mode'] == 'new':
         write_generated(instance / 'secrets/admin.cnf', client_config(settings, administrator=True))
-        write_generated(instance / 'secrets/root-password', settings['root_password'])
-        write_generated(instance / 'secrets/runtime-password', database['password'])
+        database_identity = settings.get('linux_accounts', {}).get('database')
+        database_owner = None
+        if database_identity:
+            database_owner = (database_identity['uid'], database_identity['gid'])
+        write_generated(instance / 'secrets/root-password', settings['root_password'], owner=database_owner)
+        write_generated(instance / 'secrets/runtime-password', database['password'], owner=database_owner)
     if database.get('transport') == 'ssh':
         # OpenSSH needs a passwd entry even when the host's numeric UID is not
         # present in the immutable image. This file contains no authentication data.
-        passwd = f"opencj:x:{settings['uid']}:{settings['gid']}::/tmp:/usr/sbin/nologin\n"
-        write_generated(instance / 'secrets/ssh-passwd', passwd, owner=owner)
+        identity = settings['linux_accounts']['tunnel']
+        tunnel_owner = (identity['uid'], identity['gid'])
+        passwd = f"opencj:x:{identity['uid']}:{identity['gid']}::/tmp:/usr/sbin/nologin\n"
+        write_generated(instance / 'secrets/ssh-passwd', passwd, owner=tunnel_owner)
         for source_key, target in [('key', 'ssh-key'), ('known_hosts', 'known_hosts')]:
             contents = Path(database['ssh'][source_key]).read_text()
-            write_generated(instance / 'secrets' / target, contents, owner=owner)
+            write_generated(instance / 'secrets' / target, contents, owner=tunnel_owner)
     port = 3306 if database.get('transport') == 'ssh' else database['port']
-    cvars = {'sv_hostname': settings['hostname'], 'sv_punkbuster': '0', 'sv_allowDownload': '1',
+    cvars = {'sv_hostname': settings['hostname'], 'sv_punkbuster': '0',
              'sv_floodProtect': '4', 'g_password': settings['join_password'],
              'rcon_password': settings['rcon_password'], 'db_host': connection_host(settings),
              'db_port': str(port), 'db_user': database['user'], 'db_pass': database['password'],
              'db_base': database['name'][:-1], 'opencj_checkpoint_editor': '0'}
+    cvars.update(download_cvars(settings['downloads']))
+    if settings['discord']['enabled']:
+        write_discord_files(instance, settings, replace=replace)
     write_generated(instance / 'server.cfg', ''.join(f'set {key} "{value}"\n' for key, value in cvars.items())
-                  + f'sets opencj_version "{RELEASE}"\n', owner=owner)
+                    + f'sets opencj_version "{settings["release"]}"\n', owner=owner, replace=replace)
     runtime_settings = {key: settings[key] for key in ('public', 'slots', 'map')}
-    write_generated(instance / 'runtime.json', json.dumps(runtime_settings) + '\n', owner=owner)
-    write_generated(instance / 'compose.json', json.dumps(compose_document(settings, instance), indent=2) + '\n')
-    write_generated(instance / 'join-password', settings['join_password'] + '\n')
-    write_generated(instance / 'rcon-password', settings['rcon_password'] + '\n')
+    write_generated(instance / 'runtime.json', json.dumps(runtime_settings) + '\n', owner=owner, replace=replace)
+    write_generated(instance / 'compose.json', json.dumps(compose_document(settings, instance), indent=2) + '\n',
+                    replace=replace)
+    write_generated(instance / 'join-password', settings['join_password'] + '\n', replace=replace)
+    write_generated(instance / 'rcon-password', settings['rcon_password'] + '\n', replace=replace)
+    if settings.get('website'):
+        write_generated(instance / 'secrets/website.cnf', client_config(settings, website=True))
     settings['managed_hashes'] = {name: sha256_file(instance / name)
                                   for name in ('server.cfg', 'runtime.json', 'compose.json')}
 
@@ -254,7 +321,14 @@ def validate_source():
     source_revision = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'])
     pin = run(['git', '-C', str(ROOT), 'ls-tree', 'HEAD', 'cod4x-server']).split()[2]
     if not (ROOT / 'cod4x-server/.git').exists():
-        run(['git', '-C', str(ROOT), 'submodule', 'update', '--init', '--', 'cod4x-server'], timeout=600)
+        command = ['git', '-C', str(ROOT), 'submodule', 'update', '--init', '--', 'cod4x-server']
+        # A sudo invocation must not leave root-owned Git metadata in the administrator's clone.
+        caller_uid = os.environ.get('SUDO_UID', '')
+        if os.geteuid() == 0 and caller_uid.isdigit() and ROOT.stat().st_uid == int(caller_uid):
+            import pwd
+            caller = pwd.getpwuid(int(caller_uid)).pw_name
+            command = ['runuser', '-u', caller, '--', *command]
+        run(command, timeout=600)
     engine_revision = run(['git', '-C', str(ROOT / 'cod4x-server'), 'rev-parse', 'HEAD'])
     if engine_revision != pin:
         raise RuntimeError('Engine differs from the core pin; local work was preserved')
@@ -275,9 +349,24 @@ def build_release(instance, settings):
          '--build-arg', 'SOURCE_REVISION=' + source_revision,
          '--build-arg', 'ENGINE_REVISION=' + engine_revision,
          '-f', str(ROOT / 'dev-tools/setup/Dockerfile'), str(ROOT)], log=log, timeout=BUILD_TIMEOUT_SECONDS)
+    build_optional_images(instance, settings)
     settings['source_revision'] = source_revision
     settings['engine_revision'] = engine_revision
     settings['image_id'] = run(['docker', 'image', 'inspect', settings['image'], '--format', '{{.Id}}'])
+
+
+def build_optional_images(instance, settings):
+    """Images for the Discord bridge and GeoIP updater, built from this release's own sources."""
+    log = instance / 'build.log'
+    settings['discord_image'] = settings['project'] + '-discord:' + settings['release']
+    settings['geoip_image'] = settings['project'] + '-geoip:' + settings['release']
+    if settings['discord']['enabled']:
+        run(['docker', 'build', '-t', settings['discord_image'],
+             '-f', str(ROOT / 'dev-tools/setup/Dockerfile.discord'), str(ROOT / 'discord-integration')],
+            log=log, timeout=BUILD_TIMEOUT_SECONDS)
+    if settings['geoip']['enabled']:
+        run(['docker', 'build', '-t', settings['geoip_image'], str(ROOT / 'server-db/tools/geoip')],
+            log=log, timeout=BUILD_TIMEOUT_SECONDS)
 
 
 def ensure_owned_volume(settings):
@@ -290,6 +379,23 @@ def ensure_owned_volume(settings):
             raise RuntimeError('Database volume belongs to another installation; preserved')
     else:
         run(['docker', 'volume', 'create', '--label', 'org.opencj.instance=' + settings['project'], volume])
+    identity = settings.get('linux_accounts', {}).get('database')
+    if identity:
+        # Creation and chown are separate Docker operations. Retry an interrupted
+        # empty-volume setup, but never adopt a populated directory with another owner.
+        owner = str(identity['uid']) + ':' + str(identity['gid'])
+        initialize = ('expected="' + owner + '"\n'
+                      'current="$(stat -c %u:%g /var/lib/mysql)"\n'
+                      'if [ "$current" != "$expected" ]; then\n'
+                      '    if [ -n "$(ls -A /var/lib/mysql)" ]; then\n'
+                      '        exit 1\n'
+                      '    fi\n'
+                      '    chown "$expected" /var/lib/mysql\n'
+                      'fi\nchmod 0700 /var/lib/mysql\n')
+        run(['docker', 'run', '--rm', '--network', 'none', '--user', '0:0',
+             '--cap-drop', 'ALL', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--cap-add', 'FOWNER',
+             '--mount', 'type=volume,src=' + volume + ',dst=/var/lib/mysql,volume-nocopy',
+             '--entrypoint', 'sh', MYSQL_IMAGE, '-c', initialize])
 
 
 def website_command(settings, *arguments):
@@ -314,11 +420,36 @@ def verify_website(settings):
     settings['website_hash'] = sha256_file(Path(settings['website_compose']))
 
 
+def optional_services(settings):
+    services = []
+    if settings['discord']['enabled']:
+        services.append('discord')
+    if settings['geoip']['enabled']:
+        services.append('geoip')
+    return services
+
+
+def start_optional_services(instance, settings):
+    """Start the Discord bridge and GeoIP updater without waiting for them.
+
+    A wrong Discord token or a provider outage makes these restart in a loop; that
+    must never block or fail the game server's installation or a settings change.
+    """
+    services = optional_services(settings)
+    if services:
+        compose(instance, settings, 'up', '-d', '--no-deps', *services, log=instance / 'setup.log', timeout=240)
+
+
 def server_is_running(instance, settings):
     return bool(compose(instance, settings, 'ps', '--status', 'running', '--quiet', 'server'))
 
 
 def check_ready(instance, settings):
+    linux_accounts.verify_accounts(settings)
+    if settings.get('website'):
+        managed_website.check(instance, settings)
+        with database_client(instance, settings, website=True) as db:
+            managed_website.check_grants(db, settings)
     verify_managed_files(instance, settings)
     with database_client(instance, settings) as db:
         check_database(db)
@@ -333,15 +464,33 @@ def check_ready(instance, settings):
     if settings.get('website_compose'):
         if sha256_file(Path(settings['website_compose'])) != settings['website_hash']:
             raise RuntimeError('Website definition changed; existing project preserved')
+    (instance / 'failure.txt').unlink(missing_ok=True)
     print(f"Verified {settings['name']} ({RELEASE}); configuration, data and running processes preserved.")
+
+
+def ensure_database_image(instance):
+    """Pull the pinned SQL runtime/client before any source maintenance window."""
+    available = subprocess.run(['docker', 'image', 'inspect', MYSQL_IMAGE, '--format', '{{.Id}}'],
+                               capture_output=True, timeout=DOCKER_TIMEOUT_SECONDS)
+    if available.returncode:
+        run(['docker', 'pull', MYSQL_IMAGE], log=instance / 'build.log', timeout=BUILD_TIMEOUT_SECONDS)
 
 
 def install(instance, settings):
     """Resume owned installation stages; never restart an already accepted running instance."""
     if settings['state'] == 'ready':
+        migration.source_control(instance, settings, 'accept-cutover')
         check_ready(instance, settings)
+        configure_instance_jobs(instance, settings)
         return
+    ensure_database_image(instance)
     if settings['state'] == 'configured':
+        linux_accounts.ensure_accounts(settings)
+        save_installation(instance, settings)
+        # Build before source maintenance so compilation cannot extend the outage.
+        if not settings.get('image_id'):
+            build_release(instance, settings)
+            save_installation(instance, settings)
         prepare_instance(instance, settings)
     verify_managed_files(instance, settings)
     verify_website(settings)
@@ -350,6 +499,8 @@ def install(instance, settings):
         build_release(instance, settings)
         save_installation(instance, settings)
     if settings['database']['mode'] == 'new':
+        if settings.get('migration'):
+            migration.reset_incomplete_restore(instance, settings)
         ensure_owned_volume(settings)
         compose(instance, settings, 'up', '-d', '--wait', '--wait-timeout', '180', 'db', log=instance / 'setup.log', timeout=240)
     elif settings['database'].get('transport') == 'ssh':
@@ -358,15 +509,31 @@ def install(instance, settings):
         # Compose creates this project's network without starting gameplay.
         compose(instance, settings, 'create', 'server', log=instance / 'setup.log')
     print('Checking database schema and gameplay permissions...', flush=True)
-    initialize_database(instance, settings)
-    settings['state'] = 'database-ready'
-    save_installation(instance, settings)
+    if settings['state'] != 'database-ready':
+        initialize_database(instance, settings)
+        settings['state'] = 'database-ready'
+        save_installation(instance, settings)
+    else:
+        # Gameplay may already have started before a later website/acceptance
+        # failure. A retry must not revoke/reapply that running game's grants.
+        wait_for_database(instance, settings)
+        with database_client(instance, settings) as db:
+            check_database(db)
+            check_runtime_grants(db)
+    migration.source_control(instance, settings, 'check-fenced')
+    # Transfer write ownership before gameplay can create even its first map-play row.
+    # A later startup failure must not permit automatic revival of the old writers.
+    migration.source_control(instance, settings, 'accept-cutover')
     compose(instance, settings, 'up', '-d', '--wait', '--wait-timeout', '180', 'server', log=instance / 'setup.log', timeout=240)
+    start_optional_services(instance, settings)
     if settings.get('website_compose'):
         run(website_command(settings, 'up', '-d', '--wait', '--wait-timeout', '180'), log=instance / 'website.log', timeout=240)
+    if settings.get('website'):
+        managed_website.start(instance, settings)
     settings['state'] = 'ready'
     save_installation(instance, settings)
     check_ready(instance, settings)
+    configure_instance_jobs(instance, settings)
     print(f'Private connection details: {instance / "join-password"}')
     print(f'Administration secret: {instance / "rcon-password"}')
     print('Setup is complete. Public beta release still requires the documented gameplay/readiness checks.')
@@ -387,12 +554,20 @@ def initialize_instance(instance, supplied):
 
 
 def prepare_instance(instance, settings):
-    # Keep the original choices and generated identities if a download fails.
-    # Only owned temporary extraction files are discarded; a retry can resume.
-    for kind in ('game', 'mod'):
-        settings[f'{kind}_dir'] = str(prepare_assets(settings[f'{kind}_assets'], kind, instance,
-                                                   settings.get(f'{kind}_sha256', '')))
+    database_owner.prepare_client(instance, settings)
+    if settings.get('migration'):
+        migration.prepare_bundle(instance, settings)
+        save_installation(instance, settings)
+    else:
+        for kind in ('game', 'mod'):
+            settings[kind + '_dir'] = str(prepare_assets(
+                settings[kind + '_assets'], kind, instance, settings.get(kind + '_sha256', '')))
+    managed_website.prepare(instance, settings)
     write_instance_files(instance, settings)
+    prepare_offsite(instance, settings)
+    if settings.get('migration'):
+        migration.restore_runtime(instance, settings)
+
     settings['state'] = 'prepared'
     save_installation(instance, settings)
 
@@ -410,17 +585,24 @@ def backup_instance(instance, settings):
                '--output-dir', str(instance / 'backups')]
     for name in ('installation.json', 'compose.json', 'server.cfg', 'runtime.json', 'secrets', 'runtime'):
         command.extend(['--source', str(instance / name)])
+    if settings.get('website'):
+        command.extend(['--source', str(instance / 'website')])
     run(command, timeout=1800, log=instance / 'backup.log')
     print(f'Backup and isolated restore check completed: {instance / "backups"}')
 
 
-def load_installation(instance):
-    """Bind operational identities to their original directory before any Docker operation."""
+def load_installation(instance, *, allow_other_release=False):
+    """Bind operational identities to their original directory before any Docker operation.
+
+    allow_other_release is for the upgrade command and for maintenance jobs, which
+    must keep working on installations that have not been upgraded yet.
+    """
     settings = json.loads((instance / 'installation.json').read_text())
     if settings.get('instance_dir') != str(instance):
         raise ValueError('Installation record belongs to another directory; use the original installation')
-    if settings.get('release') != RELEASE:
-        raise ValueError('Different installed release; follow the upgrade procedure')
+    if settings.get('release') != RELEASE and not allow_other_release:
+        raise ValueError('Installed release ' + str(settings.get('release')) + ' differs from this setup ('
+                         + RELEASE + '); from the new release checkout run: sudo bash opencj.sh upgrade')
     return settings
 
 
@@ -461,6 +643,8 @@ def main():
                 if args.check or args.backup:
                     raise ValueError('No installation record exists')
                 supplied = json.loads(args.config.read_text()) if args.config else collect_configuration(instance)
+                if os.geteuid() != 0:
+                    raise ValueError('Run with sudo: setup creates restricted Linux service users')
                 settings = initialize_instance(instance, supplied)
             if args.check:
                 check_ready(instance, settings)

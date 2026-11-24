@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Ubuntu prerequisites, shared by development and the release installer.
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 source /etc/os-release
 if [[ "$ID" != ubuntu || "$VERSION_ID" != 24.04 ]]; then
     echo 'This installer targets Ubuntu 24.04.' >&2
@@ -15,7 +16,7 @@ if [[ $(id -u) != 0 ]]; then
     privilege=(sudo)
 fi
 "${privilege[@]}" apt-get update
-"${privilege[@]}" apt-get install -y git python3 ca-certificates curl
+"${privilege[@]}" apt-get install -y git python3 ca-certificates curl rsync openssh-client passwd
 if ! command -v docker >/dev/null; then
     "${privilege[@]}" install -m 0755 -d /etc/apt/keyrings
     "${privilege[@]}" curl --proto '=https' --tlsv1.2 -fsSL \

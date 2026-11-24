@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'dev-tools/setup'))
 import install
 from configuration import choose_port
+import linux_accounts
+import website as managed_website
 
 
 def command(arguments, *, timeout=2400):
@@ -45,15 +47,19 @@ def assert_game_reply(port):
     assert b'\\pswrd\\1' in response
 
 
-def create_instance(evidence, label, assets, database, instances, *, website=None):
+def create_instance(evidence, label, assets, database, instances, *, website=None, copy_from=None):
     """Record ownership before invoking setup so a failing first run is still cleaned."""
     instance = evidence / label
     instances.append(instance)
     answers = {'name': 'fixture-' + label, 'hostname': 'OpenCJ setup fixture',
+               'pruning': {'enabled': False}, 'geoip': {'enabled': False},
                'game_assets': assets.game_dir, 'mod_assets': assets.mod_dir,
                'port': choose_port(31000), 'bind_ip': '127.0.0.1', 'database': database}
     if website:
-        answers['website_compose'] = str(website)
+        answers['website'] = website
+    if copy_from:
+        answers['migration'] = {'transport': 'local', 'source_root': str(ROOT),
+                                'source_instance': str(copy_from), 'intent': 'rehearsal'}
     answer_file = evidence / (label + '-answers.json')
     answer_file.write_text(json.dumps(answers))
     answer_file.chmod(0o600)
@@ -67,8 +73,12 @@ def create_instance(evidence, label, assets, database, instances, *, website=Non
         raise RuntimeError('Installation failed: ' + label + '; inspect its private failure/log files')
     settings = read_settings(instance)
     assert settings['state'] == 'ready'
+    linux_accounts.verify_accounts(settings)
     assert_game_reply(settings['port'])
     server = inspect_server(instance)
+    assert server['Config']['User'] == f"{settings['uid']}:{settings['gid']}"
+    assert settings['uid'] != 0 and server['HostConfig']['ReadonlyRootfs']
+    assert server['HostConfig']['CapDrop'] == ['ALL']
     logs = command(['docker', 'logs', server['Id']])
     (evidence / (label + '-server.log')).write_text(logs)
     for marker in ('SCRIPT ERROR', 'script runtime error', 'unknown function',
@@ -108,7 +118,7 @@ def verify_preservation(instance, settings):
             raise AssertionError('Gameplay account could drop historical data')
     # Deliberately overprivilege only this owned synthetic account, then restore it.
     with install.database_client(instance, settings, administrator=True) as db:
-        db.query("GRANT FILE ON *.* TO 'opencj'@'%';")
+        db.query("GRANT FILE ON *.* TO '" + settings['database']['user'] + "'@'%';")
     try:
         with install.database_client(instance, settings) as db:
             try:
@@ -119,7 +129,7 @@ def verify_preservation(instance, settings):
                 raise AssertionError('Setup accepted a global filesystem privilege')
     finally:
         with install.database_client(instance, settings, administrator=True) as db:
-            db.query("REVOKE FILE ON *.* FROM 'opencj'@'%';")
+            db.query("REVOKE FILE ON *.* FROM '" + settings['database']['user'] + "'@'%';")
     with install.database_client(instance, settings) as db:
         install.check_runtime_grants(db)
     config = instance / 'server.cfg'
@@ -156,7 +166,7 @@ def create_ssh_fixture(evidence, settings, resources):
              '-o', 'PermitRootLogin=prohibit-password', '-o', 'HostKey=/run/host_key',
              '-o', 'AuthorizedKeysFile=/run/authorized_keys'])
     return {'mode': 'existing', 'transport': 'ssh', 'network': settings['project'] + '_default',
-            'host': 'db', 'port': 3306, 'name': settings['database']['name'], 'user': 'opencj',
+            'host': 'db', 'port': 3306, 'name': settings['database']['name'], 'user': settings['database']['user'],
             'password': settings['database']['password'],
             'ssh': {'host': 'setup-ssh', 'port': 2222, 'user': 'root',
                     'key': str(directory / 'client'), 'known_hosts': str(directory / 'known_hosts')}}
@@ -175,6 +185,8 @@ def cleanup(instances, resources):
             continue
         settings = read_settings(instance)
         try:
+            if settings.get('website'):
+                command(managed_website.command(instance, settings, 'down', '--volumes'), timeout=90)
             if settings.get('website_compose'):
                 command(install.website_command(settings, 'down', '--volumes'), timeout=90)
             if (instance / 'compose.json').exists():
@@ -188,6 +200,10 @@ def cleanup(instances, resources):
             images = command(['docker', 'image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'])
             if settings['image'] in images.splitlines():
                 command(['docker', 'image', 'rm', settings['image']])
+            if settings.get('website'):
+                command(['docker', 'image', 'rm', settings['project'] + '-web:' + settings['release']])
+                (instance / 'website/database-password').unlink(missing_ok=True)
+            install.linux_accounts.remove_fixture_accounts(settings)
             for path in (instance / 'secrets').glob('*'):
                 path.unlink()
             for name in ('installation.json', 'server.cfg', 'join-password', 'rcon-password'):
@@ -207,6 +223,8 @@ def main():
     parser.add_argument('--game-dir', required=True)
     parser.add_argument('--mod-dir', required=True)
     assets = parser.parse_args()
+    if os.geteuid() != 0:
+        parser.error('Run with sudo: installation tests create dedicated Linux service users')
     os.umask(0o077)
     evidence = ROOT / 'dev-tools/local' / ('setup-integration-' + uuid.uuid4().hex[:8])
     evidence.mkdir(parents=True)
@@ -226,17 +244,32 @@ def main():
         with install.database_client(other_instance, other) as db:
             assert db.query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='setupSentinel';") == '0'
         report['checks'].append('second local instance has independent ports, network and data')
-        website = evidence / 'website'
-        website.mkdir()
-        project = website / 'compose.json'
-        project.write_text(json.dumps({'services': {'web': {'image': 'opencj-builder:beta-0.1.0',
-            'command': ['python3', '-m', 'http.server', '8080'],
-            'healthcheck': {'test': ['CMD', 'python3', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080")'], 'interval': '2s', 'timeout': '3s', 'retries': 15}}}}))
+        copied_instance, copied = create_instance(evidence, 'copied', assets,
+            {'mode': 'new', 'publish_port': 0}, instances, copy_from=main_instance)
+        with install.database_client(copied_instance, copied, administrator=True) as db:
+            assert db.query('SELECT value FROM setupSentinel;') == '42'
+            db.query('UPDATE setupSentinel SET value=99;')
+        with install.database_client(main_instance, settings) as db:
+            assert db.query('SELECT value FROM setupSentinel;') == '42'
+        report['checks'].append('consistent copied database has independent subsequent writes')
+        website = {'bind_ip': '127.0.0.1', 'port': choose_port(8090),
+                   'connect_address': 'localhost:' + str(settings['port']), 'discord_invite': ''}
         shared_instance, shared = create_instance(evidence, 'shared', assets,
-            {'mode': 'instance', 'instance_dir': str(main_instance)}, instances, website=project)
+            {'mode': 'instance', 'instance_dir': str(main_instance)}, instances, website=website)
         with install.database_client(shared_instance, shared) as db:
             assert db.query('SELECT value FROM setupSentinel;') == '42'
-        report['checks'].append('same-host shared database and separate optional website project')
+        assert shared['database']['user'] != settings['database']['user']
+        assert shared['uid'] != settings['uid']
+        managed_website.check(shared_instance, shared)
+        with install.database_client(shared_instance, shared, website=True) as db:
+            managed_website.check_grants(db, shared)
+            try:
+                db.query('SELECT * FROM playerInformation LIMIT 1;')
+            except RuntimeError as error:
+                assert 'denied' in str(error).lower()
+            else:
+                raise AssertionError('Website could read private player information')
+        report['checks'].append('shared data with unique users, real website and private-table denial')
         remote_database = create_ssh_fixture(evidence, settings, resources)
         remote_instance, remote = create_instance(evidence, 'ssh', assets, remote_database, instances)
         with install.database_client(remote_instance, remote) as db:

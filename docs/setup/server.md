@@ -1,5 +1,8 @@
 # Install an OpenCJ server
 
+After installation, the [administrator guide](../operations/server-administration.md)
+explains daily operation: status, alerts, changing settings, upgrades and restores.
+
 The first release target is **beta-0.1.0**. `VERSION` identifies the source release;
 each installation records its core revision, pinned engine revision, image ID and
 migration state. A release name in source does not mean its Git tag or compiled
@@ -12,61 +15,95 @@ work; this installer creates separate operational instances.
 
 ## One entry point
 
-Run as root on a fresh host (or use `sudo bash setup.sh`). From a reviewed
-checkout of the intended release:
+On a fresh **Ubuntu 24.04 LTS x86-64** host, configure your administrator's SSH
+access and Git access, then clone the reviewed release and run its entry point:
 
 ```sh
-bash setup.sh
+git clone https://github.com/OpenCJ-org/opencj-core.git
+cd opencj-core
+# Select the reviewed release revision before running setup.
+sudo bash opencj.sh install
 ```
 
-The same `setup.sh` can be downloaded from a published release and run standalone.
-It then clones the exact `beta-0.1.0` tag into `/opt/opencj/releases/beta-0.1.0`;
-it refuses to overwrite an existing source directory or fall back to `main`.
-Until that tag exists, use the reviewed checkout. Do not pipe an unreviewed
-network response directly into a root shell.
+Use your configured Git SSH URL instead when needed. Git is the only tool needed
+to obtain the checkout (`sudo apt-get update && sudo apt-get install -y git` if
+missing). Do not initialize submodules recursively: setup initializes the exact
+engine pin it needs and builds inside Docker. It installs Python, rsync and Docker
+Engine/Compose using the existing host prerequisite helper. Your administrator
+uses sudo; runtime users never join the Docker group.
 
-The entry point uses the existing host prerequisite helper. On an empty supported
-host it installs Git, Python and Docker Engine/Compose from the official Docker
-Ubuntu repository. Existing Docker installations are preserved; if their Compose
-plugin or account access is missing, setup stops with an explicit instruction.
-No firewall, SSH daemon or unrelated host service is reconfigured.
+The standalone script from a **published** release clones its exact tag into
+`/opt/opencj/releases/beta-0.1.0`. Until that tag exists, use a reviewed checkout.
+The script never falls back to a moving branch. Do not pipe an unreviewed network
+response into a root shell.
 
-Setup asks for:
+The default host wizard asks which servers to create, initially suggesting
+`main-eu,acceptance,map-test`. It collects each instance's display name, distinct
+ports, 32-player limit, private/public access and database choice before creating
+services. Private is the default: unlisted/LAN mode plus a generated join password.
+Per server it also asks for map downloads, the Discord bridge and, for each owned
+database, backups (with an off-site copy), pruning of abandoned runs and IP-country
+updates; production-like defaults apply to `main-*` servers. For the machine it asks
+about the website (default no), security updates, the firewall, SSH hardening and an
+alert channel. Invalid answers are asked again, and a summary must be confirmed
+before anything is created.
 
-- An installation directory and instance name, such as `main`, `acceptance` or
-  `maptesting`. Choose a different directory for every instance.
-- Display name, game port, bind address, starting map and slots (default **32**).
-- Public access (default **no**). Private instances use LAN/unlisted mode and a
-  generated join password; public instances allow password-free access and listing.
-- Licensed game assets and matching compiled OpenCJ assets.
-- A new independent database, another local instance's database, or an existing
-  database reached through SSH or an already-secured private network.
-- Whether to run the OpenCJ website (default **no**).
+The suggested topology is:
 
-For unattended setup, supply the same answers in a private JSON file:
+| Instance | Database choice | Result |
+| --- | --- | --- |
+| main-eu | migrate | Production database, maps, compiled assets and runtime drafts transferred from the old installation |
+| acceptance | copy from main-eu | Independent database initialized from a consistent main snapshot |
+| map-test | new; assets from main-eu | Empty player database with its own runtime, sharing only read-only asset files |
+| later main region | owner | Shared production database through a restricted SSH tunnel, with separately revocable SQL credentials |
+
+Acceptance copying briefly stops its selected source game to capture a consistent
+snapshot. Use the migration player guard and maintenance window. Copying is a
+one-time operation, not continuous replication. Subsequent acceptance writes do
+not affect main. Refreshing it later is the explicit `opencj refresh acceptance`
+(see below); rerunning setup never silently refreshes it.
+
+The saved host plan is `/srv/opencj/host-setup.json`; each instance has its own
+subdirectory. On failure, rerun **the same command without new answers**:
 
 ```sh
-bash setup.sh --instance-dir /srv/opencj/main --config /root/main-answers.json
+sudo bash opencj.sh install
+# Or, if a different host directory was originally selected:
+sudo opencj install --host-dir /srv/opencj
 ```
 
-The minimal structure is:
+Completed instances are checked without restarting them. Unfinished instances
+resume with their recorded credentials, Linux users and resource identities.
+For unattended setup, pass `--plan /root/host-plan.json` only on the first run.
+Its `instances` array contains the same per-instance settings as the single-instance
+interface; dependencies use `copy_from`, `share_with` or `assets_from` naming an
+earlier instance. `security_updates` holds `enabled`, `time`, `reboot` and optionally
+`reboot_time`. Keep this file private.
+
+The single-instance interface remains available:
+
+```sh
+sudo opencj install --instance-dir /srv/opencj/main-eu --config /root/main-answers.json
+```
+
+A fresh independent instance can use:
 
 ```json
 {
-  "name": "main",
+  "name": "main-eu",
   "game_assets": "/srv/assets/cod4",
   "mod_assets": "/srv/assets/opencj-beta-0.1.0",
   "port": 28960,
   "bind_ip": "0.0.0.0",
   "public": false,
-  "database": {"mode": "new", "name": "openCJ_cod4", "publish_port": 3306}
+  "database": {"mode": "new", "name": "openCJ_cod4", "publish_port": 3306},
+  "backups": {"enabled": true, "time": "03:30", "keep": 7, "max_gib": 2, "reserve_gib": 2}
 }
 ```
 
-Optional `slots`, `map` and `hostname` use the interactive defaults. Treat answer
-files as secrets when they contain existing database access, and keep them outside
-Git. A repeat invocation takes only `--instance-dir`; new answers cannot silently
-replace an installation.
+The single-instance command configures its backup timer; host-wide update policy
+is configured by the host wizard. Never supply a new plan/configuration to replace
+an existing installation. Operator edits are preserved and reported for review.
 
 ## Supply game and compiled client files
 
@@ -83,7 +120,8 @@ Custom maps also require their installed `usermaps/<mapname>` assets.
 
 Directory inputs are mounted read-only and never copied over or modified. Their
 contents must be readable by the runtime account. Archive inputs are extracted
-into the instance, rejecting links, special files and escaping paths. Downloads
+into the machine's shared `/srv/opencj/assets/`, rejecting links, special files and
+escaping paths. Downloads
 and expanded assets are limited to 16 GiB per set, with at most 100,000 entries;
 the download deadline is 30 minutes. Larger installations can use supplied
 directories. Stock assets are not fetched from an invented redistribution URL.
@@ -120,9 +158,8 @@ provider firewall as well. See the official
 ### Share another instance on the same machine
 
 Choose `mode: instance` and its `instance_dir`. Setup requires that instance to
-be ready on the same release and to own its local database. It copies only the
-restricted gameplay connection and joins that database's Docker network; it
-never copies its root password or creates a second database volume.
+be ready on the same release and to own its local database. It provisions a distinct, restricted gameplay account and joins that database's
+Docker network; it never copies the root password or creates a second database volume.
 
 Use independent databases for acceptance and maptesting when their changes must
 not affect main. Sharing means sharing player progress, records and checkpoint
@@ -130,17 +167,25 @@ layouts, not just sharing an SQL process.
 
 ### Connect from another machine
 
-Choose `mode: existing`, enter the database name and restricted gameplay account,
-and select `ssh` or `private` transport.
+For an installation managed by this setup, choose `owner`. Supply the database
+owner's checkout/instance paths and its administrator SSH connection, including a
+**verified known_hosts file**. Source administration uses noninteractive sudo when
+needed. The owner must expose MySQL on a loopback port.
 
-With `ssh`, also supply an SSH endpoint/user, private-key file and **verified
-known_hosts file**. Setup pins that host key and runs a separate SSH forwarding
-container. The database host/port is interpreted from the SSH server, commonly
-`127.0.0.1` and the owning instance's published loopback port. The key must permit
-unattended forwarding, with no interactive passphrase prompt. Verify the host key
-through a trusted channel; the installer does not automatically trust `ssh-keyscan`.
-It reconnects the tunnel after failure without exposing its local forwarding
-port on the host.
+Setup provisions distinct gameplay and optional website SQL accounts. It generates
+a separate tunnel key and a locked, non-login Linux account on the owner. That
+account has no SSH sessions, shell, PTY, agent forwarding or remote forwarding;
+its key can forward only to the owner's selected `127.0.0.1` database port.
+Installation administration uses the administrator connection, while the persistent
+container receives only the new restricted key. Setup validates the effective SSH
+policy before reloading SSH. Existing administrator access is not changed.
+
+For a database managed elsewhere, choose `existing` and supply pre-provisioned
+restricted SQL credentials plus either SSH or private-network transport. An
+external SSH identity must already be dedicated and forwarding-restricted; do not
+supply your administrator/root key for a persistent tunnel. The installer pins the
+supplied host key and does not blindly trust `ssh-keyscan`. The tunnel has its own
+Linux identity, reconnects after failure, and publishes no host port.
 
 Use `private` only for an already-secured private network/VPN. The current native
 SQL adapter does not configure verified TLS identity through installer settings;
@@ -150,7 +195,9 @@ to the pinned SSH path. The setup connection uses the same transport as gameplay
 Joining checks the MySQL version, complete migration ledger and the complete
 reviewed runtime grant policy. Use a dedicated gameplay account; broad grants,
 roles, privileges on unrelated schemas and missing required permissions are refused.
-It **never bootstraps, migrates or changes grants** on that shared database.
+Generic `existing` connections **never bootstrap, migrate or change grants** on
+the shared database. Managed `owner`/local-sharing connections provision only
+their new owned client accounts; they do not migrate the shared schema.
 Use the owning installation for planned schema upgrades, coordinating all writers.
 The supported database version for this beta is MySQL 8.0, matching the tested
 runtime; MariaDB and other major versions are not claimed compatible.
@@ -167,7 +214,7 @@ The existing role levels are editor 20, moderator 40, admin 60 and uber-admin 10
 The owner can open the SQL console without putting its password in command arguments:
 
 ```sh
-docker compose -f /srv/opencj/main/compose.json exec db sh -c \
+sudo docker compose -f /srv/opencj/main-eu/compose.json exec db sh -c \
   'MYSQL_PWD="$(cat "$MYSQL_ROOT_PASSWORD_FILE")" exec mysql -u root "$MYSQL_DATABASE"'
 ```
 
@@ -175,26 +222,268 @@ Checkpoint editing is disabled in the generated server configuration by default.
 Enable it deliberately for an editing instance and retain the existing role checks.
 A separate maptesting database avoids publishing experimental layouts into main.
 
+## Migrate the old installation
+
+Choose `migrate` and identify the old checkout and installation directory. The
+current development installation is also supported by selecting its `dev-tools`
+directory. Use SSH for another machine or a local path for the same host. Select
+**rehearsal** to resume the source after snapshotting, or **cutover** to leave its
+game and database stopped. Rehearsal targets must remain private.
+
+Setup builds the candidate before maintenance and pre-copies game files, all
+installed map binaries and compiled mod assets, and hashes that fixed asset copy
+before the outage window. It then checks connected players,
+stops only the selected game, refuses other database writers, freezes writes,
+exports SQL plus per-table row counts and content digests, and copies persistent
+runtime/editor files. The restore must reproduce every digest. FLOAT columns are
+compared at the roughly six significant digits that SQL dumps (and scheduled
+backups) keep; their last bits can change, which no gameplay value depends on.
+Every transferred file is checked against a SHA-256 inventory. rsync resumes
+interrupted transfers. Source configuration is retained privately for reference;
+the new installation receives fresh credentials and generated configuration.
+
+Rehearsals restore the source's previous read-only settings and active map. A cutover
+keeps the source fenced. After restore/schema checks, the destination accepts write
+ownership **before starting gameplay**. A later startup/website failure can be
+resumed, but must not revive the old database alongside newer destination writes.
+Before that ownership transfer, a failed cutover can be resumed or deliberately
+cancelled from the source:
+
+```sh
+sudo bash opencj.sh resume-source --bundle /path/to/the/recorded/source-bundle
+```
+
+After acceptance, automatic rollback is refused because the destination may have
+newer writes. Stop all writers and reconcile those writes before a planned rollback.
+Never run old and new independent production copies concurrently for public play.
+
+The source bundle path is recorded in the private installation record. Local or
+uploaded complete bundles can also be selected with `restore`. An interrupted
+**unaccepted candidate import** may be discarded and re-imported only after checking
+its owned volume and absence of gameplay resources. Ready databases and operator
+changes are never replaced. Pending schema migrations run after an exact restore
+check. Source and target must use the supported matching MySQL version.
+
+A migration bundle includes assets and SQL, so allow temporary space on both hosts.
+File/transfer preflights reserve at least 2 GiB beyond the incoming copy; source SQL
+uses a conservative size estimate. Other workloads can still consume disk, so
+monitor free space throughout a large move.
+The target's `migration/bundle/game` and `mod` directories are active read-only asset
+roots: do not delete its bundle as a generic cleanup step. After acceptance and
+independent backups, the old source export can be removed deliberately.
+
+## Linux users and service isolation
+
+Setup creates separate system identities per instance/service: game, database,
+website generator, HTTP server and SSH tunnel when present. They have locked
+passwords, `/usr/sbin/nologin`, no home directory, no sudo access and no Docker-group
+membership. Their UID/GID and ownership marker are recorded and rechecked on retry.
+Main, acceptance and map-test therefore do not share a writable runtime identity.
+
+Containers use those non-root identities, drop Linux capabilities, disallow privilege
+gain and use read-only root filesystems with limited writable mounts. Game services
+see their own runtime, read-only assets and gameplay credentials; they cannot mount
+the Docker socket, read administrative database credentials or modify the checkout.
+Website SQL privileges are SELECT-only on its maintained table allowlist. Gameplay
+uses the reviewed runtime policy; migrations and backup orchestration are separate
+administrative operations. Docker administrators remain host administrators.
+
+Use the provider firewall to expose only intended game ports, administrator SSH
+and a public reverse proxy. MySQL binds only loopback when published; the website
+binds loopback by default. Setup does not guess provider rules, replace your SSH
+login policy or issue HTTPS certificates. Restricted service accounts and updates
+are part of host security, not a guarantee against every application vulnerability.
+
 ## Optional website
 
-Supply Claude's self-contained website Compose file with `website_compose`, or
-answer yes and give its path. Follow that project's README first to supply its
-own environment, access tool, ports, domains and certificates. The installer
-neither uses `server-web` nor invents an application-specific environment contract.
+Answer yes to use the actual [website project](../../web/README.md) shipped in
+`web/`. Select its game instance, domain name, local port, public game address and
+Discord invite. Setup applies the complete migrations, including 028, then uses the
+maintained website grant helper's table policy to provision a unique account.
+The game runtime policy includes the `mapPlays` insert permission.
 
-The website runs as a separate `<instance-project>-web` Compose project. Its
-services must use project-scoped names, and volumes must be managed by that
-project. Fixed `container_name` and external volumes are refused. The website
-project owns application migrations and permissions; OpenCJ setup does not hand
-it the gameplay database root account. Include healthchecks so Compose can
-verify application readiness. Website containers with no healthcheck are only
-verified to have started.
+Each installation has private website configuration and a password file; the source
+`web/.env` remains untouched. The generator and HTTP container run in a separate
+Compose project with their own Linux identities. Only the generator receives the
+read-only database credential and installed maps; the HTTP container serves generated
+public files. Readiness requires a freshly generated page and a successful HTTP
+check. `server-web` is not used.
 
-The installer can validate a supplied project's startup. Actual website behavior
-must be checked against Claude's delivered project; a synthetic integration
-fixture is not acceptance of that application. If the project is not available,
-choose no. A future website deployment should use its README and a separate
-project rather than rewriting an existing game installation's configuration.
+**HTTPS.** With a domain name, a [Caddy](https://caddyserver.com/) container serves
+the site on ports 80/443 and obtains and renews a free Let's Encrypt certificate by
+itself. Point the domain's DNS A/AAAA record at the server first; until DNS works,
+Caddy keeps retrying. Plain HTTP redirects to HTTPS, except `/usermaps/`: CoD4 clients
+download maps over plain HTTP only. Caddy runs unprivileged (host ports 80/443 map to
+container ports 8080/8443), read-only and without Linux capabilities; certificates
+are kept in the installation's `website/caddy-data/`. Without a domain the site only
+listens on `127.0.0.1:8090` (for an SSH tunnel or another proxy).
+
+## Maps and map downloads
+
+All servers on a machine read one shared, read-only copy of the game files, maps and
+compiled mod files in `/srv/opencj/assets/`. A migration moves its verified files
+there; a copy such as acceptance uses the same folder instead of a second 16 GiB copy.
+
+```sh
+sudo opencj maps add /path/to/mp_newmap      # a folder, archive or https:// URL (+ --sha256)
+sudo opencj maps list
+```
+
+`maps add` accepts only `<map>.ff`, `<map>_load.ff` and `.iwd` files, stages them next
+to the live folder and swaps them in at once. Servers load a new map on the next map
+change; offering it on a server is done through that server's map pool in the game.
+
+Each server has a download mode, chosen in the wizard or with `configure`:
+
+| Mode | Who can download | Typical server |
+| --- | --- | --- |
+| `website` | Anyone, over fast HTTP, for maps in the main database's pool | Public main servers |
+| `in-game` | Only players who joined (on a private server: with the password), slowly through the game | map-test, acceptance |
+| `off` | Nobody; players need the maps already | Special cases |
+
+A map that is not in the main server's pool is never published on the website, even
+though its files sit in the shared folder. A password-protected server reports its
+map as `Hidden` to server browsers and query tools (`getstatus`, `getinfo` and the
+Source-engine queries) unless the asking client joined with the password. Fast HTTP
+downloads for private servers need the not-yet-built
+[download grants](../proposals/map-download-authorization.md).
+
+## Discord chat bridge
+
+Per server, the wizard offers the Discord bridge from `discord-integration/` (default
+yes for `main-*` servers). Create a bot in the Discord developer portal, invite it to
+your Discord server, and enter the server (guild) ID, the channel ID and the bot token
+(entered hidden, stored only in the root-only installation record and the bridge's
+private configuration). The bridge runs as its own Linux user; it and the game share
+only a private socket folder. A wrong token makes only the bridge restart; the game is
+not affected, and the watchdog reports it.
+
+## Scheduled backups, pruning and security updates
+
+For each owned database the wizard asks about nightly backups: **yes for main/main-*
+instances, no for others**. Shared clients use the database owner's schedule.
+Defaults are 03:30 Europe/Amsterdam, up to seven compressed SQL snapshots, a **2 GiB
+combined storage limit** and **2 GiB minimum free space**. All are configurable.
+
+**Off-site copies.** The wizard can also copy each night's backups to another machine
+(default yes for `main-*`). It shows that machine's SSH host-key fingerprint for you to
+confirm, creates a dedicated upload key and prints one command to run on the receiver,
+from its own opencj-core checkout:
+
+```sh
+sudo bash opencj.sh backup-receiver --name main-eu --key 'ssh-ed25519 AAAA... opencj-main-eu-...-offsite'
+```
+
+The receiver gets a locked account without shell whose key may only *write* new files
+into `/srv/opencj-offsite/<name>/` (rsync's `rrsync -wo`): a compromised game server can
+neither read nor delete older copies. The receiver keeps every backup for 14 days, one
+per week for 8 weeks and one per month for a year, within **50 GiB for all senders
+together** (`--max-gib`); over the limit the oldest go first, but each sender's newest
+7 backups always stay. It needs no Docker.
+
+**Pruning abandoned runs.** Saves accumulate quickly with many active players. Each
+night (04:15) the database owner deletes **unfinished** runs nobody has played for the
+chosen number of months (default 6; 0 disables), together with their saves, checkpoint
+times, labels and unfinished demos. Finished runs are never touched, so leaderboards,
+records, challenge completions and demos stay exactly as they are; runs with winning or
+published demos are skipped too. Deletion happens in small batches, each rechecked
+under a lock, so a player resuming a run at that moment keeps it. The result is in
+`last-prune.json`.
+
+The root-owned systemd backup service streams a transaction-consistent SQL dump,
+including demo tables, routines, triggers and events. It has bounded time, memory
+and disk use. Partial dumps never replace completed backups. Retention removes only
+its own oldest backups and preserves the newest successful backup if a new one fails.
+If one snapshot plus the last good snapshot cannot fit the configured budget, backup
+fails visibly instead of consuming the disk; increase the budget or arrange remote
+storage. Check the service journal and `last-backup.json` for successful completion.
+Local copies alone do not protect against loss of the machine.
+
+Scheduled SQL snapshots are in `automatic-backups/`. They exclude runtime files,
+configuration and map assets; use the full migration export for relocation and the
+manual verified backup below for SQL plus runtime/configuration recovery. Periodically
+restore a backup into a disposable database. A successful dump is not a restore test.
+
+The host wizard separately offers **Ubuntu security updates** (default yes), at
+**05:00 Europe/Amsterdam**, with package metadata refreshed 15 minutes earlier.
+Explicit timezone scheduling follows daylight saving without changing the host's
+timezone. Missed timers do not unexpectedly run maintenance immediately at boot.
+Updates can restart affected services. Automatic reboot (default **yes**) happens only
+when an update requires it, at a 05:30 check that skips while APT jobs are active. All
+OpenCJ services start again by themselves after a reboot.
+
+Only Ubuntu security origins are enabled by this policy. Pinned Docker images,
+OpenCJ releases and other third-party packages need their own reviewed upgrade
+procedure; unattended host updates do not rebuild containers. This configuration
+uses Ubuntu's [unattended-upgrades](https://ubuntu.com/server/docs/how-to/software/automatic-updates/)
+and timezone-aware [systemd timers](https://www.freedesktop.org/software/systemd/man/latest/systemd.time.html).
+
+## Firewall and SSH
+
+The wizard configures `ufw` (default yes): all incoming connections are refused except
+SSH, the game ports and, with a website domain, 80/443. SSH is rate-limited: an address
+opening 6 or more connections within 30 seconds waits 30 seconds (scripts that open
+many SSH sessions should reuse one connection). The SSH port is
+read from the running SSH server and allowed before the firewall is switched on.
+Docker publishes container ports with its own rules, which `ufw` does not filter;
+setup therefore publishes only the game ports and 80/443 publicly and binds the
+database and local website port to `127.0.0.1`.
+
+SSH hardening offers key-only login (only when the administrator running setup already
+has an authorized key; otherwise passwords stay enabled), fail2ban (bans addresses
+that keep failing, default yes) and an optional port change. Changing the port mostly
+reduces log noise from scanners. It is done in two steps: SSH first listens on both
+ports, you log in on the new port from a second terminal, and setup closes the old
+port only after it sees that login. Otherwise both ports stay open. The port change is
+interactive and is skipped in unattended (`--plan`) runs.
+
+## Watchdog, crash alerts and housekeeping
+
+Docker restarts a crashed service immediately (`unless-stopped`). Every 2 minutes a
+watchdog also:
+
+- restarts a game server that stopped answering (3 failed healthchecks in a row);
+- reports a crash with its exit code and the last 40 log lines (player IP addresses
+  and this server's passwords are masked);
+- reports a stopped server, a Discord/GeoIP service that keeps stopping, and less than
+  5 GiB free disk space (each at most every 6 hours).
+
+Any failing scheduled job (backup, off-site copy, pruning, housekeeping) is reported
+too. Alerts go to a Discord webhook if you entered one (create it in a private channel
+that only administrators can read) and always to the system journal
+(`journalctl -u 'opencj-*'`).
+
+Each Sunday, housekeeping removes old release images of this machine's servers once no
+container uses them, Docker build cache older than a week, the APT package cache, the
+migration copy 30 days after a successful migration and replaced runtime folders 30 days
+after a `refresh`.
+
+## Change, upgrade and refresh
+
+```sh
+sudo opencj add-server         # add another server to this machine
+sudo opencj configure map-test # name, public/private, slots, port, map, downloads, Discord
+sudo bash opencj.sh upgrade            # from the new release's checkout: all servers on this machine
+sudo opencj refresh acceptance # replace acceptance's data with a fresh copy of main
+```
+
+`configure` refuses when generated files were edited by hand, shows each current value
+as the default, restarts only that server, and updates the firewall. Making a server
+private generates a new join password.
+
+`upgrade` runs from the new release's checkout and upgrades each server in order
+(database owners first). For each it takes a full database backup (in
+`upgrade-backups/`), builds the new release while the old one keeps running, applies
+the new database migrations, restarts and checks the server. If the new release does
+not start and the database schema was not changed, it switches back to the previous
+release automatically; otherwise it stops with instructions and the backup to restore.
+Interrupted upgrades continue where they stopped. Servers on other machines that share
+a database here must be upgraded too.
+
+`refresh` works for servers created as a copy (for example acceptance from main). The
+source pauses for about a minute for a consistent snapshot, and the refresh is refused
+while players are connected to it. The copy's database, saves and checkpoint drafts
+are replaced; its previous runtime folder is kept for 30 days.
 
 ## Verify, operate and recover
 
@@ -204,8 +493,8 @@ persistent `runtime/`. Secret files are owner-only. Keep the join and administra
 files private; setup prints their locations, not their values.
 
 ```sh
-bash setup.sh --instance-dir /srv/opencj/main --check
-bash setup.sh --instance-dir /srv/opencj/main --backup
+sudo opencj install --instance-dir /srv/opencj/main-eu --check
+sudo opencj install --instance-dir /srv/opencj/main-eu --backup
 ```
 
 `--check` verifies schema, grants, release image and the engine's actual UDP
@@ -218,47 +507,43 @@ together; do not copy another instance's volume or project identifiers into them
 It saves the owning local database, configuration and checkpoint/runtime files
 under `backups/`. Shared databases must be backed up from their owner. Runtime
 files and the SQL snapshot are not one atomic transaction. External game/mod
-assets and database user grants are not included. Keep an off-machine copy and
-choose a backup schedule/retention policy for the deployment; setup does not
-install a host cron job or delete old backups automatically.
+assets and database user grants are not included. Manual verified backups under `backups/` are separate from the bounded scheduled
+SQL backups and are not automatically pruned. Include an off-machine copy in your
+recovery plan. Website configuration is included when enabled.
 
 For explicit service operations, use the generated project:
 
 ```sh
-docker compose -f /srv/opencj/main/compose.json ps
-docker compose -f /srv/opencj/main/compose.json logs --tail 100 server
-docker compose -f /srv/opencj/main/compose.json up -d --wait
+sudo docker compose -f /srv/opencj/main-eu/compose.json ps
+sudo docker compose -f /srv/opencj/main-eu/compose.json logs --tail 100 server
+sudo docker compose -f /srv/opencj/main-eu/compose.json up -d --wait
 ```
 
-Services restart after process/container exits and host reboots (`unless-stopped`).
-An unhealthy status alone does not restart a hung process; monitor and alert on
-it. Docker logs rotate at 10 MiB with three files per service. Monitor persistent
-runtime files and database/backups disk usage separately. Before deliberate
-restarts, check players and restore the previous map according to the operator's
-maintenance policy.
+Services restart after process/container exits and host reboots (`unless-stopped`);
+the watchdog restarts hung game servers. Docker logs rotate at 10 MiB with three files
+per service. Before deliberate restarts, check players and restore the previous map
+according to the operator's maintenance policy.
 
 Failed setup retains its owned data and private diagnostic files. A subsequent
 run without `--config` resumes unfinished stages using the original identities.
-It discards temporary failed extraction files, not database contents. An interrupted
-migration remains blocked for deliberate inspection/restore; never erase it or
-replay it merely to make setup proceed. The external database volume survives
+It discards temporary failed extraction files and may reset only an owned,
+unaccepted restore candidate as described above. Existing schema migration
+ledger conflicts still require deliberate inspection. The external database volume survives
 normal Compose teardown, including `down --volumes`.
 
-This command does not upgrade a ready installation to a different release.
-Back up, stop all writers, follow the [migration procedure](../operations/database.md),
-and deploy matching source/native/client versions deliberately. Never attach a
-newer schema to an older release just by editing the recorded version.
+Rerunning setup never upgrades a ready installation; use `opencj.sh upgrade` (from the new release checkout). Never
+attach a newer schema to an older release just by editing the recorded version.
 
 ## Verification and remaining beta work
 
 Run the maintained installation test with explicitly supplied licensed assets:
 
 ```sh
-python3 -B dev-tools/tests/run-server-setup.py --game-dir GAME_DIR --mod-dir MOD_DIR
+sudo python3 -B dev-tools/tests/run-server-setup.py --game-dir GAME_DIR --mod-dir MOD_DIR
 ```
 
 It creates separate installations and synthetic databases, exercises repeated
-setup, database isolation/sharing, SSH forwarding and an optional fixture website,
+setup, database isolation/sharing, SSH forwarding and the shipped website,
 and removes its owned resources. See the [test guide](../development/testing.md).
 This does not provision an actual rented VM, connect a human game client or prove
 24/7 performance. Apply the [beta readiness review](../operations/beta-readiness.md)

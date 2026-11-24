@@ -126,6 +126,15 @@ def validate_assets(directory, kind):
             raise ValueError(f'Missing {kind} asset: {name}')
 
 
+def shared_assets_root(instance_dir):
+    """One read-only copy of game files, maps and compiled mod files for every installation on a host.
+
+    Installations live side by side in the host directory (for example /srv/opencj/main-eu),
+    so the shared copy is their sibling /srv/opencj/assets.
+    """
+    return instance_dir.parent / 'assets'
+
+
 def prepare_assets(source, kind, instance_dir, expected_sha256=''):
     """Use supplied directories read-only; publish an extracted archive only after validation."""
     supplied = Path(source).expanduser()
@@ -133,8 +142,9 @@ def prepare_assets(source, kind, instance_dir, expected_sha256=''):
         directory = supplied.resolve()
         validate_assets(directory, kind)
         return directory
-    assets_dir = instance_dir / 'assets'
-    assets_dir.mkdir(exist_ok=True)
+    assets_dir = shared_assets_root(instance_dir)
+    assets_dir.mkdir(mode=0o755, exist_ok=True)
+    assets_dir.chmod(0o755)
     installed = assets_dir / kind
     if installed.exists():
         validate_assets(installed, kind)

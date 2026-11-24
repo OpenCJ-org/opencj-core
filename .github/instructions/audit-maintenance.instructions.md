@@ -173,7 +173,7 @@ requirements change.
 
 ## Release setup and dependencies
 
-Keep `setup.sh`, `VERSION`, the release image and the server-installation guide
+Keep `opencj.sh`, `VERSION`, the release image and the server-installation guide
 consistent. Initialize only pinned engine submodules. Build in isolated outputs;
 never let a setup test rebuild or restart a live installation. Keep Docker/client
 credentials out of command output and the gameplay container's mounts.
@@ -181,8 +181,10 @@ credentials out of command output and the gameplay container's mounts.
 Changes to release configuration, assets, database transports or startup require
 the portable setup checks and the relevant `server-setup` integration scenarios.
 Test a fresh named schema and repeat-run preservation. Existing/shared databases
-must pass the checksummed migration ledger without automatic bootstrap, grant
-changes or upgrades. Refuse unrelated volumes and preserve interrupted migrations.
+must pass the checksummed migration ledger without automatic bootstrap or schema
+upgrades. Generic external connections must not change grants. A selected managed
+owner may provision separately owned client accounts with the maintained runtime
+or website policy; never copy its administration credentials into a client. Refuse unrelated volumes and preserve interrupted migrations.
 
 Keep downloadable dependencies/source records explicit, verify asset checksums,
 and retain component/file-specific notices in installed outputs. Optional website
@@ -190,3 +192,18 @@ integration must use its supplied Compose contract, never an invented applicatio
 or stale `server-web`. Keep known release/security limits and verification scope
 in current documentation. Do not claim blank-host, real-client or long-duration
 acceptance from container startup or mocked prerequisite checks.
+
+Migration changes require a consistent synthetic export/import and retry checks.
+Use authoritative console status for map/player maintenance guards; public queries
+can hide maps and players. Exclude one-off Compose containers and match resolved
+configuration ownership. Fence source writers before snapshotting, restore the
+captured map/write settings after rehearsal, and refuse automatic rollback after
+cutover acceptance. Only unaccepted owned restore volumes may be replaced on retry.
+
+Service identity changes require non-root runtime checks plus locked, non-login
+Linux accounts without sudo/Docker membership. Remote managed database sharing
+must generate a forwarding-only SSH identity; administrator keys belong only to
+provisioning. Website access uses its maintained table allowlist and a separate
+identity. Scheduled backups must bound storage/time, preserve the newest successful
+copy on failure and run once per database owner. Host-wide update/reboot policy is
+opt-in and must be verified on a disposable host, including timezone scheduling.

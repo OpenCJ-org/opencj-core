@@ -9,7 +9,7 @@ python3 -B dev-tools/scripts/test.py portable
 This validates the test catalogue, then runs the explicitly reviewed setup,
 discovery, SQL-client, SQL-extraction, name-policy, client-build, console transport, GeoIP and Discord unit tests plus source/asset checks. It requires
 Python 3 and Git, but no Docker, initialized installation, database credentials,
-game assets or network access. SQL-client tests use short-lived Python child processes;
+game assets or network access. SQL-client and backup-stream tests use short-lived Python child processes;
 Discord uses a temporary Unix socket. Failures,
 empty unit suites and skipped unit tests produce a nonzero exit status.
 
@@ -459,3 +459,26 @@ Claude's not-yet-supplied website or connect a human game client. The portable
 setup tests additionally exercise rejected inputs, archive traversal/special
 files, missing/checksummed downloads, secret boundaries and edited-file
 preservation. They do not establish live network behavior.
+
+## Operational setup and migration checks
+
+Run `server-setup` as root only on a disposable Ubuntu 24.04 host. It creates
+restricted Linux service accounts as well as isolated Docker resources; running
+it against an administrator's workstation does not prove fresh-host provisioning.
+The `setup-unit` group (including `test_operations_setup.py`: off-site retention,
+download modes, HTTPS routing, prompts, shared assets, firewall rules, crash alerts
+and map validation) covers transfer checksums, runtime retry preservation,
+accepted-database replacement refusal, player guards, topology dependencies,
+website grant boundaries and backup stream/retention limits.
+
+For a fresh-host acceptance exercise, use `sudo opencj install --plan PRIVATE_PLAN`
+on a disposable Ubuntu VM without Docker. Supply a synthetic migration source and
+select main, an independent acceptance copy, a clean map-test database and the
+actual website. Check table inventories, runtime hashes, restricted Linux/SQL
+accounts, HTTP generation, repeat preservation and configured systemd timers.
+Exercise an interrupted unaccepted import separately, then rerun without `--plan`.
+Only after synthetic migration passes should an explicitly authorized production
+rehearsal export real data; its source must resume with the captured map and
+original database write settings. Keep all exports and evidence private and remove
+only owned fixture resources. These checks are not a 32-player soak or human
+in-game validation.

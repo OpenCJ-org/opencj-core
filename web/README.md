@@ -145,3 +145,17 @@ The Discord button uses Discord's brand color `#5865f2`.
   under the SIL Open Font License and are not bundled.
 - The logo's letters are outlines of Chakra Petch Bold (SIL Open Font License
   1.1); see [brand/README.md](brand/README.md) for the files and how to rebuild them.
+
+## Integrated server setup
+
+The [host setup wizard](../docs/setup/server.md) can configure this project for a
+selected game instance, with separate Linux users, a unique read-only SQL account,
+installed map paths and private per-instance Compose configuration. It does not
+rewrite this checkout's `.env`. The generator accepts `WEB_DB_PASSWORD_FILE` as an
+alternative to `WEB_DB_PASSWORD`; the installer mounts only that password file in
+the generator. The HTTP container receives neither database credential. Standalone
+Compose users can continue using the documented `.env` workflow.
+
+With a domain name, setup adds a Caddy container that serves the site over HTTPS on
+ports 80/443 with automatic Let's Encrypt certificates; `/usermaps/` also stays
+reachable over plain HTTP for in-game map downloads.

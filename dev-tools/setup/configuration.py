@@ -13,9 +13,126 @@ RELEASE = 'beta-0.1.0'
 MYSQL_IMAGE = 'mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b'
 
 
+DOWNLOAD_MODES = ('website', 'in-game', 'off')
+DISCORD_SNOWFLAKE_PATTERN = r'[0-9]{15,22}'
+DISCORD_TOKEN_MAX_CHARACTERS = 200
+
+
+def ask(label, default='', *, parse=None, choices=None):
+    """Ask until the answer is valid, so one typo does not discard all earlier answers.
+
+    parse converts the text and raises ValueError for an invalid answer; choices
+    limits the answer to fixed words. End of input still stops setup (EOFError).
+    """
+    while True:
+        answer = input(f'{label} [{default}]: ').strip() or str(default)
+        if choices and answer not in choices:
+            print('Choose one of: ' + ', '.join(choices), flush=True)
+            continue
+        if parse is None:
+            return answer
+        try:
+            return parse(answer)
+        except ValueError as error:
+            print('Invalid answer: ' + str(error), flush=True)
+
+
 def prompt(label, default=''):
-    answer = input(f'{label} [{default}]: ').strip()
-    return answer or str(default)
+    return ask(label, default)
+
+
+def ask_yes_no(label, default):
+    answer = ask(label + ' yes/no', 'yes' if default else 'no', choices=('yes', 'no'))
+    return answer == 'yes'
+
+
+def ask_int(label, default, minimum, maximum):
+    def parse(text):
+        value = int(text)
+        if not minimum <= value <= maximum:
+            raise ValueError(f'use a number from {minimum} to {maximum}')
+        return value
+    return ask(label, default, parse=parse)
+
+
+def ask_port(label, default, *, allow_disabled=False):
+    return ask_int(label, default, 0 if allow_disabled else 1, 65535)
+
+
+def is_main_instance(name):
+    """Main/production servers get production defaults (backups, Discord, GeoIP)."""
+    return name == 'main' or name.startswith('main-')
+
+
+def collect_downloads(name, *, public, website_url=''):
+    """Choose how players obtain missing maps on this server.
+
+    website: fast HTTP downloads of pool maps from the OpenCJ website.
+    in-game: the game sends files itself (slow), only to players who can join,
+             so a password-protected server keeps its test maps private.
+    off: players must already have the maps.
+    """
+    default = 'website' if public and website_url else 'in-game'
+    mode = ask('Map downloads for ' + name + ': ' + ' / '.join(DOWNLOAD_MODES), default,
+               choices=DOWNLOAD_MODES)
+    result = {'mode': mode}
+    if mode == 'website':
+        result['base_url'] = ask('Website address for map downloads (http://, CoD4 clients cannot use https)',
+                                 website_url or 'http://', parse=validate_download_url)
+    return result
+
+
+def collect_discord(name):
+    """Optional chat bridge between this server and one Discord channel."""
+    if not ask_yes_no('Connect ' + name + ' to Discord (chat bridge)?', is_main_instance(name)):
+        return {'enabled': False}
+    print('Create a bot at https://discord.com/developers/applications, invite it to your'
+          ' Discord server with message permissions, and copy its token.', flush=True)
+    return {
+        'enabled': True,
+        'guild_id': ask('Discord server (guild) ID', parse=validate_discord_id),
+        'channel_id': ask('Discord channel ID for server chat', parse=validate_discord_id),
+        'token': validate_discord_token(getpass.getpass('Discord bot token (hidden): ').strip()),
+    }
+
+
+def validate_download_url(url):
+    if not re.fullmatch(r'http://[A-Za-z0-9][A-Za-z0-9.-]{0,252}(:[0-9]{1,5})?', url):
+        raise ValueError('use http://hostname without a path; the game appends usermaps/<map>/<file>')
+    return url
+
+
+def validate_discord_id(value):
+    if not re.fullmatch(DISCORD_SNOWFLAKE_PATTERN, value):
+        raise ValueError('Discord IDs are 15-22 digits (enable Developer Mode, then Copy ID)')
+    return value
+
+
+def validate_discord_token(token):
+    # The bridge reads key=value lines, so a token must be one line without spaces.
+    if not token or len(token) > DISCORD_TOKEN_MAX_CHARACTERS or not re.fullmatch(r'[A-Za-z0-9._-]+', token):
+        raise ValueError('Invalid Discord bot token')
+    return token
+
+
+def validate_downloads(downloads):
+    if not isinstance(downloads, dict) or downloads.get('mode') not in DOWNLOAD_MODES:
+        raise ValueError('downloads.mode must be one of: ' + ', '.join(DOWNLOAD_MODES))
+    result = {'mode': downloads['mode']}
+    if result['mode'] == 'website':
+        result['base_url'] = validate_download_url(downloads.get('base_url', ''))
+    return result
+
+
+def validate_discord(discord):
+    if not isinstance(discord, dict) or type(discord.get('enabled')) is not bool:
+        raise ValueError('discord.enabled must be a Boolean')
+    if not discord['enabled']:
+        return {'enabled': False}
+    return {'enabled': True,
+            'guild_id': validate_discord_id(str(discord.get('guild_id', ''))),
+            'channel_id': validate_discord_id(str(discord.get('channel_id', ''))),
+            'token': validate_discord_token(str(discord.get('token', '')))}
 
 
 def choose_port(first):
@@ -31,49 +148,95 @@ def choose_port(first):
     raise ValueError('No free suggested port; specify a port explicitly')
 
 
-def collect_database():
+def collect_database(mode=None):
     """Keep existing-database credentials separate from new local administration."""
-    mode = prompt('Database: new / instance / existing', 'new')
+    if mode is None:
+        mode = prompt('Database: new / instance / owner / existing', 'new')
     if mode == 'new':
         return {'mode': 'new', 'name': 'openCJ_cod4',
-                'publish_port': int(prompt('Local database port (SSH sharing; 0 disables)', choose_port(3306)))}
+                'publish_port': ask_port('Local database port (SSH sharing; 0 disables)', choose_port(3306),
+                                         allow_disabled=True)}
     if mode == 'instance':
         return {'mode': 'instance', 'instance_dir': prompt('Existing OpenCJ instance directory')}
+    if mode == 'owner':
+        ssh = collect_ssh()
+        return {'mode': 'owner', 'ssh': ssh, 'owner_remote': {
+            'root': prompt('Database owner opencj-core checkout'),
+            'instance': prompt('Database owner installation directory'),
+            'sudo': ask_yes_no('Use sudo for source administration?', ssh['user'] != 'root'),
+        }}
     if mode != 'existing':
-        raise ValueError('Database choice must be new, instance, or existing')
-    database = {'mode': 'existing', 'transport': prompt('Database transport: ssh / private', 'ssh')}
+        raise ValueError('Database choice must be new, instance, owner, or existing')
+    database = {'mode': 'existing', 'transport': ask('Database transport: ssh / private', 'ssh',
+                                                     choices=('ssh', 'private'))}
     database['host'] = prompt('Database hostname as reached by that connection', '127.0.0.1')
-    database['port'] = int(prompt('Database port', 3306))
+    database['port'] = ask_port('Database port', 3306)
     database['name'] = prompt('Existing database name (must end in 4)', 'openCJ_cod4')
     database['user'] = prompt('Restricted gameplay database user', 'opencj')
     database['password'] = getpass.getpass('Gameplay database password (hidden): ')
     if database['transport'] == 'ssh':
         database['ssh'] = {
-            'host': prompt('SSH hostname'), 'port': int(prompt('SSH port', 22)),
+            'host': prompt('SSH hostname'), 'port': ask_port('SSH port', 22),
             'user': prompt('SSH user'), 'key': prompt('SSH private-key file'),
             'known_hosts': prompt('Verified SSH known_hosts file'),
         }
     return database
 
 
+def collect_ssh():
+    return {
+        'host': prompt('Source SSH hostname'), 'port': ask_port('Source SSH port', 22),
+        'user': prompt('Source SSH user'), 'key': prompt('SSH private-key file'),
+        'known_hosts': prompt('Verified SSH known_hosts file'),
+    }
+
+
 def collect_configuration(instance_dir):
     name = prompt('Instance name', instance_dir.name)
-    public = prompt('List publicly and allow access without a join password? yes/no', 'no') == 'yes'
+    mode = ask('Installation: new / migrate / restore', 'new', choices=('new', 'migrate', 'restore'))
     result = {
         'name': name, 'hostname': prompt('Server display name', f'OpenCJ {name}'),
-        'port': int(prompt('Game port', choose_port(28960))),
+        'port': ask_port('Game port', choose_port(28960)),
         'bind_ip': prompt('Game bind address', '0.0.0.0'),
-        'slots': int(prompt('Player slots', 32)), 'public': public,
-        'map': prompt('Initial installed map', 'mp_killhouse'),
-        'game_assets': prompt('Licensed CoD4 assets directory/archive/HTTPS URL'),
-        'mod_assets': prompt('Matching compiled OpenCJ assets directory/archive/HTTPS URL'),
-        'database': collect_database(),
+        'slots': ask_int('Player slots', 32, 1, 32),
+        'public': ask_yes_no('List publicly without a join password?', False),
     }
-    for kind in ('game', 'mod'):
-        if result[f'{kind}_assets'].startswith('https://'):
-            result[f'{kind}_sha256'] = prompt(f'{kind.title()} archive SHA-256')
-    if prompt('Run the OpenCJ website on this machine? yes/no', 'no') == 'yes':
-        result['website_compose'] = prompt('Website project Compose file (from its README)')
+    result['downloads'] = collect_downloads(name, public=result['public'])
+    result['discord'] = collect_discord(name)
+    if mode == 'new':
+        result['map'] = prompt('Initial installed map', 'mp_killhouse')
+        for kind in ('game', 'mod'):
+            result[kind + '_assets'] = prompt(kind.title() + ' assets directory/archive/HTTPS URL')
+            if result[kind + '_assets'].startswith('https://'):
+                result[kind + '_sha256'] = prompt(kind.title() + ' archive SHA-256')
+        result['database'] = collect_database()
+    elif mode in ('migrate', 'restore'):
+        result['database'] = {'mode': 'new', 'publish_port': 0}
+        if mode == 'restore':
+            result['migration'] = {'transport': 'bundle', 'bundle': prompt('Complete migration bundle directory')}
+        else:
+            local = ask_yes_no('Is the source on this machine?', False)
+            migration = {
+                'transport': 'local' if local else 'ssh',
+                'source_root': prompt('Source opencj-core checkout directory'),
+                'source_instance': prompt('Source installation directory (or development dev-tools directory)'),
+                'intent': ask('Migration: rehearsal (resume source) / cutover (leave source stopped)', 'rehearsal',
+                              choices=('rehearsal', 'cutover')),
+                'allowed_player': prompt('Only this connected player may be interrupted (blank requires empty server)'),
+            }
+            if not local:
+                migration['ssh'] = collect_ssh()
+                migration['sudo'] = ask_yes_no('Use sudo for source administration?',
+                                               migration['ssh']['user'] != 'root')
+            result['migration'] = migration
+    if ask_yes_no('Run the OpenCJ website?', False):
+        from website import collect_website
+        result['website'] = collect_website(result['port'])
+        if result['database']['mode'] == 'existing':
+            result['website']['user'] = prompt('Existing dedicated read-only website database user')
+            result['website']['password'] = getpass.getpass('Website database password (hidden): ')
+    from maintenance import collect_database_maintenance
+    result.update(collect_database_maintenance(name, owns_database=result['database']['mode'] == 'new'))
     return result
 
 
@@ -96,9 +259,48 @@ def validate_port(port, *, allow_disabled=False):
         raise ValueError('Invalid TCP/UDP port')
 
 
+def validate_ssh(ssh):
+    validate_host(ssh['host'])
+    validate_port(ssh['port'])
+    if not re.fullmatch(r'[a-z_][a-z0-9_-]*', ssh['user']):
+        raise ValueError('Invalid SSH user')
+    for key in ('key', 'known_hosts'):
+        path = Path(ssh[key]).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f'Missing SSH {key} file')
+        ssh[key] = str(path)
+
+
+def validate_migration(migration, project):
+    transport = migration.get('transport')
+    if transport == 'bundle':
+        path = Path(migration['bundle']).expanduser().resolve()
+        if not (path / 'manifest.json').is_file():
+            raise ValueError('Migration bundle manifest is missing')
+        migration['bundle'] = str(path)
+        return
+    if transport not in ('local', 'ssh') or migration.get('intent') not in ('rehearsal', 'cutover'):
+        raise ValueError('Invalid source transport or migration intent')
+    for key in ('source_root', 'source_instance'):
+        value = migration[key]
+        if not isinstance(value, str) or not value.startswith('/') or any(char in value for char in '\n\r\x00'):
+            raise ValueError('Source paths must be absolute paths without control characters')
+    migration['source_bundle'] = migration['source_root'] + '/dev-tools/local/transfers/' + project
+    if transport == 'ssh':
+        validate_ssh(migration['ssh'])
+
+
 def resolve_database(database):
     """Resolve shared local instances to their runtime account; never copy their admin secret."""
     mode = database['mode']
+    if mode == 'owner':
+        database = dict(database)
+        database.update(name='openCJ_cod4', host='127.0.0.1', port=3306,
+                        user='pending', password='pending', transport='ssh')
+        for key in ('root', 'instance'):
+            path = database['owner_remote'][key]
+            if not isinstance(path, str) or not path.startswith('/') or any(char in path for char in '\n\r\x00'):
+                raise ValueError('Remote owner paths must be absolute')
     if mode == 'instance':
         source = Path(database['instance_dir']).expanduser().resolve()
         previous = json.loads((source / 'installation.json').read_text())
@@ -110,7 +312,8 @@ def resolve_database(database):
         if prior_database['mode'] != 'new':
             raise ValueError('Select the instance that owns the local database')
         database = {key: prior_database[key] for key in ('name', 'user', 'password', 'host', 'port')}
-        database.update(mode='existing', transport='instance', network=previous['project'] + '_default')
+        database.update(mode='existing', transport='instance', network=previous['project'] + '_default',
+                        owner_instance=str(source))
     if mode == 'new':
         database = dict(database)
         database.setdefault('name', 'openCJ_cod4')
@@ -127,16 +330,7 @@ def resolve_database(database):
         if database.get('transport') not in ('ssh', 'private', 'instance'):
             raise ValueError('Choose an SSH tunnel or an already-secured private database network')
         if database['transport'] == 'ssh':
-            ssh = database['ssh']
-            validate_host(ssh['host'])
-            validate_port(ssh['port'])
-            if not re.fullmatch(r'[a-z_][a-z0-9_-]*', ssh['user']):
-                raise ValueError('Invalid SSH user')
-            for key in ('key', 'known_hosts'):
-                path = Path(ssh[key]).expanduser().resolve()
-                if not path.is_file():
-                    raise ValueError(f'Missing SSH {key} file')
-                ssh[key] = str(path)
+            validate_ssh(database['ssh'])
     return database
 
 
@@ -163,7 +357,7 @@ def validate_configuration(settings):
     if not re.fullmatch(r'[a-z0-9_]+', result['map']):
         raise ValueError('Invalid starting map')
     for kind in ('game', 'mod'):
-        if not isinstance(result.get(f'{kind}_assets'), str):
+        if not result.get('migration') and not isinstance(result.get(f'{kind}_assets'), str):
             raise ValueError(f'Supply {kind} assets')
     result['database'] = resolve_database(result.get('database', {'mode': 'new'}))
     if result.get('website_compose'):
@@ -174,6 +368,27 @@ def validate_configuration(settings):
     result['release'] = RELEASE
     result['project'] = 'opencj-' + result['name'] + '-' + secrets.token_hex(4)
     result['volume'] = result['project'] + '-database'
+    if result['database']['mode'] in ('new', 'owner') or result['database'].get('owner_instance'):
+        result['database']['user'] = 'game_' + secrets.token_hex(8)
+        result['database']['password'] = secrets.token_hex(24)
+    if result.get('migration'):
+        if result['database']['mode'] != 'new':
+            raise ValueError('Restore requires a new independent database')
+        validate_migration(result['migration'], result['project'])
+        if result['migration'].get('intent') == 'rehearsal' and result['public']:
+            raise ValueError('Rehearsals must remain private')
+    if result.get('website'):
+        from website import validate_website
+        result['website'] = validate_website(result['website'], result['database'])
+    result['downloads'] = validate_downloads(result.get('downloads', {'mode': 'in-game'}))
+    result['discord'] = validate_discord(result.get('discord', {'enabled': False}))
+    from maintenance import backup_policy, geoip_policy, prune_policy
+    result['backups'] = backup_policy(result)
+    result['pruning'] = prune_policy(result)
+    result['geoip'] = geoip_policy(result)
+    if result['geoip']['enabled']:
+        # The GeoIP provisioning helper accepts only geoip_* account names.
+        result['geoip']['user'] = 'geoip_' + secrets.token_hex(6)
     result['uid'] = os.getuid() or 10000
     result['gid'] = os.getgid() or 10000
     result['join_password'] = '' if result['public'] else secrets.token_hex(12)
