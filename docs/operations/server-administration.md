@@ -11,7 +11,8 @@ first installation, every command is available as `sudo opencj <command>`.
 
 - **Game servers** each run in their own containers, as their own Linux user, with
   their own database account. Players reach them through the firewall on their
-  game port.
+  game port. main-eu always runs; acceptance and map-test are **on demand**: off
+  until you start them, database included.
 - **Databases.** main-eu owns the production database. acceptance has its own
   *copy*, refreshed on request; changes there never reach main. map-test has its own
   clean database. *Planned, switched off until tested:* a server in another country
@@ -72,7 +73,8 @@ sudo bash opencj.sh install
 
 The wizard asks which servers to create (suggested: `main-eu,acceptance,map-test`),
 then per server: name, game port, the address players connect to, slots, public or
-private, where its database comes from, map downloads, Discord, backups and pruning;
+private, whether it stays off until you start it (yes for every server except main),
+where its database comes from, map downloads, Discord, backups and pruning;
 then for the machine: website and its domains, updates, firewall, SSH hardening and
 alerts. It shows a summary and the DNS records to create before it starts.
 Building and copying can take an hour. If anything stops, run the same command
@@ -91,7 +93,9 @@ on the new servers. When you are ready to move for real, migrate again with
 3. `sudo opencj status` ends with **Everything OK.** (a new install may list jobs as
    "not run yet" and a certificate that is still being fetched).
 4. Join each server in game (private servers: password in
-   `/srv/opencj/<server>/join-password`) and open the website over HTTPS.
+   `/srv/opencj/<server>/join-password`) and open the website over HTTPS. Test
+   servers are off after installing: `sudo opencj start acceptance` first (see
+   *Test servers on demand*).
 5. When main is ready for players: `sudo opencj configure main-eu` and answer
    **yes** to public access.
 
@@ -127,6 +131,8 @@ Everything under `/srv/opencj` is readable only by root. Never share
 | Outside check (on the external backup server): game servers and website answer | Every 2 minutes | Alerts: DOWN after ~6 minutes, RECOVERED when back |
 | Website pages rebuilt, HTTPS certificate renewed | Every minute / by itself | The website |
 
+A test server that is off is left alone: the watchdog does not report it, and its
+backup and pruning jobs (if switched on) skip it, since its data cannot change.
 All times are Europe/Amsterdam. Failed jobs and watchdog findings are sent to
 the alert channel (see below) and always written to the system journal.
 
@@ -147,7 +153,7 @@ It checks everything on this machine and ends with either **Everything OK.** or 
 
 | Part | What is checked |
 | --- | --- |
-| Servers | State, health, map, players and crash count of every game server |
+| Servers | State, health, map, players and crash count of every game server; a test server that is off shows `off (on demand)`, which is not a problem |
 | Services | Every container of each server: game server, database, Discord bridge, GeoIP updater |
 | Website | Page generator, web server and HTTPS proxy; for every domain, the certificate this machine serves and how many days it has left (a problem under 14 days: renewal is failing) |
 | Backups | Age of the last backup and off-site copy (a problem after 26 hours), last pruning |
@@ -163,7 +169,8 @@ alert channel.
 
 - Test that a backup really restores, on the acceptance server (never on main):
   `sudo opencj restore acceptance /srv/opencj/main-eu/automatic-backups/<newest>.sql.gz`.
-  If acceptance comes back `running healthy`, the backup works; acceptance then
+  If acceptance is off, the command starts it for the restore and switches it off
+  again. If the restore finishes without an error, the backup works; acceptance then
   simply holds main's data from that night. A backup you have never restored is
   not proven.
 - On the external backup server, check that new files arrive:
@@ -178,6 +185,7 @@ alert channel.
 | You want to change | Command |
 | --- | --- |
 | Server name, game port, address players connect to, public/private, join password, admin (rcon) password, player slots, start map | `sudo opencj configure <server>` |
+| Always running, or off until started (on demand) | `sudo opencj configure <server>` |
 | Map downloads (website / in-game / off) | `sudo opencj configure <server>` |
 | Discord chat bridge: bot account (token), Discord server, channel; on/off | `sudo opencj configure <server>` |
 | Backups, off-site copies, run pruning, IP-country updates | `sudo opencj configure <server>` (database-owning servers) |
@@ -225,6 +233,29 @@ permission to view the channel and send messages. For the server and channel IDs
 switch on Developer Mode in Discord, then right-click the server or channel > Copy
 ID ([Discord: finding IDs](https://support.discord.com/hc/en-us/articles/206346498)).
 
+## Test servers on demand
+
+acceptance and map-test are only needed now and then, so they are off until you
+start them:
+
+```sh
+sudo opencj start map-test     # waits until players can join (about a minute)
+sudo opencj stop map-test      # asks first if players are connected
+```
+
+`stop` stops the whole server, its own database, Discord bridge and IP-country
+updater included; nothing is deleted. A started test server keeps running, also
+after a reboot, until you stop it. While it is off, the watchdog, `opencj status`
+and the outside check do not count it as a problem. `configure`, `upgrade`,
+`restore` and `refresh` start a test server that is off for the change and switch
+it off again afterwards.
+
+Make a server always run, or on demand, with `sudo opencj configure <server>`. Two
+kinds of server always run: the one with the website (the website reads its
+database), and one whose data another server shares or copies (main-eu, which
+acceptance copies). The main server should always run; `stop` refuses servers that
+are not on demand, so the watchdog does not report them as down.
+
 ## Look at a server
 
 ```sh
@@ -271,7 +302,8 @@ sudo opencj refresh acceptance
 ```
 
 Main pauses for about a minute (refused while players are connected). Acceptance's
-database, saves and checkpoint drafts are replaced by main's current state.
+database, saves and checkpoint drafts are replaced by main's current state. If
+acceptance is off, it is started for the refresh and switched off again.
 
 ## When something goes wrong
 

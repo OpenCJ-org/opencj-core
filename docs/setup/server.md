@@ -39,8 +39,8 @@ response into a root shell.
 
 The default host wizard asks which servers to create, initially suggesting
 `main-eu,acceptance,map-test`. It collects each instance's display name, distinct
-ports, 32-player limit, private/public access and database choice before creating
-services. Private is the default: unlisted/LAN mode plus a generated join password.
+ports, 32-player limit, private/public access, whether it runs only on demand and
+database choice before creating services. Private is the default: unlisted/LAN mode plus a generated join password.
 Per server it also asks for map downloads, the Discord bridge and, for each owned
 database, backups (with an off-site copy), pruning of abandoned runs and IP-country
 updates; production-like defaults apply to `main-*` servers. For the machine it asks
@@ -56,6 +56,15 @@ The suggested topology is:
 | acceptance | copy from main-eu | Independent database initialized from a consistent main snapshot |
 | map-test | new; assets from main-eu | Empty player database with its own runtime, sharing only read-only asset files |
 | later main region | owner (switched off, see below) | Shared production database through a restricted SSH tunnel, with separately revocable SQL credentials |
+
+**On demand.** Every server except `main-*` is off until started by default
+(`"on_demand": true` in a plan). Installation checks it while running and then stops
+it; `sudo opencj start NAME` and `sudo opencj stop NAME` switch it on and off. Stop
+stops the whole Compose project, its own database included, and keeps all data. The
+watchdog, `opencj status` and the printed outside-check targets treat an on-demand
+server that is off as normal, and its backup and pruning jobs skip it. A server cannot
+be on demand when it runs the website or when another server shares or copies its
+database; setup and `configure` refuse that.
 
 Acceptance copying briefly stops its selected source game to capture a consistent
 snapshot. Use the migration player guard and maintenance window. Copying is a
@@ -528,7 +537,8 @@ after a `refresh`.
 
 ```sh
 sudo opencj add-server         # add another server to this machine
-sudo opencj configure map-test # name, public/private, slots, port, map, downloads, Discord
+sudo opencj configure map-test # name, public/private, slots, port, on demand, map, downloads, Discord
+sudo opencj start map-test     # switch an on-demand server on; stop switches it off
 sudo bash opencj.sh upgrade            # from the new release's checkout: all servers on this machine
 sudo opencj refresh acceptance # replace acceptance's data with a fresh copy of main
 ```

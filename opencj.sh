@@ -15,8 +15,10 @@ usage() {
         '' \
         'Afterwards, from anywhere:' \
         '  sudo opencj status                          Everything on this machine, then what needs attention' \
-        '  sudo opencj configure NAME                  Name, address, port, access, passwords, map, downloads,' \
-        '                                              Discord, backups, pruning, website domains' \
+        '  sudo opencj start NAME | stop NAME          Switch a test server (acceptance, map-test) on or off;' \
+        '                                              off stops its database too, the data is kept' \
+        '  sudo opencj configure NAME                  Name, address, port, access, passwords, on demand, map,' \
+        '                                              downloads, Discord, backups, pruning, website domains' \
         '  sudo opencj alerts                          Discord channel for alerts (sends a test message)' \
         '  sudo opencj dns                             DNS records to create, and whether they point here' \
         '  sudo opencj add-server                      Add another server to this machine' \
@@ -45,7 +47,7 @@ case "$command" in
         usage
         exit 0
         ;;
-    install|add-server|status|configure|alerts|dns|maps|restore|refresh|upgrade|backup-receiver|monitor|export|resume-source)
+    install|add-server|start|stop|status|configure|alerts|dns|maps|restore|refresh|upgrade|backup-receiver|monitor|export|resume-source)
         ;;
     *)
         echo "Unknown command: $command" >&2

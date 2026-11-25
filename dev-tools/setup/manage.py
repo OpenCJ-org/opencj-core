@@ -1,6 +1,7 @@
 """Change an installed server's settings, upgrade all servers to this release, or refresh a copy."""
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -8,8 +9,8 @@ import re
 import shutil
 import sys
 
-from configuration import RELEASE, ask, ask_int, ask_port, ask_yes_no, collect_discord, collect_downloads
-from configuration import check_discord_channels, prompt, safe_cvar, validate_discord, validate_downloads
+from configuration import RELEASE, ask, ask_int, ask_on_demand, ask_port, ask_yes_no, collect_discord
+from configuration import check_discord_channels, check_on_demand, collect_downloads, prompt, safe_cvar, validate_discord, validate_downloads
 from operations import operation_lock, read_json, run, save_json
 import install
 import linux_accounts
@@ -58,6 +59,76 @@ def start_services(instance, settings):
         managed_website.start(instance, settings)
 
 
+@contextmanager
+def running_for_maintenance(instance, settings):
+    """Start an on-demand server that is off for the duration of the work, then switch it off again.
+
+    After a failure it is left running, so the problem can be inspected.
+    """
+    was_off = install.switched_off(instance, settings)
+    if was_off:
+        print(settings['name'] + ' is off; starting it for this change...', flush=True)
+        start_services(instance, settings)
+    yield
+    if was_off and settings.get('on_demand'):
+        install.stop_services(instance, settings)
+        print(settings['name'] + ' is off again.', flush=True)
+
+
+def connected_players(instance, settings):
+    """Number of players on the server now; 0 when its console does not answer."""
+    import status
+    container = install.compose(instance, settings, 'ps', '--quiet', 'server')
+    players = status.live_server(container)[1] if container else '0'
+    return int(players) if players.isdigit() else 0
+
+
+def start_instance(host, name):
+    """Start a server (normally an on-demand test server) and wait until players can join."""
+    instance = host / name
+    settings = install.load_installation(instance)
+    with operation_lock(instance / '.setup.lock'):
+        install.verify_managed_files(instance, settings)
+        if install.server_is_running(instance, settings):
+            print(name + ' is already running.')
+            return
+        print('Starting ' + name + '...', flush=True)
+        start_services(instance, settings)
+        install.check_ready(instance, settings)
+    print(name + ' is running on port ' + str(settings['port'])
+          + ('. Switch it off again with: sudo opencj stop ' + name if settings.get('on_demand') else '.'))
+
+
+def stop_instance(host, name, *, assume_yes):
+    """Switch an on-demand server off completely, its own database included; its data is kept."""
+    instance = host / name
+    settings = install.load_installation(instance)
+    if not settings.get('on_demand'):
+        raise ValueError(name + ' always runs, and the watchdog would report it as down. To start it only when'
+                         ' needed, first answer yes to "Keep ' + name + ' off" in: sudo opencj configure ' + name)
+    with operation_lock(instance / '.setup.lock'):
+        if install.switched_off(instance, settings):
+            print(name + ' is already off.')
+            return
+        players = connected_players(instance, settings)
+        if players and not assume_yes and not ask_yes_no(
+                str(players) + ' player(s) are connected and will be disconnected. Stop anyway?', False):
+            raise SystemExit('Nothing was changed.')
+        install.stop_services(instance, settings)
+    print(name + ' is off. Start it again with: sudo opencj start ' + name)
+
+
+def on_demand_allowed(plan, settings):
+    """Whether this server may be switched off; prints why not (the website or another server needs it)."""
+    others = [item for item in plan['instances'] if item['name'] != settings['name']]
+    try:
+        check_on_demand([*others, {**settings, 'on_demand': True}])
+    except ValueError as error:
+        print('Note: ' + str(error) + '.', flush=True)
+        return False
+    return True
+
+
 def ask_map(current):
     def parse(text):
         if not re.fullmatch(r'[a-z0-9_]+', text):
@@ -66,7 +137,7 @@ def ask_map(current):
     return ask('Start map', current, parse=parse)
 
 
-def collect_changes(settings, other_ports):
+def collect_changes(settings, other_ports, *, can_be_on_demand=True):
     """Ask each changeable setting with its current value as the default."""
     changed = dict(settings)
 
@@ -100,6 +171,9 @@ def collect_changes(settings, other_ports):
     if not changed['public']:
         changed['join_password'] = ask_password('Join password', changed['join_password'])
     changed['rcon_password'] = ask_password('Administration (rcon) password', settings['rcon_password'])
+    on_demand = ask_on_demand(settings['name'], settings.get('on_demand', False)) if can_be_on_demand else False
+    if on_demand != settings.get('on_demand', False):
+        changed['on_demand'] = on_demand
     if owns_database(settings) and ask_yes_no('Change backups, off-site copies, run pruning or IP-country updates?',
                                               False):
         changed.update(maintenance.collect_database_maintenance(settings['name'], owns_database=True))
@@ -146,7 +220,8 @@ def configure_instance(host, name):
     other_ports = {item['port'] for item in plan['instances'] if item['name'] != name}
     with operation_lock(instance / '.setup.lock'):
         install.verify_managed_files(instance, settings)
-        changed = collect_changes(settings, other_ports)
+        was_off = install.switched_off(instance, settings)
+        changed = collect_changes(settings, other_ports, can_be_on_demand=on_demand_allowed(plan, settings))
         if changed == settings:
             print('Nothing changed.')
             return
@@ -168,11 +243,16 @@ def configure_instance(host, name):
         print('Restarting ' + name + ' with the new settings...', flush=True)
         start_services(instance, changed)
         install.check_ready(instance, changed)
+        # The new settings were checked while running; an on-demand server that was off stays off.
+        off_again = was_off and changed.get('on_demand', False)
+        if off_again:
+            install.stop_services(instance, changed)
     for item in plan['instances']:
         if item['name'] == name:
             # The plan drives the firewall (game port, website ports 80/443) on later runs.
             item.update({key: changed[key] for key in ('hostname', 'port', 'address', 'slots', 'public', 'map',
                                                        'downloads', 'discord')})
+            item['on_demand'] = changed.get('on_demand', False)
             if changed.get('website'):
                 item['website'] = changed['website']
     save_json(host / 'host-setup.json', plan)
@@ -187,7 +267,12 @@ def configure_instance(host, name):
         print('The join password changed; it is in ' + str(instance / 'join-password'))
     if changed['rcon_password'] != settings['rcon_password']:
         print('The administration password changed; it is in ' + str(instance / 'rcon-password'))
-    print(name + ' now runs with the new settings.')
+    if off_again:
+        print(name + ' has the new settings and is off again. Start it with: sudo opencj start ' + name)
+    elif changed.get('on_demand') and not settings.get('on_demand'):
+        print(name + ' now runs with the new settings. It stays on until: sudo opencj stop ' + name)
+    else:
+        print(name + ' now runs with the new settings.')
 
 
 def configure_alerts(host):
@@ -220,7 +305,8 @@ def outside_check_targets(plan):
     fallback = addresses[0] if addresses else '<this server\'s address>'
     targets = []
     for settings in plan['instances']:
-        if settings.get('bind_ip', '0.0.0.0') != '127.0.0.1':
+        # An on-demand server is off most of the time; that is not an outage.
+        if settings.get('bind_ip', '0.0.0.0') != '127.0.0.1' and not settings.get('on_demand'):
             targets.append('game:' + (settings.get('address') or fallback) + ':' + str(settings['port']))
         if settings.get('website', {}).get('domain'):
             targets.append('web:https://' + settings['website']['domain'] + '/')
@@ -344,7 +430,8 @@ def upgrade_host(host):
             if settings['release'] == RELEASE and 'upgrade' not in settings:
                 print(name + ' already runs ' + RELEASE + '.', flush=True)
                 continue
-            upgrade_instance(instance, settings)
+            with running_for_maintenance(instance, settings):
+                upgrade_instance(instance, settings)
     maintenance.install_command_link()
     print('All servers run ' + RELEASE + '; `sudo opencj` now uses this release. Servers on other machines'
           ' that share a database here must be upgraded too.')
@@ -381,7 +468,7 @@ def restore_backup(host, name, backup, *, assume_yes):
           ' lost (a safety copy of the current state is kept). Players are disconnected.', flush=True)
     if not assume_yes and not ask_yes_no('Restore now?', False):
         raise SystemExit('Nothing was changed.')
-    with operation_lock(instance / '.setup.lock'):
+    with operation_lock(instance / '.setup.lock'), running_for_maintenance(instance, settings):
         safety = instance / 'upgrade-backups' / ('before-restore-' + timestamp() + '.sql.gz')
         safety.parent.mkdir(mode=0o700, exist_ok=True)
         maintenance.dump_database(instance, settings, safety,
@@ -416,7 +503,7 @@ def refresh_instance(host, name, *, assume_yes):
           ' are connected to it.', flush=True)
     if not assume_yes and not ask_yes_no('Continue?', False):
         raise SystemExit('Nothing was changed.')
-    with operation_lock(instance / '.setup.lock'):
+    with operation_lock(instance / '.setup.lock'), running_for_maintenance(instance, settings):
         bundle = instance / 'migration' / ('refresh-' + timestamp())
         bundle.parent.mkdir(mode=0o700, exist_ok=True)
         source_export.export_source(host / source_name, bundle, intent='rehearsal', without_assets=True)
@@ -443,6 +530,11 @@ def main():
     configure = commands.add_parser('configure', help='Change a server\'s name, access, passwords, slots, port, map,'
                                                       ' downloads or Discord')
     configure.add_argument('name')
+    start = commands.add_parser('start', help='Start a server that is off (for example acceptance or map-test)')
+    start.add_argument('name')
+    stop = commands.add_parser('stop', help='Switch an on-demand server off, its database included')
+    stop.add_argument('name')
+    stop.add_argument('--yes', action='store_true', help='Stop even when players are connected')
     commands.add_parser('status', help='Check everything on this machine, then list what needs attention')
     commands.add_parser('alerts', help='Set or change the Discord webhook for alerts and send a test alert')
     commands.add_parser('dns', help='DNS records to create for the website and servers, and whether they point here')
@@ -461,6 +553,10 @@ def main():
     host = args.host_dir.expanduser().resolve()
     if args.command == 'configure':
         configure_instance(host, args.name)
+    elif args.command == 'start':
+        start_instance(host, args.name)
+    elif args.command == 'stop':
+        stop_instance(host, args.name, assume_yes=args.yes)
     elif args.command == 'status':
         import status
         status.show_status(host)

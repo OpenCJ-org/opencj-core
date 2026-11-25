@@ -164,30 +164,39 @@ class ConfigureTests(unittest.TestCase):
             return manage.collect_changes(dict(self.settings), other_ports={28960, 28961})
 
     def test_keeping_every_default_changes_nothing(self):
-        # name, port, address, slots, public, map, downloads?, Discord?, join password, rcon password
-        self.assertEqual(self.collect([''] * 10), self.settings)
+        # name, port, address, slots, public, map, downloads?, Discord?, join password, rcon password,
+        # on demand
+        self.assertEqual(self.collect([''] * 11), self.settings)
 
     def test_port_of_another_server_is_refused_and_asked_again(self):
-        changed = self.collect(['', '28960', '28963', '', '', '', '', '', '', '', ''])
+        changed = self.collect(['', '28960', '28963', '', '', '', '', '', '', '', '', ''])
         self.assertEqual(changed['port'], 28963)
 
     def test_address_can_be_set_and_cleared(self):
-        changed = self.collect(['', '', 'test.opencj.org', '', '', '', '', '', '', ''])
+        changed = self.collect(['', '', 'test.opencj.org', '', '', '', '', '', '', '', ''])
         self.assertEqual(changed['address'], 'test.opencj.org')
         self.settings = {**self.settings, 'address': 'test.opencj.org'}
-        self.assertEqual(self.collect(['', '', 'none', '', '', '', '', '', '', ''])['address'], '')
+        self.assertEqual(self.collect(['', '', 'none', '', '', '', '', '', '', '', ''])['address'], '')
 
     def test_going_public_removes_the_join_password(self):
         # A public server has no join password, so that question is skipped.
-        changed = self.collect(['', '', '', '', 'yes', '', 'no', 'no', ''])
+        changed = self.collect(['', '', '', '', 'yes', '', 'no', 'no', '', ''])
         self.assertTrue(changed['public'])
         self.assertEqual(changed['join_password'], '')
 
     def test_passwords_can_be_typed_regenerated_or_kept(self):
-        changed = self.collect(['', '', '', '', '', '', 'no', 'no', 'short', 'MyJoinPass', 'new'])
+        changed = self.collect(['', '', '', '', '', '', 'no', 'no', 'short', 'MyJoinPass', 'new', ''])
         self.assertEqual(changed['join_password'], 'MyJoinPass', 'A too-short password must be asked again')
         self.assertNotEqual(changed['rcon_password'], 'rconpass1')
         self.assertGreaterEqual(len(changed['rcon_password']), 16)
+
+    def test_on_demand_can_be_switched_unless_others_need_the_server(self):
+        changed = self.collect([''] * 10 + ['yes'])
+        self.assertTrue(changed['on_demand'])
+        replies = iter([''] * 10)
+        with patch('builtins.input', lambda label: next(replies)), patch('builtins.print'):
+            changed = manage.collect_changes(dict(self.settings), other_ports=set(), can_be_on_demand=False)
+        self.assertNotIn('on_demand', changed, 'The question is skipped when the server must always run')
 
 
 if __name__ == '__main__':

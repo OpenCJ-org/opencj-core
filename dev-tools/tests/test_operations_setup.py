@@ -418,6 +418,97 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(report.attention, ['disk almost full'])
 
 
+class OnDemandTests(unittest.TestCase):
+    """Test servers are off until started; being off is normal, not an outage."""
+    plan = {'instances': [
+        {'name': 'main-eu', 'port': 28960, 'website': {'domain': 'opencj.org'}},
+        {'name': 'acceptance', 'port': 28961, 'copy_from': 'main-eu', 'on_demand': True},
+        {'name': 'map-test', 'port': 28962, 'on_demand': True}]}
+
+    def test_only_main_servers_run_always_by_default(self):
+        with patch('builtins.input', lambda label: ''), patch('builtins.print'):
+            self.assertFalse(configuration.ask_on_demand('main-eu'))
+            self.assertTrue(configuration.ask_on_demand('map-test'))
+            self.assertFalse(configuration.ask_on_demand('map-test', current=False), 'The current value wins')
+
+    def test_servers_others_need_cannot_be_on_demand(self):
+        configuration.check_on_demand(self.plan['instances'])
+        for change, reason in (({'name': 'main-eu', 'website': {}}, 'acceptance copies its data'),
+                               ({'name': 'main-eu', 'website': {'domain': 'opencj.org'}}, 'runs the website'),
+                               ({'name': 'map-test', 'share_with': 'acceptance'}, 'map-test shares its database')):
+            instances = [dict(item) for item in self.plan['instances']]
+            for item in instances:
+                if item['name'] == change['name']:
+                    item.update(change)
+            instances[0]['on_demand'] = True
+            if change['name'] == 'map-test':
+                instances[0]['on_demand'] = False
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, reason):
+                configuration.check_on_demand(instances)
+        with self.assertRaisesRegex(ValueError, 'Boolean'):
+            configuration.check_on_demand([{'name': 'map-test', 'on_demand': 'yes'}])
+
+    def test_configure_offers_on_demand_only_where_allowed(self):
+        with patch('builtins.print'):
+            self.assertFalse(manage.on_demand_allowed(self.plan, dict(self.plan['instances'][0])))
+            self.assertTrue(manage.on_demand_allowed(self.plan, dict(self.plan['instances'][2])))
+
+    def test_switched_off_means_stopped_on_purpose(self):
+        self.assertTrue(status.is_switched_off({'on_demand': True}, 'exited'))
+        self.assertFalse(status.is_switched_off({'on_demand': True}, 'restarting'), 'A crash loop is a problem')
+        self.assertFalse(status.is_switched_off({'on_demand': False}, 'exited'), 'An always-on server is down')
+        settings = {'on_demand': True}
+        with patch.object(install, 'compose', return_value=''):
+            self.assertTrue(install.switched_off(Path('/srv/opencj/map-test'), settings))
+        with patch.object(install, 'compose', return_value='abc123'):
+            self.assertFalse(install.switched_off(Path('/srv/opencj/map-test'), settings))
+        self.assertFalse(install.switched_off(Path('/srv/opencj/main-eu'), {}), 'Always-on servers are never off')
+
+    def test_watchdog_ignores_only_servers_switched_off(self):
+        stopped = {'State': {'Running': False, 'Restarting': False}}
+        sent = []
+        with tempfile.TemporaryDirectory() as directory:
+            host = Path(directory)
+            installations = [('map-test', host / 'map-test', {'on_demand': True}),
+                             ('main-eu', host / 'main-eu', {'on_demand': False})]
+            with patch.object(maintenance, 'ready_installations', return_value=installations), \
+                    patch.object(install, 'compose', return_value='abc123'), \
+                    patch('operations.inspect_container', return_value=stopped), \
+                    patch.object(maintenance, 'report_crash_restart'), \
+                    patch.object(maintenance, 'check_optional_services'), \
+                    patch.object(maintenance, 'run', return_value=''), \
+                    patch.object(maintenance, 'send_alert', lambda host, message: sent.append(message)):
+                maintenance.run_watchdog(host)
+        self.assertEqual(sent, ['main-eu: the game server is stopped.'])
+
+    def test_outside_check_leaves_out_on_demand_servers(self):
+        plan = {'public_ipv4': '45.10.20.30', 'instances': self.plan['instances']}
+        with patch.object(dns_guide, 'run', return_value='[]'):
+            targets = manage.outside_check_targets(plan)
+        self.assertEqual(targets, ['game:45.10.20.30:28960', 'web:https://opencj.org/'])
+
+    def test_maintenance_starts_a_switched_off_server_and_stops_it_again(self):
+        calls = []
+        settings = {'name': 'acceptance', 'on_demand': True}
+        with patch.object(install, 'switched_off', return_value=True), \
+                patch.object(manage, 'start_services', lambda instance, settings: calls.append('start')), \
+                patch.object(install, 'stop_services', lambda instance, settings: calls.append('stop')), \
+                patch('builtins.print'):
+            with manage.running_for_maintenance(Path('/srv/opencj/acceptance'), settings):
+                calls.append('work')
+            self.assertEqual(calls, ['start', 'work', 'stop'])
+            calls.clear()
+            with self.assertRaises(RuntimeError):
+                with manage.running_for_maintenance(Path('/srv/opencj/acceptance'), settings):
+                    raise RuntimeError('upgrade failed')
+            self.assertEqual(calls, ['start'], 'After a failure the server stays on for inspection')
+
+    def test_stop_refuses_servers_that_always_run(self):
+        with patch.object(install, 'load_installation', return_value={'name': 'main-eu'}), \
+                self.assertRaisesRegex(ValueError, 'always runs'):
+            manage.stop_instance(Path('/srv/opencj'), 'main-eu', assume_yes=True)
+
+
 class DiscordChannelTests(unittest.TestCase):
     def test_two_bridges_cannot_share_a_channel(self):
         bridge = {'enabled': True, 'guild_id': '1' * 18, 'channel_id': '2' * 18, 'token': 'x'}

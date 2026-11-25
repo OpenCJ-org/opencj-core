@@ -44,6 +44,8 @@ geoip_provisioning = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(geoip_provisioning)
 DOCKER_TIMEOUT_SECONDS = 180
 BUILD_TIMEOUT_SECONDS = 1800
+# Time the game server and database get to shut down cleanly before Docker kills them.
+STOP_GRACE_SECONDS = 30
 
 
 def write_generated(path, text, *, owner=None, replace=False):
@@ -444,6 +446,24 @@ def server_is_running(instance, settings):
     return bool(compose(instance, settings, 'ps', '--status', 'running', '--quiet', 'server'))
 
 
+def switched_off(instance, settings):
+    """True for an on-demand server that was stopped on purpose (sudo opencj stop NAME).
+
+    Docker restarts a crashed game server itself (restart: unless-stopped), so an
+    on-demand server that is neither running nor restarting was stopped deliberately.
+    """
+    if not settings.get('on_demand'):
+        return False
+    return not compose(instance, settings, 'ps', '--all', '--status', 'running', '--status', 'restarting',
+                       '--quiet', 'server')
+
+
+def stop_services(instance, settings):
+    """Stop every container of this server, its own database included; data volumes stay."""
+    compose(instance, settings, 'stop', '--timeout', str(STOP_GRACE_SECONDS), log=instance / 'setup.log',
+            timeout=DOCKER_TIMEOUT_SECONDS)
+
+
 def check_ready(instance, settings):
     linux_accounts.verify_accounts(settings)
     if settings.get('website'):
@@ -480,7 +500,12 @@ def install(instance, settings):
     """Resume owned installation stages; never restart an already accepted running instance."""
     if settings['state'] == 'ready':
         migration.source_control(instance, settings, 'accept-cutover')
-        check_ready(instance, settings)
+        if switched_off(instance, settings):
+            # Checking it would need its database; starting it is the operator's choice.
+            verify_managed_files(instance, settings)
+            print(f"{settings['name']} is off (on demand); start it with: sudo opencj start {settings['name']}")
+        else:
+            check_ready(instance, settings)
         configure_instance_jobs(instance, settings)
         return
     ensure_database_image(instance)
@@ -534,6 +559,11 @@ def install(instance, settings):
     save_installation(instance, settings)
     check_ready(instance, settings)
     configure_instance_jobs(instance, settings)
+    if settings.get('on_demand'):
+        # Checked while running above; it stays off until it is needed.
+        stop_services(instance, settings)
+        print(f"{settings['name']} is installed and off (on demand). Start it with: "
+              f"sudo opencj start {settings['name']}")
     print(f'Private connection details: {instance / "join-password"}')
     print(f'Administration secret: {instance / "rcon-password"}')
     print('Setup is complete. Public beta release still requires the documented gameplay/readiness checks.')
@@ -646,7 +676,9 @@ def main():
                 if os.geteuid() != 0:
                     raise ValueError('Run with sudo: setup creates restricted Linux service users')
                 settings = initialize_instance(instance, supplied)
-            if args.check:
+            if args.check and switched_off(instance, settings):
+                print(f"{settings['name']} is off (on demand); start it to check it.")
+            elif args.check:
                 check_ready(instance, settings)
             elif args.backup:
                 backup_instance(instance, settings)

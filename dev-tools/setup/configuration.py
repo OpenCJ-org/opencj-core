@@ -74,6 +74,40 @@ def is_main_instance(name):
     return name == 'main' or name.startswith('main-')
 
 
+def ask_on_demand(name, current=None):
+    """Test servers (acceptance, map-test) are normally off and started only when needed."""
+    default = not is_main_instance(name) if current is None else current
+    return ask_yes_no('Keep ' + name + ' off until you start it (sudo opencj start ' + name + ')?', default)
+
+
+def validate_on_demand(settings):
+    """An on-demand server stops completely, its own database included.
+
+    The website reads its server's database, so that server must always run.
+    """
+    on_demand = settings.get('on_demand', False)
+    if type(on_demand) is not bool:
+        raise ValueError('on_demand must be a Boolean')
+    if on_demand and settings.get('website'):
+        raise ValueError(settings['name'] + ' runs the website, so it cannot be switched off on demand')
+    return on_demand
+
+
+def check_on_demand(instances):
+    """Refuse on-demand servers that other servers need running: database shared with or copied by another."""
+    needed = {}
+    for settings in instances:
+        for dependency, reason in (('share_with', 'shares its database'), ('copy_from', 'copies its data'),
+                                   ('copy_source', 'copies its data')):
+            if settings.get(dependency):
+                needed.setdefault(settings[dependency], settings['name'] + ' ' + reason)
+    for settings in instances:
+        validate_on_demand(settings)
+        if settings.get('on_demand') and settings['name'] in needed:
+            raise ValueError(settings['name'] + ' cannot be switched off on demand: '
+                             + needed[settings['name']])
+
+
 def collect_downloads(name, *, public, website_url=''):
     """Choose how players obtain missing maps on this server.
 
@@ -396,6 +430,7 @@ def validate_configuration(settings):
     result.setdefault('public', False)
     if type(result['public']) is not bool:
         raise ValueError('public must be a Boolean')
+    result['on_demand'] = validate_on_demand(result)
     result.setdefault('map', 'mp_killhouse')
     if not re.fullmatch(r'[a-z0-9_]+', result['map']):
         raise ValueError('Invalid starting map')

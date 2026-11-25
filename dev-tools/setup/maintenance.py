@@ -507,12 +507,16 @@ def dump_database(instance, settings, target, *, byte_limit, reserve_bytes):
 
 
 def run_backup(instance):
-    from install import load_installation, verify_managed_files
+    from install import load_installation, switched_off, verify_managed_files
     from assets import sha256_file
     settings = load_installation(instance)
     policy = backup_policy(settings)
     if not policy['enabled'] or settings['state'] != 'ready':
         raise RuntimeError('Automatic backups require an enabled, ready database owner')
+    if switched_off(instance, settings):
+        # Nothing changes while it is off; the last backup still holds its current data.
+        print(settings['name'] + ' is off (on demand); no backup needed.')
+        return
     with operation_lock(instance / '.setup.lock'):
         verify_managed_files(instance, settings)
         directory = instance / 'automatic-backups'
@@ -626,11 +630,14 @@ def delete_runs(db, run_ids, cutoff):
 
 
 def run_prune(instance):
-    from install import database_client, load_installation
+    from install import database_client, load_installation, switched_off
     settings = load_installation(instance)
     policy = prune_policy(settings)
     if not policy['enabled'] or settings['state'] != 'ready':
         raise RuntimeError('Run pruning requires an enabled, ready database owner')
+    if switched_off(instance, settings):
+        print(settings['name'] + ' is off (on demand); pruning waits until it runs.')
+        return
     deleted = 0
     more_remaining = False
     with database_client(instance, settings, administrator=True) as db:
@@ -768,7 +775,6 @@ def run_watchdog(host):
     state = read_json(state_path) if state_path.exists() else {}
     unhealthy = state.setdefault('unhealthy', {})
     for name, instance, settings in ready_installations(host):
-        check_optional_services(host, state, name, instance, settings)
         container = compose(instance, settings, 'ps', '--all', '--quiet', 'server')
         if not container:
             if should_repeat_alert(state, name + ':missing'):
@@ -776,6 +782,10 @@ def run_watchdog(host):
             continue
         metadata = inspect_container(container)
         status = metadata['State']
+        if settings.get('on_demand') and not status['Running'] and not status.get('Restarting'):
+            # Switched off with `opencj stop`; Docker restarts crashes itself.
+            continue
+        check_optional_services(host, state, name, instance, settings)
         report_crash_restart(host, state, name, settings, metadata)
         if not status['Running']:
             # Docker restarts crashes itself; a stopped container was stopped on purpose.

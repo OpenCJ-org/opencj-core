@@ -8,7 +8,8 @@ import re
 import subprocess
 import sys
 
-from configuration import ask, ask_int, ask_port, ask_yes_no, choose_port, collect_database, collect_discord
+from configuration import ask, ask_int, ask_on_demand, ask_port, ask_yes_no, choose_port, collect_database
+from configuration import collect_discord
 from configuration import collect_downloads, collect_ssh, prompt, REMOTE_DATABASE_ENABLED, validate_port
 from operations import operation_lock, read_json, save_json
 
@@ -61,6 +62,7 @@ def collect_instance(index, name, instances, used_ports):
         'bind_ip': prompt('Game bind address', '0.0.0.0'),
         'slots': ask_int('Player slots', 32, 1, 32),
         'public': ask_yes_no('Public access without a join password?', False),
+        'on_demand': ask_on_demand(name),
     }
     default = 'migrate' if index == 0 else 'copy' if name == 'acceptance' else 'new'
     if index == 0 and default == 'migrate' and not ask_yes_no('Migrate this server from an existing installation?', True):
@@ -72,6 +74,7 @@ def collect_instance(index, name, instances, used_ports):
         owners = [item['name'] for item in instances]
         reference = ask('Source instance name', owners[0], choices=owners)
         settings['copy_from' if choice == 'copy' else 'share_with'] = reference
+        keep_running(instances, reference, name + ' uses its data')
     elif choice in ('migrate', 'restore'):
         settings['database'] = {'mode': 'new', 'publish_port': 0}
         settings['migration'] = collect_migration() if choice == 'migrate' else {
@@ -103,12 +106,21 @@ def collect_instance(index, name, instances, used_ports):
     return settings
 
 
+def keep_running(instances, name, reason):
+    """A server that others depend on cannot be switched off on demand."""
+    settings = next(item for item in instances if item['name'] == name)
+    if settings.get('on_demand'):
+        settings['on_demand'] = False
+        print(name + ' will always run: ' + reason + '.', flush=True)
+
+
 def collect_website_choice(instances):
     if not ask_yes_no('Run the OpenCJ website on this machine?', False):
         return
     names = [item['name'] for item in instances]
     selected = ask('Website game instance', names[0], choices=names)
     settings = next(item for item in instances if item['name'] == selected)
+    keep_running(instances, selected, 'the website reads its database')
     from website import collect_website
     settings['website'] = collect_website(settings['port'], game_address=settings.get('address', ''))
     if settings.get('database', {}).get('mode') == 'existing':
@@ -159,6 +171,8 @@ def print_summary(plan):
                                         if website['domain'] else 'local'))
         if settings.get('address'):
             extras.append('address ' + settings['address'])
+        if settings.get('on_demand'):
+            extras.append('off until started')
         print(f"  {settings['name']:14} port {settings['port']:<5} "
               f"{'public' if settings['public'] else 'private':7} database: {database_summary(settings):22} "
               f"downloads: {settings['downloads']['mode']:8} {', '.join(extras)}", flush=True)
@@ -234,8 +248,9 @@ def validate_plan(plan):
         previous.add(name)
     if not previous:
         raise ValueError('Choose at least one game instance')
-    from configuration import check_discord_channels
+    from configuration import check_discord_channels, check_on_demand
     check_discord_channels(plan['instances'])
+    check_on_demand(plan['instances'])
     if sum(1 for settings in plan['instances'] if settings.get('website', {}).get('domain')) > 1:
         raise ValueError('Only one website with a domain can use ports 80/443 on this machine')
     from maintenance import validate_updates, validate_webhook
@@ -325,7 +340,13 @@ def add_server(host, plan, record):
     if name in names:
         raise ValueError('A server with that name already exists')
     used_ports = {item['port'] for item in plan['instances']}
-    settings = collect_instance(len(plan['instances']), name, plan['instances'], used_ports)
+    # Copies: an installed server's settings change only through `opencj configure`.
+    existing = [dict(item) for item in plan['instances']]
+    settings = collect_instance(len(existing), name, existing, used_ports)
+    for before, after in zip(plan['instances'], existing):
+        if before.get('on_demand') and not after['on_demand']:
+            raise ValueError(before['name'] + ' is off until started; first make it always run with: sudo opencj'
+                             ' configure ' + before['name'])
     candidate = dict(plan)
     candidate['instances'] = [*plan['instances'], settings]
     validate_plan(candidate)

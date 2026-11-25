@@ -235,16 +235,27 @@ def show_servers(host, plan, report):
                               '{{if .State.Health}}{{.State.Health.Status}}{{end}} {{.RestartCount}}',
                               container]).split()
         state, restarts = ' '.join(fields[:-1]), fields[-1]
-        map_name, players = live_server(container)
         access = 'public' if settings['public'] else 'private'
+        if is_switched_off(settings, fields[0]):
+            print(f"{name:13} {settings['release']:12} {settings['port']:<6} {access:8} {'off (on demand)':18}")
+            continue
+        map_name, players = live_server(container)
         print(f"{name:13} {settings['release']:12} {settings['port']:<6} {access:8} {state:18} {map_name:22} "
               f"{players:8} {restarts}")
     return installations
 
 
+def is_switched_off(settings, container_state):
+    """An on-demand server stopped with `opencj stop`; Docker restarts crashed ones (state restarting)."""
+    return bool(settings.get('on_demand')) and container_state in ('exited', 'created')
+
+
 def show_services(installations, report):
     print('\nServices')
     for name, instance, settings in installations:
+        if install.switched_off(instance, settings):
+            print(f'  {name:13} off (on demand) - start with: sudo opencj start {name}')
+            continue
         arguments = ['docker', 'compose', '-p', settings['project'], '-f', str(instance / 'compose.json')]
         text, problems = service_summary(expected_services(instance / 'compose.json'), compose_rows(arguments))
         for problem in problems:
@@ -276,6 +287,10 @@ def show_backups(installations, report, now):
     for name, instance, settings in installations:
         policy = maintenance.backup_policy(settings)
         if not policy['enabled']:
+            continue
+        if install.switched_off(instance, settings):
+            # Its data cannot change while it is off, so an old backup is still complete.
+            print(f'  {name:13} paused while off (on demand)')
             continue
         details = []
         for label, path, needed in (('backup', instance / 'last-backup.json', True),
