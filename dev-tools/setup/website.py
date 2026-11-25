@@ -49,20 +49,46 @@ def validate_invite(invite):
     return invite
 
 
-def collect_website(game_port):
-    """Ask for the public website; with a domain it is served over HTTPS on ports 80/443."""
+def parse_aliases(text):
+    """Comma-separated extra domains; 'none' clears them."""
+    if text.strip() in ('', 'none'):
+        return []
+    aliases = [validate_domain(alias.strip()) for alias in text.split(',') if alias.strip()]
+    if len(aliases) != len(set(aliases)):
+        raise ValueError('list each domain once')
+    return aliases
+
+
+def collect_website(game_port, *, current=None, game_address=''):
+    """Ask for the public website; with a domain it is served over HTTPS on ports 80/443.
+
+    current holds the existing website settings when they are being changed; they
+    become the defaults. Extra domains redirect to the main domain, so every visitor
+    ends up on one address.
+    """
+    current = current or {}
     print('With a domain name, the website is served over HTTPS (free Let\'s Encrypt certificate,'
-          ' renewed automatically). Point the domain\'s DNS A/AAAA record at this server first.', flush=True)
-    domain = ask('Website domain name (blank: only reachable from this machine)', '', parse=validate_domain)
-    result = {
-        'domain': domain,
-        'bind_ip': '127.0.0.1',
-        'port': ask_port('Local website port (for checks and tunnels)', choose_port(8090)),
-        'connect_address': ask('Game address shown on the website', (domain or 'localhost') + ':' + str(game_port)),
-        'discord_invite': ask('Discord invite URL, or disabled', DEFAULT_DISCORD_INVITE, parse=validate_invite),
-    }
+          ' renewed automatically). Setup lists the DNS records to create and checks them.', flush=True)
+    domain = ask('Main website domain, for example opencj.org (blank: only reachable from this machine)',
+                 current.get('domain', ''), parse=validate_domain)
+    result = {'domain': domain, 'aliases': [], 'bind_ip': current.get('bind_ip', '127.0.0.1')}
     if domain:
-        result['acme_email'] = ask('E-mail for certificate problems (optional)', '', parse=validate_email)
+        aliases = parse_aliases(ask('Other domains that open the same website, comma-separated, for example'
+                                    ' opencj.net (they redirect to ' + domain + '; "none" for none)',
+                                    ', '.join(current.get('aliases', [])) or 'none'))
+        if domain in aliases:
+            raise ValueError('The main domain cannot also be an extra domain')
+        result['aliases'] = aliases
+    result['port'] = current.get('port') or ask_port('Local website port (for checks and tunnels)', choose_port(8090))
+    default_address = (game_address or domain or 'localhost') + ':' + str(game_port)
+    result['connect_address'] = ask('Game address shown on the website', current.get('connect_address')
+                                    or default_address)
+    result['discord_invite'] = ask('Discord invite URL, or disabled',
+                                   current.get('discord_invite', DEFAULT_DISCORD_INVITE) or 'disabled',
+                                   parse=validate_invite)
+    if domain:
+        result['acme_email'] = ask('E-mail for certificate problems (optional)', current.get('acme_email', ''),
+                                   parse=validate_email)
     return result
 
 
@@ -76,6 +102,14 @@ def validate_website(website, database):
     result.setdefault('discord_invite', DEFAULT_DISCORD_INVITE)
     result['discord_invite'] = validate_invite(result['discord_invite'])
     result['domain'] = validate_domain(result.get('domain', ''))
+    aliases = result.get('aliases', [])
+    if not isinstance(aliases, list):
+        raise ValueError('website.aliases must be a list of domains')
+    result['aliases'] = parse_aliases(','.join(aliases))
+    if result['aliases'] and not result['domain']:
+        raise ValueError('Extra website domains need a main domain')
+    if result['domain'] in result['aliases']:
+        raise ValueError('The main domain cannot also be an extra domain')
     result['acme_email'] = validate_email(result.get('acme_email', ''))
     if database['mode'] == 'existing' and not database.get('owner_instance'):
         if not result.get('user') or not result.get('password'):
@@ -84,18 +118,25 @@ def validate_website(website, database):
 
 
 def caddyfile(website):
-    """HTTPS for the whole site; plain HTTP stays available only for in-game map downloads."""
+    """HTTPS for the whole site; plain HTTP stays available only for in-game map downloads.
+
+    Extra domains get their own certificates and redirect to the main domain.
+    """
     options = ['\thttp_port ' + str(CADDY_HTTP_PORT), '\thttps_port ' + str(CADDY_HTTPS_PORT), '\tadmin off',
                # HTTP/3 needs UDP 443, which is not published; offer HTTP/1.1 and HTTP/2.
                '\tservers {', '\t\tprotocols h1 h2', '\t}']
     if website['acme_email']:
         options.append('\temail ' + website['acme_email'])
     domain = website['domain']
-    return ('{\n' + '\n'.join(options) + '\n}\n\n'
-            + domain + ' {\n\tencode gzip\n\treverse_proxy httpd:8080\n}\n\n'
-            # CoD4 clients download maps over plain HTTP only (sv_wwwBaseURL http://...).
-            + 'http://' + domain + ' {\n\thandle /usermaps/* {\n\t\treverse_proxy httpd:8080\n\t}\n'
-            + '\thandle {\n\t\tredir https://{host}{uri} permanent\n\t}\n}\n')
+    aliases = website.get('aliases', [])
+    text = ('{\n' + '\n'.join(options) + '\n}\n\n'
+            + domain + ' {\n\tencode gzip\n\treverse_proxy httpd:8080\n}\n\n')
+    if aliases:
+        text += ', '.join(aliases) + ' {\n\tredir https://' + domain + '{uri} permanent\n}\n\n'
+    # CoD4 clients download maps over plain HTTP only (sv_wwwBaseURL http://...).
+    plain_sites = ', '.join('http://' + name for name in [domain, *aliases])
+    return (text + plain_sites + ' {\n\thandle /usermaps/* {\n\t\treverse_proxy httpd:8080\n\t}\n'
+            + '\thandle {\n\t\tredir https://' + domain + '{uri} permanent\n\t}\n}\n')
 
 
 def add_https_proxy(document, settings, directory):

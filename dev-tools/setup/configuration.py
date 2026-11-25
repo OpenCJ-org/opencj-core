@@ -16,6 +16,16 @@ MYSQL_IMAGE = 'mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86
 DOWNLOAD_MODES = ('website', 'in-game', 'off')
 DISCORD_SNOWFLAKE_PATTERN = r'[0-9]{15,22}'
 DISCORD_TOKEN_MAX_CHARACTERS = 200
+# Servers on another machine using a database here (through an SSH tunnel). The code
+# stays, but the prompts do not offer it until it has been tested between two real
+# machines; see docs/setup/server.md.
+REMOTE_DATABASE_ENABLED = False
+# Official Discord how-to pages, shown next to the questions that need their answers.
+DISCORD_BOT_GUIDE = 'https://docs.discord.com/developers/quick-start/getting-started'
+DISCORD_APPLICATIONS_URL = 'https://discord.com/developers/applications'
+DISCORD_MESSAGE_CONTENT_GUIDE = 'https://docs.discord.com/developers/events/gateway#message-content-intent'
+DISCORD_ID_GUIDE = 'https://support.discord.com/hc/en-us/articles/206346498'
+DISCORD_WEBHOOK_GUIDE = 'https://support.discord.com/hc/en-us/articles/228383668'
 
 
 def ask(label, default='', *, parse=None, choices=None):
@@ -86,8 +96,15 @@ def collect_discord(name):
     """Optional chat bridge between this server and one Discord channel."""
     if not ask_yes_no('Connect ' + name + ' to Discord (chat bridge)?', is_main_instance(name)):
         return {'enabled': False}
-    print('Create a bot at https://discord.com/developers/applications, invite it to your'
-          ' Discord server with message permissions, and copy its token.', flush=True)
+    print('\nThe chat bridge needs a Discord bot (one bot can serve every server):\n'
+          '  1. Create an application and its bot at ' + DISCORD_APPLICATIONS_URL + '\n'
+          '     (step by step: ' + DISCORD_BOT_GUIDE + ').\n'
+          '  2. On the Bot page, switch on "Message Content Intent": the bridge reads chat messages\n'
+          '     (' + DISCORD_MESSAGE_CONTENT_GUIDE + ').\n'
+          '  3. Invite the bot to your Discord server with permission to view the channel and send messages.\n'
+          '  4. In Discord: User Settings > Advanced > Developer Mode on; then right-click your server and the\n'
+          '     chat channel > Copy ID (' + DISCORD_ID_GUIDE + ').\n'
+          '  5. Bot page > Reset Token, and copy the token (it is shown once).', flush=True)
     return {
         'enabled': True,
         'guild_id': ask('Discord server (guild) ID', parse=validate_discord_id),
@@ -135,6 +152,24 @@ def validate_discord(discord):
             'token': validate_discord_token(str(discord.get('token', '')))}
 
 
+def check_discord_channels(instances):
+    """Each bridge relays one server's chat; two servers in one channel would mix their chat.
+
+    The bridge itself only reads its own server's events and only messages from its
+    configured channel, so a distinct channel per server keeps them apart.
+    """
+    owners = {}
+    for settings in instances:
+        discord = settings.get('discord') or {}
+        if not discord.get('enabled'):
+            continue
+        channel = str(discord['channel_id'])
+        if channel in owners:
+            raise ValueError('Servers ' + owners[channel] + ' and ' + settings['name'] + ' would share Discord channel '
+                             + channel + '; give each bridge its own channel')
+        owners[channel] = settings['name']
+
+
 def choose_port(first):
     """Suggest an unused TCP/UDP port without modifying firewall or unrelated services."""
     for port in range(first, min(first + 1000, 65536)):
@@ -150,12 +185,17 @@ def choose_port(first):
 
 def collect_database(mode=None):
     """Keep existing-database credentials separate from new local administration."""
+    choices = ('new', 'instance', 'owner', 'existing') if REMOTE_DATABASE_ENABLED else ('new', 'instance')
     if mode is None:
-        mode = prompt('Database: new / instance / owner / existing', 'new')
+        mode = ask('Database: ' + ' / '.join(choices), 'new', choices=choices)
+    if mode not in choices:
+        raise ValueError('Sharing a database with another machine is switched off until it has been tested')
     if mode == 'new':
-        return {'mode': 'new', 'name': 'openCJ_cod4',
-                'publish_port': ask_port('Local database port (SSH sharing; 0 disables)', choose_port(3306),
-                                         allow_disabled=True)}
+        publish_port = 0
+        if REMOTE_DATABASE_ENABLED:
+            publish_port = ask_port('Local database port (SSH sharing; 0 disables)', choose_port(3306),
+                                    allow_disabled=True)
+        return {'mode': 'new', 'name': 'openCJ_cod4', 'publish_port': publish_port}
     if mode == 'instance':
         return {'mode': 'instance', 'instance_dir': prompt('Existing OpenCJ instance directory')}
     if mode == 'owner':
@@ -347,6 +387,9 @@ def validate_configuration(settings):
     validate_port(result['port'])
     if result['port'] < 1024:
         raise ValueError('Game port must be at least 1024')
+    from website import validate_domain
+    # The DNS name players connect to; blank means the machine's IP address.
+    result['address'] = validate_domain(result.get('address', ''))
     result.setdefault('slots', 32)
     if type(result['slots']) is not int or not 1 <= result['slots'] <= 32:
         raise ValueError('This release supports 1–32 player slots')

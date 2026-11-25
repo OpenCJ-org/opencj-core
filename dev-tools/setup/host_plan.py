@@ -9,13 +9,21 @@ import subprocess
 import sys
 
 from configuration import ask, ask_int, ask_port, ask_yes_no, choose_port, collect_database, collect_discord
-from configuration import collect_downloads, collect_ssh, prompt, validate_port
+from configuration import collect_downloads, collect_ssh, prompt, REMOTE_DATABASE_ENABLED, validate_port
 from operations import operation_lock, read_json, save_json
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTANCE_NAME_PATTERN = r'[a-z][a-z0-9-]{0,30}'
-DATABASE_CHOICES = ('new', 'migrate', 'restore', 'copy', 'share', 'owner', 'existing')
+LOCAL_DATABASE_CHOICES = ('new', 'migrate', 'restore', 'copy', 'share')
+REMOTE_DATABASE_CHOICES = ('owner', 'existing')
+DATABASE_CHOICES = LOCAL_DATABASE_CHOICES + (REMOTE_DATABASE_CHOICES if REMOTE_DATABASE_ENABLED else ())
 INSTANCE_SETUP_TIMEOUT_SECONDS = 14400
+
+
+def parse_address(text):
+    """A DNS name players connect to, or blank for the IP address."""
+    from website import validate_domain
+    return validate_domain(text.strip())
 
 
 def validate_instance_name(name):
@@ -48,6 +56,8 @@ def collect_instance(index, name, instances, used_ports):
     settings = {
         'name': name, 'hostname': prompt('Server display name', 'OpenCJ ' + name),
         'port': ask_port('Game port', default_port),
+        'address': ask('Address players connect to, for example eu.opencj.org (blank: the IP address)', '',
+                       parse=parse_address),
         'bind_ip': prompt('Game bind address', '0.0.0.0'),
         'slots': ask_int('Player slots', 32, 1, 32),
         'public': ask_yes_no('Public access without a join password?', False),
@@ -71,7 +81,7 @@ def collect_instance(index, name, instances, used_ports):
         settings['database'] = collect_database(choice)
     else:
         settings['database'] = {'mode': 'new', 'publish_port': 0}
-    if index == 0 and settings.get('database', {}).get('mode') == 'new':
+    if REMOTE_DATABASE_ENABLED and index == 0 and settings.get('database', {}).get('mode') == 'new':
         settings['database']['publish_port'] = ask_port(
             'Loopback database port for future servers in other countries (0 disables)', choose_port(3306),
             allow_disabled=True)
@@ -100,7 +110,7 @@ def collect_website_choice(instances):
     selected = ask('Website game instance', names[0], choices=names)
     settings = next(item for item in instances if item['name'] == selected)
     from website import collect_website
-    settings['website'] = collect_website(settings['port'])
+    settings['website'] = collect_website(settings['port'], game_address=settings.get('address', ''))
     if settings.get('database', {}).get('mode') == 'existing':
         settings['website']['user'] = prompt('Dedicated external read-only website account')
         settings['website']['password'] = getpass.getpass('Website database password: ')
@@ -144,7 +154,11 @@ def print_summary(plan):
         if settings['discord']['enabled']:
             extras.append('Discord')
         if settings.get('website'):
-            extras.append('website ' + (settings['website']['domain'] or 'local'))
+            website = settings['website']
+            extras.append('website ' + (' + '.join([website['domain'], *website.get('aliases', [])])
+                                        if website['domain'] else 'local'))
+        if settings.get('address'):
+            extras.append('address ' + settings['address'])
         print(f"  {settings['name']:14} port {settings['port']:<5} "
               f"{'public' if settings['public'] else 'private':7} database: {database_summary(settings):22} "
               f"downloads: {settings['downloads']['mode']:8} {', '.join(extras)}", flush=True)
@@ -175,7 +189,12 @@ def collect_plan():
     collect_website_choice(instances)
     plan = {'instances': instances}
     collect_host_settings(plan)
+    import dns_guide
+    if dns_guide.wanted_names(plan):
+        dns_guide.ensure_public_ipv4(plan)
     print_summary(plan)
+    # Shown now, so the records can spread while the servers are installed.
+    dns_guide.print_records(plan)
     if not ask_yes_no('Install with these choices?', True):
         raise SystemExit('Nothing was installed. Run setup again to choose differently.')
     return plan
@@ -206,9 +225,17 @@ def validate_plan(plan):
         for dependency in ('copy_from', 'share_with', 'assets_from'):
             if dependency in settings and settings[dependency] not in previous:
                 raise ValueError('Place referenced instances before their dependents')
+        database = settings.get('database', {})
+        if not REMOTE_DATABASE_ENABLED and (database.get('mode') in REMOTE_DATABASE_CHOICES
+                                            or database.get('publish_port')):
+            raise ValueError('Sharing a database with another machine is switched off until it has been tested'
+                             ' (REMOTE_DATABASE_ENABLED in dev-tools/setup/configuration.py)')
+        settings['address'] = parse_address(settings.get('address', ''))
         previous.add(name)
     if not previous:
         raise ValueError('Choose at least one game instance')
+    from configuration import check_discord_channels
+    check_discord_channels(plan['instances'])
     if sum(1 for settings in plan['instances'] if settings.get('website', {}).get('domain')) > 1:
         raise ValueError('Only one website with a domain can use ports 80/443 on this machine')
     from maintenance import validate_updates, validate_webhook
@@ -303,6 +330,10 @@ def add_server(host, plan, record):
     candidate['instances'] = [*plan['instances'], settings]
     validate_plan(candidate)
     print_summary({**candidate, 'instances': [settings]})
+    import dns_guide
+    if settings.get('address'):
+        dns_guide.ensure_public_ipv4(plan)
+        dns_guide.print_records({**plan, 'instances': [settings]})
     if not ask_yes_no('Add this server?', True):
         raise SystemExit('Nothing was changed.')
     plan['instances'].append(settings)
@@ -339,9 +370,16 @@ def main():
             plan['completed'] = []
             save_json(record, plan)
         apply_host_configuration(host, plan, record)
+        # Wait for DNS only while a website still has to be installed; reruns of a finished
+        # installation should not stop on a DNS question.
+        if any(settings.get('website', {}).get('domain') and settings['name'] not in plan['completed']
+               for settings in plan['instances']):
+            import dns_guide
+            dns_guide.wait_for_website_dns(plan)
         install_instances(host, plan, record)
         print('All selected instances are ready. Private connection details are in their installation directories.')
-        print('Next: sudo opencj status — and see docs/operations/server-administration.md for daily operation.')
+        print('Next: sudo opencj status, then sudo opencj alerts (it also prints how another machine can'
+              ' report an outage of this one). Daily operation: docs/operations/server-administration.md')
 
 
 if __name__ == '__main__':

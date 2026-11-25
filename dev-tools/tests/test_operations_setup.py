@@ -1,20 +1,28 @@
 """Operational setup features: retention, downloads, HTTPS routing, prompts, shared assets, firewall, maps."""
 
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
+import socket
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'setup'))
 import configuration
+import dns_guide
 import firewall
 import install
 import maintenance
+import manage
 import maps
 import migration
+import monitor
 import source
+import status
 import website
 from operations import save_json
 
@@ -98,7 +106,15 @@ class DownloadAndWebsiteTests(unittest.TestCase):
         self.assertIn('opencj.org {', https_site)
         self.assertIn('reverse_proxy httpd:8080', https_site)
         self.assertIn('handle /usermaps/*', http_site)
-        self.assertIn('redir https://{host}{uri} permanent', http_site)
+        self.assertIn('redir https://opencj.org{uri} permanent', http_site)
+
+    def test_extra_domains_redirect_to_the_main_domain(self):
+        text = website.caddyfile({'domain': 'opencj.org', 'aliases': ['opencj.net', 'www.opencj.org'],
+                                  'acme_email': ''})
+        self.assertIn('opencj.net, www.opencj.org {\n\tredir https://opencj.org{uri} permanent', text)
+        self.assertIn('http://opencj.org, http://opencj.net, http://www.opencj.org {', text,
+                      'Map downloads must work over plain HTTP on every domain')
+        self.assertEqual(text.count('reverse_proxy httpd:8080'), 2, 'Only the main site and /usermaps/ serve pages')
 
     def test_website_domain_and_invite_validation(self):
         for domain in ('http://opencj.org', 'OpenCJ.org', 'opencj'):
@@ -107,6 +123,67 @@ class DownloadAndWebsiteTests(unittest.TestCase):
         self.assertEqual(website.validate_invite('disabled'), '')
         with self.assertRaises(ValueError):
             website.validate_invite('https://example.com/invite')
+
+    def test_extra_domains_are_validated(self):
+        base = {'connect_address': 'opencj.org:28960', 'domain': 'opencj.org'}
+        database = {'mode': 'new'}
+        self.assertEqual(website.validate_website({**base, 'aliases': ['opencj.net']}, database)['aliases'],
+                         ['opencj.net'])
+        for aliases in (['opencj.org'], ['opencj.net', 'opencj.net'], ['http://opencj.net']):
+            with self.subTest(aliases=aliases), self.assertRaises(ValueError):
+                website.validate_website({**base, 'aliases': aliases}, database)
+        with self.assertRaises(ValueError):
+            website.validate_website({**base, 'domain': '', 'aliases': ['opencj.net']}, database)
+
+
+class DnsGuideTests(unittest.TestCase):
+    plan = {'instances': [
+        {'name': 'main-eu', 'address': 'eu.opencj.org',
+         'website': {'domain': 'opencj.org', 'aliases': ['opencj.net']}},
+        {'name': 'map-test', 'address': ''},
+    ]}
+    here = {'A': ['203.0.113.10'], 'AAAA': ['2001:db8::10']}  # problems() compares text only
+
+    def test_names_cover_website_domains_and_server_addresses(self):
+        names = [name for name, purpose in dns_guide.wanted_names(self.plan)]
+        self.assertEqual(names, ['opencj.org', 'opencj.net', 'eu.opencj.org'])
+
+    def test_records_pointing_elsewhere_are_reported(self):
+        cases = [
+            ({'A': {'203.0.113.10'}, 'AAAA': set()}, []),
+            ({'A': {'203.0.113.10'}, 'AAAA': {'2001:db8::10'}}, []),
+            ({'A': set(), 'AAAA': set()}, ['has no A record']),
+            ({'A': {'198.51.100.1'}, 'AAAA': set()}, ['A record points to 198.51.100.1, not here']),
+        ]
+        for resolved, expected in cases:
+            with self.subTest(resolved=resolved), patch.object(dns_guide, 'resolve', return_value=resolved):
+                self.assertEqual(dns_guide.problems('opencj.org', self.here), expected)
+        with patch.object(dns_guide, 'resolve', return_value={'A': {'203.0.113.10'}, 'AAAA': {'2001:db8::99'}}):
+            self.assertIn('AAAA', dns_guide.problems('opencj.org', self.here)[0],
+                          'A wrong IPv6 record breaks certificates even when IPv4 is right')
+
+    def test_public_addresses_skip_private_temporary_and_container_addresses(self):
+        # Documentation ranges (203.0.113.0/24, 2001:db8::/32) are not "global" to Python,
+        # so these tests use ordinary public-looking addresses.
+        interfaces = [
+            {'ifname': 'eth0', 'addr_info': [
+                {'local': '45.10.20.30'}, {'local': '2a01:4f8::10'},
+                {'local': '2a01:4f8::abcd', 'temporary': True}, {'local': '10.0.0.5'}]},
+            {'ifname': 'docker0', 'addr_info': [{'local': '45.10.20.99'}]},
+            # A real `ip -j address show scope global` lists other interfaces with empty entries.
+            {'ifname': 'lo', 'addr_info': [{}]},
+        ]
+        with patch.object(dns_guide, 'run', return_value=json.dumps(interfaces)):
+            found = dns_guide.public_addresses()
+        self.assertEqual(found, {'A': ['45.10.20.30'], 'AAAA': ['2a01:4f8::10']},
+                         'Private, Docker bridge and temporary IPv6 addresses are never published in DNS')
+
+    def test_machine_behind_nat_uses_the_address_the_operator_gave(self):
+        with patch.object(dns_guide, 'run', return_value=json.dumps([
+                {'ifname': 'eth0', 'addr_info': [{'local': '192.168.1.20'}]}])):
+            self.assertEqual(dns_guide.public_addresses({'public_ipv4': '45.10.20.30'})['A'], ['45.10.20.30'])
+        with self.assertRaises(ValueError):
+            dns_guide.validate_public_ipv4('192.168.1.20')
 
 
 class PromptTests(unittest.TestCase):
@@ -202,6 +279,153 @@ class CrashAlertTests(unittest.TestCase):
         self.assertLessEqual(len(message), maintenance.DISCORD_MESSAGE_MAX_CHARACTERS)
         for secret in ('203.0.113.7', '198.51.100.2', 'rconsecret456'):
             self.assertNotIn(secret, maintenance.redact_log(log.decode(), self.settings))
+
+
+class OutsideCheckTests(unittest.TestCase):
+    """Another machine reports a game host that stopped answering, without noise from short restarts."""
+    config = {'webhook': '', 'machines': {'main-eu': [
+        {'kind': 'game', 'host': 'eu.opencj.org', 'port': 28960}, {'kind': 'web', 'url': 'https://opencj.org/'}]}}
+
+    def run_rounds(self, outcomes, state=None, start=1_000_000):
+        """outcomes: per round, the error for every target (None = answered); returns all posted lines."""
+        state = {} if state is None else state
+        posted = []
+        for round_number, errors in enumerate(outcomes):
+            replies = iter(errors)
+            now = start + round_number * 120
+            posted.append(monitor.run_checks(self.config, state, now, probe=lambda target: next(replies)))
+        return posted
+
+    def test_short_outage_is_not_reported(self):
+        # A restart after an update or crash takes well under 6 minutes.
+        posted = self.run_rounds([['timeout', None], ['timeout', None], [None, None]])
+        self.assertEqual(posted, [[], [], []])
+
+    def test_outage_is_reported_once_then_recovery(self):
+        down = ['no answer', 'connection refused']
+        posted = self.run_rounds([down, down, down, down, [None, None]])
+        self.assertEqual([len(lines) for lines in posted], [0, 0, 2, 0, 2])
+        self.assertIn('DOWN main-eu: game server eu.opencj.org:28960 - no answer', posted[2][0])
+        self.assertIn('failing for about 4 min', posted[2][0])
+        self.assertIn('RECOVERED main-eu: website https://opencj.org/', posted[4][1])
+
+    def test_long_outage_is_repeated_every_six_hours(self):
+        state = {}
+        self.run_rounds([['x', None]] * 3, state)
+        one_hour_later = self.run_rounds([['x', None]], state, start=1_000_000 + 3600)
+        self.assertEqual(one_hour_later, [[]], 'An ongoing outage is not repeated every check')
+        six_hours_later = self.run_rounds([['x', None]], state,
+                                          start=1_000_000 + 240 + monitor.STILL_DOWN_REPEAT_SECONDS)
+        self.assertEqual(len(six_hours_later[0]), 1)
+        self.assertIn('failing for about 364 min', six_hours_later[0][0])
+
+    def test_targets_are_validated(self):
+        self.assertEqual(monitor.parse_target('game:eu.opencj.org:28960'),
+                         {'kind': 'game', 'host': 'eu.opencj.org', 'port': 28960})
+        self.assertEqual(monitor.parse_target('web:https://opencj.org/'), {'kind': 'web', 'url': 'https://opencj.org/'})
+        for text in ('game:eu.opencj.org', 'game:host:99999', 'web:http://opencj.org/', 'ftp:x', 'game:a b:1'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                monitor.parse_target(text)
+
+    def test_game_probe_needs_a_real_info_reply(self):
+        # A local UDP server that answers like a CoD4 server, then one that stays silent.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+            server.bind(('127.0.0.1', 0))
+            port = server.getsockname()[1]
+
+            def answer():
+                payload, client = server.recvfrom(4096)
+                if payload == monitor.GAME_QUERY:
+                    server.sendto(monitor.GAME_REPLY_PREFIX + b'\n\\hostname\\OpenCJ', client)
+            responder = threading.Thread(target=answer)
+            responder.start()
+            self.assertIsNone(monitor.probe_game({'kind': 'game', 'host': '127.0.0.1', 'port': port}))
+            responder.join(timeout=5)
+            with patch.object(monitor, 'GAME_QUERY_TIMEOUT_SECONDS', 0.2):
+                self.assertIn('no answer', monitor.probe_game({'kind': 'game', 'host': '127.0.0.1', 'port': port}))
+
+    def test_game_host_prints_targets_for_public_servers_and_the_website(self):
+        plan = {'public_ipv4': '45.10.20.30', 'instances': [
+            {'name': 'main-eu', 'port': 28960, 'address': 'eu.opencj.org', 'website': {'domain': 'opencj.org'}},
+            {'name': 'acceptance', 'port': 28961, 'address': ''},
+            {'name': 'map-test', 'port': 28962, 'bind_ip': '127.0.0.1'}]}
+        with patch.object(dns_guide, 'run', return_value='[]'):
+            targets = manage.outside_check_targets(plan)
+        self.assertEqual(targets, ['game:eu.opencj.org:28960', 'web:https://opencj.org/', 'game:45.10.20.30:28961'])
+        for target in targets:
+            monitor.parse_target(target)
+
+
+class StatusTests(unittest.TestCase):
+    """`opencj status` must flag every broken part, and stay quiet about normal states."""
+    now = 1_800_000_000
+
+    def test_services_missing_stopped_or_unhealthy_are_problems(self):
+        rows = [{'Service': 'server', 'State': 'running', 'Health': 'healthy'},
+                {'Service': 'db', 'State': 'running', 'Health': 'starting'},
+                {'Service': 'discord', 'State': 'restarting', 'Health': ''}]
+        text, problems = status.service_summary(['server', 'db', 'discord', 'geoip'], rows)
+        self.assertEqual(text, 'server healthy · db starting · discord restarting · geoip missing')
+        self.assertEqual(problems, ['discord is restarting', 'geoip is missing'],
+                         'A database that is still starting is not a problem yet')
+        _, problems = status.service_summary(['https'], [{'Service': 'https', 'State': 'running', 'Health': ''}])
+        self.assertEqual(problems, [], 'A service without a healthcheck counts as fine while running')
+
+    def test_jobs_report_failures_stale_runs_and_inactive_timers(self):
+        recent = {'ActiveState': 'active', 'LastTriggerUSec': '@' + str(self.now - 60)}
+        old = {'ActiveState': 'active', 'LastTriggerUSec': '@' + str(self.now - 3600)}
+        cases = [
+            ('watchdog', recent, {'Result': 'success'}, None),
+            ('watchdog', old, {'Result': 'success'}, 'it has not run for 60 min'),
+            ('main-eu backup', old, {'Result': 'exit-code'}, 'its last run failed'),
+            ('main-eu backup', {'ActiveState': 'inactive'}, {}, 'its timer is not active'),
+            ('housekeeping', {'ActiveState': 'active', 'LastTriggerUSec': ''}, {}, None),
+        ]
+        for label, timer, service, expected in cases:
+            with self.subTest(label=label, timer=timer, service=service):
+                self.assertEqual(status.job_summary(label, timer, service, self.now)[1], expected)
+        self.assertEqual(status.job_summary('housekeeping', cases[4][1], {}, self.now)[0], 'not run yet')
+
+    def test_timer_times_come_from_raw_dbus_values(self):
+        self.assertEqual(status.unit_object_path('opencj-main-eu.timer'),
+                         '/org/freedesktop/systemd1/unit/opencj_2dmain_2deu_2etimer')
+        replies = {'LastTriggerUSec': 't 1795582850930867', 'ActiveState': 's "active"'}
+        with patch.object(status, 'quiet', lambda arguments: replies[arguments[-1]]):
+            self.assertEqual(status.timer_properties('opencj-watchdog'),
+                             {'ActiveState': 'active', 'LastTriggerUSec': '@1795582850'})
+        replies['LastTriggerUSec'] = 't 0'
+        with patch.object(status, 'quiet', lambda arguments: replies[arguments[-1]]):
+            self.assertEqual(status.timer_properties('opencj-watchdog')['LastTriggerUSec'], '', 'Never ran')
+
+    def test_job_names_are_readable(self):
+        projects = {'opencj-main-eu-66f61181': 'main-eu'}
+        self.assertEqual(status.job_label('opencj-main-eu-66f61181-backup', projects), 'main-eu backup')
+        self.assertEqual(status.job_label('opencj-main-eu-66f61181-prune', projects), 'main-eu pruning')
+        self.assertEqual(status.job_label('opencj-watchdog', projects), 'watchdog')
+
+    def test_certificate_close_to_expiry_is_a_problem(self):
+        def certificate(days):
+            return {'notAfter': time.strftime('%b %d %H:%M:%S %Y GMT', time.gmtime(self.now + days * 86400))}
+        self.assertIsNone(status.certificate_summary(certificate(60), self.now)[1])
+        text, problem = status.certificate_summary(certificate(5), self.now)
+        self.assertIn('5 days left', text)
+        self.assertEqual(problem, 'renewal seems to fail')
+
+    def test_report_collects_only_problems(self):
+        report = status.Report()
+        self.assertEqual(report.check(True, 'fine'), 'OK')
+        self.assertEqual(report.check(False, 'disk almost full'), 'PROBLEM')
+        self.assertEqual(report.attention, ['disk almost full'])
+
+
+class DiscordChannelTests(unittest.TestCase):
+    def test_two_bridges_cannot_share_a_channel(self):
+        bridge = {'enabled': True, 'guild_id': '1' * 18, 'channel_id': '2' * 18, 'token': 'x'}
+        configuration.check_discord_channels([{'name': 'main-eu', 'discord': bridge},
+                                              {'name': 'acceptance', 'discord': {'enabled': False}}])
+        with self.assertRaisesRegex(ValueError, 'main-eu and acceptance would share'):
+            configuration.check_discord_channels([{'name': 'main-eu', 'discord': bridge},
+                                                  {'name': 'acceptance', 'discord': dict(bridge)}])
 
 
 class MapTests(unittest.TestCase):

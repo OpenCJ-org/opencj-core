@@ -104,7 +104,7 @@ def setup_receiver(name, public_key, directory, max_gib):
     install_alert_unit(Path('/srv/opencj'))
     install_job('opencj-offsite-retention', 'OpenCJ off-site backup retention', '*-*-* 06:00:00 Europe/Amsterdam',
                 [ROOT / 'dev-tools/setup/maintenance.py', '--receiver-retention', directory,
-                 '--max-gib', str(max_gib)], timeout_minutes=30)
+                 '--max-gib', str(max_gib)], timeout_minutes=30, needs_docker=False)
     run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'enable', '--now', 'opencj-offsite-retention.timer'])
     print('Ready to receive backups from ' + name + ' as ' + entry.pw_name + ' into ' + str(target) + '.')

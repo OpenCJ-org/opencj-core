@@ -1,20 +1,26 @@
 """Harden the administrator's SSH access without any risk of locking them out.
 
-Key-only login is offered only when the administrator already has an authorized key.
-fail2ban bans addresses that keep failing. A port change is optional and done in two
-phases: SSH first listens on both ports, and the old port closes only after a real
-login on the new port has been seen.
+Password logins are always switched off. If the administrator has no SSH key yet,
+setup explains how to add one and waits until a login with that key has been seen,
+so switching passwords off can never lock them out. fail2ban bans addresses that
+keep failing. A port change is optional and done in two phases: SSH first listens on
+both ports, and the old port closes only after a real login on the new port.
 """
 
+from datetime import datetime
 import os
 from pathlib import Path
 import pwd
 import re
 import subprocess
+import sys
 
 from configuration import ask_port, ask_yes_no, prompt
 from operations import run, write_private
 import sshd
+
+# How far back a key login in the journal counts as proof that the key works.
+KEY_LOGIN_LOOKBACK = '-30d'
 
 MARKER = '# Managed by OpenCJ setup\n'
 SSHD_DROP_IN = Path('/etc/ssh/sshd_config.d/00-opencj-hardening.conf')
@@ -27,11 +33,8 @@ MAX_SSH_PORT = 49151
 
 
 def administrator():
-    """The account that ran sudo; its keys decide whether key-only login is safe."""
-    name = os.environ.get('SUDO_USER', '')
-    if not name or name == 'root':
-        return None
-    return pwd.getpwnam(name)
+    """The account that ran sudo (root when setup runs as root); it must keep SSH access."""
+    return pwd.getpwnam(os.environ.get('SUDO_USER') or 'root')
 
 
 def has_authorized_key(account):
@@ -46,20 +49,72 @@ def current_ssh_ports():
     return ssh_ports()
 
 
+def key_login_seen(account, since):
+    """True when the journal shows a login with an SSH key for this account since `since`."""
+    result = subprocess.run(['journalctl', '--since', since, '--no-pager', '-o', 'cat',
+                             '-t', 'sshd', '-t', 'sshd-session'],
+                            capture_output=True, text=True, timeout=60)
+    marker = 'Accepted publickey for ' + account.pw_name + ' '
+    return any(line.startswith(marker) for line in result.stdout.splitlines())
+
+
+def key_instructions(account):
+    port = current_ssh_ports()[0]
+    from dns_guide import public_addresses
+    addresses = public_addresses()['A']
+    host = addresses[0] if addresses else '<this server\'s address>'
+    target = account.pw_name + '@' + host
+    keys = Path(account.pw_dir) / '.ssh/authorized_keys'
+    return ('\nSetup switches SSH password logins off: they are the main target of attacks. First add your'
+            ' SSH key for ' + account.pw_name + ' (it goes into ' + str(keys) + '):\n'
+            '  1. On your own computer, create a key if you have none:\n'
+            '       ssh-keygen -t ed25519\n'
+            '  2. Copy it to this server, on your own computer:\n'
+            '       Linux or macOS:  ssh-copy-id -p ' + str(port) + ' ' + target + '\n'
+            '       Windows PowerShell:\n'
+            '         type $env:USERPROFILE\\.ssh\\id_ed25519.pub | ssh -p ' + str(port) + ' ' + target
+            + ' "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600'
+            ' ~/.ssh/authorized_keys"\n'
+            '  3. Keep THIS session open. In a NEW terminal, log in again:\n'
+            '       ssh -p ' + str(port) + ' ' + target + '\n'
+            '     It must log you in without asking for this server\'s password.')
+
+
+def wait_for_key_login(account):
+    """Return only once a login with an SSH key for this account has been seen.
+
+    A key that is merely present could still be wrong (other key, bad file
+    permissions); only a real key login proves passwords can go.
+    """
+    if has_authorized_key(account) and key_login_seen(account, KEY_LOGIN_LOOKBACK):
+        print('A login with your SSH key for ' + account.pw_name + ' was seen; password logins will be switched'
+              ' off.', flush=True)
+        return
+    if not sys.stdin.isatty():
+        raise RuntimeError('No SSH key login for ' + account.pw_name + ' has been seen, so passwords cannot be'
+                           ' switched off safely.' + key_instructions(account))
+    started = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(key_instructions(account), flush=True)
+    while True:
+        prompt('Press Enter here once that key login works')
+        if not has_authorized_key(account):
+            print('No key is in ' + str(Path(account.pw_dir) / '.ssh/authorized_keys') + ' yet. Repeat step 2.',
+                  flush=True)
+            continue
+        if key_login_seen(account, started):
+            print('Key login seen. Password logins will be switched off.', flush=True)
+            return
+        print('The key is there, but no login with it was seen since ' + started + '. Do step 3; if it still asks'
+              ' for a password, check that ~/.ssh is 700 and authorized_keys is 600, owned by '
+              + account.pw_name + '.', flush=True)
+
+
 def collect_ssh_hardening():
     print('\nSSH access: key-only login and fail2ban stop password guessing; a different port mainly'
           ' reduces log noise from scanners.', flush=True)
-    account = administrator()
-    key_present = bool(account) and has_authorized_key(account)
-    if key_present:
-        key_only = ask_yes_no('Allow only SSH key logins (disable passwords)? Your key for '
-                              + account.pw_name + ' was found', True)
-    else:
-        print('No SSH key was found for the account running setup, so passwords stay enabled.'
-              ' Add a key (ssh-copy-id) and rerun setup to disable them.', flush=True)
-        key_only = False
-    result = {'key_only': key_only, 'fail2ban': ask_yes_no('Ban addresses that keep failing to log in (fail2ban)?',
-                                                            True)}
+    wait_for_key_login(administrator())
+    result = {'key_only': True, 'fail2ban': ask_yes_no('Ban addresses that keep failing to log in (fail2ban)?',
+                                                        True)}
     ports = current_ssh_ports()
     if ask_yes_no('Move SSH from port ' + '/'.join(map(str, ports)) + ' to another port?', False):
         result['new_port'] = ask_port('New SSH port (' + str(MIN_SSH_PORT) + '-' + str(MAX_SSH_PORT) + ')', 2222)
@@ -75,10 +130,13 @@ def validate_ssh_hardening(hardening):
     if not hardening:
         return {}
     result = dict(hardening)
+    result.setdefault('key_only', True)
+    result.setdefault('fail2ban', False)
     for field in ('key_only', 'fail2ban'):
-        result.setdefault(field, False)
         if type(result[field]) is not bool:
             raise ValueError('ssh_hardening.' + field + ' must be a Boolean')
+    if not result['key_only']:
+        raise ValueError('ssh_hardening.key_only must be true: password logins are not left enabled')
     if 'new_port' in result:
         port = result['new_port']
         if type(port) is not int or not MIN_SSH_PORT <= port <= MAX_SSH_PORT:
@@ -163,11 +221,13 @@ def established_on(port):
 
 
 def apply_key_only(enabled):
+    """Switch password logins off; refuses (setup stops, nothing changed) while the administrator has no key."""
     if not enabled:
         return
     account = administrator()
     if not account or not has_authorized_key(account):
-        raise RuntimeError('No authorized SSH key found for the administrator; passwords left enabled')
+        raise RuntimeError('No authorized SSH key found for the administrator. Add one (sudo opencj install'
+                           ' explains how) and run setup again; nothing was changed.')
     # 00- sorts first: sshd uses the first value it reads for each option.
     managed(SSHD_DROP_IN, 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n')
     sshd.sshd('-t')
@@ -196,7 +256,9 @@ def move_port(plan, new_port, open_firewall):
     listen_on(hardening['ports'])
     if new_port not in listening_ssh_ports():
         raise RuntimeError('SSH does not listen on port ' + str(new_port) + '; the old port stays open')
-    host = prompt('This server\'s address for your SSH client', os.uname().nodename)
+    from dns_guide import public_addresses
+    addresses = public_addresses()['A']
+    host = prompt('This server\'s address for your SSH client', addresses[0] if addresses else os.uname().nodename)
     account = administrator()
     user = account.pw_name if account else 'root'
     print('\nKeep this session open. In a NEW terminal, log in with:\n  ssh -p ' + str(new_port) + ' '

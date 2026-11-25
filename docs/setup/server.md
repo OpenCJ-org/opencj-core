@@ -55,7 +55,7 @@ The suggested topology is:
 | main-eu | migrate | Production database, maps, compiled assets and runtime drafts transferred from the old installation |
 | acceptance | copy from main-eu | Independent database initialized from a consistent main snapshot |
 | map-test | new; assets from main-eu | Empty player database with its own runtime, sharing only read-only asset files |
-| later main region | owner | Shared production database through a restricted SSH tunnel, with separately revocable SQL credentials |
+| later main region | owner (switched off, see below) | Shared production database through a restricted SSH tunnel, with separately revocable SQL credentials |
 
 Acceptance copying briefly stops its selected source game to capture a consistent
 snapshot. Use the migration player guard and maintenance window. Copying is a
@@ -166,6 +166,11 @@ not affect main. Sharing means sharing player progress, records and checkpoint
 layouts, not just sharing an SQL process.
 
 ### Connect from another machine
+
+> **Switched off until tested.** The wizard does not offer `owner` or `existing`, and a
+> plan that uses them (or a published database port) is refused. The code is kept;
+> to test it between two machines, set `REMOTE_DATABASE_ENABLED = True` in
+> `dev-tools/setup/configuration.py`. The rest of this section describes it.
 
 For an installation managed by this setup, choose `owner`. Supply the database
 owner's checkout/instance paths and its administrator SSH connection, including a
@@ -297,8 +302,8 @@ are part of host security, not a guarantee against every application vulnerabili
 ## Optional website
 
 Answer yes to use the actual [website project](../../web/README.md) shipped in
-`web/`. Select its game instance, domain name, local port, public game address and
-Discord invite. Setup applies the complete migrations, including 028, then uses the
+`web/`. Select its game instance, its main domain and any extra domains, local port,
+public game address and Discord invite. Setup applies the complete migrations, including 028, then uses the
 maintained website grant helper's table policy to provision a unique account.
 The game runtime policy includes the `mapPlays` insert permission.
 
@@ -311,12 +316,41 @@ check. `server-web` is not used.
 
 **HTTPS.** With a domain name, a [Caddy](https://caddyserver.com/) container serves
 the site on ports 80/443 and obtains and renews a free Let's Encrypt certificate by
-itself. Point the domain's DNS A/AAAA record at the server first; until DNS works,
-Caddy keeps retrying. Plain HTTP redirects to HTTPS, except `/usermaps/`: CoD4 clients
-download maps over plain HTTP only. Caddy runs unprivileged (host ports 80/443 map to
+itself. Extra domains (for example `opencj.net` next to `opencj.org`) get their own
+certificates and redirect permanently to the main domain, so visitors and search
+engines see one address. Plain HTTP redirects to HTTPS, except `/usermaps/`: CoD4
+clients download maps over plain HTTP only. Change the domains later with
+`sudo opencj configure <server>`. Caddy runs unprivileged (host ports 80/443 map to
 container ports 8080/8443), read-only and without Linux capabilities; certificates
 are kept in the installation's `website/caddy-data/`. Without a domain the site only
 listens on `127.0.0.1:8090` (for an SSH tunnel or another proxy).
+
+## Domain names and DNS
+
+Each game server can have an address players connect to (for example
+`eu.opencj.org`; blank means the IP address), asked after its game port. The website
+has a main domain and optional extra domains. Setup reads this machine's public
+addresses from its own network interfaces (behind a router it asks for the public
+IPv4 address and you forward the ports), then prints the records to create at your
+domain provider:
+
+```text
+  opencj.org                       A     203.0.113.10                            (website)
+  opencj.net                       A     203.0.113.10                            (website, redirects to opencj.org)
+  eu.opencj.org                    A     203.0.113.10                            (game server main-eu)
+```
+
+AAAA (IPv6) records are listed as optional when the machine has a public IPv6
+address. Before the website starts, setup checks the website names and waits
+(`check` / `continue`): certificates are issued only once every website name points
+here, and a wrong AAAA record breaks them even when A is right. Choosing `continue`
+is safe; Caddy fetches the certificate by itself once DNS is right. Game server
+names are checked and reported only. `sudo opencj dns` prints the records and their
+current state at any time; `configure` prints them after a name changes.
+
+If your domain uses a DNS proxy such as Cloudflare, set these records to **DNS only**
+(grey cloud): the proxy does not carry game traffic, and the check would see the
+proxy's addresses instead of this machine.
 
 ## Maps and map downloads
 
@@ -351,11 +385,30 @@ downloads for private servers need the not-yet-built
 ## Discord chat bridge
 
 Per server, the wizard offers the Discord bridge from `discord-integration/` (default
-yes for `main-*` servers). Create a bot in the Discord developer portal, invite it to
-your Discord server, and enter the server (guild) ID, the channel ID and the bot token
+yes for `main-*` servers) and lists these steps with links:
+
+1. Create an application and its bot in the
+   [developer portal](https://discord.com/developers/applications)
+   ([step by step](https://docs.discord.com/developers/quick-start/getting-started)).
+2. On the Bot page, switch on *Message Content Intent*: the bridge reads chat
+   messages ([Discord docs](https://docs.discord.com/developers/events/gateway#message-content-intent)).
+3. Invite the bot to your Discord server with permission to view the channel and send
+   messages.
+4. Switch on Developer Mode in Discord and copy the server and channel IDs
+   ([how](https://support.discord.com/hc/en-us/articles/206346498)).
+5. Bot page > Reset Token, and copy the token (shown once).
+
+Then enter the server (guild) ID, the channel ID and the bot token
 (entered hidden, stored only in the root-only installation record and the bridge's
 private configuration). The bridge runs as its own Linux user; it and the game share
-only a private socket folder. A wrong token makes only the bridge restart; the game is
+only a private socket folder.
+
+Bridges stay apart by construction: a bridge reads only the event socket of its own
+server (each server has its own socket folder), it reads no database, and it accepts
+Discord messages only from its configured Discord server and channel. Setup refuses
+two bridges with the same channel on one machine, so acceptance or map-test chat can
+never appear in main's channel. One bot token may serve several servers, each in its
+own channel. A wrong token makes only the bridge restart; the game is
 not affected, and the watchdog reports it.
 
 ## Scheduled backups, pruning and security updates
@@ -429,9 +482,13 @@ Docker publishes container ports with its own rules, which `ufw` does not filter
 setup therefore publishes only the game ports and 80/443 publicly and binds the
 database and local website port to `127.0.0.1`.
 
-SSH hardening offers key-only login (only when the administrator running setup already
-has an authorized key; otherwise passwords stay enabled), fail2ban (bans addresses
-that keep failing, default yes) and an optional port change. Changing the port mostly
+SSH hardening always switches password logins off. When the administrator running
+setup (the `sudo` user, or root) has no SSH key yet, setup prints how to create one
+and copy it (`ssh-copy-id`, or a PowerShell one-liner on Windows), then waits until
+the system journal shows a login **with that key**: a key file alone could be the
+wrong key or have wrong permissions. An unattended (`--plan`) run without such a
+login stops before changing anything. It also offers fail2ban (bans addresses that
+keep failing, default yes) and an optional port change. Changing the port mostly
 reduces log noise from scanners. It is done in two steps: SSH first listens on both
 ports, you log in on the new port from a second terminal, and setup closes the old
 port only after it sees that login. Otherwise both ports stay open. The port change is
@@ -448,9 +505,18 @@ watchdog also:
 - reports a stopped server, a Discord/GeoIP service that keeps stopping, and less than
   5 GiB free disk space (each at most every 6 hours).
 
+A machine cannot report its own outage, so another machine (normally the external
+backup server) can check it from outside: `sudo bash opencj.sh monitor --name NAME
+--target game:HOST:PORT --target web:https://NAME/` installs a check every 2 minutes
+(a game info query and an HTTPS request) that posts DOWN after 3 failures in a row,
+repeats every 6 hours, and posts RECOVERED. `sudo opencj alerts` on the game host
+prints this command with the right targets. It needs only Python, not Docker.
+
 Any failing scheduled job (backup, off-site copy, pruning, housekeeping) is reported
 too. Alerts go to a Discord webhook if you entered one (create it in a private channel
-that only administrators can read) and always to the system journal
+that only administrators can read:
+[Discord: Intro to Webhooks](https://support.discord.com/hc/en-us/articles/228383668))
+and always to the system journal
 (`journalctl -u 'opencj-*'`).
 
 Each Sunday, housekeeping removes old release images of this machine's servers once no

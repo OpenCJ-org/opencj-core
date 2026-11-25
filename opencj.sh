@@ -14,10 +14,11 @@ usage() {
         '  sudo bash opencj.sh install --plan FILE     Unattended, from a private JSON plan' \
         '' \
         'Afterwards, from anywhere:' \
-        '  sudo opencj status                          Every server, backups and host protections' \
-        '  sudo opencj configure NAME                  Name, access, passwords, port, map, downloads, Discord,' \
-        '                                              backups, pruning, website' \
+        '  sudo opencj status                          Everything on this machine, then what needs attention' \
+        '  sudo opencj configure NAME                  Name, address, port, access, passwords, map, downloads,' \
+        '                                              Discord, backups, pruning, website domains' \
         '  sudo opencj alerts                          Discord channel for alerts (sends a test message)' \
+        '  sudo opencj dns                             DNS records to create, and whether they point here' \
         '  sudo opencj add-server                      Add another server to this machine' \
         '  sudo opencj maps add SOURCE | maps list     Add or update a custom map' \
         '  sudo opencj restore NAME BACKUP.sql.gz      Replace a server'"'"'s data with a backup' \
@@ -27,8 +28,11 @@ usage() {
         'Upgrading (from the NEW release checkout):' \
         '  sudo bash opencj.sh upgrade' \
         '' \
-        'On the off-site backup machine:' \
+        'On the external backup server:' \
         '  sudo bash opencj.sh backup-receiver --name NAME --key PUBLIC_KEY' \
+        '  sudo bash opencj.sh monitor --name NAME --target game:HOST:PORT --target web:https://NAME/' \
+        '                                              Alert when a game server or the website stops answering' \
+        '                                              (sudo opencj alerts on the game host prints this line)' \
         '' \
         'Advanced: install --instance-dir DIR [--config FILE] [--check | --backup] for one server;' \
         'export | resume-source for migration sources. Commands never reset existing data.' \
@@ -41,7 +45,7 @@ case "$command" in
         usage
         exit 0
         ;;
-    install|add-server|status|configure|alerts|maps|restore|refresh|upgrade|backup-receiver|export|resume-source)
+    install|add-server|status|configure|alerts|dns|maps|restore|refresh|upgrade|backup-receiver|monitor|export|resume-source)
         ;;
     *)
         echo "Unknown command: $command" >&2
@@ -77,9 +81,13 @@ else
 fi
 setup=$source_dir/dev-tools/setup
 
-# The off-site receiver only stores files; it needs neither Docker nor the game.
+# The external backup server only stores files and watches from outside; it needs
+# neither Docker nor the game.
 if [[ "$command" == backup-receiver ]]; then
     exec python3 -B "$setup/offsite.py" "$@"
+fi
+if [[ "$command" == monitor ]]; then
+    exec python3 -B "$setup/monitor.py" "$@"
 fi
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
     bash "$source_dir/dev-tools/scripts/install-host.sh"

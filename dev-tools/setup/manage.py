@@ -9,7 +9,7 @@ import shutil
 import sys
 
 from configuration import RELEASE, ask, ask_int, ask_port, ask_yes_no, collect_discord, collect_downloads
-from configuration import prompt, safe_cvar, validate_discord, validate_downloads
+from configuration import check_discord_channels, prompt, safe_cvar, validate_discord, validate_downloads
 from operations import operation_lock, read_json, run, save_json
 import install
 import linux_accounts
@@ -83,6 +83,8 @@ def collect_changes(settings, other_ports):
 
     changed['hostname'] = ask('Server display name', settings['hostname'], parse=parse_hostname)
     changed['port'] = ask('Game port', settings['port'], parse=parse_port)
+    changed['address'] = ask('Address players connect to, for example eu.opencj.org ("none" for the IP address)',
+                             settings.get('address') or 'none', parse=parse_address)
     changed['slots'] = ask_int('Player slots', settings['slots'], 1, 32)
     changed['public'] = ask_yes_no('Public access without a join password?', settings['public'])
     changed['map'] = ask_map(settings['map'])
@@ -108,14 +110,19 @@ def collect_changes(settings, other_ports):
             changed['geoip']['user'] = 'geoip_' + os.urandom(6).hex()
         elif changed['geoip']['enabled']:
             changed['geoip']['user'] = settings['geoip']['user']
-    if settings.get('website') and ask_yes_no('Change website settings (domain, game address, invite)?', False):
+    if settings.get('website') and ask_yes_no('Change website settings (domains, game address, invite)?', False):
         current = settings['website']
-        updated = managed_website.collect_website(changed['port'])
+        updated = managed_website.collect_website(changed['port'], current=current,
+                                                  game_address=changed['address'])
         # The database account, local port and generated identities stay the same.
         changed['website'] = {**current, **{key: updated[key] for key in
-                                            ('domain', 'connect_address', 'discord_invite')},
+                                            ('domain', 'aliases', 'connect_address', 'discord_invite')},
                               'acme_email': updated.get('acme_email', '')}
     return changed
+
+
+def parse_address(text):
+    return '' if text == 'none' else managed_website.validate_domain(text.strip())
 
 
 def ask_password(label, current):
@@ -143,6 +150,7 @@ def configure_instance(host, name):
         if changed == settings:
             print('Nothing changed.')
             return
+        check_discord_channels([*(item for item in plan['instances'] if item['name'] != name), changed])
         changed['state'] = 'ready'
         linux_accounts.ensure_accounts(changed)
         newly_enabled = [service for service in ('discord', 'geoip')
@@ -163,90 +171,23 @@ def configure_instance(host, name):
     for item in plan['instances']:
         if item['name'] == name:
             # The plan drives the firewall (game port, website ports 80/443) on later runs.
-            item.update({key: changed[key] for key in ('hostname', 'port', 'slots', 'public', 'map',
+            item.update({key: changed[key] for key in ('hostname', 'port', 'address', 'slots', 'public', 'map',
                                                        'downloads', 'discord')})
             if changed.get('website'):
                 item['website'] = changed['website']
     save_json(host / 'host-setup.json', plan)
     from firewall import configure_firewall
     configure_firewall(plan, plan['instances'])
+    if changed['address'] != settings.get('address', '') or changed.get('website') != settings.get('website'):
+        import dns_guide
+        dns_guide.print_records(plan)
+        print('\nCurrent state (check again any time with: sudo opencj dns):', flush=True)
+        dns_guide.report(plan)
     if changed['join_password'] != settings['join_password'] and changed['join_password']:
         print('The join password changed; it is in ' + str(instance / 'join-password'))
     if changed['rcon_password'] != settings['rcon_password']:
         print('The administration password changed; it is in ' + str(instance / 'rcon-password'))
     print(name + ' now runs with the new settings.')
-
-
-def read_receipt(path, *keys):
-    """A value from a job's JSON receipt, or '-' when the job has not run yet."""
-    if not path.exists():
-        return '-'
-    value = read_json(path)
-    for key in keys:
-        value = value.get(key, '-') if isinstance(value, dict) else '-'
-    return str(value)
-
-
-def receipt_age(path):
-    if not path.exists():
-        return 'never'
-    hours = (datetime.now(timezone.utc).timestamp() - path.stat().st_mtime) / 3600
-    return f'{hours:.0f} h ago' if hours < 48 else f'{hours / 24:.0f} days ago'
-
-
-def server_line(instance, settings):
-    container = install.compose(instance, settings, 'ps', '--all', '--quiet', 'server')
-    if not container:
-        return 'missing', '-', '-', '-'
-    state = install.run(['docker', 'inspect', '--format',
-                         '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}} {{.RestartCount}}',
-                         container]).split()
-    status = ' '.join(state[:-1])
-    restarts = state[-1]
-    try:
-        # The local console shows the real map and every player, also on private servers.
-        live = source_export.parse_console_status(source_export.console_output(container, 'status'))
-        return status, live['map'], str(len(live['players'])), restarts
-    except (RuntimeError, OSError, ValueError):
-        return status, '?', '?', restarts
-
-
-def show_status(host):
-    """One overview of every server on this machine and of the host's protections."""
-    plan = host_plan(host)
-    print(f"{'server':13} {'release':12} {'port':6} {'access':8} {'state':18} {'map':22} {'players':8} crashes")
-    for name in plan.get('completed', []):
-        instance = host / name
-        settings = install.load_installation(instance, allow_other_release=True)
-        status, map_name, players, restarts = server_line(instance, settings)
-        access = 'public' if settings['public'] else 'private'
-        print(f"{name:13} {settings['release']:12} {settings['port']:<6} {access:8} {status:18} {map_name:22} "
-              f"{players:8} {restarts}")
-    print()
-    for name in plan.get('completed', []):
-        instance = host / name
-        details = []
-        if (instance / 'last-backup.json').exists() or (instance / 'automatic-backups').exists():
-            details.append('backup ' + receipt_age(instance / 'last-backup.json'))
-        if (instance / 'last-offsite.json').exists():
-            details.append('off-site ' + receipt_age(instance / 'last-offsite.json'))
-        if (instance / 'last-prune.json').exists():
-            details.append('pruned ' + read_receipt(instance / 'last-prune.json', 'runs_deleted') + ' runs '
-                           + receipt_age(instance / 'last-prune.json'))
-        if details:
-            print(f'{name:13} ' + ', '.join(details))
-    usage = shutil.disk_usage(host)
-    print(f'\nDisk: {usage.free / maintenance.GIB:.0f} GiB free of {usage.total / maintenance.GIB:.0f} GiB')
-    firewall = install.subprocess.run(['ufw', 'status'], capture_output=True, text=True).stdout.splitlines()
-    print('Firewall: ' + (firewall[0].replace('Status: ', '') if firewall else 'not installed'))
-    banned = install.subprocess.run(['fail2ban-client', 'status', 'sshd'], capture_output=True, text=True).stdout
-    match = re.search(r'Currently banned:\s+(\d+)', banned)
-    print('SSH addresses banned now: ' + (match.group(1) if match else 'fail2ban off'))
-    timers = install.subprocess.run(['systemctl', 'list-timers', '--all', '--no-pager', 'opencj*'],
-                                    capture_output=True, text=True).stdout.splitlines()
-    print('Scheduled jobs: ' + str(max(len(timers) - 3, 0)) + ' (systemctl list-timers \'opencj*\')')
-    print('Alerts: ' + ('Discord webhook' if plan.get('alerts', {}).get('discord_webhook') else 'journal only')
-          + ' (journalctl -u \'opencj-*\' --since today)')
 
 
 def configure_alerts(host):
@@ -257,6 +198,7 @@ def configure_alerts(host):
         alerts = plan.setdefault('alerts', {'discord_webhook': ''})
         print('Alerts currently go to: ' + ('a Discord webhook' if alerts['discord_webhook'] else 'the journal only'),
               flush=True)
+        maintenance.print_webhook_help()
 
         def parse(text):
             if text == 'keep':
@@ -268,6 +210,33 @@ def configure_alerts(host):
         save_json(record, plan)
     maintenance.send_alert(host, 'Test alert: OpenCJ alerts for this machine arrive here.')
     print('A test alert was sent' + (' to the webhook.' if alerts['discord_webhook'] else ' to the journal.'))
+    print_outside_check_command(plan)
+
+
+def outside_check_targets(plan):
+    """What another machine should check: each publicly reachable game server and the website."""
+    import dns_guide
+    addresses = dns_guide.public_addresses(plan)['A']
+    fallback = addresses[0] if addresses else '<this server\'s address>'
+    targets = []
+    for settings in plan['instances']:
+        if settings.get('bind_ip', '0.0.0.0') != '127.0.0.1':
+            targets.append('game:' + (settings.get('address') or fallback) + ':' + str(settings['port']))
+        if settings.get('website', {}).get('domain'):
+            targets.append('web:https://' + settings['website']['domain'] + '/')
+    return targets
+
+
+def print_outside_check_command(plan):
+    """The watchdog here cannot report this whole machine going down; another machine must."""
+    targets = outside_check_targets(plan)
+    if not targets:
+        return
+    name = plan['instances'][0]['name']
+    print('\nThis machine cannot report its own outage (power, network, provider). On another machine,'
+          ' normally the external backup server, run from its opencj-core checkout:\n'
+          '  sudo bash opencj.sh monitor --name ' + name + ''.join(' --target ' + target for target in targets)
+          + '\nIt asks for the alert webhook and then checks every 2 minutes.', flush=True)
 
 
 def applied_migrations(instance, settings):
@@ -474,8 +443,9 @@ def main():
     configure = commands.add_parser('configure', help='Change a server\'s name, access, passwords, slots, port, map,'
                                                       ' downloads or Discord')
     configure.add_argument('name')
-    commands.add_parser('status', help='Show every server, its last backups and the host\'s protections')
+    commands.add_parser('status', help='Check everything on this machine, then list what needs attention')
     commands.add_parser('alerts', help='Set or change the Discord webhook for alerts and send a test alert')
+    commands.add_parser('dns', help='DNS records to create for the website and servers, and whether they point here')
     commands.add_parser('upgrade', help='Upgrade all servers on this machine to this checkout\'s release')
     refresh = commands.add_parser('refresh', help='Replace a copied server\'s data with a fresh copy of its source')
     refresh.add_argument('name')
@@ -492,9 +462,13 @@ def main():
     if args.command == 'configure':
         configure_instance(host, args.name)
     elif args.command == 'status':
-        show_status(host)
+        import status
+        status.show_status(host)
     elif args.command == 'alerts':
         configure_alerts(host)
+    elif args.command == 'dns':
+        import dns_guide
+        dns_guide.show(host_plan(host))
     elif args.command == 'upgrade':
         upgrade_host(host)
     elif args.command == 'restore':

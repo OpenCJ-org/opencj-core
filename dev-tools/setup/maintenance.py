@@ -17,7 +17,8 @@ import urllib.request
 import zlib
 from zoneinfo import ZoneInfo
 
-from configuration import MYSQL_IMAGE, ask, ask_int, ask_port, ask_yes_no, is_main_instance, prompt
+from configuration import DISCORD_WEBHOOK_GUIDE, MYSQL_IMAGE, ask, ask_int, ask_port, ask_yes_no, is_main_instance
+from configuration import prompt
 from configuration import validate_host, validate_port
 from operations import operation_lock, read_json, run, save_json, write_private
 
@@ -139,11 +140,17 @@ def collect_updates():
     return result
 
 
-def collect_alerts():
+def print_webhook_help():
     print('Alerts (server crashes with their last log lines, failed backups, low disk space) can be posted'
-          ' to a Discord channel. Create a private channel that only administrators can read, then:'
-          ' Channel settings > Integrations > Webhooks > New webhook > Copy URL.'
-          ' Player IP addresses and passwords are masked in posted logs.', flush=True)
+          ' to a Discord channel. Player IP addresses and passwords are masked in posted logs.\n'
+          '  1. Create a private channel that only administrators can read.\n'
+          '  2. Channel settings > Integrations > Webhooks > New Webhook > Copy Webhook URL\n'
+          '     (step by step: ' + DISCORD_WEBHOOK_GUIDE + ').\n'
+          '  Anyone with the URL can post to that channel, so keep it private.', flush=True)
+
+
+def collect_alerts():
+    print_webhook_help()
     url = ask('Discord webhook URL for alerts (blank disables)', '', parse=validate_webhook)
     return {'discord_webhook': url}
 
@@ -247,14 +254,17 @@ def timer_contents(schedule, service):
             '\n[Install]\nWantedBy=timers.target\n')
 
 
-def install_job(name, description, schedule, arguments, *, timeout_minutes):
+def install_job(name, description, schedule, arguments, *, timeout_minutes, needs_docker=True):
     """Install a root oneshot service plus timer; a failure triggers the alert unit.
 
-    These jobs need Docker access, which the game, website and other service
+    Most jobs need Docker access, which the game, website and other service
     identities never receive, so they run as root under a tight systemd sandbox.
+    Jobs on an external backup server (needs_docker=False) must not depend on Docker,
+    which that machine may not have.
     """
     command = ' '.join(systemd_argument(argument) for argument in ['/usr/bin/python3', '-B', *arguments])
-    service = ('[Unit]\nDescription=' + description + '\nRequires=docker.service\nAfter=docker.service\n'
+    docker = 'Requires=docker.service\nAfter=docker.service\n' if needs_docker else ''
+    service = ('[Unit]\nDescription=' + description + '\n' + docker +
                'OnFailure=opencj-alert@%n.service\n'
                '[Service]\nType=oneshot\nUMask=0077\nNice=10\nIOSchedulingClass=idle\n'
                'TimeoutStartSec=' + str(timeout_minutes) + 'min\nNoNewPrivileges=true\nPrivateTmp=true\n'
@@ -648,14 +658,29 @@ def host_plan(host):
     return plan
 
 
+def alert_webhook(host):
+    """The game host's alert webhook, or on an external backup server the outside check's one."""
+    for path, keys in ((host / 'host-setup.json', ('alerts', 'discord_webhook')),
+                       (host / 'remote-monitor.json', ('webhook',))):
+        try:
+            value = read_json(path)
+        except (OSError, ValueError):
+            continue
+        for key in keys:
+            value = value.get(key, '') if isinstance(value, dict) else ''
+        if value:
+            return value
+    return ''
+
+
 def send_alert(host, message):
     """Post to the configured Discord webhook; always also print to the systemd journal."""
-    text = '[OpenCJ ' + socket.gethostname() + '] ' + message
+    send_webhook(alert_webhook(host), '[OpenCJ ' + socket.gethostname() + '] ' + message)
+
+
+def send_webhook(webhook, text):
+    """Print text to the journal and, when a webhook is set, post it there (mentions disabled)."""
     print(text, flush=True)
-    try:
-        webhook = host_plan(host).get('alerts', {}).get('discord_webhook', '')
-    except (OSError, ValueError, RuntimeError):
-        webhook = ''
     if not webhook:
         return
     body = json.dumps({'content': text[:DISCORD_MESSAGE_MAX_CHARACTERS],
