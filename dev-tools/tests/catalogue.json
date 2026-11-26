@@ -117,6 +117,18 @@
       "mode": "unit"
     },
     {
+      "id": "private-paths",
+      "category": "portable",
+      "description": "Tracked and staged text names no personal user directory or locally listed private identifier.",
+      "requires": "Git; optional untracked info/private-identifiers list in the Git directory.",
+      "effects": "Read-only; reports file and line without repeating the matched text.",
+      "files": [
+        "dev-tools/tests/check_private_paths.py"
+      ],
+      "commands": [],
+      "mode": "script"
+    },
+    {
       "id": "demo-menu-source",
       "category": "portable",
       "description": "Demo menu source registration, response protocol and toolbar geometry; tolerates ordinary whitespace changes.",

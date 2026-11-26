@@ -87,6 +87,10 @@ Use narrow, purpose-specific patterns in the appropriate `.gitignore`; use
 Do not hide entire file types or source folders to avoid reviewing their contents.
 
 Before staging, inspect the complete diff, including new files and metadata.
+The `private-paths` portable check, also run by the `.githooks/pre-commit` hook
+(`git config core.hooksPath .githooks`), rejects personal user directories and the
+identifiers listed in the untracked `info/private-identifiers` file of the Git
+directory.
 Check that private files are ignored with `git check-ignore -v`, and check
 whether they are already tracked with `git ls-files -- <path>`. Do not force-add
 private material. An ignore rule neither untracks an existing file nor removes

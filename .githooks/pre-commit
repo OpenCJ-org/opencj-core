@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuse a commit that would publish a personal path or a private identifier.
+# Enable once per checkout: git config core.hooksPath .githooks
+exec python3 -B dev-tools/tests/check_private_paths.py
