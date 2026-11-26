@@ -4,6 +4,8 @@ main()
     level.checks = 0;
     openCJ\mySQL::_initConstants();
     openCJ\savePosition::onInit();
+    // Records for another map reopen the leaderboard; menus are precached before the first wait.
+    precacheMenu("opencj_leaderboard");
     wait 1;
     player = addTestClient();
     check(isDefined(player), "board client connects");
@@ -14,6 +16,7 @@ main()
         player verifyLeaderboardRows();
         player verifyFailedReadPreservesBoard();
         player verifyDemoButtons();
+        player verifyOtherMapRecords();
         player verifyBoardListener();
         verifyFPSLabels();
         player verifyRunRows();
@@ -79,6 +82,26 @@ boardQuery(query, menu)
     self.fixtureQuery = query;
     self.fixtureQueryMenu = menu;
     return self.fixtureRows;
+}
+
+// Replace the route read for another map's records; returns two finish checkpoints.
+routeQuery(query)
+{
+    self.fixtureRouteQuery = query;
+    rows = [];
+    rows[0] = [];
+    rows[0][0] = "Easy";
+    rows[0][1] = "41";
+    rows[1] = [];
+    rows[1][0] = "Easy";
+    rows[1][1] = "42";
+    return rows;
+}
+
+// Native escaping needs a database connection; fixture map names need none.
+escapeWithoutConnection(text)
+{
+    return text;
 }
 
 recordDemoSelection(runID, fromBoard)
@@ -162,6 +185,67 @@ verifyDemoButtons()
     wait 0.05;
     check(self.fixtureDemoID == 901 && self.fixtureDemoFromBoard,
           "valid demo slot forwards the published run ID and board-return flag");
+}
+
+// Records for another map: only maps this player may see, read from the database,
+// filtered by that map's finish checkpoints and without demo playback.
+verifyOtherMapRecords()
+{
+    rows = [];
+    rows[0] = mapRow("mp_killhouse", 1);
+    rows[1] = mapRow("mp_crash", 1);
+    rows[2] = mapRow("mp_bog", 0);
+    openCJ\maps::loadMapRows(rows);
+    self.permissions = 0;
+
+    self.fixtureRouteQuery = undefined;
+    self openCJ\menus\leaderboard::openForMap("mp_bog");
+    check(!isDefined(self.fixtureRouteQuery) && !isDefined(self.boardPendingMap),
+          "a non-pool map's records are refused before any query");
+
+    self openCJ\menus\leaderboard::openForMap("mp_crash");
+    check(isDefined(self.fixtureRouteQuery) && isSubStr(self.fixtureRouteQuery, "'mp_crash'"),
+          "a pool map's routes are read from the database");
+    pending = self.boardPendingMap;
+    check(isDefined(pending) && pending.mapName == "mp_crash" && pending.routes.size == 1 &&
+          pending.finishCheckpointIDs["Easy"] == "41, 42",
+          "finish checkpoints are grouped per route");
+
+    self.fixtureRouteQuery = undefined;
+    self.permissions = openCJ\permissions::permissionNamed("uber").flag;
+    self openCJ\menus\leaderboard::openForMap("mp_bog");
+    check(isDefined(self.fixtureRouteQuery), "an uber-admin may see a non-pool map's records");
+    self.permissions = 0;
+    self.boardPendingMap = undefined;
+
+    self.currentMenu = "opencj_leaderboard";
+    self.currentBoard["otherMap"] = pending;
+    self.currentBoard["routes"][0] = "Easy";
+    self.currentBoard["filter"]["route"] = 1;
+    self.fixtureRows = [];
+    self.fixtureQuery = undefined;
+    self openCJ\menus\leaderboard::fetchUpdatedData();
+    check(isDefined(self.fixtureQuery) && isSubStr(self.fixtureQuery, "cs.cpID IN (41, 42)"),
+          "another map's board filters by its own finish checkpoints");
+
+    self.currentBoard["nrEntriesThisPage"] = 1;
+    self.currentBoard["demoRunIDs"][0] = 901;
+    self.fixtureDemoID = undefined;
+    self openCJ\menus\leaderboard::handleDemo("playdemo1");
+    wait 0.05;
+    check(!isDefined(self.fixtureDemoID), "another map's demos do not play here");
+    self.currentBoard["otherMap"] = undefined;
+    self.currentBoard["routes"][0] = "Fixture route";
+}
+
+mapRow(mapName, inRotation)
+{
+    row = [];
+    row[0] = mapName;
+    row[1] = "Unknown";
+    row[2] = inRotation;
+    row[3] = "Fixture Author";
+    return row;
 }
 
 verifyBoardListener()

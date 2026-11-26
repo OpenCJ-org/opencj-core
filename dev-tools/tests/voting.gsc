@@ -27,6 +27,8 @@ main()
 
         player verifyMapLookup();
         player verifyCooldown();
+        player verifyNominations(otherPlayer);
+        player verifyEndMapVoteSetup();
         player verifyEndMapVoting();
         player verifyNormalVote();
         player verifyVoteListenerStops(otherPlayer);
@@ -154,6 +156,65 @@ verifyEndMapVoting()
     wait 0.05;
     check(self.endVote == 1 && level.endVote["votes"][1] == 1,
           "loading phase rejects a late vote change");
+    level.endVote["status"] = 0;
+}
+
+// Nominations are permission-checked, unique, one per player and bounded.
+verifyNominations(otherPlayer)
+{
+    uberPermissions = openCJ\permissions::permissionNamed("uber").flag;
+    self openCJ\menus\endMapVote::nominate("mp_bog");
+    check(level.endVote["nominations"].size == 0, "ordinary player cannot nominate a non-pool map");
+    self openCJ\menus\endMapVote::nominate("mp_killhouse");
+    check(level.endVote["nominations"].size == 0, "the current map cannot be nominated");
+
+    self openCJ\menus\endMapVote::nominate("mp_crash");
+    check(level.endVote["maps"][0] == "mp_crash", "a nominated map takes the first vote slot");
+    check(level.endVote["maps"].size == 2, "random maps fill the other slots without duplicates");
+    otherPlayer openCJ\menus\endMapVote::nominate("mp_crash");
+    check(level.endVote["nominations"].size == 1, "a map is nominated only once");
+    self openCJ\menus\endMapVote::nominate("mp_crossfire");
+    check(level.endVote["nominations"].size == 1 &&
+          level.endVote["nominations"][0].mapName == "mp_crossfire",
+          "a new nomination replaces the player's own");
+
+    defaultMaxNominations = level.endVote["maxNominations"];
+    level.endVote["maxNominations"] = 1;
+    otherPlayer.permissions = uberPermissions;
+    otherPlayer openCJ\menus\endMapVote::nominate("mp_bog");
+    check(level.endVote["nominations"].size == 1 &&
+          level.endVote["nominations"][0].mapName == "mp_bog",
+          "the oldest nomination makes way when all nomination slots are taken");
+    check(level.endVote["maps"][0] == "mp_bog", "vote slots follow the nominations");
+    otherPlayer.permissions = 0;
+    level.endVote["maxNominations"] = defaultMaxNominations;
+
+    otherPlayer openCJ\menus\endMapVote::onPlayerDisconnect();
+    check(level.endVote["nominations"].size == 1 &&
+          !isDefined(level.endVote["nominations"][0].player),
+          "a nomination outlives its nominator");
+
+    level.endVote["nominations"] = [];
+    level.endVote["status"] = 1; // Voting has started.
+    self openCJ\menus\endMapVote::nominate("mp_crash");
+    check(level.endVote["nominations"].size == 0, "nominations close when the map vote starts");
+    level.endVote["status"] = 0;
+    openCJ\menus\endMapVote::_rebuildSlots();
+    check(level.endVote["maps"].size == 2, "clearing nominations restores the random slots");
+}
+
+// An end-map vote is its own kind and cannot start once the map is ending.
+verifyEndMapVoteSetup()
+{
+    level.vote = undefined;
+    self openCJ\vote::_setupVote(undefined, "Vote: end map now", self, "end");
+    check(isDefined(level.vote) && isDefined(level.vote.endMap) && !isDefined(level.vote.extend) &&
+          !isDefined(level.vote.map), "end-map vote is neither an extension nor a map change");
+    openCJ\vote::_destroyVote();
+
+    level.endVote["status"] = 1;
+    self openCJ\vote::_doVoteEnd();
+    check(!isDefined(level.vote), "no end-map vote while the end-of-map vote runs");
     level.endVote["status"] = 0;
 }
 

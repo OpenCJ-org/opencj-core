@@ -69,7 +69,16 @@ fetchUpdatedData()
     {
         routeName = self.currentBoard["routes"][routeIndex];
     }
-    finishCheckpointIDs = getEndCheckpointIdsForRoute(routeName);
+    finishCheckpointIDs = undefined;
+    otherMap = self.currentBoard["otherMap"];
+    if (!isDefined(otherMap))
+    {
+        finishCheckpointIDs = getEndCheckpointIdsForRoute(routeName);
+    }
+    else if (isDefined(routeName) && isDefined(otherMap.finishCheckpointIDs[routeName]))
+    {
+        finishCheckpointIDs = "(" + otherMap.finishCheckpointIDs[routeName] + ")";
+    }
 
     rows = [];
     if (isDefined(finishCheckpointIDs))
@@ -240,6 +249,77 @@ getSortStr(col, order) // Also used by showRecords.gsc for top-right records sor
     return orderStr;
 }
 
+// Open the leaderboard for a map chosen in the map list. Only the current map's
+// checkpoints are loaded, so another map's routes come from the database.
+openForMap(mapName)
+{
+    self endon("disconnect");
+    self.boardPendingMap = undefined;
+    // Never reveal records for maps outside this player's map pool (uber sees all).
+    if (!openCJ\maps::canVoteMap(mapName, self.permissions))
+    {
+        self sendLocalChatMessage("Records for that map are not available.", true);
+        return;
+    }
+    if (mapName != getCvar("mapname"))
+    {
+        otherMap = self _readMapRoutes(mapName);
+        if (!isDefined(otherMap))
+        {
+            self sendLocalChatMessage("Could not load records for " + mapName + ". Try again later.",
+                                      true);
+            return;
+        }
+        if (otherMap.routes.size == 0)
+        {
+            self sendLocalChatMessage(mapName + " has no checkpointed routes yet.", true);
+            return;
+        }
+        otherMap.requestedAt = getTime();
+        self.boardPendingMap = otherMap;
+    }
+    self closeMenu();
+    self openMenu("opencj_leaderboard");
+}
+
+// A map's route names with their active finish checkpoint IDs, or undefined
+// when the database does not answer.
+_readMapRoutes(mapName)
+{
+    query = "SELECT r.routeName, c.cpID FROM routes r"
+            + " JOIN mapids m ON m.mapID = r.mapID"
+            + " JOIN checkpoints c ON c.finishRouteID = r.routeID AND c.retired = 0"
+            + " WHERE m.mapname = '" + openCJ\mySQL::escapeString(mapName) + "'"
+            + " ORDER BY r.routeName, c.cpID";
+    rows = self openCJ\mySQL::mysqlAsyncRead(query);
+    if (!isDefined(rows))
+    {
+        return undefined;
+    }
+
+    routeNameColumn = 0;
+    checkpointIDColumn = 1;
+    otherMap = spawnStruct();
+    otherMap.mapName = mapName;
+    otherMap.routes = [];
+    otherMap.finishCheckpointIDs = [];
+    for (i = 0; i < rows.size; i++)
+    {
+        routeName = rows[i][routeNameColumn];
+        checkpointID = int(rows[i][checkpointIDColumn]);
+        if (!isDefined(otherMap.finishCheckpointIDs[routeName]))
+        {
+            otherMap.routes[otherMap.routes.size] = routeName;
+            otherMap.finishCheckpointIDs[routeName] = "" + checkpointID;
+        }
+        else
+        {
+            otherMap.finishCheckpointIDs[routeName] += ", " + checkpointID;
+        }
+    }
+    return otherMap;
+}
+
 getEndCheckpointIdsForRoute(routeName)
 {
     if (!isDefined(routeName) || !isDefined(level.routeEnders[routeName]))
@@ -295,6 +375,11 @@ handleDemo(button)
     rowIndex = int(slotText) - 1;
     if(rowIndex < 0 || rowIndex >= self.currentBoard["nrEntriesThisPage"])
     {
+        return;
+    }
+    if(isDefined(self.currentBoard["otherMap"]))
+    {
+        self sendLocalChatMessage("Demos only play on their own map.", true);
         return;
     }
 

@@ -20,6 +20,8 @@ initBoard(shortName, fullName, menuName, fetchDataFunc, sortChangeFunc)
     {
         level.boards = [];
         level.boardsDvarPrefix = "opencj_ui_board_";
+        // A map-list request older than this is not applied to a later board open.
+        level.boardPendingMapMaxAgeMs = 5000;
     }
 
     // Menu hardcoded values
@@ -109,12 +111,27 @@ onBoardOpen(shortName)
         self.currentBoard["routes"][i] = fakeRoutes[i];
     }
 
-    // Add real routes
-    keys = getArrayKeys(level.routeEnders);
-    for (i = fakeRoutes.size; i < (keys.size + fakeRoutes.size); i++)
+    // A leaderboard requested from the map list shows that map's routes.
+    self.currentBoard["otherMap"] = undefined;
+    if (shortName == "lb")
     {
-        self.currentBoard["routes"][i] = keys[i - fakeRoutes.size];
-        printf("- added route: " + self.currentBoard["routes"][i] + "\n");
+        if (isDefined(self.boardPendingMap) &&
+            getTime() - self.boardPendingMap.requestedAt <= level.boardPendingMapMaxAgeMs)
+        {
+            self.currentBoard["otherMap"] = self.boardPendingMap;
+        }
+        self.boardPendingMap = undefined;
+    }
+
+    // Add real routes
+    routeNames = getArrayKeys(level.routeEnders);
+    if (isDefined(self.currentBoard["otherMap"]))
+    {
+        routeNames = self.currentBoard["otherMap"].routes;
+    }
+    for (i = 0; i < routeNames.size; i++)
+    {
+        self.currentBoard["routes"][fakeRoutes.size + i] = routeNames[i];
     }
 
     // Route information
@@ -187,6 +204,16 @@ onBoardOpen(shortName)
             continue; // Not a real filter
         }
         self setClientCvar(level.boardsDvarPrefix + keys[i] + "_allow", self.currentBoard["filter"][keys[i]]);
+    }
+
+    if (shortName == "lb")
+    {
+        subtitle = "Best runs by route";
+        if (isDefined(self.currentBoard["otherMap"]))
+        {
+            subtitle = "Records on " + self.currentBoard["otherMap"].mapName;
+        }
+        self setClientCvar(level.boardsDvarPrefix + "lbsubtitle", subtitle);
     }
 
     // Set currently selected FPS filter

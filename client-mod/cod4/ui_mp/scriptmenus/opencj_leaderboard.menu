@@ -227,7 +227,8 @@
         }
 
         BOARD_LABEL(board_title, "Leaderboard", 35, 129, 156, 20, .32, WHITE_COLOR)
-        BOARD_LABEL(board_subtitle, "Best runs by route", 35, 151, 156, 12, .14, BOARD_MUTED_COLOR)
+        // The server names the map when the board shows another map's records.
+        BOARD_DVAR_LABEL(board_subtitle, ADDPREFIX("lbsubtitle"), 35, 151, 156, 12, .14, BOARD_MUTED_COLOR)
         BOARD_FILTER_TOOLBAR
         // Shared row interaction, drawn beneath the data cells.
         BOARD_ENTRY_BUTTON(playdemo1, "click_playdemo1", 1)

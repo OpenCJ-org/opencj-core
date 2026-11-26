@@ -5,7 +5,7 @@ onInit()
     // Stock callvote bypasses OpenCJ's map-pool and cooldown checks.
     setCvar("g_allowVote", 0);
     voteCommand = openCJ\commands_base::registerCommand(
-        "vote", "Vote for something. Usage: !vote <extend|map mp_mapname|yes|no>",
+        "vote", "Vote for something. Usage: !vote <extend|end|map mp_mapname|yes|no>",
         ::vote, 1, 2);
     openCJ\commands_base::addAlias(voteCommand, "v");
 
@@ -105,6 +105,10 @@ vote(args) // args[0] = map, extend, yes/no
     else if(args[0] == "extend")
     {
         self thread _doVoteExtend();
+    }
+    else if(args[0] == "end")
+    {
+        self thread _doVoteEnd();
     }
 }
 
@@ -237,8 +241,22 @@ _doVoteExtend()
     _setupVote(undefined, "Vote: extend time (30m)", self);
 }
 
+// Vote to end the map now; a passed vote starts the end-of-map vote at once.
+_doVoteEnd()
+{
+    self endon("disconnect");
+    if (!openCJ\menus\endMapVote::isIdle())
+    {
+        self iprintln("The map is already ending");
+        return;
+    }
+    _setupVote(undefined, "Vote: end map now", self, "end");
+}
+
 // Create one shared vote, clear old ballots, and start its timer if still needed.
-_setupVote(mapName, voteTitle, initiatingPlayer)
+// A vote changes to mapName when given, ends the map for voteKind "end", and
+// otherwise extends the time.
+_setupVote(mapName, voteTitle, initiatingPlayer, voteKind)
 {
     // Only one vote at a time
     if (isDefined(level.vote))
@@ -261,6 +279,10 @@ _setupVote(mapName, voteTitle, initiatingPlayer)
     if (isDefined(mapName))
     {
         level.vote.map = mapName;
+    }
+    else if (isDefined(voteKind) && voteKind == "end")
+    {
+        level.vote.endMap = true;
     }
     else
     {
@@ -540,6 +562,11 @@ _voteSuccess()
         iprintln("Vote ^2passed^7: " + "extend time");
         thread _extendTime(30);
     }
+    else if(isDefined(level.vote.endMap))
+    {
+        iprintln("Vote ^2passed^7: end map");
+        thread _endMapNow();
+    }
 
     _destroyVote();
 }
@@ -557,6 +584,17 @@ _changeMap(map)
 
     wait 5;
     self openCJ\menus\endMapVote::changeMap(map);
+}
+
+_endMapNow()
+{
+    if (!openCJ\menus\endMapVote::isIdle())
+    {
+        return;
+    }
+    // Dropping straight to zero time must not start the automatic extend vote.
+    level.hasRequestedAutoExtend = true;
+    openCJ\timeLimit::endNow();
 }
 
 _extendTime(minutes)

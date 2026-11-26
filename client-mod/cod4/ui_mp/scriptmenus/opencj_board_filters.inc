@@ -22,6 +22,21 @@
         decoration \
     }
 
+#define BOARD_DVAR_LABEL(_name, _dvar, _x, _y, _w, _h, _scale, _color) \
+    itemDef \
+    { \
+        name _name \
+        rect DEFAULT_RECT(_x _y _w _h) \
+        type ITEM_TYPE_TEXT \
+        dvar _dvar \
+        textfont UI_FONT_NORMAL \
+        textscale _scale \
+        textalign ITEM_ALIGN_MIDDLE_LEFT \
+        forecolor _color \
+        visible 1 \
+        decoration \
+    }
+
 #define BOARD_MODE_STATE(_name, _response, _label, _shader, _status, _when, _bg, _tint, _statusColor, _x) \
     itemDef \
     { \

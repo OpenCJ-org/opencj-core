@@ -80,11 +80,11 @@ onMenuResponse()
             }
             else if (button == "maplist_nominate")
             {
-                // Not implemented yet
+                self _handleSelectedMap("nominate");
             }
             else if (button == "maplist_showrecords")
             {
-                // Not implemented yet
+                self _handleSelectedMap("records");
             }
             else if (isSubStr(button, "page")) // Route or board previous/next page
             {
@@ -133,17 +133,37 @@ _handleVote(voteType)
         args[0] = "map";
         args[1] = self.displayedMaps[selectedIndex]["name"];
     }
+    else if (voteType == "end")
+    {
+        args[0] = "end";
+    }
     else
     {
-        if (voteType == "end")
-        {
-            // Not implemented yet
-        }
         return;
     }
 
     self closeMenu();
     self openCJ\vote::vote(args);
+}
+
+// Nominate the selected map for the end-of-map vote, or show its records.
+// The receiving functions check that this player may see the map.
+_handleSelectedMap(selectedMapAction)
+{
+    selectedIndex = self.mapList["selected"];
+    if (!isDefined(selectedIndex) || selectedIndex < 0 || selectedIndex >= self.displayedMaps.size)
+    {
+        return;
+    }
+    mapName = self.displayedMaps[selectedIndex]["name"];
+    if (selectedMapAction == "nominate")
+    {
+        self openCJ\menus\endMapVote::nominate(mapName);
+    }
+    else
+    {
+        self thread openCJ\menus\leaderboard::openForMap(mapName);
+    }
 }
 
 _handlePageChange(button)

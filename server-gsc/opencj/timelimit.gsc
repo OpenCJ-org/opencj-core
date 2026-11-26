@@ -28,6 +28,13 @@ addTimeSeconds(seconds)
     thread opencj\events\onRemainingTimeChanged::main(prevRemainingTime);
 }
 
+// End the map at once; the time-limit loop then starts the end-of-map vote.
+endNow()
+{
+    remainingSeconds = int(getRemainingTimeMs() / 1000) + 1;
+    addTimeSeconds(0 - remainingSeconds);
+}
+
 muteTimerSound(mute)
 {
     level.muteTimerSound = mute;

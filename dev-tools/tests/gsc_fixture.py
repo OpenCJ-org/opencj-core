@@ -192,6 +192,14 @@ def install_observation_hooks(mod, fixture_name):
                     r"openCJ\\demos::playRun\s*\(",
                     r"openCJ\platformTest::recordDemoSelection(",
                 ),
+                (
+                    r"openCJ\\mySQL::mysqlAsyncRead\s*\(",
+                    r"openCJ\platformTest::routeQuery(",
+                ),
+                (
+                    r"openCJ\\mySQL::escapeString\s*\(",
+                    r"openCJ\platformTest::escapeWithoutConnection(",
+                ),
             ),
         ),
         "map-menu.gsc": (

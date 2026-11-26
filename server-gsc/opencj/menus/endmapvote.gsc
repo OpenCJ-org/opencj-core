@@ -8,6 +8,10 @@ onInit()
 
     // Define random maps for the next map vote
     level.endVote["maps"] = [];
+    level.endVote["randomMaps"] = [];
+    level.endVote["nominations"] = [];
+    // Keep some slots random so the vote still offers variety.
+    level.endVote["maxNominations"] = 6;
     level.endVote["votes"] = [];
     // These values are shared with opencj_endmapvote.menu.
     level.endVote["phaseIdle"] = 0;
@@ -45,6 +49,127 @@ fillRandomMaps() // Called when level.maps is filled.
     }
 
     _shuffleEndVoteMaps();
+    level.endVote["randomMaps"] = level.endVote["maps"];
+    _rebuildSlots();
+}
+
+isIdle()
+{
+    return level.endVote["status"] == level.endVote["phaseIdle"];
+}
+
+// Put a map into the next end-of-map vote. Each player has one nomination; a new
+// one replaces their own. When all nomination slots are taken, the oldest
+// nomination makes way and its nominator is told.
+nominate(mapName)
+{
+    if (!self openCJ\login::isLoggedIn())
+    {
+        return;
+    }
+    if (!isIdle())
+    {
+        self openCJ\util::sendLocalChatMessage(
+            "Nominations are closed: the map vote has started.", true);
+        return;
+    }
+    // The client only lists permitted maps, but the server decides what may be named.
+    if (!openCJ\maps::canVoteMap(mapName, self.permissions))
+    {
+        self openCJ\util::sendLocalChatMessage("That map can't be nominated.", true);
+        return;
+    }
+    if (mapName == getCvar("mapname"))
+    {
+        self openCJ\util::sendLocalChatMessage("You can't nominate the current map.", true);
+        return;
+    }
+
+    remaining = [];
+    nominations = level.endVote["nominations"];
+    for (i = 0; i < nominations.size; i++)
+    {
+        nomination = nominations[i];
+        if (nomination.mapName == mapName)
+        {
+            self openCJ\util::sendLocalChatMessage(
+                mapName + " was already nominated by " + nomination.playerName + "^7.", true);
+            return;
+        }
+        if (!isDefined(nomination.player) || nomination.player != self)
+        {
+            remaining[remaining.size] = nomination;
+        }
+    }
+    if (remaining.size >= level.endVote["maxNominations"])
+    {
+        oldest = remaining[0];
+        if (isDefined(oldest.player))
+        {
+            oldest.player openCJ\util::sendLocalChatMessage(
+                "Your nomination of " + oldest.mapName + " made way for newer nominations.");
+        }
+        newer = [];
+        for (i = 1; i < remaining.size; i++)
+        {
+            newer[newer.size] = remaining[i];
+        }
+        remaining = newer;
+    }
+
+    nomination = spawnStruct();
+    nomination.mapName = mapName;
+    nomination.player = self;
+    nomination.playerName = self.name;
+    remaining[remaining.size] = nomination;
+    level.endVote["nominations"] = remaining;
+    iprintln(self.name + "^7 nominated ^3" + mapName + "^7 for the map vote");
+    _rebuildSlots();
+}
+
+// Nominated maps take the first slots in nomination order; the shuffled random
+// maps fill the rest. Only called before voting starts, so no ballots move.
+_rebuildSlots()
+{
+    slots = [];
+    nominations = level.endVote["nominations"];
+    for (i = 0; i < nominations.size && slots.size < level.endVote["nrMaps"]; i++)
+    {
+        slots[slots.size] = nominations[i].mapName;
+    }
+    randomMaps = level.endVote["randomMaps"];
+    for (i = 0; i < randomMaps.size && slots.size < level.endVote["nrMaps"]; i++)
+    {
+        if (!openCJ\util::isInArray(randomMaps[i], slots))
+        {
+            slots[slots.size] = randomMaps[i];
+        }
+    }
+    level.endVote["maps"] = slots;
+
+    players = getEntArray("player", "classname");
+    for (playerIndex = 0; playerIndex < players.size; playerIndex++)
+    {
+        for (slotIndex = 0; slotIndex < level.endVote["nrMaps"]; slotIndex++)
+        {
+            players[playerIndex] _sendSlot(slotIndex);
+        }
+    }
+}
+
+// Send one slot's map name and image; an empty slot clears both.
+_sendSlot(slotIndex)
+{
+    slotNumber = (slotIndex + 1); // Dvars for this start at 1
+    mapName = "";
+    mapImage = "";
+    if (isDefined(level.endVote["maps"][slotIndex]))
+    {
+        mapName = level.endVote["maps"][slotIndex];
+        mapImage = openCJ\maps::previewImage(mapName);
+    }
+    self setClientCvar(level.endVote["prefix"] + "mapname" + slotNumber, mapName);
+    self setClientCvar(level.endVote["prefix"] + "mapimage" + slotNumber, mapImage);
 }
 
 _shuffleEndVoteMaps()
@@ -84,15 +209,7 @@ onPlayerConnected()
     {
         slotNumber = (i + 1); // Dvars for this start at 1
         self setClientCvar(level.endVote["prefix"] + "votes" + slotNumber, level.endVote["votes"][i]);
-        mapName = "";
-        mapImage = "";
-        if (isDefined(level.endVote["maps"][i]))
-        {
-            mapName = level.endVote["maps"][i];
-            mapImage = openCJ\maps::previewImage(mapName);
-        }
-        self setClientCvar(level.endVote["prefix"] + "mapname" + slotNumber, mapName);
-        self setClientCvar(level.endVote["prefix"] + "mapimage" + slotNumber, mapImage);
+        self _sendSlot(i);
     }
 
     if (level.endVote["status"] > level.endVote["phaseIdle"])
@@ -105,6 +222,16 @@ onPlayerConnected()
 
 onPlayerDisconnect()
 {
+    // A nomination outlives its nominator; only the player reference is dropped.
+    nominations = level.endVote["nominations"];
+    for (i = 0; i < nominations.size; i++)
+    {
+        if (isDefined(nominations[i].player) && nominations[i].player == self)
+        {
+            nominations[i].player = undefined;
+        }
+    }
+
     if (!isDefined(self.endVote))
     {
         return;
