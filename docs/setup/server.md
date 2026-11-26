@@ -496,6 +496,16 @@ Docker publishes container ports with its own rules, which `ufw` does not filter
 setup therefore publishes only the game ports and 80/443 publicly and binds the
 database and local website port to `127.0.0.1`.
 
+**Personal administrator.** When setup runs as root, it offers (default yes) to
+create a personal administrator account and switch root login off. It asks for the
+name, runs `passwd` so you type the password yourself (hidden, typed twice, never seen
+or stored by setup), adds the account to the `sudo` group and, if you agree, copies
+root's SSH keys to it. It then waits for a key login by that account and for a
+successful `sudo true` by it in the journal; only then is `PermitRootLogin no` written.
+Running setup again checks the same proof before root stays locked. A plan file sets
+this with `"admin_account": "NAME", "root_login": false` under `ssh_hardening`; the
+account must already exist and have logged in with its key and used sudo.
+
 SSH hardening always switches password logins off. When the administrator running
 setup (the `sudo` user, or root) has no SSH key yet, setup prints how to create one
 and copy it (`ssh-copy-id`, or a PowerShell one-liner on Windows), then waits until

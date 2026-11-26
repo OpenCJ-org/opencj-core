@@ -40,10 +40,13 @@ The [installation guide](../setup/server.md) explains every option in detail. In
 1. Rent a server with **Ubuntu 24.04 LTS (x86-64)**: at least 4 CPU cores, 8 GiB RAM
    and **120 GiB disk** (16 GiB game files and maps, Docker images, backups, and a
    temporary second copy of everything during a migration).
-2. Log in as a normal user that can use `sudo` (not as root). Setup always switches
-   SSH password logins off. If your **SSH key** is not on the server yet, setup shows
-   how to add it and waits until you have logged in with it, so you cannot be locked
-   out.
+2. Log in as root (a fresh rented server) or as a user that can use `sudo`. As root,
+   setup offers to create your **personal administrator account** and switch root
+   login off: you type its password into `passwd` (hidden, never stored by setup), it
+   can reuse root's SSH key, and root login goes off only after you have logged in as
+   that account with your key and run `sudo true` there. Setup always switches SSH
+   password logins off. If your **SSH key** is not on the server yet, setup shows how
+   to add it and waits until you have logged in with it, so you cannot be locked out.
 3. Decide the **names**: the website's main domain (for example `opencj.org`), any
    extra domains that should open the same site (for example `opencj.net`; they
    redirect to the main one), and optionally a name per game server (for example

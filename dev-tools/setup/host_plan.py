@@ -184,6 +184,8 @@ def print_summary(plan):
     hardening = plan.get('ssh_hardening', {})
     if hardening:
         print('  SSH: ' + ('key-only' if hardening['key_only'] else 'passwords allowed')
+              + (', root login off (administrator: ' + hardening['admin_account'] + ')'
+                 if not hardening.get('root_login', True) else '')
               + (', fail2ban' if hardening['fail2ban'] else '')
               + (', move to port ' + str(hardening['new_port']) if hardening.get('new_port') else ''), flush=True)
 

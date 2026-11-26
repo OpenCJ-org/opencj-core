@@ -5,6 +5,11 @@ setup explains how to add one and waits until a login with that key has been see
 so switching passwords off can never lock them out. fail2ban bans addresses that
 keep failing. A port change is optional and done in two phases: SSH first listens on
 both ports, and the old port closes only after a real login on the new port.
+
+When setup runs as root, it offers a personal administrator account instead: the
+account is created, its password is typed into `passwd` (setup never sees it), it
+gets an SSH key, and root login is switched off only after a key login and a
+successful `sudo` by that account have both been seen.
 """
 
 from datetime import datetime
@@ -15,7 +20,7 @@ import re
 import subprocess
 import sys
 
-from configuration import ask_port, ask_yes_no, prompt
+from configuration import ask, ask_port, ask_yes_no, prompt
 from operations import run, write_private
 import sshd
 
@@ -30,6 +35,10 @@ FAIL2BAN_JAIL = Path('/etc/fail2ban/jail.d/opencj-sshd.conf')
 # Ports below 1024 are often used by other services; above 49151 are ephemeral client ports.
 MIN_SSH_PORT = 1024
 MAX_SSH_PORT = 49151
+ADMIN_NAME_PATTERN = r'[a-z][a-z0-9_-]{0,31}'
+# Accounts below this ID belong to the system and services.
+FIRST_PERSONAL_UID = 1000
+PASSWORD_ATTEMPTS = 3
 
 
 def administrator():
@@ -109,12 +118,103 @@ def wait_for_key_login(account):
               + account.pw_name + '.', flush=True)
 
 
+def validate_admin_name(name):
+    if not re.fullmatch(ADMIN_NAME_PATTERN, name) or name == 'root':
+        raise ValueError('use lowercase letters, digits, - and _, starting with a letter (not root)')
+    try:
+        entry = pwd.getpwnam(name)
+    except KeyError:
+        return name
+    if entry.pw_uid < FIRST_PERSONAL_UID:
+        raise ValueError(name + ' is a system account; choose another name')
+    return name
+
+
+def sudo_seen(name, since):
+    """True when the journal shows this account running a command with sudo (password accepted) since `since`."""
+    result = subprocess.run(['journalctl', '--since', since, '--no-pager', '-o', 'cat', '-t', 'sudo'],
+                            capture_output=True, text=True, timeout=60)
+    return any(sudo_success(line, name) for line in result.stdout.splitlines())
+
+
+def sudo_success(line, name):
+    """A sudo journal line for a command that ran: 'NAME : TTY=... ; COMMAND=...'.
+
+    Refusals put their reason right after the name ('NAME : a password is required ;',
+    '3 incorrect password attempts', 'user NOT in sudoers'), so they never match.
+    """
+    return bool(re.match(r'\s*' + re.escape(name) + r' : (TTY|PWD)=', line)) and 'COMMAND=' in line
+
+
+def set_password(name):
+    """passwd reads the password itself (hidden, typed twice); setup never sees or stores it."""
+    for attempt in range(PASSWORD_ATTEMPTS):
+        print('Choose a password for ' + name + ' (needed for sudo, never for SSH logins):', flush=True)
+        if subprocess.run(['passwd', name], timeout=600).returncode == 0:
+            return
+    raise RuntimeError('No password was set for ' + name + '; nothing else was changed. Run setup again.')
+
+
+def copy_root_keys(account):
+    """Give the new account root's SSH keys, owned by the account, with the permissions sshd requires."""
+    source = Path('/root/.ssh/authorized_keys')
+    directory = Path(account.pw_dir) / '.ssh'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    target = directory / 'authorized_keys'
+    existing = target.read_text() if target.exists() else ''
+    lines = existing.splitlines() + [line for line in source.read_text().splitlines()
+                                     if line.strip() and line not in existing.splitlines()]
+    write_private(target, '\n'.join(lines) + '\n', owner=(account.pw_uid, account.pw_gid))
+    os.chown(directory, account.pw_uid, account.pw_gid)
+    directory.chmod(0o700)
+    target.chmod(0o600)
+
+
+def create_admin_account():
+    """Create (or reuse) the personal administrator: sudo group, password, SSH key; proven by real logins."""
+    name = ask('Name of your personal administrator account', parse=validate_admin_name)
+    try:
+        account = pwd.getpwnam(name)
+    except KeyError:
+        run(['adduser', '--disabled-password', '--comment', '', name])
+        account = pwd.getpwnam(name)
+        set_password(name)
+    else:
+        status = run(['passwd', '--status', name]).split()
+        if len(status) < 2 or status[1] != 'P':
+            set_password(name)
+    run(['usermod', '--append', '--groups', 'sudo', name])
+    if has_authorized_key(pwd.getpwnam('root')) and ask_yes_no('Use root\'s SSH key(s) for ' + name + ' too?', True):
+        copy_root_keys(account)
+    started = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    wait_for_key_login(account)
+    port = current_ssh_ports()[0]
+    print('\nNow prove that ' + name + ' can administer this server. In a terminal logged in as ' + name
+          + ' (ssh -p ' + str(port) + ' ' + name + '@...), run:\n  sudo true\nand type ' + name
+          + '\'s password.', flush=True)
+    while True:
+        prompt('Press Enter here once sudo worked')
+        if sudo_seen(name, started):
+            print('sudo works for ' + name + '. Root login will be switched off; from now on log in as ' + name
+                  + ' and use sudo (sudo opencj ...).', flush=True)
+            return name
+        print('No successful sudo by ' + name + ' was seen yet. Log in again if you were logged in before the'
+              ' account joined the sudo group, then run sudo true.', flush=True)
+
+
 def collect_ssh_hardening():
     print('\nSSH access: key-only login and fail2ban stop password guessing; a different port mainly'
           ' reduces log noise from scanners.', flush=True)
-    wait_for_key_login(administrator())
-    result = {'key_only': True, 'fail2ban': ask_yes_no('Ban addresses that keep failing to log in (fail2ban)?',
-                                                        True)}
+    result = {'key_only': True}
+    if administrator().pw_name == 'root' and sys.stdin.isatty():
+        print('You are logged in as root. A personal administrator account that uses sudo is safer: a stolen'
+              ' key alone is not enough for root, and every command is logged under your name.', flush=True)
+        if ask_yes_no('Create a personal administrator account and switch root login off?', True):
+            result['admin_account'] = create_admin_account()
+            result['root_login'] = False
+    if 'admin_account' not in result:
+        wait_for_key_login(administrator())
+    result['fail2ban'] = ask_yes_no('Ban addresses that keep failing to log in (fail2ban)?', True)
     ports = current_ssh_ports()
     if ask_yes_no('Move SSH from port ' + '/'.join(map(str, ports)) + ' to another port?', False):
         result['new_port'] = ask_port('New SSH port (' + str(MIN_SSH_PORT) + '-' + str(MAX_SSH_PORT) + ')', 2222)
@@ -137,6 +237,14 @@ def validate_ssh_hardening(hardening):
             raise ValueError('ssh_hardening.' + field + ' must be a Boolean')
     if not result['key_only']:
         raise ValueError('ssh_hardening.key_only must be true: password logins are not left enabled')
+    result.setdefault('root_login', True)
+    if type(result['root_login']) is not bool:
+        raise ValueError('ssh_hardening.root_login must be a Boolean')
+    if not result['root_login']:
+        if not isinstance(result.get('admin_account'), str):
+            raise ValueError('Switching root login off needs ssh_hardening.admin_account, the personal'
+                             ' administrator who keeps access')
+        validate_admin_name(result['admin_account'])
     if 'new_port' in result:
         port = result['new_port']
         if type(port) is not int or not MIN_SSH_PORT <= port <= MAX_SSH_PORT:
@@ -220,16 +328,46 @@ def established_on(port):
     return bool(output.strip())
 
 
-def apply_key_only(enabled):
-    """Switch password logins off; refuses (setup stops, nothing changed) while the administrator has no key."""
-    if not enabled:
+def admin_ready(name):
+    """The personal administrator can log in with a key and use sudo; checked before root is locked out."""
+    try:
+        account = pwd.getpwnam(name)
+    except KeyError:
+        return 'the account ' + name + ' does not exist'
+    if 'sudo' not in run(['id', '-nG', name]).split():
+        return name + ' is not in the sudo group'
+    if not has_authorized_key(account) or not key_login_seen(account, KEY_LOGIN_LOOKBACK):
+        return 'no SSH key login by ' + name + ' was seen'
+    if not sudo_seen(name, KEY_LOGIN_LOOKBACK):
+        return 'no successful sudo by ' + name + ' was seen'
+    return ''
+
+
+def ssh_account(hardening):
+    """The account that must keep SSH access: the personal administrator when there is one."""
+    if hardening.get('admin_account'):
+        return pwd.getpwnam(hardening['admin_account'])
+    return administrator()
+
+
+def apply_key_only(hardening):
+    """Switch password logins (and, when chosen, root login) off; refuses while the administrator could be locked out."""
+    if not hardening.get('key_only'):
         return
-    account = administrator()
+    account = ssh_account(hardening)
     if not account or not has_authorized_key(account):
-        raise RuntimeError('No authorized SSH key found for the administrator. Add one (sudo opencj install'
-                           ' explains how) and run setup again; nothing was changed.')
+        raise RuntimeError('No authorized SSH key found for ' + (account.pw_name if account else 'the administrator')
+                           + '. Add one (sudo opencj install explains how) and run setup again; nothing was changed.')
+    root_login = 'prohibit-password'
+    if not hardening.get('root_login', True):
+        problem = admin_ready(hardening['admin_account'])
+        if problem:
+            raise RuntimeError('Root login stays on: ' + problem + '. Log in as ' + hardening['admin_account']
+                               + ' with your key, run sudo true, then run setup again.')
+        root_login = 'no'
     # 00- sorts first: sshd uses the first value it reads for each option.
-    managed(SSHD_DROP_IN, 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n')
+    managed(SSHD_DROP_IN, 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin '
+            + root_login + '\n')
     sshd.sshd('-t')
     sshd.reload()
 
@@ -259,7 +397,7 @@ def move_port(plan, new_port, open_firewall):
     from dns_guide import public_addresses
     addresses = public_addresses()['A']
     host = prompt('This server\'s address for your SSH client', addresses[0] if addresses else os.uname().nodename)
-    account = administrator()
+    account = ssh_account(hardening)
     user = account.pw_name if account else 'root'
     print('\nKeep this session open. In a NEW terminal, log in with:\n  ssh -p ' + str(new_port) + ' '
           + user + '@' + host + '\nand stay logged in there.', flush=True)
@@ -281,7 +419,7 @@ def apply_ssh_hardening(plan, open_firewall):
     hardening = plan.get('ssh_hardening', {})
     if not hardening:
         return
-    apply_key_only(hardening.get('key_only', False))
+    apply_key_only(hardening)
     if hardening.get('new_port'):
         move_port(plan, hardening['new_port'], open_firewall)
     apply_fail2ban(hardening.get('fail2ban', False), current_ssh_ports() + hardening.get('ports', []))

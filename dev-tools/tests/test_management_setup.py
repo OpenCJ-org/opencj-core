@@ -61,7 +61,7 @@ class PortMoveTests(unittest.TestCase):
         with patch.object(ssh_hardening, 'administrator', lambda: None), \
                 patch.object(ssh_hardening, 'managed') as managed:
             with self.assertRaisesRegex(RuntimeError, 'nothing was changed'):
-                ssh_hardening.apply_key_only(True)
+                ssh_hardening.apply_key_only({'key_only': True})
         managed.assert_not_called()
 
 
@@ -105,6 +105,48 @@ class KeyLoginTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'key_only must be true'):
             ssh_hardening.validate_ssh_hardening({'key_only': False})
         self.assertTrue(ssh_hardening.validate_ssh_hardening({'fail2ban': True})['key_only'])
+
+
+class AdminAccountTests(unittest.TestCase):
+    """Root login goes off only after the personal administrator logged in with a key and used sudo."""
+
+    def test_sudo_success_is_recognised_and_refusals_are_not(self):
+        ok = 'rick : TTY=pts/1 ; PWD=/home/rick ; USER=root ; COMMAND=/usr/bin/true'
+        self.assertTrue(ssh_hardening.sudo_success(ok, 'rick'))
+        for line in ('rick : 3 incorrect password attempts ; TTY=pts/1 ; USER=root ; COMMAND=/usr/bin/true',
+                     'rick : user NOT in sudoers ; TTY=pts/1 ; USER=root ; COMMAND=/usr/bin/true',
+                     'ricky : TTY=pts/1 ; USER=root ; COMMAND=/usr/bin/true',
+                     'rick : a password is required ; PWD=/home/rick ; USER=root ; COMMAND=/usr/bin/true',
+                     'pam_unix(sudo:session): session opened for user root by rick(uid=1000)'):
+            with self.subTest(line=line):
+                self.assertFalse(ssh_hardening.sudo_success(line, 'rick'))
+
+    def test_names_are_checked(self):
+        for name in ('root', 'Rick', '1admin', 'a b', 'daemon'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                ssh_hardening.validate_admin_name(name)
+        self.assertEqual(ssh_hardening.validate_admin_name('opencj-admin'), 'opencj-admin')
+
+    def test_plan_switching_root_off_needs_an_administrator(self):
+        with self.assertRaisesRegex(ValueError, 'admin_account'):
+            ssh_hardening.validate_ssh_hardening({'root_login': False})
+        self.assertTrue(ssh_hardening.validate_ssh_hardening({'fail2ban': True})['root_login'])
+
+    def drop_in(self, problem):
+        account = type('Account', (), {'pw_name': 'rick', 'pw_dir': '/home/rick'})()
+        written = []
+        with patch.object(ssh_hardening, 'ssh_account', lambda hardening: account), \
+                patch.object(ssh_hardening, 'has_authorized_key', lambda account: True), \
+                patch.object(ssh_hardening, 'admin_ready', lambda name: problem), \
+                patch.object(ssh_hardening, 'managed', lambda path, contents: written.append(contents)), \
+                patch.object(ssh_hardening.sshd, 'sshd'), patch.object(ssh_hardening.sshd, 'reload'):
+            ssh_hardening.apply_key_only({'key_only': True, 'root_login': False, 'admin_account': 'rick'})
+        return written
+
+    def test_root_login_goes_off_only_when_the_administrator_is_proven(self):
+        self.assertIn('PermitRootLogin no\n', self.drop_in('')[0])
+        with self.assertRaisesRegex(RuntimeError, 'Root login stays on: no successful sudo'):
+            self.drop_in('no successful sudo by rick was seen')
 
 
 class ListenTests(unittest.TestCase):
