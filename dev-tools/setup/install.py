@@ -84,10 +84,11 @@ def write_discord_files(instance, settings, *, replace):
     directory = instance / 'secrets/discord'
     directory.mkdir(mode=0o700, exist_ok=True)
     os.chown(directory, *owner)
-    # The bridge keeps everything after '=' including a line break, so the token is
-    # written last without one; the numeric IDs tolerate a trailing line break.
     contents = ('guildid=' + discord['guild_id'] + '\nchannelid=' + discord['channel_id']
-                + '\ntoken=' + discord['token'])
+                + '\ntoken=' + discord['token'] + '\n')
+    if discord.get('mention_user_ids'):
+        # The only Discord users players may mention from the game.
+        contents += 'mentionuserids=' + ','.join(discord['mention_user_ids']) + '\n'
     write_generated(directory / 'config_cod4', contents, owner=owner, replace=replace)
 
 

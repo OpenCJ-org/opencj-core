@@ -3,6 +3,10 @@
 from pathlib import Path
 from configuration import MYSQL_IMAGE
 
+# The game and the Discord bridge share only this folder; each keeps its own /tmp.
+DISCORD_SOCKET_FOLDER = '/run/opencj-discord'
+# Both sides read the socket path from this variable; without it the game does not use Discord.
+DISCORD_SOCKET_ENVIRONMENT = {'OPENCJ_DISCORD_SOCKET': DISCORD_SOCKET_FOLDER + '/events.sock'}
 LOGGING = {'driver': 'local', 'options': {'max-size': '10m', 'max-file': '3'}}
 
 
@@ -112,14 +116,15 @@ def compose_document(settings, instance):
 def add_discord_bridge(document, settings, instance):
     """Chat bridge between the game and one Discord channel through a shared Unix socket.
 
-    The game connects to /tmp/opencj_events_cod4, so both containers mount the same
-    socket folder at /tmp. The bridge creates the socket group-writable (umask 007)
-    and the game joins the bridge's group; nothing else can reach the socket.
+    Both containers mount the server's sockets folder (0770, owned by the bridge
+    account) at DISCORD_SOCKET_FOLDER and get its path in OPENCJ_DISCORD_SOCKET. The
+    bridge creates the socket group-writable (umask 007) and the game joins the
+    bridge's group; nothing else can reach the socket.
     """
     identity = settings['linux_accounts']['discord']
     server = document['services']['server']
-    server['tmpfs'] = []
-    server['volumes'].append(bind(instance / 'sockets', '/tmp', readonly=False))
+    server['volumes'].append(bind(instance / 'sockets', DISCORD_SOCKET_FOLDER, readonly=False))
+    server.setdefault('environment', {}).update(DISCORD_SOCKET_ENVIRONMENT)
     server['group_add'] = sorted({*server['group_add'], str(identity['gid'])})
     bridge = service_defaults(settings['discord_image'])
     bridge.update({
@@ -127,8 +132,9 @@ def add_discord_bridge(document, settings, instance):
         'cap_drop': ['ALL'], 'pids_limit': 64, 'mem_limit': '256m',
         'working_dir': '/config',
         'entrypoint': ['sh', '-c', 'umask 007 && exec python /bridge/start.py cod4'],
+        'environment': dict(DISCORD_SOCKET_ENVIRONMENT),
         'volumes': [bind(instance / 'secrets/discord', '/config'),
-                    bind(instance / 'sockets', '/tmp', readonly=False)],
+                    bind(instance / 'sockets', DISCORD_SOCKET_FOLDER, readonly=False)],
     })
     document['services']['discord'] = bridge
 

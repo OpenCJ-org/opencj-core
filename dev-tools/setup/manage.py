@@ -366,6 +366,8 @@ def roll_back(instance, settings, upgrade):
     settings['release'] = upgrade['from']
     settings['image'] = upgrade['previous_image']
     settings['image_id'] = upgrade['previous_image_id']
+    # The bridge and the game speak one protocol per release, so they go back together.
+    settings.update(upgrade.get('previous_optional_images', {}))
     install.write_instance_files(instance, settings, replace=True)
     start_services(instance, settings)
     settings.pop('upgrade')
@@ -384,6 +386,8 @@ def upgrade_instance(instance, settings):
         install.verify_managed_files(instance, settings)
         upgrade['previous_image'] = settings['image']
         upgrade['previous_image_id'] = settings['image_id']
+        upgrade['previous_optional_images'] = {key: settings[key] for key in ('discord_image', 'geoip_image')
+                                               if settings.get(key)}
         upgrade['migrations_before'] = applied_migrations(instance, settings)
         upgrade['backup'] = ''
         if owns_database(settings):

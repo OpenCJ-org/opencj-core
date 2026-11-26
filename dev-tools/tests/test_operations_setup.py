@@ -576,6 +576,64 @@ class OnDemandTests(unittest.TestCase):
             manage.stop_instance(Path('/srv/opencj'), 'main-eu', assume_yes=True)
 
 
+class DiscordBridgeSetupTests(unittest.TestCase):
+    """Setup side of the bridge: shared socket folder only, socket path in the environment, mention list."""
+
+    def test_only_the_socket_folder_is_shared(self):
+        document = {'services': {'server': {'tmpfs': ['/tmp:rw'], 'volumes': [], 'group_add': []}}}
+        settings = {'linux_accounts': {'discord': {'uid': 10001, 'gid': 10002}}, 'discord_image': 'bridge:x'}
+        from compose_config import add_discord_bridge, DISCORD_SOCKET_ENVIRONMENT
+        add_discord_bridge(document, settings, Path('/srv/opencj/main-eu'))
+        server, bridge = document['services']['server'], document['services']['discord']
+        self.assertEqual(server['tmpfs'], ['/tmp:rw'], 'The game keeps its own /tmp')
+        for service in (server, bridge):
+            self.assertEqual(service['environment']['OPENCJ_DISCORD_SOCKET'], '/run/opencj-discord/events.sock')
+            mount = service['volumes'][-1]
+            self.assertEqual((mount['source'], mount['target'], mount['read_only']),
+                             ('/srv/opencj/main-eu/sockets', '/run/opencj-discord', False))
+        self.assertEqual(server['group_add'], ['10002'])
+        self.assertEqual(DISCORD_SOCKET_ENVIRONMENT, {'OPENCJ_DISCORD_SOCKET': '/run/opencj-discord/events.sock'})
+
+    def test_mention_list_is_validated(self):
+        ids = ['1' * 18, '2' * 18]
+        self.assertEqual(configuration.parse_mention_user_ids(' 111111111111111111, 222222222222222222,'
+                                                              '111111111111111111 '), ids)
+        self.assertEqual(configuration.parse_mention_user_ids(''), [])
+        for text in ('everyone', '123', ','.join(str(10 ** 17 + n) for n in range(26))):
+            with self.subTest(text=text[:20]), self.assertRaises(ValueError):
+                configuration.parse_mention_user_ids(text)
+        bridge = {'enabled': True, 'guild_id': '3' * 18, 'channel_id': '4' * 18, 'token': 'x' * 70}
+        self.assertEqual(configuration.validate_discord(bridge)['mention_user_ids'], [],
+                         'Existing installations without the list keep working')
+
+    def test_config_file_lists_allowed_mentions(self):
+        written = {}
+        discord = {'enabled': True, 'guild_id': '3' * 18, 'channel_id': '4' * 18, 'token': 'tok',
+                   'mention_user_ids': ['1' * 18, '2' * 18]}
+        settings = {'discord': discord, 'linux_accounts': {'discord': {'uid': 10001, 'gid': 10002}}}
+        with tempfile.TemporaryDirectory() as directory, patch.object(install.os, 'chown'), \
+                patch.object(install, 'write_generated',
+                             lambda path, text, **options: written.update({path.name: text})):
+            (Path(directory) / 'secrets').mkdir()
+            install.write_discord_files(Path(directory), settings, replace=True)
+        self.assertEqual(written['config_cod4'], 'guildid=' + '3' * 18 + '\nchannelid=' + '4' * 18 + '\ntoken=tok\n'
+                         'mentionuserids=' + '1' * 18 + ',' + '2' * 18 + '\n')
+
+    def test_failed_upgrade_rolls_the_bridge_back_with_the_game(self):
+        settings = {'name': 'main-eu', 'release': 'beta-0.2.0', 'image': 'new', 'image_id': 'sha-new',
+                    'discord_image': 'p-discord:beta-0.2.0', 'geoip_image': 'p-geoip:beta-0.2.0',
+                    'upgrade': {'from': 'beta-0.1.0', 'previous_image': 'old', 'previous_image_id': 'sha-old',
+                                'migrations_before': [1], 'migrations_after': [1],
+                                'previous_optional_images': {'discord_image': 'p-discord:beta-0.1.0',
+                                                             'geoip_image': 'p-geoip:beta-0.1.0'}}}
+        upgrade = settings['upgrade']
+        with patch.object(install, 'write_instance_files'), patch.object(manage, 'start_services'), \
+                patch.object(install, 'save_installation'), self.assertRaisesRegex(RuntimeError, 'previous release'):
+            manage.roll_back(Path('/srv/opencj/main-eu'), settings, upgrade)
+        self.assertEqual((settings['image'], settings['discord_image'], settings['geoip_image']),
+                         ('old', 'p-discord:beta-0.1.0', 'p-geoip:beta-0.1.0'))
+
+
 class DiscordChannelTests(unittest.TestCase):
     def test_two_bridges_cannot_share_a_channel(self):
         bridge = {'enabled': True, 'guild_id': '1' * 18, 'channel_id': '2' * 18, 'token': 'x'}

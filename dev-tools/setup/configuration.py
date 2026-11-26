@@ -16,6 +16,8 @@ MYSQL_IMAGE = 'mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86
 DOWNLOAD_MODES = ('website', 'in-game', 'off')
 DISCORD_SNOWFLAKE_PATTERN = r'[0-9]{15,22}'
 DISCORD_TOKEN_MAX_CHARACTERS = 200
+# The bridge accepts at most this many users that players may mention.
+DISCORD_MENTION_USERS_MAX = 25
 # Servers on another machine using a database here (through an SSH tunnel). The code
 # stays, but the prompts do not offer it until it has been tested between two real
 # machines; see docs/setup/server.md.
@@ -139,12 +141,33 @@ def collect_discord(name):
           '  4. In Discord: User Settings > Advanced > Developer Mode on; then right-click your server and the\n'
           '     chat channel > Copy ID (' + DISCORD_ID_GUIDE + ').\n'
           '  5. Bot page > Reset Token, and copy the token (it is shown once).', flush=True)
-    return {
+    result = {
         'enabled': True,
         'guild_id': ask('Discord server (guild) ID', parse=validate_discord_id),
         'channel_id': ask('Discord channel ID for server chat', parse=validate_discord_id),
         'token': validate_discord_token(getpass.getpass('Discord bot token (hidden): ').strip()),
     }
+    print('Players can never ping @everyone, @here or roles. You may allow pings of a few people, for example'
+          ' the admins (right-click a user > Copy User ID).', flush=True)
+    result['mention_user_ids'] = ask('Discord user IDs players may mention, comma-separated (blank for none)',
+                                     '', parse=parse_mention_user_ids)
+    return result
+
+
+def parse_mention_user_ids(text):
+    """Comma-separated Discord user IDs; duplicates dropped, at most DISCORD_MENTION_USERS_MAX."""
+    if isinstance(text, list):
+        values = [str(value) for value in text]
+    else:
+        values = [value.strip() for value in text.split(',') if value.strip()]
+    result = []
+    for value in values:
+        validate_discord_id(value)
+        if value not in result:
+            result.append(value)
+    if len(result) > DISCORD_MENTION_USERS_MAX:
+        raise ValueError('at most ' + str(DISCORD_MENTION_USERS_MAX) + ' users')
+    return result
 
 
 def validate_download_url(url):
@@ -183,7 +206,8 @@ def validate_discord(discord):
     return {'enabled': True,
             'guild_id': validate_discord_id(str(discord.get('guild_id', ''))),
             'channel_id': validate_discord_id(str(discord.get('channel_id', ''))),
-            'token': validate_discord_token(str(discord.get('token', '')))}
+            'token': validate_discord_token(str(discord.get('token', ''))),
+            'mention_user_ids': parse_mention_user_ids(discord.get('mention_user_ids', []))}
 
 
 def check_discord_channels(instances):

@@ -232,7 +232,10 @@ application and its bot ([step by step](https://docs.discord.com/developers/quic
 switch on *Message Content Intent* on the Bot page (the bridge reads chat;
 [why](https://docs.discord.com/developers/events/gateway#message-content-intent)),
 copy its token (Reset Token shows it once), and invite it to your Discord server with
-permission to view the channel and send messages. For the server and channel IDs,
+permission to view the channel and send messages. Players can never ping @everyone,
+@here or roles from the game; setup asks for the few Discord users they may mention
+(for example the admins; right-click a user > Copy User ID), blank for nobody. The
+bridge logs to `docker logs` of its `discord` service. For the server and channel IDs,
 switch on Developer Mode in Discord, then right-click the server or channel > Copy
 ID ([Discord: finding IDs](https://support.discord.com/hc/en-us/articles/206346498)).
 
