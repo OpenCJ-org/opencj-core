@@ -259,8 +259,16 @@ it off again afterwards.
 Make a server always run, or on demand, with `sudo opencj configure <server>`. Two
 kinds of server always run: the one with the website (the website reads its
 database), and one whose data another server shares or copies (main-eu, which
-acceptance copies). The main server should always run; `stop` refuses servers that
-are not on demand, so the watchdog does not report them as down.
+acceptance copies).
+
+**Stopping an always-running server by hand** (for example to stop an exploit until
+a fix is in): `sudo opencj stop main-eu`. Only its game server and Discord bridge
+stop; its database keeps serving the website and the backups. It stays stopped until
+`sudo opencj start main-eu` or the next reboot, after which the watchdog starts it
+again within 2 minutes. The watchdog and `opencj status` treat it as stopped on
+purpose and send no alerts. The outside check on the external backup server cannot
+know this, so it reports the game server DOWN after about 6 minutes (and RECOVERED
+after you start it).
 
 ## Look at a server
 

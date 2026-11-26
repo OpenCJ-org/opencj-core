@@ -66,6 +66,7 @@ def running_for_maintenance(instance, settings):
     After a failure it is left running, so the problem can be inspected.
     """
     was_off = install.switched_off(instance, settings)
+    was_held = install.held(instance, settings)
     if was_off:
         print(settings['name'] + ' is off; starting it for this change...', flush=True)
         start_services(instance, settings)
@@ -73,6 +74,15 @@ def running_for_maintenance(instance, settings):
     if was_off and settings.get('on_demand'):
         install.stop_services(instance, settings)
         print(settings['name'] + ' is off again.', flush=True)
+    elif was_held:
+        stop_held(instance, settings)
+        print(settings['name'] + '\'s game server is stopped again (until you start it or the next reboot).',
+              flush=True)
+
+
+def stop_held(instance, settings):
+    install.compose(instance, settings, 'stop', '--timeout', str(install.STOP_GRACE_SECONDS),
+                    *install.held_services(settings), log=instance / 'setup.log')
 
 
 def connected_players(instance, settings):
@@ -90,32 +100,44 @@ def start_instance(host, name):
     with operation_lock(instance / '.setup.lock'):
         install.verify_managed_files(instance, settings)
         if install.server_is_running(instance, settings):
+            (instance / install.HOLD_RECORD).unlink(missing_ok=True)
             print(name + ' is already running.')
             return
         print('Starting ' + name + '...', flush=True)
         start_services(instance, settings)
         install.check_ready(instance, settings)
+        (instance / install.HOLD_RECORD).unlink(missing_ok=True)
     print(name + ' is running on port ' + str(settings['port'])
           + ('. Switch it off again with: sudo opencj stop ' + name if settings.get('on_demand') else '.'))
 
 
 def stop_instance(host, name, *, assume_yes):
-    """Switch an on-demand server off completely, its own database included; its data is kept."""
+    """Stop a server on purpose, without alerts.
+
+    On demand: everything stops, its own database included, until `opencj start`.
+    Always-on (for example to stop an exploit): only the game server and its Discord
+    bridge stop; the database keeps serving the website and backups. It stays stopped
+    until `opencj start` or the next reboot, after which the watchdog starts it again.
+    """
     instance = host / name
     settings = install.load_installation(instance)
-    if not settings.get('on_demand'):
-        raise ValueError(name + ' always runs, and the watchdog would report it as down. To start it only when'
-                         ' needed, first answer yes to "Keep ' + name + ' off" in: sudo opencj configure ' + name)
     with operation_lock(instance / '.setup.lock'):
-        if install.switched_off(instance, settings):
-            print(name + ' is already off.')
+        if install.switched_off(instance, settings) or install.held(instance, settings):
+            print(name + ' is already stopped.')
             return
         players = connected_players(instance, settings)
         if players and not assume_yes and not ask_yes_no(
                 str(players) + ' player(s) are connected and will be disconnected. Stop anyway?', False):
             raise SystemExit('Nothing was changed.')
-        install.stop_services(instance, settings)
-    print(name + ' is off. Start it again with: sudo opencj start ' + name)
+        if settings.get('on_demand'):
+            install.stop_services(instance, settings)
+            print(name + ' is off. Start it again with: sudo opencj start ' + name)
+            return
+        # Recorded first, so the watchdog never sees an unexplained stop.
+        save_json(instance / install.HOLD_RECORD, {'boot_id': install.current_boot(), 'stopped': timestamp()})
+        stop_held(instance, settings)
+    print(name + '\'s game server is stopped; the database, website and backups keep running. No alerts are'
+          ' sent for it. It starts again with: sudo opencj start ' + name + ', or by itself after the next reboot.')
 
 
 def on_demand_allowed(plan, settings):
@@ -221,6 +243,7 @@ def configure_instance(host, name):
     with operation_lock(instance / '.setup.lock'):
         install.verify_managed_files(instance, settings)
         was_off = install.switched_off(instance, settings)
+        was_held = install.held(instance, settings)
         changed = collect_changes(settings, other_ports, can_be_on_demand=on_demand_allowed(plan, settings))
         if changed == settings:
             print('Nothing changed.')
@@ -247,6 +270,9 @@ def configure_instance(host, name):
         off_again = was_off and changed.get('on_demand', False)
         if off_again:
             install.stop_services(instance, changed)
+        elif was_held and not changed.get('on_demand'):
+            stop_held(instance, changed)
+            off_again = True
     for item in plan['instances']:
         if item['name'] == name:
             # The plan drives the firewall (game port, website ports 80/443) on later runs.

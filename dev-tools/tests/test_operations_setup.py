@@ -570,10 +570,49 @@ class OnDemandTests(unittest.TestCase):
                     raise RuntimeError('upgrade failed')
             self.assertEqual(calls, ['start'], 'After a failure the server stays on for inspection')
 
-    def test_stop_refuses_servers_that_always_run(self):
-        with patch.object(install, 'load_installation', return_value={'name': 'main-eu'}), \
-                self.assertRaisesRegex(ValueError, 'always runs'):
-            manage.stop_instance(Path('/srv/opencj'), 'main-eu', assume_yes=True)
+    def test_manual_stop_of_an_always_on_server_keeps_its_database(self):
+        settings = {'name': 'main-eu', 'discord': {'enabled': True}}
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory) / 'main-eu'
+            instance.mkdir()
+            with patch.object(install, 'load_installation', return_value=settings), \
+                    patch.object(install, 'switched_off', return_value=False), \
+                    patch.object(install, 'held', return_value=False), \
+                    patch.object(install, 'current_boot', return_value='boot-1'), \
+                    patch.object(manage, 'connected_players', return_value=0), \
+                    patch.object(install, 'compose', lambda instance, settings, *arguments, **options:
+                                 calls.append(arguments)), patch('builtins.print'):
+                manage.stop_instance(Path(directory), 'main-eu', assume_yes=True)
+            record = json.loads((instance / install.HOLD_RECORD).read_text())
+        self.assertEqual(record['boot_id'], 'boot-1')
+        self.assertEqual(calls, [('stop', '--timeout', str(install.STOP_GRACE_SECONDS), 'server', 'discord')],
+                         'Only gameplay and chat stop; the database keeps running')
+
+    def test_manual_stop_lasts_until_the_next_reboot(self):
+        stopped = {'Running': False, 'Restarting': False}
+        started = []
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory)
+            save_json(instance / install.HOLD_RECORD, {'boot_id': 'boot-1'})
+            with patch.object(install, 'current_boot', return_value='boot-1'), \
+                    patch.object(install, 'compose', lambda *arguments, **options: started.append(arguments)), \
+                    patch('builtins.print'):
+                self.assertTrue(maintenance.handle_manual_stop(instance, {'name': 'main-eu'}, stopped))
+                self.assertEqual(started, [], 'Same boot: left alone, no alert')
+            with patch.object(install, 'current_boot', return_value='boot-2'), \
+                    patch.object(install, 'compose', lambda *arguments, **options: started.append(arguments)), \
+                    patch('builtins.print'):
+                self.assertTrue(maintenance.handle_manual_stop(instance, {'name': 'main-eu'}, stopped))
+                self.assertEqual(started[0][2], 'start', 'After a reboot it is started again')
+                self.assertFalse((instance / install.HOLD_RECORD).exists())
+                self.assertFalse(maintenance.handle_manual_stop(instance, {'name': 'main-eu'}, stopped),
+                                 'Without a record a stopped server is a problem again')
+            save_json(instance / install.HOLD_RECORD, {'boot_id': 'boot-2'})
+            with patch.object(install, 'current_boot', return_value='boot-2'):
+                self.assertFalse(maintenance.handle_manual_stop(instance, {'name': 'main-eu'},
+                                                                {'Running': True}))
+            self.assertFalse((instance / install.HOLD_RECORD).exists(), 'Started by other means: stop forgotten')
 
 
 class DiscordBridgeSetupTests(unittest.TestCase):

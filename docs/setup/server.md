@@ -62,7 +62,10 @@ The suggested topology is:
 it; `sudo opencj start NAME` and `sudo opencj stop NAME` switch it on and off. Stop
 stops the whole Compose project, its own database included, and keeps all data. The
 watchdog, `opencj status` and the printed outside-check targets treat an on-demand
-server that is off as normal, and its backup and pruning jobs skip it. A server cannot
+server that is off as normal, and its backup and pruning jobs skip it. `stop` on an
+always-running server stops only its game server and Discord bridge, records the
+current boot ID in `stopped-by-administrator.json`, and sends no alerts; after a reboot
+the watchdog starts it again and removes the record. A server cannot
 be on demand when it runs the website or when another server shares or copies its
 database; setup and `configure` refuse that.
 

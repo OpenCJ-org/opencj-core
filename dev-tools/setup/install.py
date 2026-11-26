@@ -447,6 +447,40 @@ def server_is_running(instance, settings):
     return bool(compose(instance, settings, 'ps', '--status', 'running', '--quiet', 'server'))
 
 
+# An always-on server stopped with `opencj stop` (for example to stop an exploit) records the
+# boot it was stopped in: it stays off until `opencj start` or the next reboot.
+HOLD_RECORD = 'stopped-by-administrator.json'
+BOOT_ID = Path('/proc/sys/kernel/random/boot_id')
+
+
+def current_boot():
+    return BOOT_ID.read_text().strip()
+
+
+def hold_state(instance):
+    """'current' while a manual stop applies, 'stale' after a reboot, '' when there is none."""
+    record = instance / HOLD_RECORD
+    if not record.exists():
+        return ''
+    try:
+        boot = json.loads(record.read_text()).get('boot_id')
+    except (OSError, ValueError):
+        return 'stale'
+    return 'current' if boot == current_boot() else 'stale'
+
+
+def held(instance, settings):
+    """True for an always-on server whose game server the administrator stopped in this boot."""
+    if settings.get('on_demand') or hold_state(instance) != 'current':
+        return False
+    return not server_is_running(instance, settings)
+
+
+def held_services(settings):
+    """A manual stop stops gameplay and chat; the database keeps serving the website and backups."""
+    return ['server', *(['discord'] if settings['discord']['enabled'] else [])]
+
+
 def switched_off(instance, settings):
     """True for an on-demand server that was stopped on purpose (sudo opencj stop NAME).
 
@@ -501,10 +535,10 @@ def install(instance, settings):
     """Resume owned installation stages; never restart an already accepted running instance."""
     if settings['state'] == 'ready':
         migration.source_control(instance, settings, 'accept-cutover')
-        if switched_off(instance, settings):
-            # Checking it would need its database; starting it is the operator's choice.
+        if switched_off(instance, settings) or held(instance, settings):
+            # Checking it would need it running; starting it is the operator's choice.
             verify_managed_files(instance, settings)
-            print(f"{settings['name']} is off (on demand); start it with: sudo opencj start {settings['name']}")
+            print(f"{settings['name']} is stopped on purpose; start it with: sudo opencj start {settings['name']}")
         else:
             check_ready(instance, settings)
         configure_instance_jobs(instance, settings)
@@ -677,7 +711,7 @@ def main():
                 if os.geteuid() != 0:
                     raise ValueError('Run with sudo: setup creates restricted Linux service users')
                 settings = initialize_instance(instance, supplied)
-            if args.check and switched_off(instance, settings):
+            if args.check and (switched_off(instance, settings) or held(instance, settings)):
                 print(f"{settings['name']} is off (on demand); start it to check it.")
             elif args.check:
                 check_ready(instance, settings)

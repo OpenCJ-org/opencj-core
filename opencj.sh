@@ -15,8 +15,8 @@ usage() {
         '' \
         'Afterwards, from anywhere:' \
         '  sudo opencj status                          Everything on this machine, then what needs attention' \
-        '  sudo opencj start NAME | stop NAME          Switch a test server (acceptance, map-test) on or off;' \
-        '                                              off stops its database too, the data is kept' \
+        '  sudo opencj start NAME | stop NAME          Switch a server on or off without alerts. Test servers:' \
+        '                                              database too. Main servers: game only, until start/reboot' \
         '  sudo opencj configure NAME                  Name, address, port, access, passwords, on demand, map,' \
         '                                              downloads, Discord, backups, pruning, website domains' \
         '  sudo opencj alerts                          Discord channel for alerts (sends a test message)' \

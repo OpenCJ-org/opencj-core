@@ -793,6 +793,27 @@ def check_optional_services(host, state, name, instance, settings):
                            ' docker logs --tail 30 ' + container[:12])
 
 
+def handle_manual_stop(instance, settings, status):
+    """True when an always-on server is stopped by its administrator and must be left alone.
+
+    A stop applies until `opencj start` or the next reboot: after a reboot the
+    watchdog starts the server again and forgets the stop.
+    """
+    from install import HOLD_RECORD, compose, hold_state
+    state = hold_state(instance)
+    if not state:
+        return False
+    running = status['Running'] or status.get('Restarting')
+    if state == 'current' and not running:
+        return True
+    if state == 'stale' and not running:
+        compose(instance, settings, 'start', log=instance / 'setup.log', timeout=240)
+        print(settings['name'] + ' was stopped by its administrator before the reboot; started again.')
+    # Started by other means, or just now: the stop no longer applies.
+    (instance / HOLD_RECORD).unlink(missing_ok=True)
+    return state == 'stale' and not running
+
+
 def run_watchdog(host):
     """Restart hung game servers and report problems that need an operator."""
     from install import compose
@@ -810,6 +831,8 @@ def run_watchdog(host):
         status = metadata['State']
         if settings.get('on_demand') and not status['Running'] and not status.get('Restarting'):
             # Switched off with `opencj stop`; Docker restarts crashes itself.
+            continue
+        if not settings.get('on_demand') and handle_manual_stop(instance, settings, status):
             continue
         check_optional_services(host, state, name, instance, settings)
         report_crash_restart(host, state, name, settings, metadata)

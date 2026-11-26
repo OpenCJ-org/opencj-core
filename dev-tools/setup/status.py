@@ -239,6 +239,9 @@ def show_servers(host, plan, report):
         if is_switched_off(settings, fields[0]):
             print(f"{name:13} {settings['release']:12} {settings['port']:<6} {access:8} {'off (on demand)':18}")
             continue
+        if fields[0] in ('exited', 'created') and install.held(instance, settings):
+            print(f"{name:13} {settings['release']:12} {settings['port']:<6} {access:8} {'stopped by you':18}")
+            continue
         map_name, players = live_server(container)
         print(f"{name:13} {settings['release']:12} {settings['port']:<6} {access:8} {state:18} {map_name:22} "
               f"{players:8} {restarts}")
@@ -257,7 +260,14 @@ def show_services(installations, report):
             print(f'  {name:13} off (on demand) - start with: sudo opencj start {name}')
             continue
         arguments = ['docker', 'compose', '-p', settings['project'], '-f', str(instance / 'compose.json')]
-        text, problems = service_summary(expected_services(instance / 'compose.json'), compose_rows(arguments))
+        expected = expected_services(instance / 'compose.json')
+        stopped_by_you = install.held(instance, settings)
+        if stopped_by_you:
+            # Until `opencj start` or the next reboot; the database must still run.
+            expected = [service for service in expected if service not in install.held_services(settings)]
+        text, problems = service_summary(expected, compose_rows(arguments))
+        if stopped_by_you:
+            text = 'game server stopped by you (until start or reboot) · ' + text
         for problem in problems:
             report.check(False, name + ': ' + problem)
         print(f'  {name:13} {text}')
