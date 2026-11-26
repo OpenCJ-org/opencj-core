@@ -28,31 +28,81 @@ _tryLogin()
     self openCJ\clientInit::waitUntilFinished();
 
     uid = self openCJ\loginHelper::requestUID();
+    if(!isDefined(uid))
+    {
+        // This client has no usable stored credential, so it has no account to lose.
+        self createNewAccount();
+        return;
+    }
 
-    loginSuccess = self _getPlayerInformation(uid);
-    if(loginSuccess)
+    lookup = self _lookUpAccountUntilAnswered(uid);
+    if(lookup == "found")
     {
         self thread openCJ\playerNames::_storeNewName(self.name);
         self openCJ\settings::loadSettingsFromDatabase();
     }
     else
     {
-        printf("Creating new account for '" + self.name + "'\n"); // Debug
+        // The database answered that this credential belongs to no account.
         self createNewAccount();
     }
 }
 
+// Repeat the account lookup until the database answers "found" or "unknown".
+// An unavailable database must never lead to a new account: storing the new
+// credential would overwrite the player's existing one in their config file.
+// Each attempt is one bounded read; waiting ends when the player disconnects.
+_lookUpAccountUntilAnswered(uid)
+{
+    self endon("disconnect");
+    retryDelaysSeconds = [];
+    retryDelaysSeconds[0] = 2;
+    retryDelaysSeconds[1] = 5;
+    retryDelaysSeconds[2] = 10;
+    steadyRetryDelaySeconds = 30;
+
+    for(attempt = 0; true; attempt++)
+    {
+        lookup = self _getPlayerInformation(uid);
+        if(lookup != "unavailable")
+        {
+            if(attempt > 0 && lookup == "found")
+            {
+                self iprintlnbold("Account database reached. Welcome back!");
+            }
+            return lookup;
+        }
+        if(attempt == 0)
+        {
+            printf("Login: account database unavailable, retrying for player " +
+                   self getEntityNumber() + "\n");
+            self iprintlnbold(
+                "Cannot reach the account database. Retrying; until then nothing is saved.");
+        }
+        delaySeconds = steadyRetryDelaySeconds;
+        if(attempt < retryDelaysSeconds.size)
+        {
+            delaySeconds = retryDelaysSeconds[attempt];
+        }
+        wait delaySeconds;
+    }
+}
+
+// Identify the account for a stored credential and apply its login state.
+// Returns "found", "unknown" (the database answered without a match) or
+// "unavailable" (no answer, so nothing may be concluded about the account).
 _getPlayerInformation(uid)
 {
     self endon("disconnect");
-    if(!isDefined(uid))
-    {
-        return false;
-    }
-
     query = "SELECT playerID, permissions, IF(mutedUntil < NOW(), NULL, TIMESTAMPDIFF(SECOND, NOW(), mutedUntil)) FROM playerInformation WHERE playerID = (SELECT getPlayerID(" + int(uid[0]) + ", " + int(uid[1])  + ", " + int(uid[2]) + ", " + int(uid[3]) + "))";
-    printf("playerInformation query:\n" + query + "\n"); // Debug
-    rows = self openCJ\mySQL::mysqlAsyncQuery(query);
+    result = openCJ\mySQL::_request(query, level.sqlConstants.policyRead, "", "",
+                                    level.sqlConstants.defaultQueueWaitMs, true);
+    if(!isDefined(result) || result.status != level.sqlConstants.outcomeOK ||
+       !isDefined(result.rows))
+    {
+        return "unavailable";
+    }
+    rows = result.rows;
     if(hasResult(rows))
     {
         // Check bans before the account is marked logged in, so a banned player never
@@ -70,12 +120,9 @@ _getPlayerInformation(uid)
             self openCJ\chat::applyMute(true);
             self openCJ\chat::unmuteAfterTime(int(rows[0][2]));
         }
-        return true;
+        return "found";
     }
-    else
-    {
-        return false;
-    }
+    return "unknown";
 }
 
 createNewAccount()
@@ -88,15 +135,20 @@ createNewAccount()
         for(j = 0; j < 4; j++)
         {
             uid[j] = createRandomInt();
+            if(!isDefined(uid[j]))
+            {
+                // Never fall back to a guessable credential.
+                printf("ERROR: secure random source unavailable; account not created\n");
+                self iprintlnbold("Cannot create an account right now. Please try reconnecting");
+                return;
+            }
         }
 
         query = "SELECT createNewAccount(" + uid[0] + ", " + uid[1] + ", " + uid[2] + ", " + uid[3] + ", '" + openCJ\mySQL::escapeString(self.name) + "')";
-        printf("createNewAccount query:\n" + query + "\n"); // Debug
         rows = self openCJ\mySQL::mysqlAsyncQuery(query);
         if(hasResult(rows))
         {
-            loginSuccess = self _getPlayerInformation(uid);
-            if(loginSuccess)
+            if(self _getPlayerInformation(uid) == "found")
             {
                 self openCJ\loginHelper::storeUID(uid);
                 // Before settings report the login, so the first spawn sees the introduction
