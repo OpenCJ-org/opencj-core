@@ -45,8 +45,9 @@ onSpawnSpectator()
 onPlayerKilled(inflictor, attacker, damage, meansOfDeath, weapon, vDir, hitLoc, psOffsetTime,
                deathAnimDuration)
 {
+    // Both layers are archived HUD elements, so spectators following this player
+    // see this player's bar and lose it here too. Their own bar stays hidden.
     self _hideProgressBar();
-    // todo: hide for spectating clients too
 }
 
 onRunFinished(cp)

@@ -123,7 +123,8 @@ _restoreRunState(runID, instanceNumber, runRows)
     self openCJ\statistics::clear();
     self openCJ\statistics::setSaveCount(saveCount);
     self openCJ\statistics::setLoadCount(loadCount);
-    // TODO: Restore the value at this save rather than the total for the run.
+    // Like a normal load, a restore keeps the run's total launch count rather
+    // than rolling it back to the save.
     self openCJ\statistics::setExplosiveLaunches(explosiveLaunches);
 
     self openCJ\playtime::setTimePlayed(timePlayed);
