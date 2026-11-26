@@ -15,19 +15,22 @@ _onCommandSpeedometer(newVal)
     else
     {
         self.showSpeedometer = false;
-        self _hideSpeedometer();
+        // The HUD is not archived, so current spectators need hiding explicitly.
+        spectatorsAndSelf = getSpectatorList(true); // true -> include self
+        for (i = 0; i < spectatorsAndSelf.size; i++)
+        {
+            spectatorsAndSelf[i] _hideSpeedometer();
+        }
     }
 }
 
+// A spectator only sees a speedometer while following a player who shows one;
+// that player's per-frame update then shows and fills it.
 onSpectatorClientChanged(newClient)
 {
-    if(!isDefined(newClient))
+    if(!isDefined(newClient) || !newClient.showSpeedometer)
     {
         self _hideSpeedometer();
-    }
-    else
-    {
-        //do we need to do anything here? Thing is updated every frame
     }
 }
 
@@ -84,17 +87,9 @@ _showSpeedometer()
 
 whileAlive()
 {
-    // If player doesn't have speedometer enabled, don't show it to them *or* their spectators
+    // Turning the setting off and changing spectated players already hid it.
     if (!self.showSpeedometer)
     {
-        //todo: this gets called too often
-        spectatorsAndSelf = getSpectatorList(true); //  true -> include self
-        for (i = 0; i < spectatorsAndSelf.size; i++)
-        {
-            player = spectatorsAndSelf[i];
-            player _hideSpeedometer();
-        }
-
         return;
     }
 
