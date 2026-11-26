@@ -187,21 +187,74 @@ _onCmdRestorePosition(args)
     self thread _restoreLastRun();
 }
 
-_onCmdRuns(args) // TODO: support self-named runs
+_onCmdRuns(args)
 {
     if (args.size == 0)
     {
-        // TODO: allow viewing runs via chat too
-        self sendLocalChatMessage("Use the runs menu to view your runs.");
+        self thread _listRunsInChat();
+        return;
     }
-    else
+    if (!isValidInt(args[0]))
     {
-        if (isValidInt(args[0]))
-        {
-            runID = int(args[0]);
-            self thread openCJ\playerRuns::restoreRun(runID);
-        }
+        self sendLocalChatMessage("Usage: !runs [runID]", true);
+        return;
     }
+    runID = int(args[0]);
+    self thread openCJ\playerRuns::restoreRun(runID);
+}
+
+// List the newest unfinished runs on this map that can be restored, like the runs menu.
+_listRunsInChat()
+{
+    self endon("disconnect");
+    if (!self openCJ\playerRuns::_canAccessRuns())
+    {
+        return;
+    }
+    maxListedRuns = 5;
+    excludeCurrentRun = "";
+    if (self openCJ\playerRuns::hasRunID())
+    {
+        excludeCurrentRun = " AND pr.runID != " + self openCJ\playerRuns::getRunID();
+    }
+    query = "SELECT pr.runID, rl.runLabel, pr.timePlayed "
+            + "FROM playerRuns pr "
+            + "LEFT JOIN runLabels rl ON rl.runID = pr.runID "
+            + "WHERE pr.playerID = " + self openCJ\login::getPlayerID()
+            + " AND pr.mapID = " + openCJ\mapID::getMapID()
+            + " AND pr.finishTimeStamp IS NULL AND pr.finishcpID IS NULL"
+            + " AND pr.archived = False" + excludeCurrentRun
+            + " AND EXISTS (SELECT 1 FROM playerSaves ps WHERE ps.runID = pr.runID)"
+            + " ORDER BY pr.lastUsedTimeStamp DESC, pr.runID DESC"
+            + " LIMIT " + maxListedRuns;
+    rows = self openCJ\mySQL::mysqlAsyncRead(query);
+    if (!isDefined(rows))
+    {
+        self sendLocalChatMessage("Could not load your runs right now. Try again later.", true);
+        return;
+    }
+    if (rows.size == 0)
+    {
+        self sendLocalChatMessage("You have no other unfinished runs on this map.");
+        return;
+    }
+
+    runIDColumn = 0;
+    labelColumn = 1;
+    timePlayedColumn = 2;
+    self sendLocalChatMessage("Your latest unfinished runs on this map:");
+    for (i = 0; i < rows.size; i++)
+    {
+        line = "^3" + rows[i][runIDColumn] + "^7: " +
+               formatTimeString(int(rows[i][timePlayedColumn]), true);
+        label = rows[i][labelColumn];
+        if (isDefined(label) && label != "")
+        {
+            line += " (" + label + ")";
+        }
+        self sendLocalChatMessage(line);
+    }
+    self sendLocalChatMessage("Use ^3!runs <runID>^7 to continue one, or open the runs menu.");
 }
 
 // Restore the newest eligible run only while this lookup still belongs to the player.
