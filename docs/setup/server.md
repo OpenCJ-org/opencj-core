@@ -342,7 +342,9 @@ listens on `127.0.0.1:8090` (for an SSH tunnel or another proxy).
 ## Domain names and DNS
 
 Each game server can have an address players connect to (for example
-`eu.opencj.org`; blank means the IP address), asked after its game port. The website
+`eu.opencj.org`; blank means the IP address), asked after its game port. Servers
+with an address appear in the in-game [server browser](../reference/ui/server-browser.md)
+of other servers sharing their database, with the optional location asked next. The website
 has a main domain and optional extra domains. Setup reads this machine's public
 addresses from its own network interfaces (behind a router it asks for the public
 IPv4 address and you forward the ports), then prints the records to create at your

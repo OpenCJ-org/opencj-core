@@ -262,6 +262,27 @@ class ServerSetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'not supplied'):
             configuration.validate_configuration(self.answers)
 
+    def test_server_browser_address_and_location_reach_the_game(self):
+        self.answers['address'] = 'eu.example.org'
+        self.answers['location'] = 'Netherlands'
+        self.prepared()
+        config = (self.instance / 'server.cfg').read_text()
+        self.assertIn('set opencj_server_address "eu.example.org:28960"', config)
+        self.assertIn('set opencj_server_location "Netherlands"', config)
+        runtime = json.loads((self.instance / 'runtime.json').read_text())
+        self.assertEqual(runtime['name'], 'main', 'the instance name becomes the server ID')
+
+    def test_server_without_address_stays_out_of_the_browser(self):
+        self.prepared()
+        config = (self.instance / 'server.cfg').read_text()
+        self.assertNotIn('opencj_server_address', config)
+        self.assertNotIn('opencj_server_location', config)
+
+    def test_unsafe_browser_location_is_rejected(self):
+        self.answers['location'] = 'Somewhere"; quit'
+        with self.assertRaisesRegex(ValueError, 'location'):
+            configuration.validate_configuration(self.answers)
+
     def test_ssh_tunnel_requires_verified_host_keys_and_exposes_no_host_port(self):
         key = self.root / 'key'
         key.write_text('fixture-only-not-a-key')

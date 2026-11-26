@@ -33,4 +33,5 @@ main() // Threaded
     // Call all other functions after the player's self is gone (postDisconnect waits until the next frame)
     // 'self' cannot be used for these functions!
     openCJ\vote::onPlayerDisconnect();
+    openCJ\serverList::onPlayerCountChanged();
 }

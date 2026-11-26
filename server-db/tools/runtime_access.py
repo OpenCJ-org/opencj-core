@@ -33,6 +33,7 @@ WRITABLE_TABLES = {
     "challenges",
     "shopCatalog",
     "messages",
+    "gameServers",
 }
 INSERT_ONLY_TABLES = {"challengeCompletions", "mapPlays"}
 DELETABLE_TABLES = {

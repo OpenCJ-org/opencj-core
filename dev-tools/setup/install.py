@@ -296,6 +296,11 @@ def write_instance_files(instance, settings, *, replace=False):
              'db_port': str(port), 'db_user': database['user'], 'db_pass': database['password'],
              'db_base': database['name'][:-1], 'opencj_checkpoint_editor': '0'}
     cvars.update(download_cvars(settings['downloads']))
+    # The in-game server browser lists servers with an address players can connect to.
+    if settings.get('address'):
+        cvars['opencj_server_address'] = f"{settings['address']}:{settings['port']}"
+    if settings.get('location'):
+        cvars['opencj_server_location'] = settings['location']
     if settings['discord']['enabled']:
         write_discord_files(instance, settings, replace=replace)
     write_generated(instance / 'server.cfg', ''.join(f'set {key} "{value}"\n' for key, value in cvars.items())

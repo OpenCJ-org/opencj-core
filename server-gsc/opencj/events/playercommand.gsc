@@ -69,6 +69,10 @@ main(args)
             {
                 self openMenu("opencj_maplist");
             }
+            else if (args[0] == "openservers")
+            {
+                self openMenu("opencj_servers");
+            }
             else if((args.size == 2) && (args[0] == "vote"))
             {
                 self openCJ\vote::voteSingleArg(args[1]);

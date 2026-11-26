@@ -81,6 +81,7 @@
 #define ACTION_RUN             ACTION_COMMON; exec "openrunsboard"
 #define ACTION_LB              ACTION_COMMON; exec "openleaderboard"
 #define ACTION_MAPLIST         ACTION_COMMON; exec "openmaplist"
+#define ACTION_SERVERS         ACTION_COMMON; exec "openservers"
 
 #define BTN_SIZE_X            (IG_LEFT_FRAME_SIZE_X - (2 * LEFT_SPACING))
 #define BTN_SIZE_Y            20
@@ -388,22 +389,9 @@
         IG_NAV_BUTTON(btn_settings, "Game options", ACTION_COMMON;
         open main_options, BTN_BACKCOLOR,
             BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LEAVE_ORG_X, BTN_LB_ORG_Y, BTN_SIZE_X, BTN_SIZE_Y)
-        // The server browser is not implemented yet; preserve its disabled state.
-        itemDef
-        {
-            name btn_servers
-            rect DEFAULT_RECT(BTN_LEAVE_ORG_X (BTN_LEAVE_ORG_Y - BTN_SIZE_Y - BTN_SPACING) BTN_SIZE_X BTN_SIZE_Y)
-            type ITEM_TYPE_TEXT
-            style WINDOW_STYLE_FILLED
-            decoration
-            backcolor .065 .12 .14 1
-            forecolor IG_DISABLED_COLOR
-            text "Servers"
-            textfont BTN_FONT
-            textscale BTN_FONTSIZE
-            textalign ITEM_ALIGN_MIDDLE_CENTER
-            visible 1
-        }
+        IG_NAV_BUTTON(btn_servers, "Servers", ACTION_SERVERS, BTN_BACKCOLOR,
+            BTN_FORECOLOR, BTN_FONT, BTN_FONTSIZE, BTN_LEAVE_ORG_X,
+            (BTN_LEAVE_ORG_Y - BTN_SIZE_Y - BTN_SPACING), BTN_SIZE_X, BTN_SIZE_Y)
 
         itemDef
         {

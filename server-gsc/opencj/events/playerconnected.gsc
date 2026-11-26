@@ -34,6 +34,7 @@ main()
     self openCJ\cheating::onPlayerConnected();
     wait 0.05;
     self openCJ\menus\mapList::onPlayerConnected();
+    self openCJ\serverList::onPlayerConnected();
     self openCJ\menus\helper::onPlayerConnected();
     self openCJ\menus\commands::onPlayerConnected();
     self openCJ\menus\ingame::onPlayerConnected();

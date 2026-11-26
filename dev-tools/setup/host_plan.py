@@ -21,6 +21,11 @@ DATABASE_CHOICES = LOCAL_DATABASE_CHOICES + (REMOTE_DATABASE_CHOICES if REMOTE_D
 INSTANCE_SETUP_TIMEOUT_SECONDS = 14400
 
 
+def validate_location_text(text):
+    from configuration import validate_location
+    return validate_location(text)
+
+
 def parse_address(text):
     """A DNS name players connect to, or blank for the IP address."""
     from website import validate_domain
@@ -59,6 +64,8 @@ def collect_instance(index, name, instances, used_ports):
         'port': ask_port('Game port', default_port),
         'address': ask('Address players connect to, for example eu.opencj.org (blank: the IP address)', '',
                        parse=parse_address),
+        'location': ask('Location shown in the in-game server browser, for example Netherlands (blank: none)',
+                        '', parse=validate_location_text),
         'bind_ip': prompt('Game bind address', '0.0.0.0'),
         'slots': ask_int('Player slots', 32, 1, 32),
         'public': ask_yes_no('Public access without a join password?', False),
@@ -247,6 +254,7 @@ def validate_plan(plan):
             raise ValueError('Sharing a database with another machine is switched off until it has been tested'
                              ' (REMOTE_DATABASE_ENABLED in dev-tools/setup/configuration.py)')
         settings['address'] = parse_address(settings.get('address', ''))
+        settings['location'] = validate_location_text(settings.get('location', ''))
         previous.add(name)
     if not previous:
         raise ValueError('Choose at least one game instance')

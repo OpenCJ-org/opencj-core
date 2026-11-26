@@ -338,6 +338,14 @@ def collect_configuration(instance_dir):
     return result
 
 
+def validate_location(text):
+    """Location shown in the in-game server browser, for example Netherlands; blank for none."""
+    text = text.strip()
+    if text and not re.fullmatch(r"[A-Za-z0-9 ,.()'-]{1,48}", text):
+        raise ValueError('Use up to 48 letters, digits, spaces and simple punctuation for the location')
+    return text
+
+
 def safe_cvar(value):
     value = str(value)
     if not value or len(value) > 250 or any(char in value for char in '\r\n\x00"\\;'):
@@ -448,6 +456,7 @@ def validate_configuration(settings):
     from website import validate_domain
     # The DNS name players connect to; blank means the machine's IP address.
     result['address'] = validate_domain(result.get('address', ''))
+    result['location'] = validate_location(result.get('location', ''))
     result.setdefault('slots', 32)
     if type(result['slots']) is not int or not 1 <= result['slots'] <= 32:
         raise ValueError('This release supports 1–32 player slots')

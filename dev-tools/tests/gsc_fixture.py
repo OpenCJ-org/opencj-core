@@ -202,6 +202,15 @@ def install_observation_hooks(mod, fixture_name):
                 ),
             ),
         ),
+        "server-list.gsc": (
+            "opencj/serverlist.gsc",
+            (
+                (
+                    r"\bself\s+execClientCmd\s*\(",
+                    r"self openCJ\platformTest::recordClientCommand(",
+                ),
+            ),
+        ),
         "map-menu.gsc": (
             "opencj/menus/maplist.gsc",
             (

@@ -63,6 +63,7 @@ main()
     openCJ\menus\quickMessages::onInit();
     openCJ\menus\commands::onInit();
     openCJ\menus\mapList::onInit(); // Must be after maps::onInit
+    openCJ\serverList::onInit();
     openCJ\tas::onInit();
     openCJ\tutorial::onInit();
     openCJ\playerRuns::onInit();
