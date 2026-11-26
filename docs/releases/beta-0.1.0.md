@@ -28,5 +28,8 @@ added over time.
 - Preferred player names and country flags on the scoreboard
 - The OpenCJ website with release notes, server status, rankings and map downloads
 
-## Not included yet
-- The shop is a preview only. Challenge points are already earned and saved, but items cannot be bought or equipped yet.
+## Shop and skins
+- The shop is open: type `!shop` to spend your challenge points on skins
+- The Beta collection, for players from challenge rank 3 until 1 January 2027: Glitch skins for the Desert Eagle and the RPG (100 points each) and a glossy black player model with a glowing beta mark on its backpack (200 points)
+- Try any item for 7 seconds before you buy it, and switch back to the standard Desert Eagle, RPG-7 or player model at any time
+- A new dark default player model, with matching gloves in first person
