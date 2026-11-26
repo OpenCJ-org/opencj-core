@@ -30,10 +30,23 @@ and stock body meshes with new texture coordinates for the backpack mark. The
 stock inputs come from the user's licensed game and the CoD4 Mod Tools and are
 not stored in this repository.
 
-The derived files are distributed as part of the OpenCJ mod, as with the other
-stock-based files in `cod4/`. Their redistribution terms follow the Call of Duty 4
-Mod Tools license and have not been separately reviewed. Resolve that before
-publishing them anywhere other than the mod download.
+Their terms come from the end user license agreement shipped with the Call of
+Duty 4 Mod Tools ("Release of Map Tools to the Public"), reviewed in November 2026.
+It is not legal advice; in summary:
+
+- Material made with the tools ("New Game Materials") may be shared with other
+  players only free of charge and never commercially. Shop items cost earned
+  challenge points, never money; keep it that way.
+- It must work only with the retail Call of Duty 4, not as a stand-alone product.
+- Activision owns it as a derivative work and may use published copies. The
+  derived files in `cod4/` are therefore not covered by the project's AGPL
+  license; `build_beta_skins.py` itself is OpenCJ code.
+- Published material must show, in any online description and for a reasonable
+  time on its opening screen, the creator's name and e-mail address and the words
+  "THIS MATERIAL IS NOT MADE OR SUPPORTED BY ACTIVISION." OpenCJ does not show
+  this notice yet; it applies to the whole mod, not only these skins.
+- The stock Desert Eagle weapon file is exported from the game's fastfiles rather
+  than taken from the Mod Tools, so it falls under the game's own license.
 
 ## Mesh notes
 
