@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
+#include <sys/random.h>
 
 #include "gsc_custom_utils.hpp"
 
@@ -283,12 +284,25 @@ void _seedRandom()
         isRandomSeeded = true;
     }
 }
+// Account credentials are built from these values, so they must be unpredictable.
+// Use the kernel's secure random source; when it cannot supply a value, return
+// undefined so callers refuse the operation instead of using a guessable number.
 void Gsc_Utils_CreateRandomInt()
 {
-    _seedRandom();
+    int randomValue = 0;
+    ssize_t receivedBytes = -1;
+    do
+    {
+        receivedBytes = getrandom(&randomValue, sizeof(randomValue), 0);
+    }
+    while (receivedBytes < 0 && errno == EINTR);
 
-    int res = ((rand() & 0xFFFF) << 16) | (rand() & 0xFFFF);
-    stackPushInt(res);
+    if (receivedBytes != (ssize_t)sizeof(randomValue))
+    {
+        stackPushUndefined();
+        return;
+    }
+    stackPushInt(randomValue);
 }
 
 void Gsc_Utils_Rand()
