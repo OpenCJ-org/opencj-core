@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="716" viewBox="0 0 1120 716" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" role="img">
   <title>OpenCJ server architecture</title>
-  <desc>A rented game host runs main-eu, acceptance and map-test, each with its own database, plus the website, shared assets and scheduled jobs behind a firewall. A planned, currently switched-off host in another country would use the production database through an SSH tunnel; backups are copied nightly to an external backup server.</desc>
+  <desc>A rented game host runs main-eu, acceptance and map-test, each with its own database, plus the website, shared assets and scheduled jobs, all inside a host firewall that every connection crosses. A planned, currently switched-off host in another country would use the production database through an SSH tunnel that enters through the firewall's SSH port; backups leave as outgoing traffic, copied nightly to an external backup server.</desc>
   <defs>
     <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M1 1L9 5L1 9Z" fill="#5F5E5A"/>
@@ -34,26 +34,28 @@
     <text x="990" y="59" font-size="11.5" fill="#5F5E5A">chat · private alerts</text>
   </g>
 
-  <!-- Game host -->
-  <rect x="40" y="110" width="1040" height="420" rx="14" fill="#F7F7F5" stroke="#B4B2A9"/>
-  <rect x="60" y="126" width="1000" height="34" rx="6" fill="#FCEBEB" stroke="#A32D2D"/>
+  <!-- Game host inside its firewall: the red frame (top bar, sides, bottom strip) is the host
+       firewall, so every connection to or from the host crosses it -->
+  <rect x="40" y="110" width="1040" height="420" rx="14" fill="#F7F7F5" stroke="#A32D2D" stroke-width="2"/>
+  <path d="M40 146 V124 Q40 110 54 110 H1066 Q1080 110 1080 124 V146 Z" fill="#FCEBEB" stroke="#A32D2D" stroke-width="2"/>
+  <path d="M40 508 H1080 V516 Q1080 530 1066 530 H54 Q40 530 40 516 Z" fill="#FCEBEB" stroke="#A32D2D" stroke-width="2"/>
 
   <!-- Connections to outside services (drawn after the host panel): inbound solid, outbound dashed -->
   <g stroke="#5F5E5A" stroke-width="1.5" fill="none">
-    <line x1="130" y1="72" x2="130" y2="124" marker-end="url(#arrow-gray)"/>
-    <line x1="345" y1="72" x2="345" y2="124" marker-end="url(#arrow-gray)"/>
+    <line x1="130" y1="72" x2="130" y2="108" marker-end="url(#arrow-gray)"/>
+    <line x1="345" y1="72" x2="345" y2="108" marker-end="url(#arrow-gray)"/>
     <line x1="560" y1="110" x2="560" y2="74" stroke-dasharray="5 4" marker-end="url(#arrow-gray)"/>
     <line x1="775" y1="110" x2="775" y2="74" stroke-dasharray="5 4" marker-end="url(#arrow-gray)"/>
     <line x1="990" y1="110" x2="990" y2="74" stroke-dasharray="5 4" marker-end="url(#arrow-gray)"/>
   </g>
   <g font-size="11.5" fill="#444441">
-    <text x="138" y="95">game (UDP)</text>
+    <text x="138" y="95">game (UDP/TCP)</text>
     <text x="353" y="95">HTTPS · maps (HTTP)</text>
     <text x="568" y="95">certificates</text>
     <text x="783" y="95">monthly data</text>
     <text x="998" y="95">bot · webhook</text>
   </g>
-  <text x="560" y="148" text-anchor="middle" font-size="13" fill="#791F1F"><tspan font-weight="600">Firewall (ufw)</tspan>  ·  open: SSH (rate-limited), game ports, 80/443  ·  everything else closed  ·  fail2ban</text>
+  <text x="560" y="133" text-anchor="middle" font-size="13" fill="#791F1F"><tspan font-weight="600">Firewall (ufw) around the whole host</tspan>  ·  incoming only: SSH (rate-limited), game ports, 80/443  ·  outgoing allowed  ·  fail2ban</text>
 
   <!-- Server columns -->
   <g fill="#FFFFFF" stroke="#D3D1C7">
@@ -130,14 +132,21 @@
   <text x="582" y="446" font-size="13" font-weight="600" fill="#633806">Scheduled jobs <tspan font-weight="400" fill="#854F0B">(Europe/Amsterdam)</tspan></text>
   <text x="582" y="466" font-size="11.5" fill="#854F0B">backups 03:30 · pruning 04:15 · updates 05:00 · watchdog every 2 min</text>
 
-  <text x="60" y="510" font-size="14" font-weight="600" fill="#2C2C2A">Game host <tspan font-weight="400" fill="#5F5E5A">· rented Ubuntu 24.04 server · /srv/opencj</tspan></text>
-  <text x="1060" y="510" text-anchor="end" font-size="11.5" fill="#5F5E5A">every server: own containers, Linux users and database account</text>
+  <text x="60" y="499" font-size="14" font-weight="600" fill="#2C2C2A">Game host <tspan font-weight="400" fill="#5F5E5A">· rented Ubuntu 24.04 server · /srv/opencj</tspan></text>
+  <text x="1060" y="499" text-anchor="end" font-size="11.5" fill="#5F5E5A">every server: own containers, Linux users and database account</text>
+
+  <!-- Bottom firewall strip: what each crossing is allowed through -->
+  <g font-size="11" fill="#791F1F">
+    <text x="60" y="523" font-weight="600">Firewall</text>
+    <text x="222" y="523">in through the SSH port (rate-limited)</text>
+    <text x="842" y="523">outgoing allowed</text>
+  </g>
 
   <!-- Links between machines -->
-  <line x1="210" y1="560" x2="210" y2="532" stroke="#534AB7" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-purple)"/>
-  <text x="218" y="550" font-size="11.5" fill="#3C3489">SSH tunnel to the production database</text>
-  <line x1="830" y1="530" x2="830" y2="558" stroke="#854F0B" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-amber)"/>
-  <text x="838" y="550" font-size="11.5" fill="#633806">nightly backups (write-only)</text>
+  <line x1="210" y1="560" x2="210" y2="510" stroke="#534AB7" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-purple)"/>
+  <text x="218" y="550" font-size="11.5" fill="#3C3489">SSH tunnel to the production database · database port only</text>
+  <line x1="830" y1="508" x2="830" y2="558" stroke="#854F0B" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow-amber)"/>
+  <text x="838" y="550" font-size="11.5" fill="#633806">nightly backups over SSH (write-only)</text>
 
   <!-- Planned other host (switched off until tested) -->
   <rect x="40" y="560" width="500" height="96" rx="14" fill="#F7F7F5" stroke="#B4B2A9" stroke-dasharray="6 4"/>
@@ -169,7 +178,7 @@
     <rect x="350" y="680" width="12" height="12" rx="3" fill="#FAEEDA" stroke="#854F0B"/>
     <text x="368" y="690">Backups and jobs</text>
     <rect x="490" y="680" width="12" height="12" rx="3" fill="#FCEBEB" stroke="#A32D2D"/>
-    <text x="508" y="690">Protection</text>
+    <text x="508" y="690">Firewall</text>
     <rect x="598" y="680" width="12" height="12" rx="3" fill="#F1EFE8" stroke="#888780"/>
     <text x="616" y="690">Services and outside parties</text>
     <line x1="820" y1="686" x2="852" y2="686" stroke="#5F5E5A" stroke-width="1.5"/>
