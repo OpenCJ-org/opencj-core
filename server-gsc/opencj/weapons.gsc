@@ -72,7 +72,8 @@ _deleteGrenades()
     while(isDefined(nade))
     {
         tmp = nade.prevNade;
-        if(!nade isThinking()) //todo: fix this func for cod4
+        // Deleting a grenade from inside its own think (its explosion) is unsafe.
+        if(!nade isThinking())
             nade delete();
         nade = tmp;
     }

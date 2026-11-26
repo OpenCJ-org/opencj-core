@@ -266,7 +266,9 @@ void Gsc_Utils_VectorScale()
 void Gsc_Utils_IsEntityThinking(int entnum)
 {
 #ifdef COD4
-    stackPushInt(1); // Not implemented
+    // The engine records the entity whose think function is running. Scripts must
+    // not delete that entity from inside its own think, such as a grenade explosion.
+    stackPushInt(level.currentEntityThink == entnum);
 #else
 	if(*(int*)0x864F984 == entnum)
 		stackPushInt(1);
