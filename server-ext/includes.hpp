@@ -9,6 +9,7 @@
 #include "opencj_visibility.hpp"
 #include "opencj_demo.hpp"
 #include "opencj_discord.hpp"
+#include "opencj_bans.hpp"
 
 #include "opencj_fps.hpp"
 #include "opencj_movement.hpp"

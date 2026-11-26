@@ -44,10 +44,10 @@ class PlayerNameVerification(IsolatedDatabase):
         )
         self.query_database(
             """
-            INSERT INTO playerInformation(playerID,playerName,adminLevel) VALUES
+            INSERT INTO playerInformation(playerID,playerName,permissions) VALUES
                 (1,'FixtureOne',0),
                 (2,'FixtureTwo',0),
-                (3,'Moderator',40),
+                (3,'Moderator',16), -- names permission (bit 4)
                 (4,'RaceOne',0),
                 (5,'RaceTwo',0);
             """,

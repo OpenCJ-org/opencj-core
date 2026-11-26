@@ -6,12 +6,11 @@ onInit()
     setCvar("g_allowVote", 0);
     voteCommand = openCJ\commands_base::registerCommand(
         "vote", "Vote for something. Usage: !vote <extend|map mp_mapname|yes|no>",
-        ::vote, 1, 2, 0);
+        ::vote, 1, 2);
     openCJ\commands_base::addAlias(voteCommand, "v");
 
-    mapRestartAdminLevel = 60;
     restartCommand = openCJ\commands_base::registerCommand(
-        "maprestart", "Restart the current map", ::onCmdRestartMap, 0, 0, mapRestartAdminLevel);
+        "maprestart", "Restart the current map", ::onCmdRestartMap, 0, 0, "maprestart");
     openCJ\commands_base::addAlias(restartCommand, "restartmap");
 
     level.vote = undefined;
@@ -80,7 +79,7 @@ vote(args) // args[0] = map, extend, yes/no
     }
 
     cooldownSecondsLeft = int(self.canVoteAt - (getTime() / 1000) + 0.5);
-    if(cooldownSecondsLeft > 0 && !openCJ\commands_base::isUberAdminLevel(self.adminLevel))
+    if(cooldownSecondsLeft > 0 && !self openCJ\permissions::isUberAdmin())
     {
         self iprintln("You can vote in another ^1" + cooldownSecondsLeft + "^7 seconds");
         return;
@@ -131,7 +130,7 @@ onPlayerLogin()
 
 _setVoteCooldown(cooldownSeconds)
 {
-    if (openCJ\commands_base::isUberAdminLevel(self.adminLevel))
+    if (self openCJ\permissions::isUberAdmin())
     {
         cooldownSeconds = 0;
     }
@@ -306,12 +305,12 @@ _findMapByName(searchText)
     searchText = toLower(searchText);
 
     // Exact names also cover maps installed since the catalogue was loaded.
-    if (openCJ\maps::canVoteMap(searchText, self.adminLevel))
+    if (openCJ\maps::canVoteMap(searchText, self.permissions))
     {
         return searchText;
     }
 
-    eligibleMaps = openCJ\maps::voteMaps(self.adminLevel);
+    eligibleMaps = openCJ\maps::voteMaps(self.permissions);
     matchingMapNames = [];
     if (searchText != "")
     {

@@ -12,7 +12,7 @@ main()
     if(isDefined(player))
     {
         wait 0.2;
-        player.adminLevel = 0;
+        player.permissions = 0;
         player.currentMenu = "opencj_maplist";
         player.searchText = "";
         player openCJ\menus\mapList::onPlayerConnected();

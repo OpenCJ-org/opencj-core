@@ -10,6 +10,8 @@
 {"opencjscandir", Gsc_Utils_ScanDir, 0},
 #ifdef COD4
 {"opencjmapexists", Gsc_Utils_MapExists, 0},
+{"clearconnectionbans", Gsc_Bans_Clear, 0},
+{"setconnectionban", Gsc_Bans_Set, 0},
 #endif
 {"platformbrushface", Gsc_Platform_Face, 0},
 {"platformentityinfo", Gsc_Platform_EntityInfo, 0},

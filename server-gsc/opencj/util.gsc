@@ -577,3 +577,55 @@ G_LocalizedStringIndex(string)
     localizedStringCount = 256;
     return G_FindConfigstringIndex(string, localizedStringStart, localizedStringCount);
 }
+
+// Shared by moderation and name commands, which accept a playerID typed in chat.
+digits(decimalText)
+{
+    maximumDecimalDigits = 10;
+    if(decimalText.size == 0 || decimalText.size > maximumDecimalDigits)
+    {
+        return false;
+    }
+    for(i = 0; i < decimalText.size; i++)
+    {
+        characterCode = getAscii(decimalText[i]);
+        if(characterCode < getAscii("0") || characterCode > getAscii("9"))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Validate decimal digits before int() so out-of-range input never reaches a moderation query.
+// Database player IDs use a positive signed INT, matching the GSC integer range.
+parsePlayerID(text)
+{
+    if(!isDefined(text) || !digits(text))
+    {
+        return undefined;
+    }
+    maximumPlayerIDText = "2147483647";
+    if(text.size == maximumPlayerIDText.size)
+    {
+        for(i = 0; i < text.size; i++)
+        {
+            digit = getAscii(text[i]);
+            maximumDigit = getAscii(maximumPlayerIDText[i]);
+            if(digit < maximumDigit)
+            {
+                break;
+            }
+            if(digit > maximumDigit)
+            {
+                return undefined;
+            }
+        }
+    }
+    playerID = int(text);
+    if(playerID <= 0)
+    {
+        return undefined;
+    }
+    return playerID;
+}

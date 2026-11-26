@@ -168,7 +168,7 @@ then publishes the complete cache after filesystem discovery finishes.
 
 Regular map votes, exact/partial vote lookup, the map menu and its search,
 `!maplist`, and automatic end-map votes all use the same enabled, installed
-pool. Level-100 uber-admins retain access to every installed multiplayer map,
+pool. Uber-admins retain access to every installed multiplayer map,
 including maps without database rows. All roles still require actual map assets.
 Authors and historical release dates populate the existing menu metadata.
 

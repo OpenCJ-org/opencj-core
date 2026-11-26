@@ -224,9 +224,11 @@ runtime; MariaDB and other major versions are not claimed compatible.
 A fresh database deliberately gives no privileges to the first player who joins.
 After joining privately and identifying your account, use the database owner's
 administration console to inspect `playerInformation` / `playerDisplayNames` and
-set that verified player's `adminLevel` to 100. Reconnect to reload permissions.
-Do not grant a role based merely on arrival order or an assumed player ID.
-The existing role levels are editor 20, moderator 40, admin 60 and uber-admin 100.
+give that verified player the uber permission (bit 0):
+`UPDATE playerInformation SET permissions = permissions | 1 WHERE playerID = <id>;`
+Reconnect to reload permissions. Do not grant it based merely on arrival order or
+an assumed player ID. Grant other permissions in game with `!permissions grant`;
+see the [permission table](../reference/permissions.md).
 
 The owner can open the SQL console without putting its password in command arguments:
 

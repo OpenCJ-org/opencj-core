@@ -5,20 +5,31 @@ onInit()
     level.commands = [];
     helpCommand = registerCommand(
         "help", "Browse commands, or show help for a command or alias. Usage: !help [command]",
-        ::_showHelp, 0, 1, 0);
+        ::_showHelp, 0, 1);
     addAlias(helpCommand, "commands");
 }
 
-registerCommand(commandName, description, callback, minArgs, maxArgs, minAdminLevel, settingName)
+// requiredPermission is a short name from openCJ\permissions, or undefined for
+// commands everyone may use. See docs/reference/permissions.md.
+registerCommand(commandName, description, callback, minArgs, maxArgs, requiredPermission,
+                settingName)
 {
     commandName = toLower(commandName);
+    // Fail closed: a misspelled permission must not leave a command open to everyone.
+    if (isDefined(requiredPermission) &&
+        !isDefined(openCJ\permissions::permissionNamed(requiredPermission)))
+    {
+        printf("WARN: !" + commandName + " requires unknown permission '" + requiredPermission +
+               "'; restricting it to uber-admins\n");
+        requiredPermission = "uber";
+    }
     command = spawnStruct();
     command.name = commandName;
     command.help = description;
     command.func = callback;
     command.minArgs = minArgs;
     command.maxArgs = maxArgs;
-    command.minAdminLevel = minAdminLevel;
+    command.requiredPermission = requiredPermission;
     command.settingName = settingName;
     level.commands[commandName] = command;
 
@@ -33,29 +44,13 @@ addAlias(command, aliasName)
     level.commands[toLower(aliasName)] = aliasCommand;
 }
 
-// Permission levels: editor 20, moderator 40, admin 60, uber-admin 100.
-checkpointEditorLevel()
+isCommandAllowed(command, permissionMask)
 {
-    return 20;
-}
-
-maxAdminLevel()
-{
-    return 100;
-}
-
-isUberAdminLevel(value)
-{
-    return isDefined(value) && value >= maxAdminLevel();
-}
-
-setAdminLevel(value)
-{
-    self.adminLevel = value;
-    if (isDefined(self.currentMenu) && self.currentMenu == "opencj_commands")
+    if (!isDefined(command.requiredPermission))
     {
-        self openCJ\menus\commands::refresh(false);
+        return true;
     }
+    return openCJ\permissions::maskHasPermission(permissionMask, command.requiredPermission);
 }
 
 // Return true for recognized commands, including permission/argument failures, to suppress chat.
@@ -109,7 +104,7 @@ onPlayerCommand(chatArguments)
     }
 
     // Does the player have sufficient permissions?
-    if(self.adminLevel < command.minAdminLevel)
+    if(!isCommandAllowed(command, self.permissions))
     {
         self sendLocalChatMessage("You do not have sufficient permissions to execute this command",
                                   true);
@@ -145,12 +140,8 @@ onPlayerCommand(chatArguments)
 }
 
 // Read the live registry, including aliases registered after initialization.
-availableCommands(adminLevel, search)
+availableCommands(permissionMask, search)
 {
-    if (!isDefined(adminLevel))
-    {
-        adminLevel = 0;
-    }
     if (!isDefined(search))
     {
         search = "";
@@ -162,7 +153,7 @@ availableCommands(adminLevel, search)
     for (i = 0; i < commandNames.size; i++)
     {
         command = level.commands[commandNames[i]];
-        if (isDefined(command.cmd) || adminLevel < command.minAdminLevel)
+        if (isDefined(command.cmd) || !isCommandAllowed(command, permissionMask))
         {
             continue;
         }
@@ -215,7 +206,7 @@ describeCommand(commandName, command, registeredNames)
     return entry;
 }
 
-helpText(commandName, adminLevel)
+helpText(commandName, permissionMask)
 {
     commandName = toLower(commandName);
     command = level.commands[commandName];
@@ -229,7 +220,7 @@ helpText(commandName, adminLevel)
         command = command.cmd;
         heading += " (alias for !" + command.name + ")";
     }
-    if (!isDefined(adminLevel) || adminLevel < command.minAdminLevel)
+    if (!isCommandAllowed(command, permissionMask))
     {
         return "You do not have sufficient permissions to use this command.";
     }
@@ -276,7 +267,7 @@ _showHelp(commandArguments)
 {
     if (isDefined(commandArguments) && commandArguments.size > 0)
     {
-        self sendLocalChatMessage(helpText(commandArguments[0], self.adminLevel));
+        self sendLocalChatMessage(helpText(commandArguments[0], self.permissions));
     }
     else
     {

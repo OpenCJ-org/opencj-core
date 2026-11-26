@@ -16,7 +16,7 @@ onPlayerConnected()
     self.mapList["curPage"] = 1;
 
     // Counts depend on this player's permissions and the latest map catalogue.
-    eligibleMaps = openCJ\maps::voteMaps(self.adminLevel);
+    eligibleMaps = openCJ\maps::voteMaps(self.permissions);
     self.mapList["maxEntries"] = eligibleMaps.size;
     self.mapList["maxPage"] = max(1, ceil(eligibleMaps.size / level.mapListMaxEntriesPerPage));
     self thread _updateMapList(false);
@@ -175,7 +175,7 @@ _handlePageChange(button)
 // Rebuild the visible page from current permissions, search and selection.
 _updateMapList(searchChanged)
 {
-    eligibleMaps = openCJ\maps::voteMaps(self.adminLevel);
+    eligibleMaps = openCJ\maps::voteMaps(self.permissions);
     if (isDefined(searchChanged) && searchChanged)
     {
         self.mapList["selected"] = level.mapListNoSelection;

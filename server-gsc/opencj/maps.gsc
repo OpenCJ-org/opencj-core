@@ -12,10 +12,11 @@ previewImage(mapName)
     return "opencj_missing_image";
 }
 
-canVoteMap(mapName, adminLevel)
+// Uber-admins may vote for any installed map; everyone else only for pool maps.
+canVoteMap(mapName, permissionMask)
 {
     mapName = toLower(mapName);
-    if (!openCJ\commands_base::isUberAdminLevel(adminLevel) && !isPoolMap(mapName))
+    if (!openCJ\permissions::isUberMask(permissionMask) && !isPoolMap(mapName))
     {
         return false;
     }
@@ -177,7 +178,7 @@ _addMap(catalogue, mapName, releaseDate, inRotation, author)
     }
 }
 
-voteMaps(adminLevel)
+voteMaps(permissionMask)
 {
     eligibleMaps = [];
     if (!isDefined(level.maps))
@@ -186,7 +187,7 @@ voteMaps(adminLevel)
     }
     for (i = 0; i < level.maps.size; i++)
     {
-        if (canVoteMap(level.maps[i]["name"], adminLevel))
+        if (canVoteMap(level.maps[i]["name"], permissionMask))
         {
             eligibleMaps[eligibleMaps.size] = level.maps[i];
         }

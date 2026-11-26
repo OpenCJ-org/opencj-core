@@ -7,7 +7,7 @@ onInit()
     level.speedMode["minspeed"] = 1;
 
     // Don't add alias speed because it can be confusing compared to speedometer
-    cmd = openCJ\commands_base::registerCommand("speedmode", "Used to enable/disable speed mode. Usage: !speedmode [<value>|off]", ::speedMode, 0, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("speedmode", "Used to enable/disable speed mode. Usage: !speedmode [<value>|off]", ::speedMode, 0, 1);
 }
 
 _runChanged()

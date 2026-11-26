@@ -26,8 +26,8 @@ onInit()
 fillRandomMaps() // Called when level.maps is filled.
 {
     level.endVote["maps"] = [];
-    ordinaryAdminLevel = 0;
-    eligibleMaps = openCJ\maps::voteMaps(ordinaryAdminLevel);
+    ordinaryPlayerPermissions = 0;
+    eligibleMaps = openCJ\maps::voteMaps(ordinaryPlayerPermissions);
     currentMapName = getCvar("mapname");
     for (i = 0; i < eligibleMaps.size; i++)
     {

@@ -105,7 +105,8 @@ verifyMapPool()
 
     check(openCJ\maps::canVoteMap("MP_KILLHOUSE", 0), "ordinary player can vote installed pool map");
     check(!openCJ\maps::canVoteMap("mp_crossfire", 0), "ordinary player cannot vote outside pool");
-    check(openCJ\maps::canVoteMap("mp_crossfire", openCJ\commands_base::maxAdminLevel()),
+    uberPermissions = openCJ\permissions::permissionNamed("uber").flag;
+    check(openCJ\maps::canVoteMap("mp_crossfire", uberPermissions),
           "uber-admin can vote installed map outside pool");
     check(!isDefined(level.mapNames["mp_missing_catalogue_fixture"]),
           "missing map cannot enter catalogue through database row");

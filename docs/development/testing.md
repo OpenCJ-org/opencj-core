@@ -48,6 +48,7 @@ to their listed harnesses, not standalone commands.
 | Private name-policy maintenance | `name-policy-unit` |
 | Persistent SQL-client transport and cleanup | `database-client-unit` |
 | Fresh schema, permissions or backup | `database-bootstrap`, `database-volume` |
+| Player permissions, kicks and bans | `permissions-unit`, `permissions-sql`, `focused-gsc` |
 | Challenge routes, shop or finish ranking | `feature-sql`, `notification-sql` |
 | Challenge catalogue keys, ranks and progress | `focused-gsc` |
 | Notification and finish-sound lifetimes | `notifications-engine` |
@@ -402,11 +403,22 @@ Notifications are synthetic and client rendering is not observed.
 ### Voting
 
 The focused voting fixture checks map-pool selection, exact and partial lookup,
-admin cooldowns, normal ballot counts, end-vote button validation, vote transfers and the closed voting
+uber-admin cooldowns, normal ballot counts, end-vote button validation, vote transfers and the closed voting
 phase. Synthetic disconnect events test listener cancellation; replacement vote
 objects test timer cancellation and ownership after a wait. It uses real engine
 entities and installed maps, but does not run a map transition, physically
 disconnect a client, render the menu or write to the database.
+
+### Permissions, kicks and bans
+
+`permissions-unit` checks that the [permission table](../reference/permissions.md),
+the GSC catalogue, every command registration and the SQL bit numbers agree; it
+reads source only. `permissions-sql` bootstraps a disposable database and calls
+the grant, ban, unban and name-reset functions through the gameplay account,
+covering every refusal code, the 7-day limit, blank reasons, uber protection and
+denied direct writes. The focused `permission-rules.gsc` fixture checks masks,
+duration and reason parsing, target lookup and uber protection with real engine
+clients. None of them connects a banned client to the engine connection check.
 
 ### Leaderboard menus
 

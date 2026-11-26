@@ -2,8 +2,8 @@
 
 onInit()
 {
-    cmd = openCJ\commands_base::registerCommand("noclip", "Enables/disables noclip. Usage: !noclip [speed]", ::_onCmdNoclip, 0, 1, 0);
-    cmd = openCJ\commands_base::registerCommand("ufo", "Enables/disables noclip with higher speed.", ::_onCmdUfo, 0, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("noclip", "Enables/disables noclip. Usage: !noclip [speed]", ::_onCmdNoclip, 0, 1);
+    cmd = openCJ\commands_base::registerCommand("ufo", "Enables/disables noclip with higher speed.", ::_onCmdUfo, 0, 1);
 }
 
 onPlayerConnect()

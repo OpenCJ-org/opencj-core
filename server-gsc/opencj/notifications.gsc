@@ -26,7 +26,7 @@ onInit()
     openCJ\commands_base::registerCommand(
         "notifications",
         "Feedback: !notifications [all|checkpoint|save|load] <text|flash|both|off>; results <text|both>; strength <low|medium|high>.",
-        ::command, 0, 2, 0);
+        ::command, 0, 2);
 }
 
 mode(event)

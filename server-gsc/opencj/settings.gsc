@@ -376,16 +376,15 @@ _createSetting(name, defaultVal, help, updateFunc, typeStr)
     {
         level.settings[name].updateFunc = updateFunc;
     }
-    // For now these values are hardcoded
+    // For now these values are hardcoded; settings need no permission.
     // If we want to change this, just change the addSettingXXXX functions to accept the new parameters
-    minAdminLevel = 0;
     maxArgs = 1;
     minArgs = 1;
     if(level.settings[name].type == "bool")
     {
         minArgs = 0;
     }
-    cmd = openCJ\commands_base::registerCommand(name, help, undefined, minArgs, maxArgs, minAdminLevel, name);
+    cmd = openCJ\commands_base::registerCommand(name, help, undefined, minArgs, maxArgs, undefined, name);
     if(!isDefined(cmd))
     {
         level.settings[name] = undefined;

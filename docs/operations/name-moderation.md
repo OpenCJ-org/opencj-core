@@ -54,12 +54,12 @@ of Git and public support bundles.
 
 ## Apply policy changes
 
-Use `!reloadnamerules` (admin level 60) or a normal map change to refresh the
+Use `!reloadnamerules` (uber-admin only) or a normal map change to refresh the
 server snapshot. A failed reload retains the last valid snapshot. A server
 without a valid snapshot uses temporary regular names and waits before accepting
 new preferred-name claims.
 
 Rule changes do not silently rewrite existing preferred names. Moderators can
-use `!frename` or `!resetprefname` at level 40 for the relevant account. Review
+use `!frename` or `!resetprefname` (`names` permission) for the relevant account. Review
 false positives through exceptions. Player names are checked locally and are
 not sent to the seed provider or another moderation service.

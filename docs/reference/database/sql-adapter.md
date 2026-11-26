@@ -81,7 +81,7 @@ definite database outcome when it could not be confirmed.
 
 ## Diagnostics and adding callers
 
-!sqlstats requires admin level 50 and reports workers, queue/running/completed
+!sqlstats is uber-admin only and reports workers, queue/running/completed
 counts, query bytes, oldest/max waits, max execution, rejections, failures and
 uncertain writes. It is registered through commands_base, so !help discovers it
 automatically.

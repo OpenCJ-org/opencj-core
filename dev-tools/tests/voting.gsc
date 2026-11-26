@@ -44,7 +44,7 @@ prepareVoter(playerID, spawnOrigin)
     self spawn(spawnOrigin, (0, 0, 0));
     self freezeControls(true);
     self.login_playerID = playerID;
-    self.adminLevel = 0;
+    self.permissions = 0;
     self.isAFK = false;
 }
 
@@ -89,10 +89,10 @@ verifyMapLookup()
     check(!isDefined(self openCJ\vote::_findMapByName("")), "empty lookup does not choose a map");
     check(!isDefined(self openCJ\vote::_findMapByName("mp_bog")), "ordinary lookup rejects non-pool map");
 
-    self.adminLevel = openCJ\commands_base::maxAdminLevel();
+    self.permissions = openCJ\permissions::permissionNamed("uber").flag;
     check(self openCJ\vote::_findMapByName("mp_bog") == "mp_bog",
           "uber-admin may choose an installed non-pool map");
-    self.adminLevel = 0;
+    self.permissions = 0;
 }
 
 verifyCooldown()
@@ -102,10 +102,10 @@ verifyCooldown()
     remainingSeconds = self.canVoteAt - getTime() / 1000;
     check(abs(remainingSeconds - cooldownSeconds) < 0.01, "ordinary voter receives requested cooldown");
 
-    self.adminLevel = openCJ\commands_base::maxAdminLevel();
+    self.permissions = openCJ\permissions::permissionNamed("uber").flag;
     self openCJ\vote::_setVoteCooldown(cooldownSeconds);
     check(abs(self.canVoteAt - getTime() / 1000) < 0.01, "uber-admin bypasses vote cooldown");
-    self.adminLevel = 0;
+    self.permissions = 0;
 }
 
 resetEndVote()

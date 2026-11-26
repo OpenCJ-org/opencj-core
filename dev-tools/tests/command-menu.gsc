@@ -21,7 +21,7 @@ main()
         finish();
         return;
     }
-    player.adminLevel = 0;
+    player.permissions = 0;
     player openCJ\menus\helper::onPlayerConnected();
     player openCJ\menus\commands::onPlayerConnected();
     checkCommandPages(player);
@@ -38,10 +38,11 @@ checkProductionCommands()
 {
     check(!isDefined(level.commands["scoreboard"]),
           "obsolete scoreboard setup command not registered");
-    check(openCJ\commands_base::availableCommands(0, "ban").size == 0,
+    mapDebugPermissions = openCJ\permissions::permissionNamed("mapdebug").flag;
+    check(openCJ\commands_base::availableCommands(0, "setorigin").size == 0,
           "restricted production command hidden");
-    check(openCJ\commands_base::availableCommands(70, "ban").size > 0,
-          "production command visible at exact permission level");
+    check(openCJ\commands_base::availableCommands(mapDebugPermissions, "setorigin").size > 0,
+          "production command visible with its permission");
     check(openCJ\commands_base::helpText("RP", 0) ==
               "!rp (alias for !restoreposition): Restore your last used run",
           "production alias help resolves case and canonical name");
@@ -51,11 +52,10 @@ checkSearchRanking()
 {
     // Reported regression: an exact alias must beat an earlier substring.
     openCJ\commands_base::registerCommand("doublerpgsstring", "Partial match fixture.", undefined,
-                                          0, 0, 0);
-    openCJ\commands_base::registerCommand("arptest", "Partial match fixture.", undefined, 0, 0, 0);
-    openCJ\commands_base::registerCommand("zzrpcheck", "Partial match fixture.", undefined, 0, 0,
-                                          0);
-    openCJ\commands_base::registerCommand("rpg", "Exact-name fixture.", undefined, 0, 0, 0);
+                                          0, 0);
+    openCJ\commands_base::registerCommand("arptest", "Partial match fixture.", undefined, 0, 0);
+    openCJ\commands_base::registerCommand("zzrpcheck", "Partial match fixture.", undefined, 0, 0);
+    openCJ\commands_base::registerCommand("rpg", "Exact-name fixture.", undefined, 0, 0);
     matches = openCJ\commands_base::availableCommands(0, "RP");
     check(matches[0].name == "restoreposition",
           "exact rp alias ranks restoreposition before partial matches, case-insensitively");
@@ -71,14 +71,19 @@ checkSearchRanking()
           "partial matches remain present and alphabetically ordered");
     matches = openCJ\commands_base::availableCommands(0, "rpg");
     check(matches[0].name == "rpg", "exact command name ranks before an earlier partial match");
-    openCJ\commands_base::registerCommand("banner", "Permitted partial fixture.", undefined, 0, 0,
-                                          0);
-    matches = openCJ\commands_base::availableCommands(0, "ban");
-    check(matches.size == 1 && matches[0].name == "banner",
+    openCJ\commands_base::registerCommand("setoriginfixture", "Permitted partial fixture.",
+                                          undefined, 0, 0);
+    matches = openCJ\commands_base::availableCommands(0, "setorigin");
+    check(matches.size == 1 && matches[0].name == "setoriginfixture",
           "restricted exact match does not bypass permission filtering");
-    matches = openCJ\commands_base::availableCommands(70, "ban");
-    check(matches[0].name == "ban" && matches[1].name == "banner",
+    mapDebugPermissions = openCJ\permissions::permissionNamed("mapdebug").flag;
+    matches = openCJ\commands_base::availableCommands(mapDebugPermissions, "setorigin");
+    check(matches[0].name == "setorigin" && matches[1].name == "setoriginfixture",
           "permitted exact match precedes partial match");
+    misspelledCommand = openCJ\commands_base::registerCommand(
+        "misspelledfixture", "Unknown permission fixture.", undefined, 0, 0, "notapermission");
+    check(misspelledCommand.requiredPermission == "uber",
+          "a command naming an unknown permission is restricted to uber-admins");
 }
 
 checkRegistryDescriptions()
@@ -86,14 +91,14 @@ checkRegistryDescriptions()
     // Deterministic registry covers ordering independently of registration order.
     level.commands = [];
     openCJ\commands_base::registerCommand(
-        "zulu", "Last command. Mentions rp in its description.", undefined, 0, 0, 0);
+        "zulu", "Last command. Mentions rp in its description.", undefined, 0, 0);
     alphaCommand = openCJ\commands_base::registerCommand("alpha", "First command. Usage: !alpha", undefined, 0,
-                                              0, 0);
+                                              0);
     openCJ\commands_base::addAlias(alphaCommand, "ZAlias");
     openCJ\commands_base::addAlias(alphaCommand, "aAlias");
-    openCJ\commands_base::registerCommand("alphabet", "Prefix ordering.", undefined, 0, 0, 0);
+    openCJ\commands_base::registerCommand("alphabet", "Prefix ordering.", undefined, 0, 0);
     adminCommand = openCJ\commands_base::registerCommand("admin", "Restricted description.", undefined, 0,
-                                                  0, 60);
+                                                  0, "maprestart");
     openCJ\commands_base::addAlias(adminCommand, "secret");
     entries = openCJ\commands_base::availableCommands(0, "");
     check(entries.size == 3, "one entry per primary command; aliases and restricted commands omitted");
@@ -108,11 +113,14 @@ checkRegistryDescriptions()
           "command-name substring search remains available");
     check(openCJ\commands_base::availableCommands(0, "prefix").size == 0,
           "description-only matches excluded");
-    check(openCJ\commands_base::availableCommands(59, "secret").size == 0,
-          "alias search respects required rank");
-    check(openCJ\commands_base::availableCommands(60, "secret").size == 1,
-          "alias search at exact required rank");
-    check(openCJ\commands_base::availableCommands(100, "").size == 4,
+    restartPermissions = openCJ\permissions::permissionNamed("maprestart").flag;
+    otherPermissions = openCJ\permissions::permissionNamed("mapdebug").flag;
+    uberPermissions = openCJ\permissions::permissionNamed("uber").flag;
+    check(openCJ\commands_base::availableCommands(otherPermissions, "secret").size == 0,
+          "alias search respects the required permission");
+    check(openCJ\commands_base::availableCommands(restartPermissions, "secret").size == 1,
+          "alias search with the required permission");
+    check(openCJ\commands_base::availableCommands(uberPermissions, "").size == 4,
           "uber-admin sees all commands");
     check(isSubStr(openCJ\commands_base::helpText("ZALIAS", 0), "!zalias (alias for !alpha):"),
           "quick alias help retains requested alias");
@@ -121,7 +129,7 @@ checkRegistryDescriptions()
     check(openCJ\commands_base::helpText("missing", 0) == "Command not found.",
           "unknown quick-help command");
     lateCommand = openCJ\commands_base::registerCommand("late", "Added after first listing.", undefined, 0,
-                                                 0, 0);
+                                                 0);
     openCJ\commands_base::addAlias(lateCommand, "newalias");
     check(openCJ\commands_base::availableCommands(0, "").size == 4,
           "new registration appears without a menu catalogue change");
@@ -140,7 +148,7 @@ checkCommandPages(player)
           "opening builds live registry and selects first command");
     for (i = 0; i < 25; i++)
     {
-        openCJ\commands_base::registerCommand("fixture" + i, "Page fixture.", undefined, 0, 0, 0);
+        openCJ\commands_base::registerCommand("fixture" + i, "Page fixture.", undefined, 0, 0);
     }
     player openCJ\menus\commands::refresh(false);
     check(player.commandMenu.total == 30 && player.commandMenu.maxPage == 3 &&
@@ -179,15 +187,16 @@ checkCommandPages(player)
 
 checkPermissionChanges(player)
 {
-    player openCJ\commands_base::setAdminLevel(60);
+    restartPermissions = openCJ\permissions::permissionNamed("maprestart").flag;
+    player openCJ\permissions::setPermissions(restartPermissions);
     player.searchText = "secret";
     player openCJ\menus\commands::refresh(true);
     check(player.commandMenu.selectedName == "admin", "admin command selected by alias");
-    player openCJ\commands_base::setAdminLevel(0);
+    player openCJ\permissions::setPermissions(0);
     check(player.commandMenu.total == 0 && !isDefined(player.commandMenu.selectedName),
-          "rank downgrade immediately removes restricted selection");
-    player openCJ\commands_base::setAdminLevel(60);
-    player.adminLevel = 0; // A response created before a rank change is also rechecked.
+          "revoking the permission immediately removes restricted selection");
+    player openCJ\permissions::setPermissions(restartPermissions);
+    player.permissions = 0; // A response created before a permission change is also rechecked.
     player openCJ\menus\commands::handleResponse("select_0");
     check(player.commandMenu.total == 0 && !isDefined(player.commandMenu.selectedName),
           "stale selection rechecks current permissions");
@@ -200,7 +209,7 @@ checkHelpPages(player)
     {
         longHelpText += "word" + i + " ";
     }
-    openCJ\commands_base::registerCommand("long", longHelpText, undefined, 0, 0, 0);
+    openCJ\commands_base::registerCommand("long", longHelpText, undefined, 0, 0);
     player.searchText = "long";
     player openCJ\menus\commands::refresh(true);
     check(player.commandMenu.maxDetailPage > 1, "long help gets extra detail pages");
@@ -224,9 +233,9 @@ checkExactAliasSelection(player)
 {
     level.commands = [];
     openCJ\commands_base::registerCommand("doublerpgsstring", "Partial match fixture.", undefined,
-                                          0, 0, 0);
+                                          0, 0);
     restoreCommand = openCJ\commands_base::registerCommand("restoreposition", "Exact-alias fixture.",
-                                                    undefined, 0, 0, 0);
+                                                    undefined, 0, 0);
     openCJ\commands_base::addAlias(restoreCommand, "rp");
     player openCJ\menus\commands::handleResponse("open_commands");
     player.searchText = "rp";

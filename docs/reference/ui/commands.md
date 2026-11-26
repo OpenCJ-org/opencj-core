@@ -13,23 +13,26 @@ closes the menu. List and detail panels have separate, lighter backgrounds.
 
 `!help <command>` stays a quick chat response. Aliases resolve to the primary
 command, with the requested alias and primary name both shown. Lookup is
-case-insensitive. Both help paths respect the same `minAdminLevel` used to
-execute commands.
+case-insensitive. Both help paths respect the same required permission used to
+execute commands (see [permissions](../permissions.md)).
 
 ## Adding commands
 
 `openCJ/commands_base.gsc` is the single registry. Register a command with
-`registerCommand(name, help, func, minArgs, maxArgs, minAdminLevel, settingName)`
-and add aliases with `addAlias(cmd, alias)`. Existing setting helpers also
+`registerCommand(name, help, func, minArgs, maxArgs, requiredPermission, settingName)`.
+`requiredPermission` is a short name from the [permission table](../permissions.md),
+or undefined for commands everyone may use; an unknown name restricts the command
+to uber-admins. Add aliases with `addAlias(cmd, alias)`. Existing setting helpers also
 register their command automatically. Include description and usage in the
 existing `help` argument.
 
 **There is no menu catalogue to update.** The browser reads `level.commands`
 when opened and on search/navigation. Newly registered commands and aliases
-appear on the next refresh, subject to the viewer's current admin level.
+appear on the next refresh, subject to the viewer's current permissions.
 Aliases share their primary entry. Missing descriptions get a placeholder;
-long help is wrapped and paginated without truncation. Changing rank through
-`setAdminLevel` refreshes an open command menu; responses also recheck permissions.
+long help is wrapped and paginated without truncation. Changing permissions through
+`openCJ\permissions::setPermissions` refreshes an open command menu; responses also
+recheck permissions.
 
 The browser presents commands registered in the chat-command system, including
 command-backed settings. Nested subcommand help remains separate (#153).

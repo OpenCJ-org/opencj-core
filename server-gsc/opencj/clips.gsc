@@ -19,13 +19,13 @@ onInit()
             level thread sessionHeartbeat();
         }
     }
-    recordCommand = openCJ\commands_base::registerCommand("record", "!record", ::_record, 0, 0, 0);
+    recordCommand = openCJ\commands_base::registerCommand("record", "!record", ::_record, 0, 0);
     openCJ\commands_base::addAlias(recordCommand, "startrecord");
-    openCJ\commands_base::registerCommand("stoprecord", "!stoprecord", ::_stop, 0, 0, 0);
-    openCJ\commands_base::registerCommand("clipdemo", "!clipdemo [id]", ::_watch, 0, 1, 0);
+    openCJ\commands_base::registerCommand("stoprecord", "!stoprecord", ::_stop, 0, 0);
+    openCJ\commands_base::registerCommand("clipdemo", "!clipdemo [id]", ::_watch, 0, 1);
     openCJ\commands_base::registerCommand("renameclip", "!renameclip <id> <name>", ::_rename, 2,
-                                          undefined, 0);
-    openCJ\commands_base::registerCommand("deleteclip", "!deleteclip <id>", ::_delete, 1, 1, 0);
+                                          undefined);
+    openCJ\commands_base::registerCommand("deleteclip", "!deleteclip <id>", ::_delete, 1, 1);
 }
 
 // A failed schema/session operation must leave clips unavailable rather than partially enabled.

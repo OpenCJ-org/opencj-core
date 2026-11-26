@@ -28,9 +28,10 @@ existing records. Live chat and the Tab scoreboard use the accepted regular name
   digits, and the player gets a private explanation. Repeated rejected attempts
   reuse that connection's fallback. Requests during the regular-name cooldown
   retain the accepted name. Invalid preferred-name requests leave the old choice.
-- `!frename <player> [name]` and `!resetprefname <playerID>` require moderator
-  level 40. Resetting a preferred name starts its one-hour cooldown.
-  `!reloadnamerules` requires admin level 60. Commands are registered in help.
+- `!frename <player> [name]` and `!resetprefname <playerID>` require the `names`
+  [permission](../permissions.md) and never apply to uber-admins. Resetting a
+  preferred name starts its one-hour cooldown. `!reloadnamerules` is uber-admin only.
+  Commands are registered in help.
 
 ## Open source and private policy data
 

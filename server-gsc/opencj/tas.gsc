@@ -2,7 +2,7 @@
 
 onInit()
 {
-    cmd = openCJ\commands_base::registerCommand("hardtas", "Used to set current run as hard TAS (bot). Usage: !hardtas [on/off]", ::_onCommandHardTAS, 0, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("hardtas", "Used to set current run as hard TAS (bot). Usage: !hardtas [on/off]", ::_onCommandHardTAS, 0, 1);
 
     // TODO: soft TAS
 }

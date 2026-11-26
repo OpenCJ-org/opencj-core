@@ -16,8 +16,8 @@ main()
     wait .2;
     player.login_playerID = 1;
     otherPlayer.login_playerID = 2;
-    player.adminLevel = 0;
-    otherPlayer.adminLevel = 0;
+    player.permissions = 0;
+    otherPlayer.permissions = 0;
     player.sessionTeam = "allies";
     player.sessionState = "playing";
     player.pers["team"] = "allies";
@@ -73,7 +73,7 @@ verifyRegularNames(player)
     player.nameLastChange = getRealTime() - 60;
     player openCJ\playerNames::_rename("FixtureToken");
     check(getSubStr(player.nameAccepted, 0, 6) == "Clown#" && player.nameAccepted.size == 10 &&
-              openCJ\playerNames::digits(getSubStr(player.nameAccepted, 6)),
+              openCJ\util::digits(getSubStr(player.nameAccepted, 6)),
           "blocked regular name becomes Clown plus four digits");
     check(player.name == player.nameAccepted, "replacement is the publicly visible engine name");
     replacementName = player.nameAccepted;
@@ -102,9 +102,9 @@ verifyPreferredNameCommands(player, otherPlayer)
               preferredNameCommand.redactArgs &&
               openCJ\commands_base::availableCommands(0, "prefname").size == 1,
           "preferred-name command is discoverable and redacts arguments");
-    check(level.commands["frename"].minAdminLevel == 40 &&
-              level.commands["resetprefname"].minAdminLevel == 40,
-          "moderator commands require moderator rank");
+    check(level.commands["frename"].requiredPermission == "names" &&
+              level.commands["resetprefname"].requiredPermission == "names",
+          "moderator commands require the names permission");
     commandArgs = [];
     commandArgs[0] = "RecordName";
     player openCJ\playerNames::_onPreferredName(commandArgs);
@@ -211,7 +211,7 @@ verifyReconnectCooldowns(player, otherPlayer)
     player = addTestClient();
     wait .2;
     player.login_playerID = 1;
-    player.adminLevel = 0;
+    player.permissions = 0;
     player.sessionTeam = "allies";
     player.sessionState = "playing";
     player.pers["team"] = "allies";
@@ -260,13 +260,13 @@ check(value, label)
 // Reject overflowing or nonpositive account IDs before issuing any moderation write.
 verifyInvalidModeratorTargets(player)
 {
-    check(openCJ\playerNames::parsePlayerID("1") == 1, "smallest player ID is accepted");
-    check(openCJ\playerNames::parsePlayerID("0000000001") == 1,
+    check(openCJ\util::parsePlayerID("1") == 1, "smallest player ID is accepted");
+    check(openCJ\util::parsePlayerID("0000000001") == 1,
           "leading zeros retain the intended player ID");
-    check(openCJ\playerNames::parsePlayerID("2147483647") == 2147483647,
+    check(openCJ\util::parsePlayerID("2147483647") == 2147483647,
           "largest signed database player ID is accepted");
     player.login_playerID = 3;
-    player.adminLevel = 40;
+    player.permissions = openCJ\permissions::permissionNamed("names").flag;
     invalidTargets = [];
     invalidTargets[0] = "0";
     invalidTargets[1] = "2147483648";
@@ -288,7 +288,7 @@ verifyInvalidModeratorTargets(player)
     check(hasResult(rows) && isDefined(rows[0][0]) && rows[0][0] == "RecordName",
           "overflowing moderator input cannot reset another account");
     player.login_playerID = 1;
-    player.adminLevel = 0;
+    player.permissions = 0;
 }
 
 // Real SQL runs first; the fixture copy holds its reply until the run identity changes.

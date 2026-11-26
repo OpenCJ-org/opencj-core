@@ -1,4 +1,4 @@
-Settings,Alias(es),Type,Default,Options/arguments,Description,Specific to,adminLevel,Notes,,,,,,,,
+Settings,Alias(es),Type,Default,Options/arguments,Description,Specific to,Required permission (0 = none),Notes,,,,,,,,
 allowhax,hax,bool,false,[true/false yes/no on/off],Set whether your current and future runs should allow you to use any/hax fps,-,0,Should be made specific to cod4 and perhaps renamed?,,,,,,,,
 allowmix,mix,bool,true,[true/false yes/no on/off],Set whether your current and future runs should allow you to use standard/mix fps,-,0,,,,,,,,,
 allowele,ele,bool,false,[true/false yes/no on/off],Set whether your current and future runs should allow you to use elevators,-,0,,,,,,,,,

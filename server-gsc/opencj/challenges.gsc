@@ -101,7 +101,7 @@ onInit()
     }
     definitions();
     precacheMenu("opencj_challenges");
-    openCJ\commands_base::registerCommand("challenges", "!challenges", ::command, 0, 0, 0);
+    openCJ\commands_base::registerCommand("challenges", "!challenges", ::command, 0, 0);
     if(!isDefined(openCJ\mySQL::mysqlSyncQuery("SELECT challengeKey FROM challenges LIMIT 0")))
     {
         return;

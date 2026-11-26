@@ -8,7 +8,7 @@ onInit()
     }
     openCJ\commands_base::registerCommand(
         "view", "Watch a fixed copy of a player\'s current run history. Usage: !view <player>",
-        ::_viewHistory, 1, undefined, 0);
+        ::_viewHistory, 1, undefined);
     openCJ\settings::addSettingBool(
         "sharehistory", true,
         "Allow others to view your current run history. Usage: !sharehistory on|off",
@@ -19,12 +19,12 @@ onInit()
     cmd = openCJ\commands_base::registerCommand(
         "demo",
         "!demo [wt|sr|rpg|stop|pause|resume|speed <0.25|0.5|1|2|4>|forward|reverse|next|previous]",
-        ::_onCommandPlayback, 0, 2, 0);
+        ::_onCommandPlayback, 0, 2);
     openCJ\commands_base::addAlias(cmd, "playback");
     openCJ\commands_base::registerCommand(
         "srdemo",
         "Watch the fastest compatible demo at your checkpoint or nearby area. Usage: !srdemo",
-        ::_onCommandSpeedrun, 0, 0, 0);
+        ::_onCommandSpeedrun, 0, 0);
     setting = openCJ\settings::addSettingBool("demoloop", true, "Loop demo playback");
     openCJ\commands_base::addAlias(setting, "loop");
 }

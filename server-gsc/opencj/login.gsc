@@ -50,15 +50,21 @@ _getPlayerInformation(uid)
         return false;
     }
 
-    query = "SELECT playerID, adminLevel, IF(mutedUntil < NOW(), NULL, TIMESTAMPDIFF(SECOND, NOW(), mutedUntil)) FROM playerInformation WHERE playerID = (SELECT getPlayerID(" + int(uid[0]) + ", " + int(uid[1])  + ", " + int(uid[2]) + ", " + int(uid[3]) + "))";
+    query = "SELECT playerID, permissions, IF(mutedUntil < NOW(), NULL, TIMESTAMPDIFF(SECOND, NOW(), mutedUntil)) FROM playerInformation WHERE playerID = (SELECT getPlayerID(" + int(uid[0]) + ", " + int(uid[1])  + ", " + int(uid[2]) + ", " + int(uid[3]) + "))";
     printf("playerInformation query:\n" + query + "\n"); // Debug
     rows = self openCJ\mySQL::mysqlAsyncQuery(query);
     if(hasResult(rows))
     {
+        // Check bans before the account is marked logged in, so a banned player never
+        // triggers the connect message or any other login side effect.
+        if(self openCJ\moderation::enforceBanAtLogin(int(rows[0][0])))
+        {
+            self waittill("disconnect");
+        }
         self.login_playerID = int(rows[0][0]);
         self openCJ\playerNames::onAccountIdentified();
         self openCJ\mapPlays::onAccountIdentified();
-        self openCJ\commands_base::setAdminLevel(int(rows[0][1]));
+        self openCJ\permissions::setPermissions(int(rows[0][1]));
         if(isDefined(rows[0][2])) //muted until [seconds] into future
         {
             self openCJ\chat::applyMute(true);

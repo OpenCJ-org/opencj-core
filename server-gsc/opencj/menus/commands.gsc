@@ -128,7 +128,7 @@ refresh(resetSelection)
         state.detailPage = 1;
         state.selectedName = undefined;
     }
-    entries = openCJ\commands_base::availableCommands(self.adminLevel, self.searchText);
+    entries = openCJ\commands_base::availableCommands(self.permissions, self.searchText);
     state.total = entries.size;
     state.maxPage = int(max(1, ceil(entries.size / float(level.commandMenuRows))));
     state.page = int(max(1, min(state.page, state.maxPage)));

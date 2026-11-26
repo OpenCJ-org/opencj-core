@@ -3,16 +3,16 @@
 onInit()
 {
     thread _getMessages();
-    cmd = openCJ\commands_base::registerCommand("pm", "Send a pm to a player. Usage: !pm [player] [message]", ::_onCommandPM, 2, undefined, 0);
+    cmd = openCJ\commands_base::registerCommand("pm", "Send a pm to a player. Usage: !pm [player] [message]", ::_onCommandPM, 2, undefined);
     openCJ\commands_base::addAlias(cmd, "whisper");
     openCJ\commands_base::addAlias(cmd, "message");
-    openCJ\commands_base::registerCommand("mute", "Mute a player. Usage: !mute [player] [time]. Time is optional and formatted in either [m]inutes, [h]ours or [d]ays", ::_onCommandmute, 1, 2, 40);
-    openCJ\commands_base::registerCommand("unmute", "Unmute a player. Usage: !unmute [player]", ::_onCommandUnmute, 1, 1, 40);
-    cmd = openCJ\commands_base::registerCommand("ignore", "Temporarily ignore a specific player until map change. Usage: !ignore <playerName|playerId>", ::_onCommandIgnore, 1, 1, 0);
+    openCJ\commands_base::registerCommand("mute", "Mute a player. Usage: !mute [player] [time]. Time is optional and formatted in either [m]inutes, [h]ours or [d]ays", ::_onCommandmute, 1, 2, "mute");
+    openCJ\commands_base::registerCommand("unmute", "Unmute a player. Usage: !unmute [player]", ::_onCommandUnmute, 1, 1, "mute");
+    cmd = openCJ\commands_base::registerCommand("ignore", "Temporarily ignore a specific player until map change. Usage: !ignore <playerName|playerId>", ::_onCommandIgnore, 1, 1);
     openCJ\commands_base::addAlias(cmd, "tignore");
-    cmd = openCJ\commands_base::registerCommand("pignore", "Permanently ignore a specific player. Usage: !pignore <playerName|playerId>", ::_onCommandPermIgnore, 1, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("pignore", "Permanently ignore a specific player. Usage: !pignore <playerName|playerId>", ::_onCommandPermIgnore, 1, 1);
 
-    cmd = openCJ\commands_base::registerCommand("unignore", "Unignore a player, regardless of whether the ignore was temporary or permanent. Usage: !unignore <playerName|playerId>", ::_onCommandUnIgnore, 1, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("unignore", "Unignore a player, regardless of whether the ignore was temporary or permanent. Usage: !unignore <playerName|playerId>", ::_onCommandUnIgnore, 1, 1);
 }
 
 _onCommandIgnore(args)
@@ -89,17 +89,10 @@ _onCommandUnIgnore(args)
 
 _onCommandmute(args)
 {
-    // !mute <playerName> [time]
-    player = findPlayerByArg(args[0]);
-    if(!isDefined(player) || player isIgnoring(self))
+    // !mute <player> [time]
+    player = self _findModerationTarget(args[0]);
+    if(!isDefined(player))
     {
-        self sendLocalChatMessage("Player " + args[0] + "^7 not found", true);
-        return;
-    }
-    
-    if(player == self)
-    {
-        self sendLocalChatMessage("Cannot mute self", true);
         return;
     }
     time = undefined;
@@ -136,23 +129,33 @@ _onCommandmute(args)
 
 _onCommandUnmute(args)
 {
-    // !mute <playerName> [time]
-    player = findPlayerByArg(args[0]);
-    if(!isDefined(player) || player isIgnoring(self))
+    // !unmute <player>
+    player = self _findModerationTarget(args[0]);
+    if(!isDefined(player))
     {
-        self sendLocalChatMessage("Player " + args[0] + "^7 not found", true);
-        return;
-    }
-    
-    if(player == self)
-    {
-        self sendLocalChatMessage("Cannot unmute self", true);
         return;
     }
     query = "UPDATE playerInformation SET mutedUntil = NULL WHERE playerID = " + player openCJ\login::getPlayerID();
     printf("Muted query: \n" + query + "\n"); // Debug
     openCJ\mySQL::mysqlAsyncQueryNosave(query);
     player setMuted(false);
+}
+
+// An online player for !mute/!unmute: an exact or unique name, or a playerID.
+// Refuses self and, for non-uber moderators, uber-admins.
+_findModerationTarget(targetText)
+{
+    target = self openCJ\moderation::resolveTarget(targetText);
+    if(!isDefined(target) || !self openCJ\moderation::canModerate(target))
+    {
+        return undefined;
+    }
+    if(!isDefined(target.player))
+    {
+        self sendLocalChatMessage("That player is not online.", true);
+        return undefined;
+    }
+    return target.player;
 }
 
 onPlayerConnect()

@@ -4,45 +4,45 @@ onInit()
 {
     openCJ\commands_base::registerCommand(
         "sqlstats", "Show SQL queue, latency and failure diagnostics.",
-        openCJ\mySQL::showStats, 0, 0, 50);
-    cmd = openCJ\commands_base::registerCommand("kick", "Kick a specific player. Usage: !kick <playerName|playerId> [reason]", ::_onCommandKick, 1, 2, 50); // TODO: correct admin level value
-    cmd = openCJ\commands_base::registerCommand("ban", "Ban a specific player. Usage: !ban <playerName|playerId> [reason]", ::_onCommandBan, 1, 2, 70); // TODO: correct admin level value
+        openCJ\mySQL::showStats, 0, 0, "uber");
 
-    cmd = openCJ\commands_base::registerCommand("ip", "Shows you your own ip using getip() function", ::_onCommandShowIP, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("ip", "Shows you your own ip using getip() function", ::_onCommandShowIP, 0, 0);
     openCJ\commands_base::addAlias(cmd, "showip");
 
-    cmd = openCJ\commands_base::registerCommand("resetrun", "Resets your current run.", ::_onCommandResetRun, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("resetrun", "Resets your current run.", ::_onCommandResetRun, 0, 0);
     openCJ\commands_base::addAlias(cmd, "reset");
 
-    cmd = openCJ\commands_base::registerCommand("toggletarget", "Toggles a reference target.", ::_onCommandToggleTarget, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("toggletarget", "Toggles a reference target.", ::_onCommandToggleTarget, 0, 0);
     openCJ\commands_base::addAlias(cmd, "target");
 
-    cmd = openCJ\commands_base::registerCommand("playerid", "View your playerID", ::_onCmdPID, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand(
+        "playerid", "Show your playerID, or online players' IDs. Usage: !playerid [player]",
+        ::_onCmdPID, 0, 1);
     openCJ\commands_base::addAlias(cmd, "pid");
 
-    cmd = openCJ\commands_base::registerCommand("saverun", "Save your current run. Usage: !saverun [label]", ::_onCmdSaveRun, 0, 1, 0);
-    cmd = openCJ\commands_base::registerCommand("pauserun", "Pause your current run", ::_onCmdPauseRun, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("saverun", "Save your current run. Usage: !saverun [label]", ::_onCmdSaveRun, 0, 1);
+    cmd = openCJ\commands_base::registerCommand("pauserun", "Pause your current run", ::_onCmdPauseRun, 0, 0);
     openCJ\commands_base::addAlias(cmd, "p");
-    cmd = openCJ\commands_base::registerCommand("resumerun", "Resume your current run", ::_onCmdResumeRun, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("resumerun", "Resume your current run", ::_onCmdResumeRun, 0, 0);
     openCJ\commands_base::addAlias(cmd, "r");
 
-    cmd = openCJ\commands_base::registerCommand("restoreposition", "Restore your last used run", ::_onCmdRestorePosition, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("restoreposition", "Restore your last used run", ::_onCmdRestorePosition, 0, 0);
     openCJ\commands_base::addAlias(cmd, "restorerun");
     openCJ\commands_base::addAlias(cmd, "rp");
     openCJ\commands_base::addAlias(cmd, "historyload");
 
-    cmd = openCJ\commands_base::registerCommand("runs", "List your runs or load a specific run. Usage: !runs [runID]", ::_onCmdRuns, 0, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("runs", "List your runs or load a specific run. Usage: !runs [runID]", ::_onCmdRuns, 0, 1);
     openCJ\commands_base::addAlias(cmd, "historyloads");
 
-    cmd = openCJ\commands_base::registerCommand("ts", "Teleport to a specific player's save", ::_onCmdTeleSave, 1, 1, 0);
-    cmd = openCJ\commands_base::registerCommand("tp", "Teleport to a specific player's position", ::_onCmdTelePos, 1, 1, 0);
+    cmd = openCJ\commands_base::registerCommand("ts", "Teleport to a specific player's save", ::_onCmdTeleSave, 1, 1);
+    cmd = openCJ\commands_base::registerCommand("tp", "Teleport to a specific player's position", ::_onCmdTelePos, 1, 1);
 
-    cmd = openCJ\commands_base::registerCommand("maplist", "List currently available maps.", ::_onCommandMapList, 0, 0, 0);
+    cmd = openCJ\commands_base::registerCommand("maplist", "List currently available maps.", ::_onCommandMapList, 0, 0);
     openCJ\commands_base::addAlias(cmd, "maps");
 
     // Useful admin commands for debugging maps
-    cmd = openCJ\commands_base::registerCommand("ent", "Teleport to an entity", ::_onCmdEntTele, 1, 2, 90);
-    cmd = openCJ\commands_base::registerCommand("setorigin", "Teleport to a position", ::_onCmdSetOrigin, 3, 3, 90);
+    cmd = openCJ\commands_base::registerCommand("ent", "Teleport to an entity", ::_onCmdEntTele, 1, 2, "mapdebug");
+    cmd = openCJ\commands_base::registerCommand("setorigin", "Teleport to a position", ::_onCmdSetOrigin, 3, 3, "mapdebug");
 }
 
 onPlayerDisconnect()
@@ -56,7 +56,7 @@ onPlayerDisconnect()
 
 _onCommandMapList(args)
 {
-    maps = openCJ\maps::voteMaps(self.adminLevel);
+    maps = openCJ\maps::voteMaps(self.permissions);
     maxCharsPerLine = 100;
     mapStr = "";
     mapListNr = 1;
@@ -99,16 +99,6 @@ _onCommandToggleTarget(args)
     }
 }
 
-_onCommandKick(args)
-{
-    self sendLocalChatMessage("Not implemented yet", true); // TODO: implement
-}
-
-_onCommandBan(args)
-{
-    self sendLocalChatMessage("Not implemented yet", true); // TODO: implement
-}
-
 _onCommandShowIP(args)
 {
     self sendLocalChatMessage("Your IP is: " + self getip());
@@ -116,6 +106,17 @@ _onCommandShowIP(args)
 
 _onCmdPID(args)
 {
+    if (args.size > 0)
+    {
+        matches = openCJ\moderation::matchOnlinePlayers(args[0]);
+        if (matches.size == 0)
+        {
+            self sendLocalChatMessage("No online player matches '" + args[0] + "'.", true);
+            return;
+        }
+        self sendLocalChatMessage(openCJ\moderation::describePlayers(matches));
+        return;
+    }
     if (self openCJ\login::isLoggedIn())
     {
         self sendLocalChatMessage("Your playerID is: " + self openCJ\login::getPlayerID());

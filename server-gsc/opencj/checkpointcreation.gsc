@@ -16,7 +16,7 @@ onInit()
         "| area | undo | finish | double | ele | ground | allowsave | height [units] | select " +
         "<number> | new | discard | edit [number|last] | postsert | presert | insert (help) | " +
         "replace | delete [area] | test | save | finalize | stop",
-        ::command, 0, maxCommandArguments, openCJ\commands_base::checkpointEditorLevel());
+        ::command, 0, maxCommandArguments, "cpedit");
     openCJ\commands_base::addAlias(commandDefinition, "cp");
     openCJ\commands_base::addAlias(commandDefinition, "cpc");
 }
@@ -26,11 +26,10 @@ isEditing()
     return isDefined(self.cpc);
 }
 
-// Editor permissions are role-based; account IDs do not grant access.
+// Editing needs the cpedit permission; account IDs do not grant access.
 hasEditorAccess()
 {
-    return self openCJ\login::isLoggedIn() && isDefined(self.adminLevel) &&
-           self.adminLevel >= openCJ\commands_base::checkpointEditorLevel();
+    return self openCJ\login::isLoggedIn() && self openCJ\permissions::hasPermission("cpedit");
 }
 
 // Dispatch editor commands; route names open drafts while action names edit the current one.
@@ -42,7 +41,7 @@ command(commandArguments)
     }
     if (!self hasEditorAccess())
     {
-        self iprintln("Checkpoint editing requires admin level 20");
+        self iprintln("Checkpoint editing requires the cpedit permission");
         return;
     }
     if (!getCvarInt("opencj_checkpoint_editor"))

@@ -166,6 +166,19 @@
       ]
     },
     {
+      "id": "permissions-sql",
+      "category": "integration",
+      "description": "Permission grants, bans, unbans and name resets enforced by the database functions.",
+      "requires": "Docker and mysql:8.0 image; resources for a separate database.",
+      "effects": "Creates then removes a network-isolated container and credentials; keeps private evidence.",
+      "files": [
+        "dev-tools/tests/permissions-sql.py"
+      ],
+      "commands": [
+        "python3 -B dev-tools/tests/permissions-sql.py"
+      ]
+    },
+    {
       "id": "database-volume",
       "category": "integration",
       "description": "External volume survives Compose teardown.",
@@ -660,7 +673,8 @@
         "dev-tools/tests/map-catalogue.gsc",
         "dev-tools/tests/map-menu.gsc",
         "dev-tools/tests/voting.gsc",
-        "dev-tools/tests/boards.gsc"
+        "dev-tools/tests/boards.gsc",
+        "dev-tools/tests/permission-rules.gsc"
       ],
       "commands": [
         "python3 -B dev-tools/tests/run-demo-viewing-24.py mp_futile_fixed --fixture dev-tools/tests/checkpoint-contact.gsc --completion-marker \"CHECKPOINT CONTACT COMPLETE\"",
@@ -681,7 +695,8 @@
         "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/map-catalogue.gsc --completion-marker \"MAP CATALOGUE COMPLETE\"",
         "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/map-menu.gsc --completion-marker \"MAP MENU COMPLETE\"",
         "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/voting.gsc --completion-marker \"VOTING COMPLETE\"",
-        "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/boards.gsc --completion-marker \"BOARDS COMPLETE\""
+        "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/boards.gsc --completion-marker \"BOARDS COMPLETE\"",
+        "python3 -B dev-tools/tests/gsc_fixture.py mp_killhouse --fixture dev-tools/tests/permission-rules.gsc --completion-marker \"PERMISSIONS COMPLETE\""
       ]
     },
     {
@@ -780,6 +795,18 @@
       "files": [
         "dev-tools/tests/test_disposable_mysql.py",
         "dev-tools/tests/test_gsc_fixture.py"
+      ],
+      "commands": [],
+      "mode": "unit"
+    },
+    {
+      "id": "permissions-unit",
+      "category": "portable",
+      "description": "Permission table, GSC catalogue, command registrations and SQL bit numbers agree.",
+      "requires": "Python 3 standard library.",
+      "effects": "Reads source files only.",
+      "files": [
+        "dev-tools/tests/test_permission_catalogue.py"
       ],
       "commands": [],
       "mode": "unit"

@@ -7,6 +7,10 @@ Before adding, moving or expanding files or entries, read the active
 [file placement and privacy rule](instructions/repository-content.instructions.md).
 It covers folder choice, public/private content and Git tracking.
 
+Before changing permissions, bans, kicks or who may run a command, read the
+[permissions reference](../docs/reference/permissions.md) and follow its
+[maintenance rule](instructions/permissions.instructions.md).
+
 When setting or bumping `VERSION`, follow the [release notes rule](instructions/release-notes.instructions.md).
 
 Also follow the active [audit maintenance rules](instructions/audit-maintenance.instructions.md)

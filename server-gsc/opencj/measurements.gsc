@@ -5,14 +5,14 @@ onInit()
     openCJ\commands_base::registerCommand(
         "measure",
         "Shoot two points to measure X, Y and Z distances. Use !measure again to cancel.",
-        ::onCommandMeasure, 0, 0, 0);
+        ::onCommandMeasure, 0, 0);
 
     heightCommand = openCJ\commands_base::registerCommand(
-        "height", "Set a height goal", ::onCommandMeasureHeight, 0, 0, 0);
+        "height", "Set a height goal", ::onCommandMeasureHeight, 0, 0);
     openCJ\commands_base::addAlias(heightCommand, "mb");
 
     gapCommand = openCJ\commands_base::registerCommand(
-        "gap", "Measure a gap", ::onCommandMeasureGap, 0, 0, 0);
+        "gap", "Measure a gap", ::onCommandMeasureGap, 0, 0);
     openCJ\commands_base::addAlias(gapCommand, "mg");
 
     openCJ\settings::addSettingBool(

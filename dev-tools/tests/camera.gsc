@@ -31,7 +31,7 @@ main()
     observer.sessionTeam = "allies";
     observer spawn((1000, 0, 100), (0, 0, 0));
     player.login_playerID = 7;
-    player.adminLevel = 0;
+    player.permissions = 0;
     player openCJ\settings::onPlayerConnect();
     player.settingsLoaded = true;
     observer openCJ\settings::onPlayerConnect();

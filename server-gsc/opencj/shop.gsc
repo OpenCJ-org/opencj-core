@@ -19,7 +19,7 @@ onInit()
     _addStandardItems();
     _addBetaCollection();
     _storeCatalogue();
-    openCJ\commands_base::registerCommand("shop", "!shop", ::command, 0, 0, 0);
+    openCJ\commands_base::registerCommand("shop", "!shop", ::command, 0, 0);
 }
 
 // Everyone owns the standard look; equipping it switches a slot back from a skin.

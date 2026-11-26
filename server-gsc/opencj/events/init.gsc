@@ -15,6 +15,7 @@ main()
     openCJ\checkpointPointers::onInit();
     openCJ\savePosition::onInit();
     openCJ\commands_base::onInit();
+    openCJ\moderation::onInit();
     openCJ\commands::onInit();
     openCJ\scoreboard::onInit();
     openCJ\challenges::onInit();

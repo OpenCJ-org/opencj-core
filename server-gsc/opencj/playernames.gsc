@@ -9,24 +9,22 @@ onInit()
     }
     level.recordNameOverrides = [];
     openCJ\namePolicy::onInit();
-    moderatorRank = 40;
-    policyAdminRank = 60;
     command = openCJ\commands_base::registerCommand(
         "prefname",
         "Persistent record name. Usage: !prefname [set <name>|reset] (3-15 characters, no colors; changes once per hour)",
-        ::_onPreferredName, 0, undefined, 0);
+        ::_onPreferredName, 0, undefined);
     command.redactArgs = true;
     command = openCJ\commands_base::registerCommand(
         "frename", "Force/reset an online player's regular name. Usage: !frename <player> [name]",
-        ::_onFRenameCommand, 1, undefined, moderatorRank);
+        ::_onFRenameCommand, 1, undefined, "names");
     command.redactArgs = true;
     openCJ\commands_base::registerCommand(
         "resetprefname",
         "Remove an account's preferred name and start its one-hour cooldown. Usage: !resetprefname <playerID>",
-        ::_onResetPreferredName, 1, 1, moderatorRank);
+        ::_onResetPreferredName, 1, 1, "names");
     openCJ\commands_base::registerCommand("reloadnamerules",
                                           "Reload the server's private name-moderation rules.",
-                                          ::_onReloadRules, 0, 0, policyAdminRank);
+                                          ::_onReloadRules, 0, 0, "uber");
 }
 
 onPlayerConnect()
@@ -376,10 +374,15 @@ setForcedName(forcedName)
 
 _onFRenameCommand(args)
 {
-    targetPlayer = findPlayerByArg(args[0]);
-    if(!isDefined(targetPlayer) || !targetPlayer openCJ\login::isLoggedIn())
+    target = self openCJ\moderation::resolveTarget(args[0]);
+    if(!isDefined(target) || !self openCJ\moderation::canModerate(target))
     {
-        self sendLocalChatMessage("Cannot find player.", true);
+        return;
+    }
+    targetPlayer = target.player;
+    if(!isDefined(targetPlayer))
+    {
+        self sendLocalChatMessage("That player is not online.", true);
         return;
     }
     if(args.size < 2)
@@ -551,6 +554,7 @@ _onResetPreferredName(args)
         self sendLocalChatMessage("Use a playerID between 1 and 2147483647.", true);
         return;
     }
+    // resetPreferredNameByModerator also refuses uber-admin targets for non-uber actors.
     rows = self openCJ\mySQL::mysqlAsyncWrite("SELECT resetPreferredNameByModerator(" +
                                                   self openCJ\login::getPlayerID() + "," +
                                                   targetPlayerID + ")",
@@ -594,24 +598,6 @@ _onReloadRules(args)
         self sendLocalChatMessage("Could not reload rules; the last valid policy remains active.",
                                   true);
     }
-}
-
-digits(decimalText)
-{
-    maximumDecimalDigits = 10;
-    if(decimalText.size == 0 || decimalText.size > maximumDecimalDigits)
-    {
-        return false;
-    }
-    for(i = 0; i < decimalText.size; i++)
-    {
-        characterCode = getAscii(decimalText[i]);
-        if(characterCode < getAscii("0") || characterCode > getAscii("9"))
-        {
-            return false;
-        }
-    }
-    return true;
 }
 
 _createPlayerNameHud()
@@ -731,35 +717,3 @@ _showPlayerNameHud()
     self.playerNameHud.alpha = 0;
 }
 
-// Validate decimal digits before int() so out-of-range input never reaches a moderation query.
-// Database player IDs use a positive signed INT, matching the GSC integer range.
-parsePlayerID(text)
-{
-    if(!isDefined(text) || !digits(text))
-    {
-        return undefined;
-    }
-    maximumPlayerIDText = "2147483647";
-    if(text.size == maximumPlayerIDText.size)
-    {
-        for(i = 0; i < text.size; i++)
-        {
-            digit = getAscii(text[i]);
-            maximumDigit = getAscii(maximumPlayerIDText[i]);
-            if(digit < maximumDigit)
-            {
-                break;
-            }
-            if(digit > maximumDigit)
-            {
-                return undefined;
-            }
-        }
-    }
-    playerID = int(text);
-    if(playerID <= 0)
-    {
-        return undefined;
-    }
-    return playerID;
-}
