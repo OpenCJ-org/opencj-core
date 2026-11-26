@@ -120,7 +120,6 @@ _onCommandmute(args)
             return;
         }
         query = "UPDATE playerInformation SET mutedUntil = ADDTIME(NOW(), SEC_TO_TIME(" + time + ")) WHERE playerID = " + player openCJ\login::getPlayerID();
-        printf("Chat query:\n" + query + "\n");
         openCJ\mySQL::mysqlAsyncQueryNosave(query);
     }
     player setMuted(true);
@@ -136,7 +135,6 @@ _onCommandUnmute(args)
         return;
     }
     query = "UPDATE playerInformation SET mutedUntil = NULL WHERE playerID = " + player openCJ\login::getPlayerID();
-    printf("Muted query: \n" + query + "\n"); // Debug
     openCJ\mySQL::mysqlAsyncQueryNosave(query);
     player setMuted(false);
 }

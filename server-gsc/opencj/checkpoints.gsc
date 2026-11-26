@@ -58,7 +58,6 @@ storeCheckpointPassed(runID, checkpointId, elapsedMs)
     query = "SELECT checkpointPassed(" + runID + ", " + checkpointId + ", " + elapsedMs + ", " +
             saveCount + ", " + loadCount + ", " + explosiveArguments + modeArguments + ", " +
             instanceNumber + ")";
-    printf("Executing checkpointPassed query:\n" + query + "\n"); // Debug
 
     resultRows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:" + runID);
     if (!isDefined(resultRows) || !isDefined(resultRows[0]) || !isDefined(resultRows[0][0]))
@@ -1086,7 +1085,6 @@ acceptCheckpointRoute(checkpoint, nextCheckpoints)
         return false;
     }
     routeName = getRouteNameForCheckpoint(checkpoint);
-    printf("DEBUG ANYPCT: Player " + self.name + " triggered any pct on cpID: " + checkpoint.id + "\n");
     if (isDefined(self.route) && isDefined(routeName) && routeName != self.route)
     {
         self iprintlnbold("Route changed from " + self.route + " to " + routeName +

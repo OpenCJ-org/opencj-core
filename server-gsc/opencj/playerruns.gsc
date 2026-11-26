@@ -221,7 +221,6 @@ saveRun(runLabel)
     instanceNumber = self getRunInstanceNumber();
     query = "SELECT saveRun(" + runID + ", " + instanceNumber + ", " +
             dbStr(escapedRunLabel) + ")";
-    printf("DEBUG: executing saveRun query:\n" + query + "\n");
 
     rows = self openCJ\mySQL::mysqlAsyncWrite(query, "run:" + runID);
     // Saving the old run must settle, but its reply cannot stop a newer run.
@@ -283,7 +282,6 @@ archiveRun(runID)
         }
         query =
             "UPDATE playerRuns SET archived = True" + " WHERE runID = " + runID + playerIDSqlStr;
-        printf("DEBUG: executing archiveRun query:\n" + query + "\n");
 
         stored = openCJ\mySQL::mysqlAsyncWrite(query, "run:" + runID);
         if(!isDefined(stored))
