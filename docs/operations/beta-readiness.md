@@ -9,18 +9,18 @@ not permission to change competitive rules or delete historical player data.
 | --- | --- |
 | Fresh databases | Full baseline/migration bootstrap and restricted runtime permissions exist. The server installer reuses them and supports named schemas. Existing shared databases are checked without migration. |
 | SQL queue/thread growth | Bounded worker scheduling, ordering and cancellation remain implemented. Extend policy coverage where compatibility wrappers still classify reads as writes. |
-| Account secrets | `login.gsc` still logs credential-bearing queries; the native generator still uses `rand()` seeded from time/process ID. Replace the generator, remove secret logging and plan safe replacement of previously exposed privileged credentials before public access. |
-| Login failure | An unavailable login lookup can still enter account creation. Distinguish unavailable storage from an unknown credential and preserve the original client credential. |
-| Long recordings | Native recording memory is bounded, but the full recording remains in RAM. The per-recording GSC save-number index still grows separately from the capped native position history. Bound needed save mappings and design durable recording/upload recovery. |
-| Interrupted uploads | Publication has receipts and bounded reconciliation. Chunk orchestration still depends on a map's script lifetime; map changes/process failure can lose unfinished transfers. |
-| Interactive SQL | Demo publication is asynchronous. Checkpoint editor publication/network operations and clip metadata still include synchronous SQL. Move whole transactions off the game thread without splitting their connection/locking contract. |
+| Account secrets | Fixed: login no longer logs credential-bearing queries, and new account credentials come from the kernel's secure random source (account creation refuses to continue without it). Credentials issued earlier came from the old time-seeded generator; logs that recorded them were deleted. |
+| Login failure | Fixed: an unanswered account lookup retries until the database answers and never creates an account or overwrites the client's stored credential. Only a client without a stored credential, or one the database reports as unknown, gets a new account. |
+| Long recordings | Native recording memory is bounded, but the full recording remains in RAM. The per-recording GSC save-number index still gains an entry for every save of a run, separately from the capped native position history. Bound needed save mappings and design durable recording/upload recovery. |
+| Interrupted uploads | Publication has receipts and bounded reconciliation. The chunk upload loop still runs in a map-lifetime script thread: a map change or process failure loses that demo (unfinished candidates are reclaimed later), never the finish itself. |
+| Interactive SQL | Gameplay paths (login, saves, checkpoints, runs, demo publication, clip transfers, menus) are asynchronous. Synchronous SQL remains in checkpoint-editor publication, branch, list and migration actions, and at map start for clip sessions and the challenge catalogue; a slow database stalls the server frame during those. Move whole transactions off the game thread without splitting their connection/locking contract. |
 | Checkpoint CPU | Full-layout scans, linear passed-checkpoint lookups and repeated geometry calculations remain profiling targets. Preserve exact gameplay/contact semantics when optimizing. |
-| Deployment | Release instances isolate source/admin secrets, name their storage, rotate Docker logs and restart exited services. Operator monitoring, backup scheduling/off-machine recovery and final public-access policy remain necessary. |
+| Deployment | Release instances isolate source/admin secrets, name their storage, rotate Docker logs and restart exited services. Setup schedules local and off-site database backups, a health watchdog with Discord alerts (crashes, failed jobs, low disk), weekly housekeeping and security updates. The final public-access policy remains to be decided. |
 | Acceptance | Existing engine capacity and user in-game results are useful evidence. They do not establish a complete 24/7, real-client, cross-country, mixed-feature soak. |
 
-Runtime grants and editor role checks reduce consequences but do not repair weak
-account credentials. Keeping initial installations password-protected/unlisted is
-an initial deployment choice, not a fix for authentication defects.
+Accounts created before the secure generator keep their existing credentials; they
+were not rotated. Keeping initial installations password-protected/unlisted is an
+initial deployment choice, not a substitute for those fixes.
 
 Retain useful database save history. The bounded native save-history cache is
 separate from persistent history; row-count growth alone does not justify pruning

@@ -1,6 +1,6 @@
 # The OpenCJ beta is here
 Version: beta-0.1.0
-Released: 2026-11-23
+Released: 2026-11-26
 
 The first public beta of OpenCJ, the open-source CoDJumper mod for Call of Duty 4.
 All 10 maps in the beta map pool are checkpointed, and more maps will slowly be
