@@ -173,6 +173,12 @@ stopRun(shouldReset)
 
     if(shouldReset)
     {
+        if(self _canRestartInPlace())
+        {
+            self _restartInPlace();
+            return;
+        }
+
         // Archive the current run
         runID = self getRunID();
         self thread archiveRun(runID);
@@ -192,6 +198,41 @@ stopRun(shouldReset)
     {
         self sendLocalChatMessage("Not in a run, can't stop", true);
     }
+}
+
+// Record that this run now has data in the database (a save, a checkpoint split,
+// a finish or a restore), so a reset must archive it instead of reusing it.
+onProgressStored()
+{
+    self.playerRuns_progressStored = true;
+}
+
+// Only a run created here whose data never reached the database can be reused.
+// An unknown state (for example before the first creation) is treated as stored.
+_canRestartInPlace()
+{
+    if(!self hasRunID() || isDefined(self.cpc) || self isRunFinished())
+    {
+        return false;
+    }
+    return isDefined(self.playerRuns_progressStored) && !self.playerRuns_progressStored;
+}
+
+// Start the same run over. Nothing of it is stored, so repeated restarts (loading
+// without saves, !reset) add no empty run rows and no archive writes.
+_restartInPlace()
+{
+    runID = self getRunID();
+    self openCJ\demoRecording::discard(runID);
+    self _invalidatePendingCreation();
+    self openCJ\notifications::cancelAll();
+    self openCJ\historySave::cancelPendingPage();
+    self.playerRuns_runFinishing = false;
+    self.playerRuns_runStarted = false;
+    self.playerRuns_runPaused = false;
+    self.playerRuns_runFinished = false;
+    self iprintln("^5Restarted ^7run (" + runID + ")");
+    self openCJ\events\onRunCreated::main();
 }
 
 // Save the current label, then stop only the same run that the database confirmed.
@@ -337,6 +378,7 @@ restoreRun(runID)
     self.playerRuns_runStarted = true;
     self.playerRuns_runPaused = false;
     self.playerRuns_runFinished = false;
+    self onProgressStored();
     loadError = self openCJ\savePosition::canLoadError(0);
     if(isDefined(oldRunID) && oldRunID != runID)
     {
@@ -476,6 +518,7 @@ _createRunID()
 
     instanceNumber = int(rows[0][0]);
     self setRunIDAndInstanceNumber(runID, instanceNumber);
+    self.playerRuns_progressStored = false;
     self iprintln("^5Created ^7new run (" + runID + ")");
     self openCJ\events\onRunCreated::main();
 }

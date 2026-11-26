@@ -27,6 +27,7 @@ _checkpointPassed(checkpoint, timeOffsetMs)
     passedAtMs = elapsedMs + timeOffsetMs;
     self openCJ\showRecords::onCheckpointPassed(checkpoint, passedAtMs);
     runID = self openCJ\playerRuns::getRunID();
+    self openCJ\playerRuns::onProgressStored();
     self thread storeCheckpointPassed(runID, checkpointId, passedAtMs);
     self thread openCJ\recordNotices::checkpoint(runID, checkpointId, passedAtMs);
 }

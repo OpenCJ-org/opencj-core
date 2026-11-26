@@ -414,6 +414,7 @@ _getEntNum(targetName, numOfEnt)
 saveToDatabase(origin, angles, entTargetName, numOfEnt, explosiveJumps, doubleExplosives,
                checkpointID, FPSMode, flags)
 {
+    self openCJ\playerRuns::onProgressStored();
     self endon("disconnect");
 
     if(self openCJ\demos::isPlayingDemo())
