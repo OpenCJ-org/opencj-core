@@ -300,7 +300,7 @@ def write_instance_files(instance, settings, *, replace=False):
         write_discord_files(instance, settings, replace=replace)
     write_generated(instance / 'server.cfg', ''.join(f'set {key} "{value}"\n' for key, value in cvars.items())
                     + f'sets opencj_version "{settings["release"]}"\n', owner=owner, replace=replace)
-    runtime_settings = {key: settings[key] for key in ('public', 'slots', 'map')}
+    runtime_settings = {key: settings[key] for key in ('public', 'slots', 'map', 'name')}
     write_generated(instance / 'runtime.json', json.dumps(runtime_settings) + '\n', owner=owner, replace=replace)
     write_generated(instance / 'compose.json', json.dumps(compose_document(settings, instance), indent=2) + '\n',
                     replace=replace)

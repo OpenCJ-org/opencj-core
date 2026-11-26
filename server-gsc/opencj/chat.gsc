@@ -408,9 +408,17 @@ isIgnoring(player)
     return isInArray(playerID, self.ignoreList);
 }
 
+// Identify this server in the shared chat table. Installations set opencj_server_id
+// to their instance name (for example main-eu); two servers must never share one.
 getServerName()
 {
-    return "cod" + getCodVersion() + " " + getCvarInt("net_port"); //placeholder
+    serverID = getCvar("opencj_server_id");
+    if(serverID != "")
+    {
+        return serverID;
+    }
+    // Older installations without an ID keep their previous name.
+    return "cod" + getCodVersion() + " " + getCvarInt("net_port");
 }
 
 _onCommandPM(args)

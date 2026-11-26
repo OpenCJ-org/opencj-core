@@ -51,8 +51,12 @@ def start_server():
         '+set', 'net_ip', '0.0.0.0', '+set', 'net_port', '28960',
         '+set', 'sv_maxclients', str(settings['slots']), '+set', 'com_hunkMegs', '1024',
         '+set', 'sv_authorizemode', '1', '+set', 'developer', '0',
-        '+set', 'g_gametype', 'cj', '+exec', 'server.cfg', '+map', settings['map'],
+        '+set', 'g_gametype', 'cj', '+exec', 'server.cfg',
     ]
+    # Older runtime files have no name; the game then keeps its previous chat server name.
+    if settings.get('name'):
+        command.extend(['+set', 'opencj_server_id', settings['name']])
+    command.extend(['+map', settings['map']])
     os.execv(command[0], command)
 
 
