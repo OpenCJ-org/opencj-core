@@ -128,7 +128,7 @@ Everything under `/srv/opencj` is readable only by root. Never share
 | Delete unfinished runs not played for 6 months | Nightly 04:15 | `opencj status` (`last-prune.json`) |
 | Ubuntu security updates | Daily 05:00 | `journalctl -u apt-daily-upgrade` |
 | Reboot, only when an update needs it | 05:30 | Servers start by themselves |
-| Housekeeping: old images, caches, old copies | Sundays 04:30 | `journalctl -u opencj-housekeeping` |
+| Housekeeping: old images, caches, old copies, game log | Sundays 04:30 | `journalctl -u opencj-housekeeping` |
 | Off-site: secure new uploads, then retention (on the receiver) | Hourly | `journalctl -u opencj-offsite-retention` |
 | IP-country data update (scoreboard flags) | Checked daily | `docker logs` of the `geoip` service |
 | Outside check (on the external backup server): game servers and website answer | Every 2 minutes | Alerts: DOWN after ~6 minutes, RECOVERED when back |

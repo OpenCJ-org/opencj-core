@@ -1,7 +1,9 @@
 """Operational setup features: retention, downloads, HTTPS routing, prompts, shared assets, firewall, maps."""
 
 from datetime import datetime, timedelta, timezone
+import gzip
 import json
+import os
 from pathlib import Path
 import socket
 import sys
@@ -29,6 +31,62 @@ from operations import save_json
 
 def backup_name(moment):
     return moment.strftime('%Y%m%dT%H%M%SZ') + '.sql.gz'
+
+
+class GameLogRotationTests(unittest.TestCase):
+    """games_mp.log is copied away weekly, emptied in place and kept for 4 weeks only."""
+
+    def make_log(self, instance, contents):
+        folder = instance.joinpath(*maintenance.GAME_LOG_FOLDERS)
+        folder.mkdir(parents=True)
+        log = folder / maintenance.GAME_LOG_NAME
+        log.write_bytes(contents)
+        return log
+
+    def test_log_is_archived_and_emptied(self):
+        now = datetime(2026, 11, 29, 3, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory)
+            log = self.make_log(instance, b'  0:00 InitGame\n  0:05 say;player;hello\n')
+            maintenance.rotate_game_log(instance, now)
+            archive = instance / maintenance.GAME_LOG_ARCHIVE_DIRECTORY / 'games_mp-20261129T033000Z.log.gz'
+            self.assertEqual(gzip.decompress(archive.read_bytes()), b'  0:00 InitGame\n  0:05 say;player;hello\n')
+            self.assertEqual(log.read_bytes(), b'', 'Emptied in place; the game keeps appending to it')
+            maintenance.rotate_game_log(instance, now + timedelta(days=7))
+            self.assertEqual(len(list(archive.parent.iterdir())), 1, 'An empty log makes no copy')
+
+    def test_old_copies_are_deleted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory)
+            archives = instance / maintenance.GAME_LOG_ARCHIVE_DIRECTORY
+            archives.mkdir()
+            old, recent = archives / 'games_mp-20261001T033000Z.log.gz', archives / 'games_mp-20261115T033000Z.log.gz'
+            for path, age_days in ((old, 29), (recent, 14)):
+                path.write_bytes(b'')
+                stamp = time.time() - age_days * 86400
+                os.utime(path, (stamp, stamp))
+            maintenance.rotate_game_log(instance, datetime.now(timezone.utc))
+            self.assertEqual(sorted(archives.iterdir()), [recent])
+
+    def test_links_planted_by_the_game_account_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory) / 'main-eu'
+            target = Path(directory) / 'system-file'
+            target.write_bytes(b'precious')
+            log = self.make_log(instance, b'')
+            log.unlink()
+            log.symlink_to(target)
+            with self.assertRaises(OSError):
+                maintenance.rotate_game_log(instance, datetime.now(timezone.utc))
+            log.unlink()
+            os.link(target, log)
+            with self.assertRaisesRegex(RuntimeError, 'not a plain file'):
+                maintenance.rotate_game_log(instance, datetime.now(timezone.utc))
+            self.assertEqual(target.read_bytes(), b'precious')
+
+    def test_server_that_never_ran_has_no_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            maintenance.rotate_game_log(Path(directory), datetime.now(timezone.utc))
 
 
 class OffsiteRetentionTests(unittest.TestCase):

@@ -551,7 +551,10 @@ and always to the system journal
 Each Sunday, housekeeping removes old release images of this machine's servers once no
 container uses them, Docker build cache older than a week, the APT package cache, the
 migration copy 30 days after a successful migration and replaced runtime folders 30 days
-after a `refresh`.
+after a `refresh`. It also moves the engine's game log (`games_mp.log`, with player
+names, GUIDs and chat; OpenCJ never reads it) into a compressed copy in the root-only
+`game-logs` folder of the installation, empties it in place, and deletes copies older
+than 4 weeks.
 
 ## Change, upgrade and refresh
 

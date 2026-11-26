@@ -3,6 +3,7 @@ a health watchdog with alerts, weekly housekeeping and Ubuntu security updates."
 
 import argparse
 from datetime import datetime, timedelta, timezone
+import gzip
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import re
 import selectors
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -63,6 +65,13 @@ RECEIVER_MONTHLY_MONTHS = 12
 MIGRATION_BUNDLE_RETENTION_DAYS = 30
 PREVIOUS_RUNTIME_RETENTION_DAYS = 30
 BUILD_CACHE_RETENTION_HOURS = 168
+# The engine's g_log, below the server's runtime folder (fs_homepath + fs_game).
+GAME_LOG_FOLDERS = ('runtime', 'mods', 'opencj')
+GAME_LOG_NAME = 'games_mp.log'
+# Root-only folder in the installation that holds the weekly copies of the game log.
+GAME_LOG_ARCHIVE_DIRECTORY = 'game-logs'
+# Long enough to look into a recent incident; the log holds player names, GUIDs and chat.
+GAME_LOG_RETENTION_DAYS = 28
 BACKUP_NAME_PATTERN = r'\d{8}T\d{6}Z\.sql\.gz'
 SENDER_NAME_PATTERN = r'[a-z][a-z0-9-]{0,30}'
 # On the receiver, finished uploads move here, out of the senders' reach (root only).
@@ -915,7 +924,59 @@ def run_housekeeping(host):
         if settings.get('migration', {}).get('database_restored'):
             remove_expired([instance / 'migration/bundle'], MIGRATION_BUNDLE_RETENTION_DAYS)
         remove_expired(sorted(instance.glob('runtime.previous-*')), PREVIOUS_RUNTIME_RETENTION_DAYS)
+        rotate_game_log(instance, datetime.now(timezone.utc))
     print('Housekeeping completed.')
+
+
+def open_game_log(instance):
+    """Open the game log for reading and emptying, or return None when there is none yet.
+
+    The game account can write in its runtime folder, so it could replace a folder
+    or the log with a link to a system file. Each step is opened without following
+    links, and only a plain file with a single name is accepted.
+    """
+    folder_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        folder = os.open(instance / GAME_LOG_FOLDERS[0], folder_flags)
+    except FileNotFoundError:
+        return None
+    try:
+        for name in GAME_LOG_FOLDERS[1:]:
+            child = os.open(name, folder_flags, dir_fd=folder)
+            os.close(folder)
+            folder = child
+        # Non-blocking, so a planted FIFO cannot hang the job; it is refused below.
+        log = os.open(GAME_LOG_NAME, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+    except FileNotFoundError:
+        return None
+    finally:
+        os.close(folder)
+    details = os.fstat(log)
+    if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
+        os.close(log)
+        raise RuntimeError('Game log of ' + instance.name + ' is not a plain file; left untouched')
+    return log
+
+
+def rotate_game_log(instance, now):
+    """Move the game log into a compressed weekly copy and delete copies older than 4 weeks.
+
+    OpenCJ never reads this log, but it holds player names, GUIDs and chat and would
+    otherwise grow forever. The game opens it in append mode, so emptying it while
+    the server runs is safe: its next line goes to the start of the empty file.
+    Lines written between the copy and the emptying are lost, which is acceptable.
+    """
+    archive_directory = instance / GAME_LOG_ARCHIVE_DIRECTORY
+    log = open_game_log(instance)
+    if log is not None:
+        with os.fdopen(log, 'rb') as source:
+            if os.fstat(source.fileno()).st_size:
+                archive_directory.mkdir(mode=0o700, exist_ok=True)
+                archive = archive_directory / ('games_mp-' + now.strftime('%Y%m%dT%H%M%SZ') + '.log.gz')
+                with gzip.open(archive, 'wb') as target:
+                    shutil.copyfileobj(source, target)
+                os.ftruncate(source.fileno(), 0)
+    remove_expired(sorted(archive_directory.glob('games_mp-*.log.gz')), GAME_LOG_RETENTION_DAYS)
 
 
 def backup_time(path):
