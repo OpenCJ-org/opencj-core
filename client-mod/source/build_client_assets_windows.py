@@ -112,6 +112,8 @@ def copy_stock_assets(paths):
         "english",
         "info",
         "vision",
+        # Weapon and projectile models name stock physics presets.
+        "physic",
     ]:
         source_folder = paths.installation / "raw" / folder
         if not source_folder.exists():

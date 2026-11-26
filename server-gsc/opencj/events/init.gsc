@@ -18,12 +18,13 @@ main()
     openCJ\commands::onInit();
     openCJ\scoreboard::onInit();
     openCJ\challenges::onInit();
-    openCJ\shop::onInit();
     openCJ\settings::onInit();
     openCJ\shellShock::onInit();
     openCJ\spawnpoints::onInit();
     openCJ\playerModels::onInit();
     openCJ\weapons::onInit();
+    // The shop registers skin loadouts, so it must follow the weapon registry reset.
+    openCJ\shop::onInit();
     openCJ\cvars::onInit();
     openCJ\menus::onInit();
     openCJ\mapCleanup::onInit();

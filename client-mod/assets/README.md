@@ -14,6 +14,7 @@ to edit or regenerate it here and under `source/`; do not add brainstorm preview
 | Flags | `source/build_flag_atlas.py`, `source/flag_atlas_manifest.json` | `flags/flag-icons-v7.5.0/` |
 | Map previews | `source/build_map_previews.py`, `source/map_previews.json` | `map-previews/` |
 | Replacement map artwork | source and instructions alongside each map | `map-replacements/` |
+| Beta weapon skins and player models | `source/build_beta_skins.py` with stock inputs, see `beta-skins/README.md` | `beta-skins/` |
 
 Paths beginning with `source/` are relative to the client-mod root. Runtime
 textures go in `cod4/images`; raw TGA inputs go in `source/texture_source`, next

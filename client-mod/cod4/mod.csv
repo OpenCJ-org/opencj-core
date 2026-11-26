@@ -51,6 +51,20 @@ material,opencj_logo_nobg
 xmodel,body_mp_usmc_specops
 xmodel,head_mp_usmc_tactical_mich_stripes_nomex
 xmodel,viewmodel_base_viewhands
+xmodel,body_opencj_dark
+xmodel,head_opencj_dark
+xmodel,viewhands_opencj_dark
+xmodel,body_opencj_beta
+xmodel,head_opencj_black
+xmodel,viewhands_opencj_black
+weapon,mp/deserteagle_mp
+weapon,mp/rpg_mp
+weapon,mp/deagle_beta_glitch_mp
+weapon,mp/rpg_beta_glitch_mp
+material,opencj_shop_deagle_beta_glitch
+material,opencj_shop_rpg_beta_glitch
+material,opencj_shop_model_dark
+material,opencj_shop_model_beta
 material,opencj_checkpoint_tint
 material,opencj_checkpoint_tint_obj
 material,opencj_checkpoint_aqua
@@ -107,7 +121,6 @@ menufile,ui_mp/scriptmenus/opencj_shop.menu
 material,weapon_desert_eagle
 material,weapon_rpg7
 menufile,ui_mp/scriptmenus/opencj_shop_confirm.menu
-menufile,ui_mp/scriptmenus/opencj_shop_inspect.menu
 
 sound,opencj_finish,,all_mp
 material,loadscreen_mp_dark

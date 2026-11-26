@@ -19,11 +19,23 @@ thresholds, not stored player levels. Spendable currency is different:
 and shop balance subtracts actual purchase prices. Later repricing or
 deactivation does not remove earned currency or award the challenge again.
 
-## Shop preview and transactions
+## Shop catalogue and transactions
 
-The catalogue in [`shop.gsc`](../../../server-gsc/opencj/shop.gsc) is a preview:
-its entries are unavailable. Enabling sales requires a registered cosmetic
-resource and server-side availability; a visible preview is not a usable item.
+The catalogue lives in [`shop.gsc`](../../../server-gsc/opencj/shop.gsc). Each item
+names a registered cosmetic resource: a weapon loadout, an RPG or a player model.
+Startup stores every sold item's price and availability for the purchase
+procedure, and marks catalogue rows that are no longer sold as unavailable;
+their owners keep them.
+
+Every player owns the standard Desert Eagle, RPG-7 and default player model.
+They are not stored as purchases; equipping one clears that equipment slot.
+An item can also require a challenge rank and end its sale at a fixed time. The
+server checks both before a purchase reaches SQL.
+
+A preview gives the selected item for a few seconds while the player keeps
+moving. A preview weapon receives the ammunition of the weapon it stands in for,
+so it never adds firepower; saving is blocked until the preview ends. A player
+model preview also shows a turning copy of the model in front of the player.
 
 `shopBuyOrEquip` serializes requests per player, validates the current catalogue
 and balance, and records ownership, paid price and equipment in one transaction.

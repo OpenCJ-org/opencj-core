@@ -1,6 +1,6 @@
 #include openCJ\util;
 
-// Preview catalogue. Stable keys will also identify ownership when sales launch.
+// The catalogue. Stable keys identify ownership in SQL, so a key is never reused.
 onInit()
 {
     if(getCodVersion() != 4)
@@ -11,25 +11,72 @@ onInit()
     level.shopCategoryModel = 0;
     level.shopCategoryPistol = 1;
     level.shopCategoryRPG = 2;
+    level.shopPreviewSeconds = 7;
     precacheMenu("opencj_shop");
     precacheMenu("opencj_shop_confirm");
-    precacheMenu("opencj_shop_inspect");
 
     level.shopItems = [];
-    previewCountPerCategory = 12;
-    previewPrice = 9999;
-    for(i = 0; i < previewCountPerCategory; i++)
-    {
-        _addPreviewItem("pistol.preview" + i, level.shopCategoryPistol, "Desert Eagle " + (i + 1),
-                        "weapon_desert_eagle", "deserteagle_mp", "default", previewPrice);
-        _addPreviewItem("rpg.preview" + i, level.shopCategoryRPG, "RPG " + (i + 1),
-                        "weapon_rpg7", "rpg_mp", "default", previewPrice);
-    }
+    _addStandardItems();
+    _addBetaCollection();
+    _storeCatalogue();
     openCJ\commands_base::registerCommand("shop", "!shop", ::command, 0, 0, 0);
 }
 
-// Keep preview records stable in SQL while purchasing remains disabled.
-_addPreviewItem(itemKey, category, displayName, image, slot, resource, price)
+// Everyone owns the standard look; equipping it switches a slot back from a skin.
+_addStandardItems()
+{
+    standardItems = [];
+    standardItems[standardItems.size] = _addItem("model.default", level.shopCategoryModel, "Default",
+                                                 "opencj_shop_model_dark", "player", "default", 0);
+    standardItems[standardItems.size] = _addItem("pistol.default", level.shopCategoryPistol,
+                                                 "Desert Eagle", "weapon_desert_eagle", "deserteagle_mp",
+                                                 "default", 0);
+    standardItems[standardItems.size] = _addItem("rpg.default", level.shopCategoryRPG, "RPG-7",
+                                                 "weapon_rpg7", "rpg_mp", "default", 0);
+    for(i = 0; i < standardItems.size; i++)
+    {
+        standardItems[i].standard = true;
+    }
+}
+
+// The Beta collection: rank 3 players can buy it until 1 January 2027 00:00 UTC.
+// Each weapon differs from its stock weapon file only in the view and world models.
+_addBetaCollection()
+{
+    minimumRank = 3;
+    saleEndsAt = 1798761600;
+    saleEndText = "Until 1 Jan 2027";
+    weaponPrice = 100;
+    modelPrice = 200;
+    skinSlugs = [];
+    skinNames = [];
+    skinSlugs[skinSlugs.size] = "glitch";
+    skinNames[skinNames.size] = "Beta: Glitch";
+    betaItems = [];
+    for(i = 0; i < skinSlugs.size; i++)
+    {
+        resourceName = "beta_" + skinSlugs[i];
+        openCJ\weapons::_registerLoadout(resourceName, "deagle_beta_" + skinSlugs[i] + "_mp");
+        openCJ\weapons::_registerRPG(resourceName, "rpg_beta_" + skinSlugs[i] + "_mp");
+        betaItems[betaItems.size] = _addItem("pistol.beta_" + skinSlugs[i], level.shopCategoryPistol,
+            skinNames[i], "opencj_shop_deagle_beta_" + skinSlugs[i], "deserteagle_mp", resourceName,
+            weaponPrice);
+        betaItems[betaItems.size] = _addItem("rpg.beta_" + skinSlugs[i], level.shopCategoryRPG,
+            skinNames[i], "opencj_shop_rpg_beta_" + skinSlugs[i], "rpg_mp", resourceName,
+            weaponPrice);
+    }
+    betaItems[betaItems.size] = _addItem("model.beta", level.shopCategoryModel, "Beta: Back Mark",
+                                         "opencj_shop_model_beta", "player", "beta", modelPrice);
+    for(i = 0; i < betaItems.size; i++)
+    {
+        betaItems[i].minimumRank = minimumRank;
+        betaItems[i].saleEndsAt = saleEndsAt;
+        betaItems[i].saleEndText = saleEndText;
+        betaItems[i].available = getRealTime() < saleEndsAt;
+    }
+}
+
+_addItem(itemKey, category, displayName, image, slot, resource, price)
 {
     item = spawnStruct();
     item.key = itemKey;
@@ -37,16 +84,64 @@ _addPreviewItem(itemKey, category, displayName, image, slot, resource, price)
     item.name = displayName;
     item.image = image;
     item.price = price;
-    item.available = false;
+    item.available = true;
     item.resource = resource;
     item.slot = slot;
-    openCJ\mySQL::mysqlSyncQuery(
-        "INSERT INTO shopCatalog(itemKey,category,slot,price,available)"
-        + " VALUES ('" + itemKey + "'," + category + ",'" + slot + "',"
-        + item.price + "," + int(item.available) + ")"
-        + " ON DUPLICATE KEY UPDATE category=VALUES(category),slot=VALUES(slot),"
-        + "price=VALUES(price),available=VALUES(available)");
     level.shopItems[level.shopItems.size] = item;
+    return item;
+}
+
+// The purchase procedure trusts only these stored prices and availability flags.
+// Items no longer in the catalogue stop being sold; their owners keep them.
+_storeCatalogue()
+{
+    soldKeys = "";
+    for(i = 0; i < level.shopItems.size; i++)
+    {
+        item = level.shopItems[i];
+        if(_isStandard(item))
+        {
+            continue;
+        }
+        if(soldKeys != "")
+        {
+            soldKeys += ",";
+        }
+        soldKeys += "'" + item.key + "'";
+        openCJ\mySQL::mysqlSyncQuery(
+            "INSERT INTO shopCatalog(itemKey,category,slot,price,available)"
+            + " VALUES ('" + item.key + "'," + item.category + ",'" + item.slot + "',"
+            + item.price + "," + int(item.available) + ")"
+            + " ON DUPLICATE KEY UPDATE category=VALUES(category),slot=VALUES(slot),"
+            + "price=VALUES(price),available=VALUES(available)");
+    }
+    openCJ\mySQL::mysqlSyncQuery(
+        "UPDATE shopCatalog SET available=0 WHERE itemKey NOT IN (" + soldKeys + ")");
+}
+
+_isStandard(item)
+{
+    return isDefined(item.standard) && item.standard;
+}
+
+_isOwned(item)
+{
+    return _isStandard(item) || isDefined(self.shopOwned[item.key]);
+}
+
+// Rank and the sale window are checked here, before the purchase reaches SQL.
+_purchaseBlocker(item)
+{
+    if(!item.available || (isDefined(item.saleEndsAt) && getRealTime() >= item.saleEndsAt))
+    {
+        return "Currently unavailable";
+    }
+    if(isDefined(item.minimumRank) &&
+       (!isDefined(self.challengeRank) || self.challengeRank < item.minimumRank))
+    {
+        return "Requires rank " + item.minimumRank;
+    }
+    return undefined;
 }
 
 onPlayerConnected()
@@ -84,7 +179,7 @@ responses()
     for(;;)
     {
         self waittill("menuresponse", menu, response);
-        if(menu != "opencj_shop" && menu != "opencj_shop_confirm" && menu != "opencj_shop_inspect")
+        if(menu != "opencj_shop" && menu != "opencj_shop_confirm")
         {
             continue;
         }
@@ -96,11 +191,6 @@ responses()
             self stopInspect();
             self openCJ\mySQL::cancelMenuReads("opencj_shop");
             self.shopSelection = undefined;
-            continue;
-        }
-        if(response == "inspect_done")
-        {
-            self stopInspect();
             continue;
         }
         if(isDefined(self.shopRequestAt) && getTime() - self.shopRequestAt < requestIntervalMs)
@@ -149,24 +239,40 @@ _selectItem(indexText)
         return;
     }
     item = self.shopRows[rowIndex];
-    purchased = isDefined(self.shopOwned[item.key]);
+    purchased = self _isOwned(item);
     equipped = self _isItemEquipped(item);
+    blocker = self _purchaseBlocker(item);
+    reason = "";
+    if(isDefined(blocker))
+    {
+        reason = blocker;
+    }
     self.shopSelection = item.key;
     self setClientCvar("ocj_shop_detail_error", "");
     self setClientCvar("ocj_shop_confirm_name", item.name);
     self setClientCvar("ocj_shop_confirm_owned", int(purchased));
     self setClientCvar("ocj_shop_confirm_equipped", int(equipped));
-    self setClientCvar("ocj_shop_confirm_buy", int(item.available && !purchased));
+    self setClientCvar("ocj_shop_confirm_buy", int(!isDefined(blocker) && !purchased));
+    self setClientCvar("ocj_shop_confirm_reason", reason);
     self setClientCvar("ocj_shop_confirm_cost", item.price + " points");
     self closeInGameMenu();
     self closeMenu();
     self openMenu("opencj_shop_confirm");
 }
 
+// A slot with no equipped skin, or one no longer sold, shows the standard item.
 _isItemEquipped(item)
 {
-    return isDefined(self.shopEquipped) && isDefined(self.shopEquipped[item.slot]) &&
-           self.shopEquipped[item.slot] == item.key;
+    equippedKey = undefined;
+    if(isDefined(self.shopEquipped) && isDefined(self.shopEquipped[item.slot]))
+    {
+        equippedKey = self.shopEquipped[item.slot];
+    }
+    if(_isStandard(item))
+    {
+        return !isDefined(equippedKey) || !isDefined(findItem(equippedKey));
+    }
+    return isDefined(equippedKey) && equippedKey == item.key;
 }
 
 // Closing or replacing this screen cancels its reads; purchases have separate ownership.
@@ -243,8 +349,17 @@ _renderCatalogue(totalPoints, spentPoints)
         rowIndex = self.shopRows.size;
         self.shopRows[rowIndex] = item;
         valuePrefix = "ocj_shop_" + rowIndex + "_";
-        purchased = isDefined(self.shopOwned[item.key]);
-        purchaseState = "Currently unavailable";
+        purchased = self _isOwned(item);
+        blocker = self _purchaseBlocker(item);
+        purchaseState = "Available";
+        if(isDefined(item.saleEndText))
+        {
+            purchaseState = item.saleEndText;
+        }
+        if(isDefined(blocker))
+        {
+            purchaseState = blocker;
+        }
         if(purchased)
         {
             purchaseState = "Purchased";
@@ -258,7 +373,7 @@ _renderCatalogue(totalPoints, spentPoints)
         clientValues[valuePrefix + "image"] = item.image;
         clientValues[valuePrefix + "state"] = purchaseState;
         clientValues[valuePrefix + "owned"] = int(purchased);
-        clientValues[valuePrefix + "buy"] = int(item.available && !purchased);
+        clientValues[valuePrefix + "buy"] = int(!isDefined(blocker) && !purchased);
     }
     clientValues["ocj_shop_rows"] = self.shopRows.size;
     self openCJ\scoreboard::sendChanged(clientValues);
@@ -388,20 +503,38 @@ purchase(equipOnly)
         return;
     }
     item = findItem(self.shopSelection);
-    if(!isDefined(item) || (!equipOnly && !item.available))
+    if(!isDefined(item))
     {
-        self sendLocalChatMessage("This item is currently unavailable.");
         return;
     }
-    self.shopPurchaseBusy = true;
-    // Only a server-owned catalogue key and authenticated account ID reach SQL.
-    rows = self openCJ\mySQL::mysqlAsyncQuery(
-        "CALL shopBuyOrEquip(" + self openCJ\login::getPlayerID() + ",'" +
-        openCJ\mySQL::escapeString(item.key) + "'," + int(equipOnly) + "," + item.price + ")");
-    outcome = undefined;
-    if(isDefined(rows) && rows.size)
+    if(!equipOnly)
     {
-        outcome = rows[0][0];
+        blocker = self _purchaseBlocker(item);
+        if(isDefined(blocker))
+        {
+            self sendLocalChatMessage(blocker + ".");
+            return;
+        }
+    }
+    self.shopPurchaseBusy = true;
+    outcome = undefined;
+    if(_isStandard(item))
+    {
+        // Equipping the standard item clears the slot; the reload shows what SQL now holds.
+        self openCJ\mySQL::mysqlAsyncQueryNosave("DELETE FROM shopEquipped WHERE playerID=" +
+            self openCJ\login::getPlayerID() + " AND slot='" + item.slot + "'");
+        outcome = "ok";
+    }
+    else
+    {
+        // Only a server-owned catalogue key and authenticated account ID reach SQL.
+        rows = self openCJ\mySQL::mysqlAsyncQuery(
+            "CALL shopBuyOrEquip(" + self openCJ\login::getPlayerID() + ",'" +
+            openCJ\mySQL::escapeString(item.key) + "'," + int(equipOnly) + "," + item.price + ")");
+        if(isDefined(rows) && rows.size)
+        {
+            outcome = rows[0][0];
+        }
     }
     if(isDefined(outcome) && outcome == "ok")
     {
@@ -438,19 +571,18 @@ purchase(equipOnly)
     }
 }
 
-// Temporarily show the selected item while retaining the exact weapon and ammo state.
+// Let the player move and fire with the selected item for a few seconds. The preview
+// weapon carries the ammo of the weapon it stands in for, so it gives nothing extra:
+// an RPG skin cannot fire on a map where the player has no RPG.
 inspect()
 {
-    if(isDefined(self.shopInspect) || !isDefined(self.shopSelection) ||
-       (isDefined(self.shopPurchaseBusy) && self.shopPurchaseBusy))
+    if(!isDefined(self.shopSelection) || (isDefined(self.shopPurchaseBusy) && self.shopPurchaseBusy))
     {
         return;
     }
-    if(self.sessionState != "playing" || !self isOnGround() || isDefined(self.cpc) ||
-       self openCJ\demos::isPlayingDemo())
+    if(self.sessionState != "playing" || isDefined(self.cpc) || self openCJ\demos::isPlayingDemo())
     {
-        self setClientCvar("ocj_shop_detail_error",
-                           "Stand on a platform outside CPC/demo mode to inspect.");
+        self setClientCvar("ocj_shop_detail_error", "Leave CPC/demo mode to preview.");
         return;
     }
     item = findItem(self.shopSelection);
@@ -471,29 +603,71 @@ inspect()
     {
         return;
     }
-    previewState = self _captureLoadout();
+    // A new preview replaces a running one, so skins can be compared back to back.
+    self stopInspect();
+    preview = spawnStruct();
+    preview.loadout = self _captureLoadout();
     self notify("shop_inspect_started");
-    self.shopInspect = previewState;
-    self freezeControls(true);
-    self setVelocity((0, 0, 0));
-    // Frozen controls block input; disableWeapons also hides the viewmodel.
-    self enableWeapons();
+    self.shopInspect = preview;
+    self closeInGameMenu();
+    self closeMenu();
+    self.shopOpen = false;
     if(item.category == level.shopCategoryModel)
     {
+        self detachAll();
         self openCJ\playerModels::_setModel(item.resource);
+        preview.mannequin = self _spawnMannequin(item.resource);
     }
     else
     {
+        preview.weapon = previewWeapon;
+        preview.replaced = _replacedWeapon(preview.loadout, item.category == level.shopCategoryRPG);
         self takeAllWeapons();
         self giveWeapon(previewWeapon);
-        self giveMaxAmmo(previewWeapon);
+        clip = 0;
+        stock = 0;
+        if(isDefined(preview.replaced))
+        {
+            clip = preview.replaced.clip;
+            stock = preview.replaced.stock;
+        }
+        self setWeaponAmmoClip(previewWeapon, clip);
+        self setWeaponAmmoStock(previewWeapon, stock);
         self setSpawnWeapon(previewWeapon);
         self switchToWeaponSeamless(previewWeapon);
     }
-    self closeInGameMenu();
-    self closeMenu();
-    self openMenu("opencj_shop_inspect");
+    self iPrintLn("Previewing " + item.name + " for " + level.shopPreviewSeconds + " seconds");
     self thread watchInspect();
+}
+
+// The carried weapon the preview stands in for: the RPG for RPG skins, else the pistol.
+_replacedWeapon(loadout, isRPGSkin)
+{
+    for(i = 0; i < loadout.weapons.size; i++)
+    {
+        weaponName = loadout.weapons[i].name;
+        if(openCJ\weapons::isGrenade(weaponName))
+        {
+            continue;
+        }
+        if(openCJ\weapons::isRPG(weaponName) == isRPGSkin)
+        {
+            return loadout.weapons[i];
+        }
+    }
+    return undefined;
+}
+
+// The player cannot see their own body, so a turning copy stands in front of them.
+_spawnMannequin(modelName)
+{
+    mannequinDistance = 80;
+    facing = (0, self.angles[1], 0);
+    mannequin = spawn("script_model", self.origin + anglesToForward(facing) * mannequinDistance);
+    mannequin.angles = facing + (0, 180, 0);
+    mannequin openCJ\playerModels::_setModel(modelName);
+    mannequin rotateYaw(360, level.shopPreviewSeconds);
+    return mannequin;
 }
 
 // Inspection must restore ammo as well as weapon names when the preview ends.
@@ -514,6 +688,7 @@ _captureLoadout()
     return loadout;
 }
 
+// Give back the carried weapons; ammo spent with the preview weapon stays spent.
 stopInspect()
 {
     if(!isDefined(self.shopInspect))
@@ -521,9 +696,19 @@ stopInspect()
         return;
     }
     self notify("shop_inspect_stopped");
-    loadout = self.shopInspect;
+    preview = self.shopInspect;
     self.shopInspect = undefined;
+    if(isDefined(preview.mannequin))
+    {
+        preview.mannequin delete();
+    }
+    if(isDefined(preview.replaced) && self hasWeapon(preview.weapon))
+    {
+        preview.replaced.clip = self getWeaponAmmoClip(preview.weapon);
+        preview.replaced.stock = self getWeaponAmmoStock(preview.weapon);
+    }
     self takeAllWeapons();
+    loadout = preview.loadout;
     for(i = 0; i < loadout.weapons.size; i++)
     {
         weaponState = loadout.weapons[i];
@@ -536,28 +721,21 @@ stopInspect()
         self setSpawnWeapon(loadout.current);
     }
     self openCJ\playerModels::setPlayerModel();
-    self freezeControls(false);
-    self enableWeapons();
-    self closeInGameMenu();
-    self closeMenu();
 }
 
-// Restore control if the player leaves normal play or abandons the preview.
+// End the preview when its time is up or the player leaves normal play.
 watchInspect()
 {
     self endon("disconnect");
     self endon("shop_inspect_stopped");
-    startedAtMs = getTime();
-    maximumInspectMs = 120000;
-    inspectPollSeconds = 0.1;
+    previewEndsAt = getTime() + level.shopPreviewSeconds * 1000;
     while(isDefined(self.shopInspect))
     {
-        if(self.sessionState != "playing" || isDefined(self.cpc) ||
-           getTime() - startedAtMs > maximumInspectMs)
+        if(self.sessionState != "playing" || isDefined(self.cpc) || getTime() >= previewEndsAt)
         {
             self thread stopInspect();
             return;
         }
-        wait inspectPollSeconds;
+        wait 0.05;
     }
 }

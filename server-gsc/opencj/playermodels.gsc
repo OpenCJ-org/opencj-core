@@ -12,8 +12,12 @@ onInit()
     }
     else
     {
-        _registerModel("default", "body_mp_usmc_specops", "viewmodel_base_viewhands");
-        _registerAttach("default", "head_mp_usmc_tactical_mich_stripes_nomex", "");
+        // The dark model is everyone's default; the shop sells the beta-marked one.
+        // Each model has first-person hands with matching gloves.
+        _registerModel("default", "body_opencj_dark", "viewhands_opencj_dark");
+        _registerAttach("default", "head_opencj_dark", "");
+        _registerModel("beta", "body_opencj_beta", "viewhands_opencj_black");
+        _registerAttach("beta", "head_opencj_black", "");
     }
 }
 
@@ -64,6 +68,11 @@ _setModel(name)
     }
 
     self setModel(level.playerModels_models[name].model);
+    // Shop mannequins are script models, which have no first-person hands.
+    if(isPlayer(self))
+    {
+        self setViewModel(level.playerModels_models[name].viewModel);
+    }
 
     for(i = 0; i < level.playerModels_models[name].attach.size; i++)
     {
