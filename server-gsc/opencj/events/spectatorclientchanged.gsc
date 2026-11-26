@@ -12,4 +12,5 @@ main(newClient, prevClient)
     self openCJ\huds\hudRunInfo::onSpectatorClientChanged(newClient);
     self openCJ\huds\hudSpeedoMeter::onSpectatorClientChanged(newClient);
     self openCJ\huds\hudSpectatorList::onSpectatorClientChanged(newClient, prevClient);
+    self openCJ\checkpointCreation::onSpectatorClientChanged(newClient);
 }

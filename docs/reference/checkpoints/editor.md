@@ -188,6 +188,12 @@ drawing commands sent only to the editor. The previous checkpoint is gray and
 the connection is yellow; the selected area uses the chosen route color, or orange when invalid. Alternative areas and the links joining their centers are magenta: either landing counts as the same checkpoint.
 CPC sets client `developer` to `1` when it starts and to `0` when it stops,
 because the client renderer requires it for debug shapes.
+Spectators following an editor receive the same world shapes and property panel,
+and get `developer` `1` while they follow. Switching to another player, free
+spectating, spawning, or the editor stopping, suspending or leaving clears their
+view and sets `developer` back to `0` (a spectator who is a suspended editor keeps
+it for their own editor). The editor's text blocks are archived HUD elements, which
+followers already see.
 
 World drawing yields after every 12 commands so the server can send and
 acknowledge them. Sending a large group in one frame can hit CoD4x's 64-command

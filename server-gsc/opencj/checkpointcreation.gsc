@@ -559,6 +559,8 @@ _start(routeName, routeHex)
     self openCJ\historySave::cancelPendingPage();
     self notify("cpc_started");
     self.cpc = spawnStruct();
+    // Spectators following this editor; refreshed before every redraw.
+    self.cpc.viewers = [];
     self.cpc.route = routeName;
     self.cpc.rows = [];
     self.cpc.draft = _empty();
@@ -769,11 +771,14 @@ onSpawnSpectator()
     }
     self setClientCvar("opencj_cpc_properties", "");
     self setClientCvar("opencj_cpc_panel_height", 0);
+    self _stopEditorViewers();
     self _save();
 }
 
 onSpawnPlayer()
 {
+    // A player who starts playing no longer follows an editor.
+    self stopViewingEditor();
     if (!self isEditing())
     {
         return;
@@ -830,6 +835,7 @@ _loop()
             nextDraw = getTime() + redrawIntervalMs;
             self openCJ\checkpointNetwork::trackSharedLanding(self.origin, self isOnGround());
             self.cpc.drawCommands = 0;
+            self.cpc.viewers = self _syncEditorViewers();
             self _draw();
         }
         wait updateIntervalSeconds;
@@ -1710,6 +1716,7 @@ stop(quiet)
 _close()
 {
     self notify("cpc_stopped");
+    self _stopEditorViewers();
     self setClientCvar("developer", 0);
     self setClientCvar("opencj_cpc_properties", "");
     // Release only the HUDs owned by this editor.
@@ -1763,9 +1770,113 @@ finalize()
 
 onDisconnect()
 {
+    // Followers must be reset while this editor's entity still exists.
+    self _stopEditorViewers();
     if (self isEditing())
     {
         self _save();
+    }
+}
+
+// Spectators following an editor see its world outlines, labels and property panel.
+// Debug shapes only render with the client's developer cvar on, so a follower gets
+// it while watching and loses it again when they stop.
+onSpectatorClientChanged(newClient)
+{
+    if (!isDefined(self.cpcViewedEditor))
+    {
+        return;
+    }
+    if (!isDefined(newClient) || newClient != self.cpcViewedEditor)
+    {
+        self stopViewingEditor();
+    }
+    // Following an editor starts on that editor's next redraw (at most 0.5 s).
+}
+
+// Return the editor's current followers, setting up any that just started watching.
+_syncEditorViewers()
+{
+    viewers = self getSpectatorList(false);
+    for (i = 0; i < viewers.size; i++)
+    {
+        if (!isDefined(viewers[i].cpcViewedEditor) || viewers[i].cpcViewedEditor != self)
+        {
+            viewers[i] _startViewingEditor(self);
+        }
+    }
+    return viewers;
+}
+
+_startViewingEditor(editor)
+{
+    self.cpcViewedEditor = editor;
+    self setClientCvar("developer", 1);
+    propertiesText = "";
+    if (isDefined(editor.cpc.propertiesText))
+    {
+        propertiesText = editor.cpc.propertiesText;
+    }
+    panelHeight = 0;
+    if (isDefined(editor.cpc.panelHeight))
+    {
+        panelHeight = editor.cpc.panelHeight;
+    }
+    self setClientCvar("opencj_cpc_properties", propertiesText);
+    self setClientCvar("opencj_cpc_panel_height", panelHeight);
+}
+
+// Hide a follower's editor view. Debug shapes disappear with developer off; a
+// suspended editor keeps it on for their own editor.
+stopViewingEditor()
+{
+    if (!isDefined(self.cpcViewedEditor))
+    {
+        return;
+    }
+    self.cpcViewedEditor = undefined;
+    if (!self isEditing())
+    {
+        self setClientCvar("developer", 0);
+    }
+    self setClientCvar("opencj_cpc_properties", "");
+    self setClientCvar("opencj_cpc_panel_height", 0);
+}
+
+_stopEditorViewers()
+{
+    players = getEntArray("player", "classname");
+    for (i = 0; i < players.size; i++)
+    {
+        if (isDefined(players[i].cpcViewedEditor) && players[i].cpcViewedEditor == self)
+        {
+            players[i] stopViewingEditor();
+        }
+    }
+}
+
+// Followers found at the last redraw; an editor state restored from a draft has none yet.
+_editorViewers()
+{
+    if (!isDefined(self.cpc.viewers))
+    {
+        return [];
+    }
+    return self.cpc.viewers;
+}
+
+// Send a value of the editor's property panel to the editor and its followers.
+_setPanelCvar(name, value)
+{
+    self setClientCvar(name, value);
+    viewers = self _editorViewers();
+    for (i = 0; i < viewers.size; i++)
+    {
+        viewer = viewers[i];
+        if (isDefined(viewer) && isDefined(viewer.cpcViewedEditor) && viewer.cpcViewedEditor == self)
+        {
+            viewer setClientCvar(name, value);
+        }
     }
 }
 
@@ -1915,7 +2026,7 @@ drawCheckpointProperties(preview)
     panelText = self propertyPanelText(propertyCheckpoint);
     if (!isDefined(self.cpc.propertiesText) || self.cpc.propertiesText != panelText)
     {
-        self setClientCvar("opencj_cpc_properties", panelText);
+        self _setPanelCvar("opencj_cpc_properties", panelText);
         self.cpc.propertiesText = panelText;
     }
 }
@@ -2072,7 +2183,7 @@ drawCheckpointActions(preview)
     panelHeight = 36 + lineCount * 17;
     if (!isDefined(self.cpc.panelHeight) || self.cpc.panelHeight != panelHeight)
     {
-        self setClientCvar("opencj_cpc_panel_height", panelHeight);
+        self _setPanelCvar("opencj_cpc_panel_height", panelHeight);
         self.cpc.panelHeight = panelHeight;
     }
     if (self.cpc.status != "" &&
@@ -2252,6 +2363,16 @@ _drawCommand(command)
         self.cpc.drawCommands = 0;
     }
     self SV_GameSendServerCommand(command, false);
+    // Followers receive the same shapes; each client has its own command budget.
+    viewers = self _editorViewers();
+    for (i = 0; i < viewers.size; i++)
+    {
+        viewer = viewers[i];
+        if (isDefined(viewer) && isDefined(viewer.cpcViewedEditor) && viewer.cpcViewedEditor == self)
+        {
+            viewer SV_GameSendServerCommand(command, false);
+        }
+    }
     self.cpc.drawCommands++;
 }
 

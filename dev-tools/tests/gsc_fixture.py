@@ -202,6 +202,16 @@ def install_observation_hooks(mod, fixture_name):
                 ),
             ),
         ),
+        "cpc-spectators.gsc": (
+            "opencj/checkpointcreation.gsc",
+            (
+                (r"\bsetClientCvar\s*\(", r"openCJ\platformTest::recordClientCvar("),
+                (
+                    r"\bSV_GameSendServerCommand\s*\(",
+                    r"openCJ\platformTest::recordServerCommand(",
+                ),
+            ),
+        ),
         "server-list.gsc": (
             "opencj/serverlist.gsc",
             (
