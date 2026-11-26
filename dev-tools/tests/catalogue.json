@@ -569,18 +569,20 @@
     {
       "id": "feature-sql",
       "category": "integration",
-      "description": "Current challenge-route binding, shop transactions and finish ranking.",
+      "description": "Current challenge-route binding, shop transactions and finish ranking; challenge awards exclude tutorial and unfinished runs.",
       "requires": "Configured current-schema development database and Docker; schema/account administration for the disposable shop fixture.",
       "effects": "Route rows roll back; shop creates/removes an owned schema/account; finish ranking uses read-only CTEs.",
       "files": [
         "dev-tools/tests/challenge-route-link.py",
         "dev-tools/tests/shop-purchases.py",
-        "dev-tools/tests/finish-sounds.py"
+        "dev-tools/tests/finish-sounds.py",
+        "dev-tools/tests/challenge-awards.py"
       ],
       "commands": [
         "python3 -B dev-tools/tests/challenge-route-link.py",
         "python3 -B dev-tools/tests/shop-purchases.py",
-        "python3 -B dev-tools/tests/finish-sounds.py"
+        "python3 -B dev-tools/tests/finish-sounds.py",
+        "python3 -B dev-tools/tests/challenge-awards.py"
       ]
     },
     {
