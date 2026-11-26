@@ -8,7 +8,7 @@ without first entering a route.
 - `!demo` / `!demo wt`: choose an available walkthrough covering the physical
   checkpoint. Across shared routes, prefer fewer RPG shots in the matching
   segment, then fewer successful recorded samples. Exact ties keep the stable
-  database ordering. This measures the segment before idle-pause compression.
+  database ordering. This measures the segment before walkthrough compaction.
 - `!srdemo` / `!demo sr`: choose the fastest compatible retained speedrun that
   actually covers the checkpoint. Outside a checkpoint, look for a recorded
   passage within the existing 256-unit spatial radius, across routes on this map.

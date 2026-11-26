@@ -1915,6 +1915,109 @@ static void shortenDemoIdlePauses(const sDemo_t &demo, int begin, int end,
     timeline.resize(retainedCount);
 }
 
+// Walkthrough frames that teach the jump keep their recorded speed. Counts are
+// 20 Hz frames: a 1.5 s run-up, 0.5 s after landing, 0.5 s around RPG shots
+// and checkpoint arrivals. The landing tail also ends checkpoint segments.
+constexpr int DEMO_TAKEOFF_LEAD_FRAMES = 30;
+constexpr int DEMO_LANDING_TAIL_FRAMES = 10;
+constexpr int DEMO_EVENT_WINDOW_FRAMES = 10;
+// Shorter grounded setup is not worth speeding up.
+constexpr size_t DEMO_FAST_FORWARD_MIN_FRAMES = 30;
+// Playback interpolates across gaps of at most 4 frames (updateDemoInterpolation),
+// so a step of 3 plays setup three times faster without any abrupt jump.
+constexpr size_t DEMO_FAST_FORWARD_STEP = 3;
+
+static void markRealTimeFrames(std::vector<bool> &realTime, int first, int last)
+{
+    const int lastFrame = int(realTime.size()) - 1;
+    for (int frameIndex = std::max(0, first); frameIndex <= std::min(lastFrame, last); ++frameIndex)
+    {
+        realTime[frameIndex] = true;
+    }
+}
+
+// Mark the frames a walkthrough must play at recorded speed: anything off the
+// ground, loads, the run-up to each takeoff, landings, RPG shots, checkpoint
+// arrivals and the requested range boundaries.
+static std::vector<bool> walkthroughRealTimeFrames(const sDemo_t &demo, int begin, int end)
+{
+    std::vector<bool> realTime(demo.size, false);
+    const int climbingFlags = DEMO_LADDER | DEMO_MANTLING;
+    for (int frameIndex = 0; frameIndex < demo.size; ++frameIndex)
+    {
+        const sDemoFrame_t &frame = demo.pDemoFrames[frameIndex];
+        const bool grounded = (frame.flags & DEMO_GROUNDED) != 0;
+        if (!grounded || (frame.flags & climbingFlags) || frame.loadNow)
+        {
+            realTime[frameIndex] = true;
+        }
+        if (frame.rpgNow)
+        {
+            markRealTimeFrames(realTime, frameIndex - DEMO_EVENT_WINDOW_FRAMES,
+                               frameIndex + DEMO_EVENT_WINDOW_FRAMES);
+        }
+        if (frameIndex + 1 >= demo.size)
+        {
+            continue;
+        }
+        const sDemoFrame_t &next = demo.pDemoFrames[frameIndex + 1];
+        const bool nextGrounded = (next.flags & DEMO_GROUNDED) != 0;
+        // A load is a cut, not a takeoff or landing.
+        if (grounded && !nextGrounded && !next.loadNow)
+        {
+            markRealTimeFrames(realTime, frameIndex - DEMO_TAKEOFF_LEAD_FRAMES + 1, frameIndex);
+        }
+        if (!grounded && nextGrounded && !next.loadNow)
+        {
+            markRealTimeFrames(realTime, frameIndex + 1, frameIndex + DEMO_LANDING_TAIL_FRAMES);
+        }
+        if (next.checkpointId != frame.checkpointId)
+        {
+            markRealTimeFrames(realTime, frameIndex + 1 - DEMO_EVENT_WINDOW_FRAMES,
+                               frameIndex + 1 + DEMO_EVENT_WINDOW_FRAMES);
+        }
+    }
+    realTime[begin] = true;
+    realTime[end] = true;
+    return realTime;
+}
+
+// Walkthroughs drop still waiting and fast-forward the rest of the grounded setup
+// (walking back, lining up, turning). Every retained step stays within playback
+// interpolation, so the player never visibly teleports.
+static void compactWalkthroughSetup(const sDemo_t &demo, int begin, int end,
+                                    std::vector<int> &timeline)
+{
+    shortenDemoIdlePauses(demo, begin, end, timeline);
+    const std::vector<bool> realTime = walkthroughRealTimeFrames(demo, begin, end);
+    size_t retainedCount = 0;
+    for (size_t runBegin = 0; runBegin < timeline.size();)
+    {
+        // A setup run is consecutive recorded frames that may play faster.
+        size_t runEnd = runBegin + 1;
+        if (!realTime[timeline[runBegin]])
+        {
+            while (runEnd < timeline.size() && !realTime[timeline[runEnd]] &&
+                   timeline[runEnd] == timeline[runEnd - 1] + 1)
+            {
+                ++runEnd;
+            }
+        }
+        const size_t runLength = runEnd - runBegin;
+        for (size_t i = runBegin; i < runEnd; ++i)
+        {
+            const bool fastForward = runLength >= DEMO_FAST_FORWARD_MIN_FRAMES;
+            const bool lastOfRun = i == runEnd - 1;
+            if (!fastForward || (i - runBegin) % DEMO_FAST_FORWARD_STEP == 0 || lastOfRun)
+            {
+                timeline[retainedCount++] = timeline[i];
+            }
+        }
+        runBegin = runEnd;
+    }
+    timeline.resize(retainedCount);
+}
+
 // Build a viewer-owned edit list over shared immutable frame indices.
 void Gsc_Demo_PlaybackStyle(int client)
 {
@@ -1957,7 +2060,7 @@ void Gsc_Demo_PlaybackStyle(int client)
     }
     if (style == DEMO_WALKTHROUGH)
     {
-        shortenDemoIdlePauses(*demo, begin, end, timeline);
+        compactWalkthroughSetup(*demo, begin, end, timeline);
     }
     auto rangeBegin = std::lower_bound(timeline.begin(), timeline.end(), begin);
     auto rangeEnd = std::upper_bound(timeline.begin(), timeline.end(), end);
@@ -2045,7 +2148,6 @@ void Gsc_Demo_Truncate()
 }
 
 constexpr float DEMO_SETUP_RADIUS = 256;
-constexpr int DEMO_LANDING_TAIL_FRAMES = 10;
 
 struct DemoFrameRange
 {

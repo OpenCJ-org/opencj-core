@@ -26,6 +26,7 @@ main()
     verifyPhysicalSetup(viewer);
     verifyIdleTrimming(viewer);
     verifyActiveMotionRetention(viewer);
+    verifyRpgShotWindow(viewer);
     verifyAmmoRestoration(viewer);
     viewer openCJ\demoSelectionTest::run();
     reportCompletion();
@@ -83,13 +84,17 @@ verifyTimelineStyles(viewer)
     playbackTiming = viewer demoPlaybackTime(0, 1299);
     check(playbackTiming[1] == 1279, "low-RPG skips failures but keeps setup");
     check(viewer skipPlaybackKeyFrames(20) == 40, "successful path crosses failed section");
+    // Walkthrough: the failed attempt is cut; the 1169 frames of grounded setup between
+    // the load (40) and the run-up (1210) play three times faster; the run-up, the
+    // jump and its landing keep their recorded speed.
     frameRange = viewer demoPlaybackStyle(2, 0, 1299);
     playbackTiming = viewer demoPlaybackTime(0, 1299);
-    check(playbackTiming[1] == 1279,
-          "walkthrough keeps positioning and removes only failed frames");
+    check(playbackTiming[1] == 501, "walkthrough fast-forwards setup, got " + playbackTiming[1]);
     check(viewer skipPlaybackFrames(0) == 0, "walkthrough retains approach to save location");
     check(viewer skipPlaybackKeyFrames(20) == 40, "walkthrough cuts only the failed attempt");
-    check(viewer skipPlaybackKeyFrames(1200) == 1240, "walkthrough retains successful jump");
+    check(viewer skipPlaybackKeyFrames(2) == 44, "grounded setup plays three frames per step");
+    check(viewer skipPlaybackKeyFrames(390) == 1210, "fast-forward ends where the run-up starts");
+    check(viewer skipPlaybackKeyFrames(30) == 1240, "run-up keeps its recorded speed");
     check(viewer demoSeekCheckpoint(1) == 1280, "next checkpoint follows edited timeline");
     check(viewer demoSeekCheckpoint(-1) == 0, "previous checkpoint follows edited timeline");
     frameRange = demoFindSegment(decodedDemoID, 17, (0, 0, 100), 0, 1);
@@ -223,10 +228,12 @@ verifyIdleTrimming(viewer)
     destroyDemo(sourceDemoID);
 }
 
-// Keep aiming, drift, airborne movement and brief pauses in walkthrough playback.
+// Walkthroughs speed up long grounded aiming and drift without skipping more than
+// three frames at once; airborne movement and brief pauses keep their speed.
 verifyActiveMotionRetention(viewer)
 {
-    // Mouse aiming, slow positional drift, airborne motion and short rests stay.
+    // 50 frames: the range ends stay, the 48 between them play at three frames per step.
+    fastForwardedTiming = 18;
     scenarios = [];
     scenarios[0] = "aiming";
     scenarios[1] = "drift";
@@ -264,9 +271,73 @@ verifyActiveMotionRetention(viewer)
         viewer selectPlaybackDemo(sourceDemoID);
         viewer demoPlaybackStyle(2, 0, frameCount - 1);
         playbackTiming = viewer demoPlaybackTime(0, frameCount - 1);
-        check(playbackTiming[1] == frameCount - 1, "walkthrough preserves " + scenario);
+        if(scenario == "aiming" || scenario == "drift")
+        {
+            check(playbackTiming[1] == fastForwardedTiming,
+                  "walkthrough speeds up grounded " + scenario + ", got " + playbackTiming[1]);
+            check(largestPlaybackStep(viewer, frameCount - 1) <= 3,
+                  "sped-up " + scenario + " never skips more than three frames");
+        }
+        else
+        {
+            check(playbackTiming[1] == frameCount - 1, "walkthrough preserves " + scenario);
+        }
         destroyDemo(sourceDemoID);
     }
+}
+
+// RPG shots and the frames around them keep their recorded speed inside long setup.
+verifyRpgShotWindow(viewer)
+{
+    sourceDemoID = 1800000087;
+    createDemo(sourceDemoID);
+    frameCount = 100;
+    shotFrame = 60;
+    for(i = 0; i < frameCount; i++)
+    {
+        addFrameToDemo(sourceDemoID, (i, 0, 100), (0, 0, 0), 1, 8192, 0, 0, int(i == shotFrame), 125,
+                       17);
+    }
+    viewer selectPlaybackDemo(sourceDemoID);
+    viewer demoPlaybackStyle(2, 0, frameCount - 1);
+    frame = viewer skipPlaybackFrames(0);
+    while(frame < shotFrame - 10)
+    {
+        frame = viewer skipPlaybackKeyFrames(1);
+    }
+    check(frame == shotFrame - 10, "real-time window starts ten frames before the shot");
+    windowIntact = true;
+    for(expected = shotFrame - 9; expected <= shotFrame + 10; expected++)
+    {
+        if(viewer skipPlaybackKeyFrames(1) != expected)
+        {
+            windowIntact = false;
+        }
+    }
+    check(windowIntact, "every frame around the RPG shot is retained");
+    destroyDemo(sourceDemoID);
+}
+
+// Largest frame gap between consecutive playback steps up to lastFrame.
+largestPlaybackStep(viewer, lastFrame)
+{
+    viewer skipPlaybackKeyFrames(0 - lastFrame);
+    previous = viewer skipPlaybackFrames(0);
+    largestStep = 0;
+    while(previous < lastFrame)
+    {
+        current = viewer skipPlaybackKeyFrames(1);
+        if(current == previous)
+        {
+            break;
+        }
+        if(current - previous > largestStep)
+        {
+            largestStep = current - previous;
+        }
+        previous = current;
+    }
+    return largestStep;
 }
 
 // Playback supplies visible rocket ammo and restores the viewer's exact original ammo.

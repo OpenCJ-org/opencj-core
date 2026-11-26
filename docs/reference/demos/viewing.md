@@ -43,6 +43,24 @@ available while the menu is closed. Menu responses are ignored outside playback.
   player setting, blocks new requests and exits existing other-player views.
   Players can still view their own history. !sharehistory on enables it again.
 
+## Walkthrough playback
+
+Walkthroughs play only the successful path and shorten setup time without
+moving the player abruptly:
+
+- Still waiting on the ground (same position and view) of a second or more is
+  cut to 0.2 seconds; both ends of the pause stay.
+- Other grounded setup of 1.5 seconds or more (walking back, lining up, turning
+  the view) plays three times faster. Every retained step is at most three
+  recorded frames, so playback interpolation keeps the movement continuous.
+- These keep their recorded speed: anything off the ground, ladders and mantles,
+  the last 1.5 seconds before leaving the ground, 0.5 seconds after landing,
+  0.5 seconds around each RPG shot and checkpoint arrival, loads and the
+  requested range ends.
+
+Speedrun and low-RPG playback are unchanged. The time display counts the
+shortened walkthrough.
+
 Personal demo-type preferences, ghost racing, guided loops and combined
 walkthroughs are not implemented.
 
