@@ -43,8 +43,9 @@ It is not legal advice; in summary:
   license; `build_beta_skins.py` itself is OpenCJ code.
 - Published material must show, in any online description and for a reasonable
   time on its opening screen, the creator's name and e-mail address and the words
-  "THIS MATERIAL IS NOT MADE OR SUPPORTED BY ACTIVISION." OpenCJ does not show
-  this notice yet; it applies to the whole mod, not only these skins.
+  "THIS MATERIAL IS NOT MADE OR SUPPORTED BY ACTIVISION." The repository notice is
+  [NOTICE-ACTIVISION.md](../../NOTICE-ACTIVISION.md); the mod's opening screen and
+  the website do not show it.
 - The stock Desert Eagle weapon file is exported from the game's fastfiles rather
   than taken from the Mod Tools, so it falls under the game's own license.
 
