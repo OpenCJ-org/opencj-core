@@ -92,6 +92,12 @@ onRunFinished(runID, timeStr, route)
     discord_onEvent(5, self.name, runID, timeStr, getCvar("mapname"), route);
 }
 
+onPlayerRenamed(oldName, newName)
+{
+    // Called from playerNames :: _applyName for logged-in players, matching the join message
+    discord_onEvent(6, oldName, newName);
+}
+
 _onPlayerCountChanged()
 {
     discord_onEvent(2, level.playerCount);
@@ -102,12 +108,19 @@ _onPlayerCountChanged()
 checkForEvents()
 {
     level endon("game_ended");
+    // Several messages can arrive between polls; showing a few per poll catches up quickly
+    // without one burst stalling the server frame.
+    maxMessagesPerPoll = 8;
     while(true)
     {
-        // Currently only messages arrive from Discord
-        msg = discord_getEvent();
-        if (isDefined(msg))
+        // Currently only messages arrive from Discord, one line per call
+        for (messageIndex = 0; messageIndex < maxMessagesPerPoll; messageIndex++)
         {
+            msg = discord_getEvent();
+            if (!isDefined(msg))
+            {
+                break;
+            }
             _onDiscordMessage(msg);
         }
         wait .1; // Should be fast enough :-)

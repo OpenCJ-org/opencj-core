@@ -1,3 +1,6 @@
-FROM python:3.12-slim
-RUN pip install --no-cache-dir 'discord.py>=2.3,<3'
+# Development Discord bridge. Keep the image and discord.py versions equal to
+# setup/Dockerfile.discord so development runs what installations run; unlike that
+# image, the bridge source is mounted from the checkout instead of copied in.
+FROM python:3.12.8-slim-bookworm
+RUN pip install --no-cache-dir 'discord.py==2.4.0'
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

@@ -63,7 +63,7 @@ to their listed harnesses, not standalone commands.
 | Query growth or capacity | `capacity` |
 | Shared route-catalogue refresh ownership | `map-routes`, `focused-gsc` |
 | Tutorial mode, automatic FPS or landing targets | `tutorial-mode` |
-| Discord listener | `discord-socket` |
+| Discord bridge | `discord-socket` |
 | Website generator | `web-unit` |
 
 ## Integration prerequisites and isolation
@@ -441,6 +441,16 @@ map restart. Both stages are required. Server file/HTTP hosting stays disabled.
 An optional cvar-script revision records its resolved commit and file hash for
 historical comparisons; it changes only the fixture copy.
 
+
+### Discord bridge
+
+The portable `discord-socket` group runs the real listener on a private temporary
+socket. It checks line framing across split reads, malformed lines, replacing a
+game connection and the socket and folder permissions. It also checks event
+parsing, text escaping for both directions, the mention allow list and the
+configuration parser. It needs neither discord.py nor a Discord account, so it
+does not exercise the Discord client, a real channel, the compiled engine natives
+or the game scripts.
 
 ### Release installer
 

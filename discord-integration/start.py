@@ -1,68 +1,45 @@
-import asyncio
+"""Run the bridge for one game: python3 start.py <cod4|cod2>.
 
-import discord
-from opencj_listener import OpenCJListener
-from opencj_discord import OpenCJDiscord, start_bot
+Reads config_<game> from the working directory and the socket path from OPENCJ_DISCORD_SOCKET.
+"""
+
+import asyncio
+import logging
 import sys
 
+from bridge_config import load_config
+from opencj_discord import OpenCJDiscord
+from opencj_listener import OpenCJListener
 
-async def main():
-    if len(sys.argv) < 2:
-        raise Exception('Not called for a specific game, exiting..')
-
-    # Support cod2 and cod4
-    game_name = sys.argv[1]
-    if game_name != 'cod4' and game_name != 'cod2':
-        raise Exception('Requested unsupported game. Supported are cod2 and cod4')
-
-    # Parse the configuration
-    token = None
-    channel_id = None
-    guild_id = None
-    with open(f'config_{game_name}', 'r') as cfg_file:
-        lines = cfg_file.readlines()
-        for line in lines:
-            if '=' not in line:
-                raise Exception(f'Config contains invalid line: {line}')
-            parts = line.split('=')
-            cfg_id = parts[0]
-            cfg_val = '='.join(parts[1:]) if len(parts) >= 2 else parts[1]
-            if cfg_id == 'token':
-                token = cfg_val
-            elif cfg_id == 'channelid':
-                channel_id = cfg_val
-            elif cfg_id == 'guildid':
-                guild_id = cfg_val
-            else:
-                raise Exception(f'Unknown configuration option: {cfg_id}')
-
-    # Check whether all necessary information is available
-    if not token:
-        raise Exception(f'Missing configuration option: token')
-    if not channel_id:
-        raise Exception(f'Missing configuration option: channelid')
-    if not guild_id:
-        raise Exception(f'Missing configuration option: guildid')
-
-    # Everything is ready, set up Discord integration module and game server listener
-    print('Setting up modules..')
-    intents = discord.Intents.default()
-    intents.message_content = True
-    intents.messages = True
-    dc = OpenCJDiscord(intents=intents)
-    ls = OpenCJListener(dc, game_name)
-    dc.set_gameserver(ls)
-    dc.set_channel_id(channel_id)
-    dc.set_guild_id(guild_id)
-
-    # Create tasks for Discord integration and game server listener
-    task_discord = asyncio.create_task(start_bot(dc, token))
-    task_listener = asyncio.create_task(ls.start())
-
-    #await task_discord
-    print('Starting game server listener and Discord integration module..')
-    await asyncio.gather(task_discord, task_listener)
+LOG = logging.getLogger('opencj_discord_bridge')
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+async def run_bridge(config):
+    """Run the Discord client and the game socket together until either one fails."""
+    discord_client = OpenCJDiscord(config)
+    listener = OpenCJListener(discord_client, config.socket_path)
+    discord_client.set_gameserver(listener)
+    LOG.info('Starting game server listener and Discord client')
+    async with discord_client:
+        # If either side stops, the whole bridge exits so its supervisor can restart it.
+        await asyncio.gather(discord_client.start(config.token), listener.start())
+
+
+def main():
+    # stdout, not syslog: containers have no syslog socket, and Docker keeps stdout as the log.
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+                        format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+    if len(sys.argv) != 2:
+        print('Usage: python3 start.py <cod4|cod2>', file=sys.stderr)
+        return 2
+    try:
+        config = load_config(sys.argv[1])
+    except (OSError, ValueError) as error:
+        print('Configuration error: ' + str(error), file=sys.stderr)
+        return 2
+    asyncio.run(run_bridge(config))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

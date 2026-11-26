@@ -303,6 +303,7 @@ _rename(newName)
 // Update the live name and cooldown cache; persistForRecords also schedules its database write.
 _applyName(acceptedName, persistForRecords)
 {
+    previousName = self.currentName;
     self.nameAccepted = acceptedName;
     publishedName = self renameClient(acceptedName);
     if(isDefined(publishedName))
@@ -310,6 +311,11 @@ _applyName(acceptedName, persistForRecords)
         self.nameAccepted = publishedName;
     }
     self.currentName = self.nameAccepted;
+    // Discord only saw players who logged in (the join message), so only announce their renames.
+    if(isDefined(previousName) && previousName != self.currentName && self openCJ\login::isLoggedIn())
+    {
+        self thread openCJ\discord::onPlayerRenamed(previousName, self.currentName);
+    }
     self _rememberRegularName();
     self _recordNameFallback(self.nameAccepted);
     if(self getUserInfo("name") != self.nameAccepted)

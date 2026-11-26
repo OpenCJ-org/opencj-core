@@ -44,6 +44,7 @@ services:
       HOME: /tmp
       START_MAP: ${START_MAP}
       LD_LIBRARY_PATH: /game
+      OPENCJ_DISCORD_SOCKET: /run/opencj-discord/events.sock
     depends_on:
       db:
         condition: service_healthy
@@ -70,7 +71,8 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - ./local/sockets:/tmp
+      # Only the bridge socket is shared; each container keeps its own /tmp.
+      - ./local/sockets:/run/opencj-discord
 
   discord:
     profiles: ["discord"]
@@ -80,10 +82,12 @@ services:
     user: "${DEV_UID}:${DEV_GID}"
     working_dir: /config
     command: ["python", "/bridge/start.py", "cod4"]
+    environment:
+      OPENCJ_DISCORD_SOCKET: /run/opencj-discord/events.sock
     volumes:
       - ${SOURCE_ROOT}/discord-integration:/bridge:ro
       - ./local:/config:ro
-      - ./local/sockets:/tmp
+      - ./local/sockets:/run/opencj-discord
 
 volumes:
   database:

@@ -607,10 +607,11 @@
     {
       "id": "discord-socket",
       "category": "portable",
-      "description": "Real Discord listener message delivery on a private temporary socket.",
-      "requires": "Linux/Python standard library; no Discord account or running bridge.",
-      "effects": "Temporary Unix socket; listener/client tasks and sockets are closed.",
+      "description": "Discord bridge: listener framing, reconnects and socket privacy on a private temporary socket, plus event parsing, escaping, mention and config rules.",
+      "requires": "Linux/Python standard library; no Discord account, discord.py or running bridge.",
+      "effects": "Temporary folder and Unix socket; listener/client tasks and sockets are closed.",
       "files": [
+        "discord-integration/test_bridge_text.py",
         "discord-integration/test_listener.py"
       ],
       "commands": [],
