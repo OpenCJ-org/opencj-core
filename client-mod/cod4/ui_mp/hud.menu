@@ -1,5 +1,9 @@
 #include "ui/menudef.h"
 
+// The scoreboard opens an input menu to catch scrolling. HUDs the board does
+// not cover stay visible while it is the only open menu.
+#define NO_MENU_EXCEPT_SCOREBOARD (!ui_active() || menuIsOpen("opencj_scoreboard_input"))
+
 #define WEAPON_TEXTSCALE .3
 
 // Voting
@@ -78,7 +82,7 @@
     {
 		name "Statistics"
 		fullScreen MENU_FALSE
-		visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on") );
+		visible	when ( !inkillcam() && !flashbanged() && NO_MENU_EXCEPT_SCOREBOARD && !scoped() && (dvarString( createfx ) != "on") );
 		rect 0 0 0 0 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_BOTTOM
         itemDef
 		{
@@ -150,7 +154,7 @@
 		rect			BOTTOM_RECT_X BOTTOM_RECT_Y 0 0 HORIZONTAL_ALIGN_RIGHT VERTICAL_ALIGN_BOTTOM
 		exp				rect Y( BOTTOM_RECT_Y - (ONLINEGAME * ONLINEGAME_OFFSET) );
 		fullScreen		0
-		visible	when ( !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString( createfx ) != "on" && NOT_SPECTATING) );
+		visible	when ( !inkillcam() && !flashbanged() && NO_MENU_EXCEPT_SCOREBOARD && !scoped() && (dvarString( createfx ) != "on" && NOT_SPECTATING) );
 		itemDef
 		{
 			name			"weapname"
@@ -172,7 +176,7 @@
         name "Vote"
         fullScreen MENU_FALSE
         visible when (dvarString("openCJ_voteHeaderString") != ""
-            && !inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString(createfx) != "on"));
+            && !inkillcam() && !flashbanged() && NO_MENU_EXCEPT_SCOREBOARD && !scoped() && (dvarString(createfx) != "on"));
         rect 0 0 0 0 HORIZONTAL_ALIGN_RIGHT VERTICAL_ALIGN_BOTTOM
         itemDef
         {
@@ -259,7 +263,7 @@
         name "Compass_old"
         rect 0 0 125 125 HORIZONTAL_ALIGN_LEFT VERTICAL_ALIGN_TOP
         fullScreen 0
-        visible when (!inkillcam() && !flashbanged() && !ui_active() && !scoped() && (dvarString(createfx) != "on"));
+        visible when (!inkillcam() && !flashbanged() && NO_MENU_EXCEPT_SCOREBOARD && !scoped() && (dvarString(createfx) != "on"));
         itemDef
         {
             name "minimapBG"

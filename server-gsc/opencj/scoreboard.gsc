@@ -51,6 +51,81 @@ onPlayerConnected()
     self thread scrollInput();
 }
 
+// The scroll input menu counts as an open menu, which hides every HUD element
+// marked hideWhenInMenu. The board covers only the top of the screen, so keep the
+// bottom HUDs and the position HUD visible. Only flags changed here are restored,
+// because demo playback sets the same flag on the movement HUDs.
+_showUncoveredHudsInMenu()
+{
+    self.scoreboardShownHuds = [];
+    huds = self _uncoveredHuds();
+    for(i = 0; i < huds.size; i++)
+    {
+        if(huds[i].hideWhenInMenu)
+        {
+            huds[i].hideWhenInMenu = false;
+            self.scoreboardShownHuds[self.scoreboardShownHuds.size] = huds[i];
+        }
+    }
+}
+
+_restoreUncoveredHudsInMenu()
+{
+    if(!isDefined(self.scoreboardShownHuds))
+    {
+        return;
+    }
+    for(i = 0; i < self.scoreboardShownHuds.size; i++)
+    {
+        if(isDefined(self.scoreboardShownHuds[i]))
+        {
+            self.scoreboardShownHuds[i].hideWhenInMenu = true;
+        }
+    }
+    self.scoreboardShownHuds = undefined;
+}
+
+// Speedometer, on-screen keys, position, run icons and progress bar. The run
+// status text is left out: it sits near the top, under the board.
+_uncoveredHuds()
+{
+    huds = [];
+    huds = _appendHuds(huds, self.hudSpeed, undefined);
+    huds = _appendHuds(huds, self.keyboard, undefined);
+    huds = _appendHuds(huds, self.hudPos, undefined);
+    huds = _appendHuds(huds, self.hudRunInfo, "status");
+    if(isDefined(self.progressBarTrack))
+    {
+        huds[huds.size] = self.progressBarTrack;
+    }
+    if(isDefined(self.progressBar))
+    {
+        huds[huds.size] = self.progressBar;
+    }
+    return huds;
+}
+
+_appendHuds(huds, hudsByName, skippedName)
+{
+    if(!isDefined(hudsByName))
+    {
+        return huds;
+    }
+    names = getArrayKeys(hudsByName);
+    for(i = 0; i < names.size; i++)
+    {
+        if(isDefined(skippedName) && names[i] == skippedName)
+        {
+            continue;
+        }
+        if(isDefined(hudsByName[names[i]]))
+        {
+            huds[huds.size] = hudsByName[names[i]];
+        }
+    }
+    return huds;
+}
+
 // Poll the held scoreboard only after client setup; send fresh values at most once a second.
 watch()
 {
@@ -66,6 +141,7 @@ watch()
         {
             if(!inputMenuOpen)
             {
+                self _showUncoveredHudsInMenu();
                 self openMenu("opencj_scoreboard_input");
                 inputMenuOpen = true;
             }
@@ -82,6 +158,7 @@ watch()
             if(inputMenuOpen)
             {
                 self closeMenu("opencj_scoreboard_input");
+                self _restoreUncoveredHudsInMenu();
                 inputMenuOpen = false;
             }
         }

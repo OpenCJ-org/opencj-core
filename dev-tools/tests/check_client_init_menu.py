@@ -59,6 +59,7 @@ class Client:
         self.responses = []
         self.closed = []
         self.binds = []
+        self.archived = set()
 
     def command(self, text):
         arguments = shlex.split(text)
@@ -66,11 +67,13 @@ class Client:
         if operation == "setfromdvar":
             destination, source = arguments[1:]
             self.cvars[destination] = self.cvars[source]
-        elif operation in ("set", "setu"):
+        elif operation in ("set", "setu", "seta"):
             name, value = arguments[1:]
             self.cvars[name] = value
             if operation == "setu":
                 self.userinfo.add(name)
+            if operation == "seta":
+                self.archived.add(name)
         elif operation == "bind":
             self.binds.append(arguments[1:])
         else:
@@ -179,6 +182,40 @@ def check_shared_scoreboard_bindings(menu_root):
     ), "Nested binding quotes were lost during linking"
 
 
+def press_idle_tab(cvars):
+    """Expand the idle TAB bind; a missing dvar expands to nothing."""
+    executed = []
+    pending = ["vstr opencj_sb_tab"]
+    while pending:
+        arguments = shlex.split(pending.pop(0))
+        if arguments == ["vstr", "opencj_sb_down"]:
+            executed.append("vstr opencj_sb_down")
+        elif arguments[0] == "vstr":
+            value = cvars.get(arguments[1], "")
+            pending[:0] = value.split("; ") if value else []
+        elif arguments[0] == "setfromdvar":
+            cvars[arguments[1]] = cvars[arguments[2]]
+        elif arguments[0] == "set":
+            cvars[arguments[1]] = arguments[2]
+        else:
+            executed.append(" ".join(arguments))
+    return executed
+
+
+def check_idle_tab_on_any_server(menu_root):
+    client = Client(menu_root)
+    client.open("opencj_client_init")
+    assert client.binds[-1] == ["TAB", "vstr", "opencj_sb_tab"], client.binds
+    assert {"opencj_sb_stock", "opencj_sb_tab"} <= client.archived
+    assert "opencj_sb_mod" not in client.archived
+    on_opencj = press_idle_tab(dict(client.cvars))
+    assert on_opencj == ["vstr opencj_sb_down"], on_opencj
+    # A restarted game keeps only archived dvars, so the OpenCJ marker is gone.
+    saved = {name: client.cvars[name] for name in client.archived}
+    elsewhere = press_idle_tab(saved)
+    assert elsewhere == ["bind TAB +scores", "+scores"], elsewhere
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("compiled", type=Path, help="Current Unlinker output directory")
@@ -190,11 +227,12 @@ def main():
         check_registration_disabled,
         check_standalone_registration,
         check_shared_scoreboard_bindings,
+        check_idle_tab_on_any_server,
     ]
     for scenario in scenarios:
         scenario(menu_root)
         print("PASS: " + scenario.__name__.removeprefix("check_").replace("_", " "))
-    print("PASS: 5 linked startup scenarios; 32 FPS/max-packets combinations")
+    print("PASS: 6 linked startup scenarios; 32 FPS/max-packets combinations")
 
 
 if __name__ == "__main__":
