@@ -45,14 +45,19 @@ class OffsiteRetentionTests(unittest.TestCase):
             (folder / backup_name(self.now - timedelta(days=days))).write_bytes(b'x' * size_bytes)
 
     def remaining(self, sender):
-        return sorted(path.name for path in (self.directory / sender).iterdir())
+        return sorted(path.name for path in (self.directory / maintenance.RECEIVER_KEPT_DIRECTORY / sender).iterdir())
+
+    def secure(self):
+        with patch.object(maintenance.os, 'chown'):
+            return maintenance.secure_received(self.directory, self.now)
 
     def test_tiered_retention_keeps_recent_daily_then_weekly_then_monthly(self):
         # One backup per day for 400 days.
         self.make_backups('main-eu', range(400))
         with patch.object(maintenance, 'datetime', wraps=datetime) as clock:
             clock.now.return_value = self.now
-            maintenance.run_receiver_retention(self.directory, 50)
+            with patch.object(maintenance.os, 'chown'):
+                maintenance.run_receiver_retention(self.directory, 50)
         kept = [self.now - datetime.strptime(name[:15], '%Y%m%dT%H%M%S').replace(tzinfo=timezone.utc)
                 for name in self.remaining('main-eu')]
         daily = [age for age in kept if age.days <= maintenance.RECEIVER_DAILY_DAYS]
@@ -69,7 +74,8 @@ class OffsiteRetentionTests(unittest.TestCase):
         with patch.object(maintenance, 'datetime', wraps=datetime) as clock, \
                 patch.object(maintenance, 'GIB', 100):
             clock.now.return_value = self.now
-            maintenance.run_receiver_retention(self.directory, 4)
+            with patch.object(maintenance.os, 'chown'):
+                maintenance.run_receiver_retention(self.directory, 4)
         for sender in ('main-eu', 'main-us'):
             self.assertGreaterEqual(len(self.remaining(sender)), maintenance.RECEIVER_MIN_KEPT_BACKUPS,
                                     sender + ' lost one of its newest backups')
@@ -80,8 +86,69 @@ class OffsiteRetentionTests(unittest.TestCase):
     def test_foreign_files_are_left_alone(self):
         self.make_backups('main-eu', range(3))
         (self.directory / 'main-eu' / 'notes.txt').write_text('operator file')
-        maintenance.run_receiver_retention(self.directory, 50)
-        self.assertIn('notes.txt', self.remaining('main-eu'))
+        self.assertEqual(self.secure(), [])
+        self.assertEqual(len(self.remaining('main-eu')), 3)
+        self.assertEqual([path.name for path in (self.directory / 'main-eu').iterdir()], ['notes.txt'])
+
+    def test_a_hacked_sender_cannot_replace_or_push_out_backups(self):
+        self.make_backups('main-eu', [1])
+        self.secure()
+        original = self.directory / '.kept' / 'main-eu' / backup_name(self.now - timedelta(days=1))
+        self.assertEqual(original.read_bytes(), b'x' * 10)
+        # Overwrite attempt with the same name, and fake "newest" backups dated in the future.
+        (self.directory / 'main-eu' / original.name).write_bytes(b'garbage')
+        for days in range(2, 10):
+            (self.directory / 'main-eu' / backup_name(self.now + timedelta(days=days))).write_bytes(b'fake')
+        warnings = self.secure()
+        self.assertEqual(original.read_bytes(), b'x' * 10, 'A received backup must never change')
+        self.assertEqual(self.remaining('main-eu'), [original.name])
+        self.assertEqual(list((self.directory / 'main-eu').iterdir()), [])
+        self.assertEqual(len(warnings), 9)
+        self.assertIn('dated in the future', warnings[-1])
+        alerts = []
+        with patch.object(maintenance, 'send_alert', lambda host, message: alerts.append(message)), \
+                patch.object(maintenance.os, 'chown'):
+            (self.directory / 'main-eu' / backup_name(self.now + timedelta(days=30))).write_bytes(b'fake')
+            maintenance.run_receiver_retention(self.directory, 50)
+        self.assertEqual(len(alerts), 1, 'Unexpected uploads are reported')
+
+
+class FailedJobAlertTests(unittest.TestCase):
+    def test_a_job_that_keeps_failing_is_reported_once_per_six_hours(self):
+        sent = []
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(maintenance, 'send_alert', lambda host, message: sent.append(message)), \
+                patch('builtins.print'):
+            for minute in range(0, 60, 2):
+                with patch.object(maintenance.time, 'time', return_value=1_000_000 + minute * 60):
+                    maintenance.alert_for_failed_unit(Path(directory), 'opencj-watchdog.service')
+            with patch.object(maintenance.time, 'time', return_value=1_000_000 + maintenance.ALERT_REPEAT_SECONDS):
+                maintenance.alert_for_failed_unit(Path(directory), 'opencj-watchdog.service')
+                maintenance.alert_for_failed_unit(Path(directory), 'opencj-housekeeping.service')
+        self.assertEqual(len(sent), 3)
+        self.assertIn('opencj-housekeeping.service', sent[-1])
+
+
+class OffsiteUploadTests(unittest.TestCase):
+    def test_only_backups_the_receiver_lacks_are_sent(self):
+        offsite = {'host': 'backup.example.net', 'port': 22, 'user': 'ocjoff_main_eu', 'known_hosts': 'x ssh-ed25519 A'}
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory)
+            (instance / 'secrets').mkdir()
+            (instance / 'automatic-backups').mkdir()
+            for day in (1, 2):
+                (instance / 'automatic-backups' / f'2027060{day}T033000Z.sql.gz').write_bytes(b'x')
+            commands = []
+            with patch.object(maintenance, 'run', lambda command, **options: commands.append(command)), \
+                    patch('builtins.print'):
+                maintenance.upload_offsite(instance, offsite)
+                (instance / 'automatic-backups' / '20270603T033000Z.sql.gz').write_bytes(b'x')
+                maintenance.upload_offsite(instance, offsite)
+                maintenance.upload_offsite(instance, offsite)
+                maintenance.upload_offsite(instance, {**offsite, 'host': 'new-backup.example.net'})
+        sent = [[Path(part).name for part in command if part.endswith('.sql.gz')] for command in commands]
+        self.assertEqual(sent, [['20270601T033000Z.sql.gz', '20270602T033000Z.sql.gz'], ['20270603T033000Z.sql.gz'],
+                                ['20270601T033000Z.sql.gz', '20270602T033000Z.sql.gz', '20270603T033000Z.sql.gz']])
 
 
 class DownloadAndWebsiteTests(unittest.TestCase):

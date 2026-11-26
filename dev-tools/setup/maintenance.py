@@ -2,7 +2,7 @@
 a health watchdog with alerts, weekly housekeeping and Ubuntu security updates."""
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -64,6 +64,12 @@ MIGRATION_BUNDLE_RETENTION_DAYS = 30
 PREVIOUS_RUNTIME_RETENTION_DAYS = 30
 BUILD_CACHE_RETENTION_HOURS = 168
 BACKUP_NAME_PATTERN = r'\d{8}T\d{6}Z\.sql\.gz'
+SENDER_NAME_PATTERN = r'[a-z][a-z0-9-]{0,30}'
+# On the receiver, finished uploads move here, out of the senders' reach (root only).
+RECEIVER_KEPT_DIRECTORY = '.kept'
+# Backup names are UTC timestamps; a name further ahead than this was not made by a real backup.
+RECEIVER_FUTURE_TOLERANCE = timedelta(days=1)
+FAILED_JOB_STATE = 'failed-job-alerts.json'
 DISCORD_WEBHOOK_PATTERN = r'https://(discord\.com|discordapp\.com)/api/webhooks/[0-9]{15,22}/[A-Za-z0-9_-]{20,100}'
 
 
@@ -572,21 +578,28 @@ def prepare_offsite(instance, settings):
 
 
 def upload_offsite(instance, offsite):
-    """Push retained backups; the receiver only accepts writes and keeps its own retention."""
+    """Push backups the receiver does not have yet; it moves them out of this host's reach."""
     # The installation record is the source of truth for the receiver's host key, so
     # a key accepted again with `opencj configure` takes effect on the next upload.
     write_private(instance / 'secrets/offsite-known_hosts', offsite['known_hosts'])
-    ssh = offsite_ssh_command(instance)
-    ssh.extend(['-p', str(offsite['port'])])
-    # Backup names are fixed timestamps, so no argument protection is needed; the
-    # receiver's rrsync wrapper accepts only a plain rsync server command.
-    command = ['rsync', '-rt', '--partial', '--include=*.sql.gz', '--exclude=*',
-               '-e', ' '.join(ssh), str(instance / 'automatic-backups') + '/',
-               offsite['user'] + '@' + offsite['host'] + ':']
-    run(command, timeout=OFFSITE_TIMEOUT_SECONDS, log=instance / 'offsite.log')
-    save_json(instance / 'last-offsite.json', {'host': offsite['host'],
-                                               'finished': datetime.now(timezone.utc).isoformat()})
-    print('Backups copied to ' + offsite['host'])
+    receipt_path = instance / 'last-offsite.json'
+    receipt = read_json(receipt_path) if receipt_path.exists() else {}
+    # A new receiver has none of them yet.
+    uploaded = set(receipt.get('uploaded', [])) if receipt.get('host') == offsite['host'] else set()
+    backups = retained_backups(instance / 'automatic-backups')
+    pending = [path for path in backups if path.name not in uploaded]
+    if pending:
+        ssh = offsite_ssh_command(instance)
+        ssh.extend(['-p', str(offsite['port'])])
+        # Backup names are fixed timestamps, so no argument protection is needed; the
+        # receiver's rrsync wrapper accepts only a plain rsync server command.
+        command = ['rsync', '-t', '--partial', '-e', ' '.join(ssh), *map(str, pending),
+                   offsite['user'] + '@' + offsite['host'] + ':']
+        run(command, timeout=OFFSITE_TIMEOUT_SECONDS, log=instance / 'offsite.log')
+    retained = {path.name for path in backups}
+    save_json(receipt_path, {'host': offsite['host'], 'finished': datetime.now(timezone.utc).isoformat(),
+                             'uploaded': sorted((uploaded & retained) | {path.name for path in pending})})
+    print(str(len(pending)) + ' backup(s) copied to ' + offsite['host'])
 
 
 def prune_candidates(db, cutoff, limit):
@@ -699,9 +712,22 @@ def send_webhook(webhook, text):
 
 
 def alert_for_failed_unit(host, unit):
+    """Report a failed job once, then every 6 hours while it keeps failing.
+
+    The watchdog runs every 2 minutes; without this, a Docker outage would post
+    an alert every 2 minutes.
+    """
     if not re.fullmatch(r'[A-Za-z0-9@._-]+', unit):
         raise ValueError('Invalid unit name')
-    send_alert(host, 'Scheduled job failed: ' + unit + '. Inspect it with: journalctl -u ' + unit + ' -n 50')
+    with operation_lock(host / '.failed-job-alerts.lock'):
+        state_path = host / FAILED_JOB_STATE
+        state = read_json(state_path) if state_path.exists() else {}
+        if not should_repeat_alert(state, unit):
+            print('Scheduled job failed again: ' + unit + ' (reported less than 6 hours ago)')
+            return
+        save_json(state_path, state)
+    send_alert(host, 'Scheduled job failed: ' + unit + '. Inspect it with: journalctl -u ' + unit + ' -n 50'
+               + ' (repeated every 6 hours while it keeps failing)')
 
 
 def ready_installations(host):
@@ -901,16 +927,56 @@ def tiered_backups_to_keep(backups, now):
     return keep
 
 
+def secure_received(directory, now):
+    """Move finished uploads into a root-only folder, so a hacked sender cannot change them.
+
+    The sender's key can write into its own folder only. Without this move it could
+    overwrite earlier backups, or upload backups dated in the future that retention
+    would keep as "newest" while deleting the real ones. Returns warnings to report.
+    """
+    kept_root = directory / RECEIVER_KEPT_DIRECTORY
+    kept_root.mkdir(mode=0o700, exist_ok=True)
+    kept_root.chmod(0o700)
+    warnings = []
+    for incoming in sorted(path for path in directory.iterdir()
+                           if path.is_dir() and re.fullmatch(SENDER_NAME_PATTERN, path.name)):
+        kept = kept_root / incoming.name
+        kept.mkdir(mode=0o700, exist_ok=True)
+        for path in sorted(incoming.iterdir()):
+            # rsync writes into a hidden temporary file and renames it when complete.
+            if path.is_symlink() or not path.is_file() or not re.fullmatch(BACKUP_NAME_PATTERN, path.name):
+                continue
+            label = incoming.name + '/' + path.name
+            if backup_time(path) > now + RECEIVER_FUTURE_TOLERANCE:
+                path.unlink()
+                warnings.append('deleted ' + label + ': dated in the future')
+                continue
+            if path.stat().st_nlink != 1:
+                warnings.append('left ' + label + ' alone: it has extra hard links')
+                continue
+            target = kept / path.name
+            if target.exists():
+                if target.stat().st_size != path.stat().st_size:
+                    warnings.append('ignored a changed copy of ' + label + '; the first one is kept')
+                path.unlink()
+                continue
+            os.replace(path, target)
+            os.chown(target, 0, 0)
+            target.chmod(0o600)
+    return warnings
+
+
 def run_receiver_retention(directory, max_gib):
-    """On the off-site receiver: apply tiered retention per sender, then a total size cap.
+    """On the off-site receiver: secure new uploads, apply tiered retention per sender, then a total size cap.
 
     The cap deletes the oldest remaining backups across all senders, never a
     sender's newest few, so one oversized backup cannot erase recent history.
     """
     now = datetime.now(timezone.utc)
+    warnings = secure_received(directory, now)
     kept = []
     protected = set()
-    for sender in sorted(path for path in directory.iterdir() if path.is_dir()):
+    for sender in sorted(path for path in (directory / RECEIVER_KEPT_DIRECTORY).iterdir() if path.is_dir()):
         backups = sorted(path for path in sender.iterdir()
                          if path.is_file() and re.fullmatch(BACKUP_NAME_PATTERN, path.name))
         keep = tiered_backups_to_keep(backups, now)
@@ -931,6 +997,9 @@ def run_receiver_retention(directory, max_gib):
     if total_bytes > max_gib * GIB:
         print(f'Warning: the newest backups alone use {total_bytes / GIB:.1f} GiB, above the {max_gib} GiB cap.')
     print(f'Off-site backups use {total_bytes / GIB:.2f} GiB of {max_gib} GiB.')
+    if warnings:
+        # A real sender never does this; it can mean the sending machine was taken over.
+        send_alert(Path('/srv/opencj'), 'Off-site receiver: unexpected uploads: ' + '; '.join(warnings))
 
 
 def main():

@@ -29,7 +29,7 @@ first installation, every command is available as `sudo opencj <command>`.
   account. Alerts are separate: the scheduled jobs post them to a private channel
   through a webhook.
 - **Backups** are made on the machine that owns each database and copied each night
-  to the external backup server, which can only receive new files.
+  to the external backup server, which moves them out of the game host's reach.
 
 ## First-time setup
 
@@ -109,7 +109,7 @@ on the new servers. When you are ready to move for real, migrate again with
 | `/srv/opencj/<server>/automatic-backups/` | Nightly database backups (the newest 7, within 2 GiB) |
 | `/srv/opencj/<server>/upgrade-backups/` | Full backups taken before every upgrade and restore |
 | `/srv/opencj/assets/` | Game files, maps (`game/usermaps/`) and compiled mod files, shared by all servers |
-| `/srv/opencj-offsite/<server>/` | On the external backup server: received copies of the backups |
+| `/srv/opencj-offsite/.kept/<server>/` | On the external backup server: received copies of the backups (root only; new uploads arrive in `/srv/opencj-offsite/<server>/` and move here within an hour) |
 | `/usr/local/sbin/opencj` | The `opencj` command: a link to `opencj.sh` in the checkout that installed or last upgraded |
 
 Everything under `/srv/opencj` is readable only by root. Never share
@@ -126,7 +126,7 @@ Everything under `/srv/opencj` is readable only by root. Never share
 | Ubuntu security updates | Daily 05:00 | `journalctl -u apt-daily-upgrade` |
 | Reboot, only when an update needs it | 05:30 | Servers start by themselves |
 | Housekeeping: old images, caches, old copies | Sundays 04:30 | `journalctl -u opencj-housekeeping` |
-| Off-site retention (on the receiver) | Daily 06:00 | `journalctl -u opencj-offsite-retention` |
+| Off-site: secure new uploads, then retention (on the receiver) | Hourly | `journalctl -u opencj-offsite-retention` |
 | IP-country data update (scoreboard flags) | Checked daily | `docker logs` of the `geoip` service |
 | Outside check (on the external backup server): game servers and website answer | Every 2 minutes | Alerts: DOWN after ~6 minutes, RECOVERED when back |
 | Website pages rebuilt, HTTPS certificate renewed | Every minute / by itself | The website |
@@ -174,7 +174,7 @@ alert channel.
   simply holds main's data from that night. A backup you have never restored is
   not proven.
 - On the external backup server, check that new files arrive:
-  `ls -lt /srv/opencj-offsite/main-eu | head`.
+  `sudo ls -lt /srv/opencj-offsite/.kept/main-eu | head`.
 - Look at `sudo fail2ban-client status sshd` and `sudo ufw status` once to know
   what normal looks like.
 
@@ -293,7 +293,8 @@ Everything played after that backup is lost, so only restore after real data los
 or damage. The command first saves the current data in `upgrade-backups/`
 (`before-restore-…`), so a restore can itself be undone. To restore from the
 external backup server, copy the file back first, for example
-`scp offsite:/srv/opencj-offsite/main-eu/<file>.sql.gz /tmp/`.
+`sudo cp /srv/opencj-offsite/.kept/main-eu/<file>.sql.gz /tmp/` on that machine, then
+`scp` it to the game host.
 
 ## Refresh acceptance from main
 

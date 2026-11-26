@@ -436,9 +436,14 @@ from its own opencj-core checkout:
 sudo bash opencj.sh backup-receiver --name main-eu --key 'ssh-ed25519 AAAA... opencj-main-eu-...-offsite'
 ```
 
-The receiver gets a locked account without shell whose key may only *write* new files
-into `/srv/opencj-offsite/<name>/` (rsync's `rrsync -wo`): a compromised game server can
-neither read nor delete older copies. The receiver keeps every backup for 14 days, one
+The receiver gets a locked account without shell whose key may only *write* files
+into `/srv/opencj-offsite/<name>/` (rsync's `rrsync -wo`). Every hour the receiver
+moves finished uploads into `/srv/opencj-offsite/.kept/<name>/`, which only root can
+open, so a compromised game server can neither read, change nor delete earlier copies.
+Uploads dated in the future (which retention would otherwise keep as "newest") are
+deleted, a second upload with an existing name is ignored, and both are reported to
+the alert channel. Each night the game server sends only the backups it has not sent
+before. The receiver keeps every backup for 14 days, one
 per week for 8 weeks and one per month for a year, within **50 GiB for all senders
 together** (`--max-gib`); over the limit the oldest go first, but each sender's newest
 7 backups always stay. It needs no Docker.

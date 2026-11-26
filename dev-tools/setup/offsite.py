@@ -102,12 +102,14 @@ def setup_receiver(name, public_key, directory, max_gib):
     target.chmod(0o700)
     restrict_receiver_ssh(entry.pw_name, target, public_key)
     install_alert_unit(Path('/srv/opencj'))
-    install_job('opencj-offsite-retention', 'OpenCJ off-site backup retention', '*-*-* 06:00:00 Europe/Amsterdam',
+    # Hourly, so a new upload is out of the sender's reach soon after it arrives.
+    install_job('opencj-offsite-retention', 'OpenCJ off-site backup retention', '*-*-* *:20:00',
                 [ROOT / 'dev-tools/setup/maintenance.py', '--receiver-retention', directory,
                  '--max-gib', str(max_gib)], timeout_minutes=30, needs_docker=False)
     run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'enable', '--now', 'opencj-offsite-retention.timer'])
-    print('Ready to receive backups from ' + name + ' as ' + entry.pw_name + ' into ' + str(target) + '.')
+    print('Ready to receive backups from ' + name + ' as ' + entry.pw_name + ' into ' + str(target)
+          + '; every hour they move to ' + str(directory / '.kept' / name) + ', out of the sender\'s reach.')
     print(f'Retention: every backup for 14 days, one per week for 8 weeks, one per month for a year,'
           f' within {max_gib} GiB for all senders together (the newest 7 per sender are always kept).')
 
