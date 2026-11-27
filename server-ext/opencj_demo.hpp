@@ -48,6 +48,8 @@ void Gsc_Demo_ReadFrame_RPGSound(int client);
 void Gsc_Demo_SeekCheckpoint(int client);
 
 void Gsc_Demo_MarkFailedSince();
+void Gsc_Demo_RecordSave();
+void Gsc_Demo_RewindToSave();
 void Gsc_Demo_PlaybackStyle(int client);
 void Gsc_Demo_PlaybackTime(int client);
 

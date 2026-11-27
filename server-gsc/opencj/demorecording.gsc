@@ -79,7 +79,6 @@ onRunStarted()
     }
     recording = spawnStruct();
     recording.id = runID;
-    recording.saves = [];
     recording.failed = false;
     recording.finishing = false;
     recording.lastTick = -1;
@@ -173,10 +172,17 @@ onSaved(saveNumber)
     {
         return;
     }
-    recording.saves["" + saveNumber] = numberOfDemoFrames(recording.id);
+    // The engine keeps the save's recording length within the demo memory budget.
+    if(!isDefined(demoRecordSave(recording.id, saveNumber)))
+    {
+        recording.failed = true;
+        destroyDemo(recording.id);
+        self sendLocalChatMessage(
+            "Demo recording stopped: memory limit reached. Your run is unaffected.", true);
+    }
 }
 
-// Retain failed attempts for playback, but invalidate saves beyond the restored frame.
+// Retain failed attempts for playback; the engine forgets saves beyond the restored frame.
 onLoaded(saveNumber)
 {
     recording = self current();
@@ -184,20 +190,13 @@ onLoaded(saveNumber)
     {
         return;
     }
-    frameCount = recording.saves["" + saveNumber];
-    if(!isDefined(frameCount) || !isDefined(demoMarkFailedSince(recording.id, frameCount)))
+    // A save the recording cannot rewind to (for example from an older history page)
+    // ends this run's recording; the run itself is unaffected.
+    if(!isDefined(demoRewindToSave(recording.id, saveNumber)))
     {
         recording.failed = true;
         destroyDemo(recording.id);
         return;
-    }
-    keys = getArrayKeys(recording.saves);
-    for(i = 0; i < keys.size; i++)
-    {
-        if(recording.saves[keys[i]] > frameCount)
-        {
-            recording.saves[keys[i]] = undefined;
-        }
     }
     recording.lastTick = -1;
     recording.loaded = true;
@@ -235,7 +234,6 @@ onRunFinished()
         return;
     }
     recording.finishing = true;
-    recording.saves = []; // No further rewind/save lookup is possible for a finished run.
     completeDemo(recording.id);
     level thread persist(recording.id);
 }

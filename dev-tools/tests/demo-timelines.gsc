@@ -27,6 +27,7 @@ main()
     verifyIdleTrimming(viewer);
     verifyActiveMotionRetention(viewer);
     verifyRpgShotWindow(viewer);
+    verifySaveMarks();
     verifyAmmoRestoration(viewer);
     viewer openCJ\demoSelectionTest::run();
     reportCompletion();
@@ -283,6 +284,39 @@ verifyActiveMotionRetention(viewer)
             check(playbackTiming[1] == frameCount - 1, "walkthrough preserves " + scenario);
         }
         destroyDemo(sourceDemoID);
+    }
+}
+
+// The engine remembers the recording length at each save and rewinds to it on load.
+verifySaveMarks()
+{
+    sourceDemoID = 1800000088;
+    createDemo(sourceDemoID);
+    addGroundFrames(sourceDemoID, 10);
+    check(demoRecordSave(sourceDemoID, 1) == 10, "a save remembers the recording length");
+    addGroundFrames(sourceDemoID, 10);
+    check(demoRecordSave(sourceDemoID, 2) == 20, "a later save remembers the longer length");
+    addGroundFrames(sourceDemoID, 10);
+    check(demoRecordSave(sourceDemoID, 3) == 30, "a third save is remembered");
+
+    check(demoRewindToSave(sourceDemoID, 2) == 20, "loading save 2 rewinds to its length");
+    check(!isDefined(demoRewindToSave(sourceDemoID, 3)),
+          "a save after the loaded one is no longer on the kept path");
+    check(!isDefined(demoRewindToSave(sourceDemoID, 99)), "an unknown save cannot be rewound to");
+    check(demoRewindToSave(sourceDemoID, 1) == 10, "an earlier save is still available");
+
+    addGroundFrames(sourceDemoID, 5);
+    check(demoRecordSave(sourceDemoID, 4) == 35,
+          "a save after a load records the full recording length, failed frames included");
+    check(demoRewindToSave(sourceDemoID, 4) == 35, "the new save can be loaded");
+    destroyDemo(sourceDemoID);
+}
+
+addGroundFrames(demoID, frameCount)
+{
+    for(i = 0; i < frameCount; i++)
+    {
+        addFrameToDemo(demoID, (i, 0, 100), (0, 0, 0), 1, 8192, 0, 0, 0, 125, 17);
     }
 }
 

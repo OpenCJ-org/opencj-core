@@ -23,6 +23,7 @@
 #include <new>
 #include <cmath>
 #include <algorithm>
+#include <unordered_map>
 #include <string>
 #include <vector>
 #ifdef COD4
@@ -303,6 +304,15 @@ typedef struct
 static sDemo_t opencj_demos[MAX_NR_DEMOS_PER_MAP];
 // For faster access every time an id is provided, use a map
 static std::map<uint32_t, uint16_t> opencj_demoIdToIdx;
+// Recording length at each save of a run on its kept path, so loading a save can
+// rewind the recording. Kept outside sDemo_t, which is cleared with memset.
+// Save numbers and frame counts both increase along the list.
+struct DemoSaveMark
+{
+    int saveNumber;
+    int frameCount;
+};
+static std::unordered_map<int, std::vector<DemoSaveMark>> opencj_demoSaveMarks;
 
 // A player can only watch 1 demo at a time
 static sDemoPlayback_t opencj_playback[MAX_CLIENTS];
@@ -514,6 +524,7 @@ static void clearDemoById(int demoId)
         }
 
         cancelDemoLoads(*pDemo);
+        opencj_demoSaveMarks.erase(demoId);
         printf("Clearing demo with pointer %p\n", pDemo);
         if (pDemo->pDemoFrames)
         {
@@ -562,6 +573,11 @@ static size_t allocatedDemoBytes()
     for (int i = 0; i < MAX_NR_DEMOS_PER_MAP; ++i)
     {
         bytes += opencj_demos[i].nrAllocatedFrames * sizeof(sDemoFrame_t);
+    }
+    // Save marks share the recording budget, so endless saving is bounded too.
+    for (const auto &entry : opencj_demoSaveMarks)
+    {
+        bytes += entry.second.capacity() * sizeof(DemoSaveMark);
     }
     return bytes;
 }
@@ -1805,21 +1821,10 @@ void Gsc_Demo_DecodeChunk()
     }
 }
 
-void Gsc_Demo_MarkFailedSince()
+// Keep the first count frames as the successful path; later frames become failed
+// attempts. The caller has checked that count is within the recording.
+static void markDemoFailedSince(sDemo_t *demo, int count)
 {
-    int id;
-    int count;
-    if (!Base_Gsc_GetValidDemoId(&id, 2))
-    {
-        return;
-    }
-    stackGetParamInt(1, &count);
-    sDemo_t *demo = findDemoById(id);
-    if (!demo || demo->isComplete || count < 0 || count > demo->size)
-    {
-        stackPushUndefined();
-        return;
-    }
     for (int i = count; i < demo->size; ++i)
     {
         demo->pDemoFrames[i].isKeyFrame = false;
@@ -1839,7 +1844,121 @@ void Gsc_Demo_MarkFailedSince()
         }
     }
     ++demo->editVersion;
+}
+
+void Gsc_Demo_MarkFailedSince()
+{
+    int id;
+    int count;
+    if (!Base_Gsc_GetValidDemoId(&id, 2))
+    {
+        return;
+    }
+    stackGetParamInt(1, &count);
+    sDemo_t *demo = findDemoById(id);
+    if (!demo || demo->isComplete || count < 0 || count > demo->size)
+    {
+        stackPushUndefined();
+        return;
+    }
+    markDemoFailedSince(demo, count);
     stackPushInt(demo->size);
+}
+
+// Drop marks whose saved frame no longer exists or no longer lies on the kept path.
+static void dropSaveMarksAfter(int demoId, int frameCount)
+{
+    auto entry = opencj_demoSaveMarks.find(demoId);
+    if (entry == opencj_demoSaveMarks.end())
+    {
+        return;
+    }
+    std::vector<DemoSaveMark> &marks = entry->second;
+    while (!marks.empty() && marks.back().frameCount > frameCount)
+    {
+        marks.pop_back();
+    }
+}
+
+// demoRecordSave(demoID, saveNumber): remember the recording length at this save.
+// Returns that length, or undefined when the demo is unknown, complete, or the
+// demo memory budget is exhausted (the caller then stops recording).
+void Gsc_Demo_RecordSave()
+{
+    int id;
+    int saveNumber;
+    if (!Base_Gsc_GetValidDemoId(&id, 2))
+    {
+        return;
+    }
+    if (stackGetParamType(1) != STACK_INT)
+    {
+        stackPushUndefined();
+        return;
+    }
+    stackGetParamInt(1, &saveNumber);
+    sDemo_t *demo = findDemoById(id);
+    if (!demo || demo->isComplete)
+    {
+        stackPushUndefined();
+        return;
+    }
+    std::vector<DemoSaveMark> &marks = opencj_demoSaveMarks[id];
+    // Save numbers only grow within a run; a repeated number replaces later marks.
+    while (!marks.empty() && marks.back().saveNumber >= saveNumber)
+    {
+        marks.pop_back();
+    }
+    const bool growsStorage = marks.size() == marks.capacity();
+    const size_t extraBytes = growsStorage ? (marks.capacity() + 1) * sizeof(DemoSaveMark) : 0;
+    if (allocatedDemoBytes() + extraBytes > demoMemoryLimit)
+    {
+        stackPushUndefined();
+        return;
+    }
+    marks.push_back({saveNumber, demo->size});
+    stackPushInt(demo->size);
+}
+
+// demoRewindToSave(demoID, saveNumber): make the frames after that save failed
+// attempts and forget later saves. Returns the save's frame count, or undefined
+// when the save is not on the kept path (the caller then stops recording).
+void Gsc_Demo_RewindToSave()
+{
+    int id;
+    int saveNumber;
+    if (!Base_Gsc_GetValidDemoId(&id, 2))
+    {
+        return;
+    }
+    if (stackGetParamType(1) != STACK_INT)
+    {
+        stackPushUndefined();
+        return;
+    }
+    stackGetParamInt(1, &saveNumber);
+    sDemo_t *demo = findDemoById(id);
+    auto entry = opencj_demoSaveMarks.find(id);
+    if (!demo || demo->isComplete || entry == opencj_demoSaveMarks.end())
+    {
+        stackPushUndefined();
+        return;
+    }
+    const std::vector<DemoSaveMark> &marks = entry->second;
+    auto mark = std::lower_bound(marks.begin(), marks.end(), saveNumber,
+                                 [](const DemoSaveMark &candidate, int number)
+                                 {
+                                     return candidate.saveNumber < number;
+                                 });
+    if (mark == marks.end() || mark->saveNumber != saveNumber || mark->frameCount > demo->size)
+    {
+        stackPushUndefined();
+        return;
+    }
+    const int frameCount = mark->frameCount;
+    markDemoFailedSince(demo, frameCount);
+    dropSaveMarksAfter(id, frameCount);
+    stackPushInt(frameCount);
 }
 
 // Idle means grounded with an unchanged position AND view. Do not remove
@@ -2132,6 +2251,7 @@ void Gsc_Demo_Truncate()
         return;
     }
     demo->size = count;
+    dropSaveMarksAfter(id, count);
     demo->currentFrame = count ? count - 1 : 0;
     demo->isFirstFrameFilled = count != 0;
     demo->lastKeyFrame = 0;
@@ -3255,6 +3375,8 @@ void Gsc_Demo_KeepLast() {
         stackPushUndefined();
         return;
     }
+    // Dropping leading frames shifts every index, so no save mark stays valid.
+    opencj_demoSaveMarks.erase(id);
     int removed = std::max(0, demo->size - count);
     if (removed) {
         memmove(demo->pDemoFrames, demo->pDemoFrames + removed, count * sizeof(sDemoFrame_t));

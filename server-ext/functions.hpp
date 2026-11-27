@@ -86,6 +86,8 @@
 {"demoKeepLast", Gsc_Demo_KeepLast, 0},
 {"demoClipInfo", Gsc_Demo_ClipInfo, 0},
 {"demoMarkFailedSince", Gsc_Demo_MarkFailedSince, 0},
+{"demoRecordSave", Gsc_Demo_RecordSave, 0},
+{"demoRewindToSave", Gsc_Demo_RewindToSave, 0},
 {"demoTruncate", Gsc_Demo_Truncate, 0},
 {"demoFindSegment", Gsc_Demo_FindSegment, 0},
 
