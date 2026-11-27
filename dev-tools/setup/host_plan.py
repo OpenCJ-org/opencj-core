@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from configuration import ask, ask_int, ask_on_demand, ask_port, ask_yes_no, choose_port, collect_database
-from configuration import collect_discord
+from configuration import collect_asset_input, collect_auth_token, collect_discord
 from configuration import collect_downloads, collect_ssh, prompt, REMOTE_DATABASE_ENABLED, validate_port
 from operations import operation_lock, read_json, save_json
 
@@ -71,6 +71,8 @@ def collect_instance(index, name, instances, used_ports):
         'public': ask_yes_no('Public access without a join password?', False),
         'on_demand': ask_on_demand(name),
     }
+    if settings['public']:
+        settings['auth_token'] = collect_auth_token()
     default = 'migrate' if index == 0 else 'copy' if name == 'acceptance' else 'new'
     if index == 0 and default == 'migrate' and not ask_yes_no('Migrate this server from an existing installation?', True):
         default = 'new'
@@ -102,7 +104,7 @@ def collect_instance(index, name, instances, used_ports):
             settings['assets_from'] = ask('Instance providing installed maps/mod assets', owners[0], choices=owners)
         else:
             for kind in ('game', 'mod'):
-                settings[kind + '_assets'] = prompt(kind.title() + ' assets directory/archive/HTTPS URL')
+                settings[kind + '_assets'] = collect_asset_input(kind)
                 if settings[kind + '_assets'].startswith('https://'):
                     settings[kind + '_sha256'] = prompt(kind.title() + ' SHA-256')
     settings['downloads'] = collect_downloads(name, public=settings['public'])

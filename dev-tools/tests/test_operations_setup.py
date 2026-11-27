@@ -594,6 +594,8 @@ class OnDemandTests(unittest.TestCase):
         sent = []
         with tempfile.TemporaryDirectory() as directory:
             host = Path(directory)
+            (host / 'map-test').mkdir()
+            (host / 'main-eu').mkdir()
             installations = [('map-test', host / 'map-test', {'on_demand': True}),
                              ('main-eu', host / 'main-eu', {'on_demand': False})]
             with patch.object(maintenance, 'ready_installations', return_value=installations), \
@@ -611,22 +613,6 @@ class OnDemandTests(unittest.TestCase):
         with patch.object(dns_guide, 'run', return_value='[]'):
             targets = manage.outside_check_targets(plan)
         self.assertEqual(targets, ['game:45.10.20.30:28960', 'web:https://opencj.org/'])
-
-    def test_maintenance_starts_a_switched_off_server_and_stops_it_again(self):
-        calls = []
-        settings = {'name': 'acceptance', 'on_demand': True}
-        with patch.object(install, 'switched_off', return_value=True), \
-                patch.object(manage, 'start_services', lambda instance, settings: calls.append('start')), \
-                patch.object(install, 'stop_services', lambda instance, settings: calls.append('stop')), \
-                patch('builtins.print'):
-            with manage.running_for_maintenance(Path('/srv/opencj/acceptance'), settings):
-                calls.append('work')
-            self.assertEqual(calls, ['start', 'work', 'stop'])
-            calls.clear()
-            with self.assertRaises(RuntimeError):
-                with manage.running_for_maintenance(Path('/srv/opencj/acceptance'), settings):
-                    raise RuntimeError('upgrade failed')
-            self.assertEqual(calls, ['start'], 'After a failure the server stays on for inspection')
 
     def test_manual_stop_of_an_always_on_server_keeps_its_database(self):
         settings = {'name': 'main-eu', 'discord': {'enabled': True}}
@@ -715,20 +701,6 @@ class DiscordBridgeSetupTests(unittest.TestCase):
             install.write_discord_files(Path(directory), settings, replace=True)
         self.assertEqual(written['config_cod4'], 'guildid=' + '3' * 18 + '\nchannelid=' + '4' * 18 + '\ntoken=tok\n'
                          'mentionuserids=' + '1' * 18 + ',' + '2' * 18 + '\n')
-
-    def test_failed_upgrade_rolls_the_bridge_back_with_the_game(self):
-        settings = {'name': 'main-eu', 'release': 'beta-0.2.0', 'image': 'new', 'image_id': 'sha-new',
-                    'discord_image': 'p-discord:beta-0.2.0', 'geoip_image': 'p-geoip:beta-0.2.0',
-                    'upgrade': {'from': 'beta-0.1.0', 'previous_image': 'old', 'previous_image_id': 'sha-old',
-                                'migrations_before': [1], 'migrations_after': [1],
-                                'previous_optional_images': {'discord_image': 'p-discord:beta-0.1.0',
-                                                             'geoip_image': 'p-geoip:beta-0.1.0'}}}
-        upgrade = settings['upgrade']
-        with patch.object(install, 'write_instance_files'), patch.object(manage, 'start_services'), \
-                patch.object(install, 'save_installation'), self.assertRaisesRegex(RuntimeError, 'previous release'):
-            manage.roll_back(Path('/srv/opencj/main-eu'), settings, upgrade)
-        self.assertEqual((settings['image'], settings['discord_image'], settings['geoip_image']),
-                         ('old', 'p-discord:beta-0.1.0', 'p-geoip:beta-0.1.0'))
 
 
 class DiscordChannelTests(unittest.TestCase):

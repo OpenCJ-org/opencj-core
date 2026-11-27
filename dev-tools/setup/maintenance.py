@@ -59,6 +59,7 @@ OFFSITE_TIMEOUT_SECONDS = 1800
 OFFSITE_ACCOUNT_PREFIX = 'ocjoff_'
 LINUX_USERNAME_MAX_CHARACTERS = 32
 RECEIVER_MIN_KEPT_BACKUPS = 7
+RECEIVER_PARTIAL_MAX_AGE_SECONDS = 2 * 24 * 60 * 60
 RECEIVER_DAILY_DAYS = 14
 RECEIVER_WEEKLY_WEEKS = 8
 RECEIVER_MONTHLY_MONTHS = 12
@@ -533,6 +534,8 @@ def run_backup(instance):
         print(settings['name'] + ' is off (on demand); no backup needed.')
         return
     with operation_lock(instance / '.setup.lock'):
+        from service_control import require_available
+        require_available(instance)
         verify_managed_files(instance, settings)
         directory = instance / 'automatic-backups'
         directory.mkdir(mode=0o700, exist_ok=True)
@@ -660,24 +663,27 @@ def run_prune(instance):
     if switched_off(instance, settings):
         print(settings['name'] + ' is off (on demand); pruning waits until it runs.')
         return
-    deleted = 0
-    more_remaining = False
-    with database_client(instance, settings, administrator=True) as db:
-        db.query('SET SESSION innodb_lock_wait_timeout=' + str(PRUNE_LOCK_WAIT_SECONDS) + ';')
-        cutoff = db.query('SELECT NOW() - INTERVAL ' + str(policy['months']) + ' MONTH;')
-        for batch in range(PRUNE_MAX_BATCHES_PER_NIGHT):
-            candidates = prune_candidates(db, cutoff, PRUNE_BATCH_RUNS)
-            if not candidates:
-                break
-            deleted += delete_runs(db, candidates, cutoff)
-            time.sleep(PRUNE_PAUSE_SECONDS)
-        else:
-            more_remaining = bool(prune_candidates(db, cutoff, 1))
-    save_json(instance / 'last-prune.json', {
-        'finished': datetime.now(timezone.utc).isoformat(), 'cutoff': cutoff,
-        'runs_deleted': deleted, 'more_remaining': more_remaining})
-    print(f'Deleted {deleted} unfinished runs not played since {cutoff}'
-          + ('; more remain for the next night' if more_remaining else ''))
+    with operation_lock(instance / '.setup.lock'):
+        from service_control import require_available
+        require_available(instance)
+        deleted = 0
+        more_remaining = False
+        with database_client(instance, settings, administrator=True) as db:
+            db.query('SET SESSION innodb_lock_wait_timeout=' + str(PRUNE_LOCK_WAIT_SECONDS) + ';')
+            cutoff = db.query('SELECT NOW() - INTERVAL ' + str(policy['months']) + ' MONTH;')
+            for batch in range(PRUNE_MAX_BATCHES_PER_NIGHT):
+                candidates = prune_candidates(db, cutoff, PRUNE_BATCH_RUNS)
+                if not candidates:
+                    break
+                deleted += delete_runs(db, candidates, cutoff)
+                time.sleep(PRUNE_PAUSE_SECONDS)
+            else:
+                more_remaining = bool(prune_candidates(db, cutoff, 1))
+        save_json(instance / 'last-prune.json', {
+            'finished': datetime.now(timezone.utc).isoformat(), 'cutoff': cutoff,
+            'runs_deleted': deleted, 'more_remaining': more_remaining})
+        print(f'Deleted {deleted} unfinished runs not played since {cutoff}'
+              + ('; more remain for the next night' if more_remaining else ''))
 
 
 def host_plan(host):
@@ -759,7 +765,7 @@ def should_repeat_alert(state, key):
 
 def redact_log(text, settings):
     """Mask player IP addresses and this installation's secrets before a log leaves the machine."""
-    for secret in (settings.get('join_password'), settings.get('rcon_password'),
+    for secret in (settings.get('join_password'), settings.get('rcon_password'), settings.get('auth_token'),
                    settings.get('database', {}).get('password')):
         if secret:
             text = text.replace(secret, '[secret]')
@@ -823,41 +829,54 @@ def handle_manual_stop(instance, settings, status):
     return state == 'stale' and not running
 
 
-def run_watchdog(host):
-    """Restart hung game servers and report problems that need an operator."""
+def check_game_watchdog(host, state, unhealthy, name, instance, settings):
+    """Serialize watchdog restarts with configuration and database maintenance."""
     from install import compose
     from operations import inspect_container
-    state_path = host / 'watchdog-state.json'
-    state = read_json(state_path) if state_path.exists() else {}
-    unhealthy = state.setdefault('unhealthy', {})
-    for name, instance, settings in ready_installations(host):
+    with operation_lock(instance / '.setup.lock'):
+        from service_control import MAINTENANCE_RECORD
+        if (instance / MAINTENANCE_RECORD).exists():
+            return
         container = compose(instance, settings, 'ps', '--all', '--quiet', 'server')
         if not container:
             if should_repeat_alert(state, name + ':missing'):
                 send_alert(host, name + ': the game server container is missing.')
-            continue
+            return
         metadata = inspect_container(container)
         status = metadata['State']
         if settings.get('on_demand') and not status['Running'] and not status.get('Restarting'):
             # Switched off with `opencj stop`; Docker restarts crashes itself.
-            continue
+            return
         if not settings.get('on_demand') and handle_manual_stop(instance, settings, status):
-            continue
+            return
         check_optional_services(host, state, name, instance, settings)
         report_crash_restart(host, state, name, settings, metadata)
         if not status['Running']:
             # Docker restarts crashes itself; a stopped container was stopped on purpose.
             if should_repeat_alert(state, name + ':stopped'):
                 send_alert(host, name + ': the game server is stopped.')
-            continue
+            return
         if status.get('Health', {}).get('Status') != 'unhealthy':
             unhealthy[name] = 0
-            continue
+            return
         unhealthy[name] = unhealthy.get(name, 0) + 1
         if unhealthy[name] >= WATCHDOG_UNHEALTHY_CHECKS:
             run(['docker', 'restart', '--time', '30', container], timeout=90)
             unhealthy[name] = 0
             send_alert(host, name + ': the game server stopped answering and was restarted.')
+
+
+def run_watchdog(host):
+    """Restart hung game servers and report problems that need an operator."""
+    state_path = host / 'watchdog-state.json'
+    state = read_json(state_path) if state_path.exists() else {}
+    unhealthy = state.setdefault('unhealthy', {})
+    from operations import OperationInProgress
+    for name, instance, settings in ready_installations(host):
+        try:
+            check_game_watchdog(host, state, unhealthy, name, instance, settings)
+        except OperationInProgress:
+            continue
     free_gib = shutil.disk_usage(host).free / GIB
     if free_gib < DISK_ALERT_FREE_GIB and should_repeat_alert(state, 'disk'):
         send_alert(host, f'Only {free_gib:.1f} GiB of disk space is left.')
@@ -1027,6 +1046,12 @@ def secure_received(directory, now):
         kept = kept_root / incoming.name
         kept.mkdir(mode=0o700, exist_ok=True)
         for path in sorted(incoming.iterdir()):
+            # Reclaim abandoned rsync partials, but leave a recently active upload alone.
+            if path.name.startswith('.') and path.is_file() and not path.is_symlink():
+                age_seconds = now.timestamp() - path.stat().st_mtime
+                if age_seconds > RECEIVER_PARTIAL_MAX_AGE_SECONDS:
+                    path.unlink()
+                    continue
             # rsync writes into a hidden temporary file and renames it when complete.
             if path.is_symlink() or not path.is_file() or not re.fullmatch(BACKUP_NAME_PATTERN, path.name):
                 continue
@@ -1110,6 +1135,8 @@ def main():
     elif args.alert_unit:
         alert_for_failed_unit(args.host_dir.resolve(), args.alert_unit)
     else:
+        from offsite import require_receiver_storage
+        require_receiver_storage(args.receiver_retention.resolve())
         run_receiver_retention(args.receiver_retention.resolve(), args.max_gib)
 
 

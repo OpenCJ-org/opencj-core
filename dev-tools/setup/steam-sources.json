@@ -1,0 +1,17 @@
+{
+  "steamcmd": {
+    "url": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz",
+    "sha256": "cebf0046bfd08cf45da6bc094ae47aa39ebf4155e5ede41373b579b8f1071e7c",
+    "upstream": "https://developer.valvesoftware.com/wiki/SteamCMD",
+    "terms": "https://store.steampowered.com/subscriber_agreement/",
+    "note": "Valve bootstrap; SteamCMD subsequently updates itself through Valve. No Valve binary is distributed by OpenCJ."
+  },
+  "cod4x-support": {
+    "version": "21.2",
+    "url": "https://cod4x.ovh/uploads/short-url/59kvOM9hBabZjPJRlLX029BcskI.zip?download=1",
+    "sha256": "feae346d6b4a2cc9e861e170e9072a2b72ae1afa9c3be6771515ad6a4d732451",
+    "upstream": "https://cod4x.ovh/t/cod4x-client-and-server-files/24",
+    "terms": "https://github.com/callofduty4x/CoD4x_Server#usage-conditions-for-server-hosters",
+    "note": "Download support libraries/assets directly from upstream. Keep its readme. The bundled engine and bundled compiler runtimes are not installed; OpenCJ builds its pinned engine. This record does not relicense upstream or Valve components."
+  }
+}

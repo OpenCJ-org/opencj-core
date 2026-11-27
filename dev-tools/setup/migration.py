@@ -142,9 +142,40 @@ def prepare_bundle(instance, settings):
     else:
         if sha256_file(bundle / 'manifest.json') != migration['manifest_sha256']:
             raise RuntimeError('Migration manifest changed; preserved without using it')
+        reconcile_asset_publication(instance, settings, bundle)
         manifest = validate_bundle(bundle, published_kinds=migration.get('published_kinds', []))
     publish_shared_assets(instance, settings, bundle, manifest)
     return manifest
+
+
+def reconcile_asset_publication(instance, settings, bundle):
+    """Recover a move completed before its receipt, using the original verified inventory."""
+    migration = settings['migration']
+    kind = migration.get('publishing_kind')
+    if kind is None:
+        return
+    if kind not in ('game', 'mod'):
+        raise RuntimeError('Invalid pending asset publication')
+    manifest = read_json(bundle / 'manifest.json')
+    target = shared_assets_root(instance) / kind
+    expected = {name: value for name, value in manifest['files'].items() if name.startswith(kind + '/')}
+    for name, value in expected.items():
+        relative = Path(name).relative_to(kind)
+        path = target / relative
+        if '..' in relative.parts or path.is_symlink() or not path.resolve().is_relative_to(target.resolve()):
+            raise RuntimeError('Published asset escapes its destination')
+        if not path.is_file() or path.stat().st_size != value['bytes'] or sha256_file(path) != value['sha256']:
+            # An incomplete rsync still has its source. Normal bundle validation
+            # and publication retry below must succeed before anything is removed.
+            return
+    validate_assets(target, kind)
+    published = migration.setdefault('published_kinds', [])
+    if kind not in published:
+        published.append(kind)
+    migration.pop('publishing_kind')
+    save_json(instance / 'installation.json', settings)
+    if (bundle / kind).exists():
+        shutil.rmtree(bundle / kind)
 
 
 def publish_shared_assets(instance, settings, bundle, manifest):
@@ -163,6 +194,8 @@ def publish_shared_assets(instance, settings, bundle, manifest):
         target = root / kind
         if manifest.get('includes_assets', True) and kind not in published:
             source = bundle / kind
+            migration['publishing_kind'] = kind
+            save_json(instance / 'installation.json', settings)
             # Containers bind these folders read-only; only public game data becomes readable.
             for path in [source, *source.rglob('*')]:
                 path.chmod(0o755 if path.is_dir() else 0o644)
@@ -171,11 +204,13 @@ def publish_shared_assets(instance, settings, bundle, manifest):
                 # changed files from this source without deleting anything.
                 run(['rsync', '-rt', '--no-links', str(source) + '/', str(target) + '/'],
                     timeout=TRANSFER_TIMEOUT_SECONDS)
-                shutil.rmtree(source)
             else:
                 os.replace(source, target)
             published.append(kind)
+            migration.pop('publishing_kind')
             save_json(instance / 'installation.json', settings)
+            if source.exists():
+                shutil.rmtree(source)
         validate_assets(target, kind)
         settings[kind + '_dir'] = str(target)
 

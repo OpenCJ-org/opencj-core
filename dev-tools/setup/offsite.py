@@ -6,9 +6,11 @@ from pathlib import Path
 import pwd
 import re
 import shutil
+import subprocess
+import uuid
 
 from maintenance import install_alert_unit, install_job, offsite_account, run
-from operations import write_private
+from operations import read_json, save_json, write_private
 import sshd
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -83,6 +85,81 @@ def restrict_receiver_ssh(account, target, public_key):
     sshd.reload()
 
 
+def receiver_storage_paths(directory):
+    return Path(str(directory) + '.storage'), Path(str(directory) + '.storage.json')
+
+
+def require_receiver_storage(directory):
+    """Never receive or retain on the host filesystem when the bounded mount is absent."""
+    image, record = receiver_storage_paths(directory)
+    if not record.is_file():
+        raise RuntimeError('Receiver needs bounded storage; rerun backup-receiver with an empty directory')
+    storage = read_json(record)
+    if storage.get('directory') != str(directory) or image.is_symlink() or not image.is_file():
+        raise RuntimeError('Receiver storage ownership differs; preserved')
+    if not os.path.ismount(directory):
+        raise RuntimeError('Bounded receiver filesystem is not mounted; uploads and cleanup must wait')
+    mounted_uuid = run(['findmnt', '-n', '-o', 'UUID', '--mountpoint', str(directory)])
+    if mounted_uuid != storage['uuid'] or image.stat().st_size != storage['bytes']:
+        raise RuntimeError('Receiver filesystem differs from its owned storage record')
+    return storage
+
+
+def prepare_receiver_storage(directory, max_gib):
+    """Preallocate a dedicated ext4 filesystem: every upload, partial and kept file shares one hard limit."""
+    if not re.fullmatch(r'/[A-Za-z0-9/_-]+', str(directory)) or directory == Path('/'):
+        raise ValueError('Receiver directory must be an absolute path using letters, digits, /, _ and -')
+    image, record = receiver_storage_paths(directory)
+    capacity_bytes = max_gib * 1024 ** 3
+    reserve_bytes = 2 * 1024 ** 3
+    if record.exists():
+        storage = read_json(record)
+        if storage.get('directory') != str(directory) or storage['bytes'] != capacity_bytes:
+            raise RuntimeError('Existing receiver capacity or directory differs; preserve its backups')
+    else:
+        if image.exists() or directory.is_symlink() or (directory.exists() and any(directory.iterdir())):
+            raise RuntimeError('Receiver storage must start empty. Keep existing backups and choose a new directory.')
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(directory.parent).free < capacity_bytes + reserve_bytes:
+            raise RuntimeError('Receiver needs its full capacity plus 2 GiB free; choose a smaller --max-gib')
+        storage = {'directory': str(directory), 'bytes': capacity_bytes, 'uuid': str(uuid.uuid4()), 'formatted': False}
+        save_json(record, storage)
+    if not storage['formatted']:
+        if image.is_symlink():
+            raise RuntimeError('Receiver backing file is a link; preserved')
+        if not image.exists():
+            image.touch(mode=0o600)
+        probe = subprocess.run(['blkid', '-p', '-s', 'UUID', '-o', 'value', str(image)],
+                               capture_output=True, text=True, timeout=30)
+        if probe.returncode not in (0, 2):
+            raise RuntimeError('Cannot inspect receiver backing filesystem')
+        existing_uuid = probe.stdout.strip()
+        if existing_uuid and existing_uuid != storage['uuid']:
+            raise RuntimeError('Receiver backing file contains another filesystem; preserved')
+        if not existing_uuid:
+            remaining_bytes = max(0, capacity_bytes - image.stat().st_blocks * 512)
+            if shutil.disk_usage(image.parent).free < remaining_bytes + reserve_bytes:
+                raise RuntimeError('Insufficient space to finish bounded receiver storage; retry after freeing space')
+            run(['fallocate', '-l', str(capacity_bytes), str(image)], timeout=300)
+            # nodiscard preserves the physical reservation; reserved blocks leave
+            # recovery space inside the mount after an unprivileged upload fills it.
+            run(['mkfs.ext4', '-q', '-F', '-E', 'nodiscard', '-m', '5', '-U', storage['uuid'], str(image)], timeout=300)
+        storage['formatted'] = True
+        save_json(record, storage)
+    directory.mkdir(mode=0o755, exist_ok=True)
+    if not os.path.ismount(directory) and any(directory.iterdir()):
+        raise RuntimeError('Unmounted receiver directory contains files; preserve them before mounting')
+    unit = run(['systemd-escape', '--path', '--suffix=mount', str(directory)])
+    contents = ('# Managed by OpenCJ setup\n[Unit]\nDescription=Bounded OpenCJ backup storage\n'
+                '[Mount]\nWhat=' + str(image) + '\nWhere=' + str(directory) + '\nType=ext4\n'
+                'Options=loop,nodev,nosuid,noexec\n[Install]\nWantedBy=multi-user.target\n')
+    from maintenance import managed_file
+    managed_file(Path('/etc/systemd/system') / unit, contents)
+    run(['systemctl', 'daemon-reload'])
+    run(['systemctl', 'enable', '--now', unit])
+    require_receiver_storage(directory)
+
+
 def setup_receiver(name, public_key, directory, max_gib):
     if os.geteuid() != 0:
         raise RuntimeError('Run with sudo: this creates a restricted Linux account')
@@ -92,6 +169,7 @@ def setup_receiver(name, public_key, directory, max_gib):
         raise ValueError('Supply the ssh-ed25519 public key printed by the sending setup')
     if not 1 <= max_gib <= MAX_TOTAL_GIB:
         raise ValueError('max-gib must be 1-' + str(MAX_TOTAL_GIB))
+    prepare_receiver_storage(directory, max_gib)
     directory.mkdir(mode=0o755, parents=True, exist_ok=True)
     # The receiving accounts must traverse the shared parent to reach their own folder.
     directory.chmod(0o755)
@@ -111,7 +189,8 @@ def setup_receiver(name, public_key, directory, max_gib):
     print('Ready to receive backups from ' + name + ' as ' + entry.pw_name + ' into ' + str(target)
           + '; every hour they move to ' + str(directory / '.kept' / name) + ', out of the sender\'s reach.')
     print(f'Retention: every backup for 14 days, one per week for 8 weeks, one per month for a year,'
-          f' within {max_gib} GiB for all senders together (the newest 7 per sender are always kept).')
+          f' on a preallocated {max_gib} GiB filesystem for all senders (including partial uploads).\n'
+          'The newest 7 per sender are kept; when full, new uploads fail without consuming host disk space.')
 
 
 def main():

@@ -289,6 +289,40 @@ def collect_ssh():
     }
 
 
+def collect_asset_input(kind):
+    if kind == 'game':
+        choice = ask('Game files: steamcmd / supplied directory, archive or URL', 'steamcmd',
+                     choices=('steamcmd', 'supplied'))
+        if choice == 'steamcmd':
+            print('SteamCMD will ask you to sign into an account owning CoD4 (2007) during installation.', flush=True)
+            return 'steamcmd'
+    return prompt(kind.title() + ' assets directory/archive/HTTPS URL')
+
+
+def validate_auth_token(token):
+    if not isinstance(token, str) or (token and not re.fullmatch(r'[A-Za-z0-9]{32}', token)):
+        raise ValueError('CoD4x auth token must be 32 letters/digits, or empty for no master-list registration')
+    return token
+
+
+def collect_auth_token(current=''):
+    """The operator obtains this per-server token; never echo it or request Steam credentials."""
+    print('Master-list registration requires a CoD4x sv_authtoken. Obtain one using the token link in '
+          'https://github.com/callofduty4x/CoD4x_Server#setting-up-a-call-of-duty-4-server-with-cod4x', flush=True)
+    print('Blank keeps the current token; "off" disables registration. Without a token, use direct connect.',
+          flush=True)
+    while True:
+        token = getpass.getpass('CoD4x token (hidden): ').strip()
+        if not token:
+            return current
+        if token == 'off':
+            return ''
+        try:
+            return validate_auth_token(token)
+        except ValueError as error:
+            print(str(error), flush=True)
+
+
 def collect_configuration(instance_dir):
     name = prompt('Instance name', instance_dir.name)
     mode = ask('Installation: new / migrate / restore', 'new', choices=('new', 'migrate', 'restore'))
@@ -297,14 +331,16 @@ def collect_configuration(instance_dir):
         'port': ask_port('Game port', choose_port(28960)),
         'bind_ip': prompt('Game bind address', '0.0.0.0'),
         'slots': ask_int('Player slots', 32, 1, 32),
-        'public': ask_yes_no('List publicly without a join password?', False),
+        'public': ask_yes_no('Public access without a join password?', False),
     }
+    if result['public']:
+        result['auth_token'] = collect_auth_token()
     result['downloads'] = collect_downloads(name, public=result['public'])
     result['discord'] = collect_discord(name)
     if mode == 'new':
         result['map'] = prompt('Initial installed map', 'mp_killhouse')
         for kind in ('game', 'mod'):
-            result[kind + '_assets'] = prompt(kind.title() + ' assets directory/archive/HTTPS URL')
+            result[kind + '_assets'] = collect_asset_input(kind)
             if result[kind + '_assets'].startswith('https://'):
                 result[kind + '_sha256'] = prompt(kind.title() + ' archive SHA-256')
         result['database'] = collect_database()
@@ -463,6 +499,7 @@ def validate_configuration(settings):
     result.setdefault('public', False)
     if type(result['public']) is not bool:
         raise ValueError('public must be a Boolean')
+    result['auth_token'] = validate_auth_token(result.get('auth_token', ''))
     result['on_demand'] = validate_on_demand(result)
     result.setdefault('map', 'mp_killhouse')
     if not re.fullmatch(r'[a-z0-9_]+', result['map']):

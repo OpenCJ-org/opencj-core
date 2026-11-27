@@ -61,6 +61,10 @@ def save_json(path, value):
     write_private(Path(path), json.dumps(value, indent=2) + '\n')
 
 
+class OperationInProgress(RuntimeError):
+    """Another controller owns the installation lock."""
+
+
 @contextmanager
 def operation_lock(path):
     """A lost connection must not allow a second process to overlap the same operation."""
@@ -68,7 +72,7 @@ def operation_lock(path):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise RuntimeError('Another operation still owns this installation; retry after it finishes') from None
+            raise OperationInProgress('Another operation still owns this installation; retry after it finishes') from None
         yield
 
 

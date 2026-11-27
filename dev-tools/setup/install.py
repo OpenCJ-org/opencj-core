@@ -58,6 +58,9 @@ def write_generated(path, text, *, owner=None, replace=False):
         if path.read_text() != text:
             raise RuntimeError(f'{path.name} differs from setup choices; existing file preserved')
         return
+    if replace:
+        from service_control import record_configuration_write
+        record_configuration_write(path, text)
     write_private(path, text, owner=owner)
 
 
@@ -122,8 +125,9 @@ def client_config(settings, *, administrator=False, website=False):
 
 
 @contextmanager
-def database_client(instance, settings, *, administrator=False, website=False):
+def database_client(instance, settings, *, administrator=False, website=False, schema=None):
     """Use the existing bounded SQL transport with credentials supplied as a read-only file."""
+    selected_schema = schema or settings['database']['name']
     filename = 'admin.cnf' if administrator else 'client.cnf'
     if website:
         filename = 'website.cnf'
@@ -133,10 +137,10 @@ def database_client(instance, settings, *, administrator=False, website=False):
         '--label', 'org.opencj.setup=' + settings['project'],
         '--mount', f'type=bind,src={instance / "secrets" / filename},dst=/run/client.cnf,readonly',
         MYSQL_IMAGE, 'mysql', '--defaults-file=/run/client.cnf', '--batch', '--raw',
-        '--skip-column-names', '--unbuffered', '--binary-as-hex', settings['database']['name'],
+        '--skip-column-names', '--unbuffered', '--binary-as-hex', selected_schema,
     ]
     try:
-        with MySQL(None, settings['database']['name'], command=command) as database:
+        with MySQL(None, selected_schema, command=command) as database:
             yield database
     finally:
         remaining = run(['docker', 'ps', '-aq', '--filter', 'name=^/' + client_name + '$'])
@@ -291,6 +295,7 @@ def write_instance_files(instance, settings, *, replace=False):
             write_generated(instance / 'secrets' / target, contents, owner=tunnel_owner)
     port = 3306 if database.get('transport') == 'ssh' else database['port']
     cvars = {'sv_hostname': settings['hostname'], 'sv_punkbuster': '0',
+             'sv_authtoken': settings.get('auth_token', ''),
              'sv_floodProtect': '4', 'g_password': settings['join_password'],
              'rcon_password': settings['rcon_password'], 'db_host': connection_host(settings),
              'db_port': str(port), 'db_user': database['user'], 'db_pass': database['password'],
@@ -318,6 +323,11 @@ def write_instance_files(instance, settings, *, replace=False):
 
 
 def verify_managed_files(instance, settings):
+    from service_control import UPGRADE_FILES_RECORD, verify_configuration_retry
+    receipt = instance / UPGRADE_FILES_RECORD
+    if receipt.exists():
+        verify_configuration_retry(instance, settings, json.loads(receipt.read_text()))
+        return
     for name, expected in settings['managed_hashes'].items():
         if not (instance / name).is_file() or sha256_file(instance / name) != expected:
             raise RuntimeError(f'{name} has operator changes; preserved without restarting or rewriting it')
@@ -630,6 +640,10 @@ def prepare_instance(instance, settings):
         save_installation(instance, settings)
     else:
         for kind in ('game', 'mod'):
+            if kind == 'game' and settings[kind + '_assets'] == 'steamcmd':
+                from steam_assets import prepare_game_assets
+                settings['game_dir'] = str(prepare_game_assets(instance, settings['image']))
+                continue
             settings[kind + '_dir'] = str(prepare_assets(
                 settings[kind + '_assets'], kind, instance, settings.get(kind + '_sha256', '')))
     managed_website.prepare(instance, settings)

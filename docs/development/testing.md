@@ -42,7 +42,7 @@ to their listed harnesses, not standalone commands.
 
 | Change | Catalogue group |
 | --- | --- |
-| Setup/configuration/target selection | `setup-unit`, `server-setup` |
+| Setup/configuration/target selection | `setup-unit`, `server-setup`, `setup-recovery` |
 | Test registration or launcher | `discovery-unit` |
 | GeoIP parsing and import | `geoip-unit`, `geoip-database`, `geoip-engine` |
 | Private name-policy maintenance | `name-policy-unit` |
@@ -504,3 +504,35 @@ rehearsal export real data; its source must resume with the captured map and
 original database write settings. Keep all exports and evidence private and remove
 only owned fixture resources. These checks are not a 32-player soak or human
 in-game validation.
+
+## Setup recovery and Steam acquisition
+
+`setup-unit` includes deferred configuration, unknown console status, older migration
+prefixes, damaged gzip input, interrupted asset publication, shared-writer fencing,
+Steam download completion/privacy and receiver mount refusal. These are offline
+checks with synthetic files and mocked administrative commands.
+
+On a disposable Ubuntu 24.04 host, after building a reviewed release image and
+supplying licensed game/client assets, run:
+
+```sh
+sudo python3 -B dev-tools/tests/run-setup-recovery.py --disposable-host \
+  --game-dir GAME_DIR --mod-dir MOD_DIR --image RELEASE_IMAGE
+```
+
+This runs real Docker/MySQL configuration, restore and refresh paths with two games
+sharing one synthetic database and a separate snapshot source. It also interrupts
+an upgrade after file replacement, resumes it with a synthetic next migration, verifies separate
+runtime grants and fills a temporary 1 GiB receiver filesystem as an unprivileged
+user. Only operator answers and the already-completed image build are substituted.
+It creates and removes fixture users, containers, volumes and a systemd mount unit;
+it changes the disposable host's `opencj` command link. Never run it on a live host.
+Private results stay under the fixture's ignored `dev-tools/local/` directory.
+
+SteamCMD needs a separate authenticated test: choose `steamcmd` as fresh game assets,
+sign in only through the terminal, and verify an actual server using the resulting
+assets. `steam_assets.py --instance-dir INSTANCE_DIR --image RELEASE_IMAGE
+--bootstrap-only` checks official downloads, non-root SteamCMD startup and self-update
+without a Steam account. It cannot prove account licensing, a complete game download,
+master-list registration or a real player's authentication. The full flow removes
+Steam login/cache state after successful asset publication.

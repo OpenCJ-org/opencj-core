@@ -1,7 +1,10 @@
 """Change an installed server's settings, upgrade all servers to this release, or refresh a copy."""
 
 import argparse
-from contextlib import contextmanager
+import gzip
+import tempfile
+import time
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -9,6 +12,7 @@ import re
 import shutil
 import sys
 
+from configuration import collect_auth_token
 from configuration import RELEASE, ask, ask_int, ask_on_demand, ask_port, ask_yes_no, collect_discord
 from configuration import check_discord_channels, check_on_demand, collect_downloads, prompt, safe_cvar, validate_discord, validate_downloads
 from operations import operation_lock, read_json, run, save_json
@@ -17,6 +21,8 @@ import linux_accounts
 import maintenance
 import migration
 import source as source_export
+import service_control
+from database_maintenance import DatabaseMaintenance
 import website as managed_website
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +34,8 @@ PASSWORD_MIN_CHARACTERS = 8
 UPGRADE_FREE_RESERVE_GIB = 2
 UPGRADE_BACKUP_LIMIT_GIB = 50
 SERVICE_START_TIMEOUT_SECONDS = 300
+RESTORE_TIMEOUT_SECONDS = 7200
+RESTORE_CHUNK_BYTES = 1024 * 1024
 
 
 def timestamp():
@@ -45,39 +53,28 @@ def owns_database(settings):
     return settings['database']['mode'] == 'new'
 
 
-def start_services(instance, settings):
+def start_services(instance, settings, *, recreate=False, active_map=''):
     """Recreate changed services and wait for the game; remove services that were switched off.
 
     Only the game server (and its database) is waited for; optional services start
     without blocking (see install.start_optional_services).
     """
-    install.compose(instance, settings, 'up', '-d', '--remove-orphans', '--wait', '--wait-timeout',
+    if recreate and owns_database(settings):
+        install.compose(instance, settings, 'up', '-d', '--wait', 'db', timeout=360)
+    recreation = ['--force-recreate', '--no-deps'] if recreate else []
+    install.compose(instance, settings, 'up', '-d', *recreation, '--remove-orphans', '--wait', '--wait-timeout',
                     str(SERVICE_START_TIMEOUT_SECONDS), 'server', log=instance / 'setup.log',
                     timeout=SERVICE_START_TIMEOUT_SECONDS + 60)
-    install.start_optional_services(instance, settings)
+    if recreate:
+        services = install.optional_services(settings)
+        if services:
+            install.compose(instance, settings, 'up', '-d', '--force-recreate', '--no-deps', *services)
+        service_control.verify_running_files(instance, settings)
+    else:
+        install.start_optional_services(instance, settings)
+    service_control.restore_map(instance, settings, active_map)
     if settings.get('website'):
         managed_website.start(instance, settings)
-
-
-@contextmanager
-def running_for_maintenance(instance, settings):
-    """Start an on-demand server that is off for the duration of the work, then switch it off again.
-
-    After a failure it is left running, so the problem can be inspected.
-    """
-    was_off = install.switched_off(instance, settings)
-    was_held = install.held(instance, settings)
-    if was_off:
-        print(settings['name'] + ' is off; starting it for this change...', flush=True)
-        start_services(instance, settings)
-    yield
-    if was_off and settings.get('on_demand'):
-        install.stop_services(instance, settings)
-        print(settings['name'] + ' is off again.', flush=True)
-    elif was_held:
-        stop_held(instance, settings)
-        print(settings['name'] + '\'s game server is stopped again (until you start it or the next reboot).',
-              flush=True)
 
 
 def stop_held(instance, settings):
@@ -86,17 +83,20 @@ def stop_held(instance, settings):
 
 
 def connected_players(instance, settings):
-    """Number of players on the server now; 0 when its console does not answer."""
-    import status
-    container = install.compose(instance, settings, 'ps', '--quiet', 'server')
-    players = status.live_server(container)[1] if container else '0'
-    return int(players) if players.isdigit() else 0
+    """Refuse an unknown console result instead of treating it as an empty server."""
+    return len(service_control.active_game(instance, settings)['players'])
 
 
 def start_instance(host, name):
     """Start a server (normally an on-demand test server) and wait until players can join."""
     instance = host / name
     settings = install.load_installation(instance)
+    service_control.require_available(instance)
+    if (instance / 'pending-configuration.json').exists():
+        configure_instance(host, name, apply_pending=True)
+        settings = install.load_installation(instance)
+        if (instance / 'pending-configuration.json').exists():
+            return
     with operation_lock(instance / '.setup.lock'):
         install.verify_managed_files(instance, settings)
         if install.server_is_running(instance, settings):
@@ -180,6 +180,8 @@ def collect_changes(settings, other_ports, *, can_be_on_demand=True):
                              settings.get('address') or 'none', parse=parse_address)
     changed['slots'] = ask_int('Player slots', settings['slots'], 1, 32)
     changed['public'] = ask_yes_no('Public access without a join password?', settings['public'])
+    if changed['public']:
+        changed['auth_token'] = collect_auth_token(settings.get('auth_token', ''))
     changed['map'] = ask_map(settings['map'])
     print('Map downloads are currently: ' + settings['downloads']['mode'], flush=True)
     if ask_yes_no('Change map downloads?', False):
@@ -234,21 +236,77 @@ def ask_password(label, current):
     return ask(label + ': keep / new (random) / or type one', 'keep', parse=parse)
 
 
-def configure_instance(host, name):
+def configure_instance(host, name, *, apply_pending=False):
     """Apply operator changes to one server; refuse when its generated files were edited by hand."""
     instance = host / name
     settings = install.load_installation(instance)
+    service_control.require_available(instance)
     plan = host_plan(host)
     other_ports = {item['port'] for item in plan['instances'] if item['name'] != name}
     with operation_lock(instance / '.setup.lock'):
-        install.verify_managed_files(instance, settings)
+        pending = instance / 'pending-configuration.json'
+        record = read_json(pending) if pending.exists() else {}
+        if record.get('applying'):
+            service_control.verify_configuration_retry(instance, settings, record)
+        else:
+            install.verify_managed_files(instance, settings)
         was_off = install.switched_off(instance, settings)
         was_held = install.held(instance, settings)
-        changed = collect_changes(settings, other_ports, can_be_on_demand=on_demand_allowed(plan, settings))
-        if changed == settings:
+        if record.get('applying'):
+            was_off = record.get('was_off', was_off)
+            was_held = record.get('was_held', was_held)
+        defaults = settings
+        if pending.exists():
+            record = read_json(pending)
+            if not record.get('applying') and (record['base_hashes'] != settings['managed_hashes']
+                                               or record['release'] != settings['release']):
+                raise RuntimeError('Pending settings belong to an older configuration; review them before continuing')
+            defaults = record['settings']
+        if apply_pending or record.get('applying'):
+            changed = defaults
+        else:
+            changed = collect_changes(
+                defaults, other_ports, can_be_on_demand=on_demand_allowed(plan, defaults))
+        if changed['port'] in other_ports:
+            raise RuntimeError('Another server now uses the requested port; review pending configuration')
+        if changed == settings and not pending.exists():
             print('Nothing changed.')
             return
+        check_on_demand([*(item for item in plan['instances'] if item['name'] != name), changed])
         check_discord_channels([*(item for item in plan['instances'] if item['name'] != name), changed])
+        try:
+            active = service_control.active_game(instance, settings)
+        except (RuntimeError, OSError) as error:
+            print('Connected players: unknown; immediate restart is unavailable (' + str(error) + ').', flush=True)
+            active = None
+        apply_now = False
+        if active is not None:
+            count = len(active['players'])
+            print(str(count) + ' connected player(s). Active map: ' + (active['map'] or 'server stopped'), flush=True)
+            if apply_pending and not active['map']:
+                apply_now = True
+            else:
+                apply_now = ask_yes_no('Apply these changes now by restarting the server?', False)
+        if not apply_now:
+            if not record.get('applying'):
+                save_json(pending, {'base_hashes': settings['managed_hashes'], 'release': settings['release'],
+                                    'settings': changed})
+            print('Changes saved but not applied. Apply them with: sudo opencj start ' + name, flush=True)
+            return
+        # A later arrival was not included in the operator's decision.
+        latest = service_control.active_game(instance, settings)
+        if latest['players'] != active['players'] and not ask_yes_no(
+                str(len(latest['players'])) + ' player(s) are connected now. Restart anyway?', False):
+            if not record.get('applying'):
+                save_json(pending, {'base_hashes': settings['managed_hashes'], 'release': settings['release'],
+                                    'settings': changed})
+            print('Changes saved but not applied; connected players were preserved.')
+            return
+        active = latest
+        if not record.get('applying'):
+            save_json(pending, {'base_hashes': settings['managed_hashes'], 'release': settings['release'],
+                                'settings': changed, 'applying': True, 'active_map': active['map'],
+                                'was_off': was_off, 'was_held': was_held})
         changed['state'] = 'ready'
         linux_accounts.ensure_accounts(changed)
         newly_enabled = [service for service in ('discord', 'geoip')
@@ -256,6 +314,7 @@ def configure_instance(host, name):
         if newly_enabled:
             install.build_optional_images(instance, changed)
         if 'geoip' in newly_enabled:
+            install.compose(instance, changed, 'up', '-d', '--wait', 'db', timeout=360)
             install.provision_geoip(instance, changed)
         install.write_instance_files(instance, changed, replace=True)
         if changed.get('website') and changed['website'] != settings.get('website'):
@@ -264,7 +323,8 @@ def configure_instance(host, name):
         maintenance.prepare_offsite(instance, changed)
         maintenance.configure_instance_jobs(instance, changed)
         print('Restarting ' + name + ' with the new settings...', flush=True)
-        start_services(instance, changed)
+        resume_map = read_json(pending).get('active_map', active['map'])
+        start_services(instance, changed, recreate=True, active_map=resume_map)
         install.check_ready(instance, changed)
         # The new settings were checked while running; an on-demand server that was off stays off.
         off_again = was_off and changed.get('on_demand', False)
@@ -293,6 +353,7 @@ def configure_instance(host, name):
         print('The join password changed; it is in ' + str(instance / 'join-password'))
     if changed['rcon_password'] != settings['rcon_password']:
         print('The administration password changed; it is in ' + str(instance / 'rcon-password'))
+    pending.unlink(missing_ok=True)
     if off_again:
         print(name + ' has the new settings and is off again. Start it with: sudo opencj start ' + name)
     elif changed.get('on_demand') and not settings.get('on_demand'):
@@ -351,9 +412,16 @@ def print_outside_check_command(plan):
           + '\nIt asks for the alert webhook and then checks every 2 minutes.', flush=True)
 
 
-def applied_migrations(instance, settings):
+def applied_migrations(instance, settings, *, allow_pending=False):
+    """Accept a valid older migration prefix only during upgrade preflight."""
     with install.database_client(instance, settings) as db:
-        return install.check_database(db)
+        if not allow_pending:
+            return install.check_database(db)
+        rows = migrate.read_ledger(db)
+        migrate.validate_history(rows, migrate.load_migrations())
+        if not rows:
+            raise RuntimeError('Upgrade requires an initialized migration ledger')
+        return len(rows)
 
 
 def upgrade_backup(instance, settings, upgrade):
@@ -383,25 +451,6 @@ def upgrade_database(instance, settings):
             managed_website.provision(db, settings)
 
 
-def roll_back(instance, settings, upgrade):
-    """Return to the previous image when the schema did not change; otherwise explain the restore."""
-    if upgrade.get('migrations_before') != upgrade.get('migrations_after'):
-        raise RuntimeError('The new release failed after changing the database schema. The previous release'
-                           ' cannot run on it. Fix the problem and rerun upgrade, or restore '
-                           + upgrade['backup'] + ' with the previous release checkout.')
-    settings['release'] = upgrade['from']
-    settings['image'] = upgrade['previous_image']
-    settings['image_id'] = upgrade['previous_image_id']
-    # The bridge and the game speak one protocol per release, so they go back together.
-    settings.update(upgrade.get('previous_optional_images', {}))
-    install.write_instance_files(instance, settings, replace=True)
-    start_services(instance, settings)
-    settings.pop('upgrade')
-    install.save_installation(instance, settings)
-    raise RuntimeError('The new release did not start; ' + settings['name'] + ' runs the previous release'
-                       ' again. Inspect ' + str(instance / 'setup.log') + '.')
-
-
 def upgrade_instance(instance, settings):
     """Upgrade one server in resumable stages recorded in its installation record."""
     upgrade = settings.setdefault('upgrade', {'from': settings['release'], 'to': RELEASE, 'stage': 'start'})
@@ -414,14 +463,14 @@ def upgrade_instance(instance, settings):
         upgrade['previous_image_id'] = settings['image_id']
         upgrade['previous_optional_images'] = {key: settings[key] for key in ('discord_image', 'geoip_image')
                                                if settings.get(key)}
-        upgrade['migrations_before'] = applied_migrations(instance, settings)
+        upgrade['migrations_before'] = applied_migrations(instance, settings, allow_pending=True)
         upgrade['backup'] = ''
         if owns_database(settings):
             upgrade_backup(instance, settings, upgrade)
         upgrade['stage'] = 'backed-up'
         install.save_installation(instance, settings)
     if upgrade['stage'] == 'backed-up':
-        # Builds take longest; the old release keeps serving players meanwhile.
+        # Keep all writers fenced until every member has matching schema and code.
         settings['release'] = RELEASE
         settings['image'] = settings['project'] + ':' + RELEASE
         install.build_release(instance, settings)
@@ -434,37 +483,53 @@ def upgrade_instance(instance, settings):
         upgrade['stage'] = 'database-ready'
         install.save_installation(instance, settings)
     if upgrade['stage'] == 'database-ready':
+        receipt = instance / service_control.UPGRADE_FILES_RECORD
+        if not receipt.exists():
+            save_json(receipt, {'applying': True, 'base_hashes': settings['managed_hashes']})
         install.write_instance_files(instance, settings, replace=True)
         if settings.get('website'):
             managed_website.prepare(instance, settings, replace=True)
         install.save_installation(instance, settings)
-        try:
-            start_services(instance, settings)
-            install.check_ready(instance, settings)
-        except (RuntimeError, OSError) as error:
-            print('Start failed: ' + str(error), flush=True)
-            roll_back(instance, settings, upgrade)
-        settings.pop('upgrade')
+        # Activation is coordinated for the complete database group below.
+        upgrade['stage'] = 'prepared'
         install.save_installation(instance, settings)
-        maintenance.configure_instance_jobs(instance, settings)
-    print(settings['name'] + ' runs ' + RELEASE + '.', flush=True)
 
 
 def upgrade_host(host):
-    """Upgrade every installed server in plan order: database owners come before servers sharing them."""
+    """Upgrade database groups while all their writers are stopped, including retries."""
     plan = host_plan(host)
+    owners = []
     for name in plan.get('completed', []):
         instance = host / name
-        with operation_lock(instance / '.setup.lock'):
-            settings = install.load_installation(instance, allow_other_release=True)
-            if settings['release'] == RELEASE and 'upgrade' not in settings:
-                print(name + ' already runs ' + RELEASE + '.', flush=True)
+        settings = install.load_installation(instance, allow_other_release=True)
+        owner = Path(settings['database'].get('owner_instance', instance))
+        if owner not in owners:
+            owners.append(owner)
+    for owner in owners:
+        members = []
+        for directory in sorted(host.iterdir()):
+            if not (directory / 'installation.json').is_file():
                 continue
-            with running_for_maintenance(instance, settings):
-                upgrade_instance(instance, settings)
+            settings = install.load_installation(directory, allow_other_release=True)
+            if directory == owner or settings['database'].get('owner_instance') == str(owner):
+                members.append((directory, settings))
+        if all(settings['release'] == RELEASE and 'upgrade' not in settings for directory, settings in members):
+            if not (owner / service_control.MAINTENANCE_RECORD).exists():
+                continue
+        # Owners migrate first, but no game starts until all group members are ready.
+        members.sort(key=lambda member: member[0] != owner)
+        with DatabaseMaintenance(owner, 'upgrade') as maintenance_group:
+            for directory, settings in members:
+                if settings['release'] != RELEASE or 'upgrade' in settings:
+                    upgrade_instance(directory, settings)
+            maintenance_group.resume(start_services)
+            for directory, settings in members:
+                settings.pop('upgrade', None)
+                install.save_installation(directory, settings)
+                (directory / service_control.UPGRADE_FILES_RECORD).unlink(missing_ok=True)
+                maintenance.configure_instance_jobs(directory, settings)
     maintenance.install_command_link()
-    print('All servers run ' + RELEASE + '; `sudo opencj` now uses this release. Servers on other machines'
-          ' that share a database here must be upgraded too.')
+    print('All servers run ' + RELEASE + '; `sudo opencj` now uses this release.')
 
 
 def import_dump(instance, settings, bundle, manifest):
@@ -472,8 +537,8 @@ def import_dump(instance, settings, bundle, manifest):
     name = settings['database']['name']
     if manifest['database'] != name:
         raise RuntimeError('Snapshot database ' + manifest['database'] + ' differs from ' + name)
-    with install.database_client(instance, settings, administrator=True) as db:
-        db.query('DROP DATABASE ' + quote_identifier(name) + ';\nCREATE DATABASE ' + quote_identifier(name) + ';')
+    with install.database_client(instance, settings, administrator=True, schema='information_schema') as db:
+        db.query('DROP DATABASE IF EXISTS ' + quote_identifier(name) + ';\nCREATE DATABASE ' + quote_identifier(name) + ';')
     container = install.compose(instance, settings, 'ps', '--quiet', 'db')
     command = ['docker', 'exec', '-i', container, 'sh', '-c',
                'MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$(cat \"$MYSQL_ROOT_PASSWORD_FILE\")}" exec mysql -u root']
@@ -485,39 +550,81 @@ def import_dump(instance, settings, bundle, manifest):
     upgrade_database(instance, settings)
 
 
+@contextmanager
+def validated_backup(instance, backup):
+    """Fully decompress and check CRC/EOF into a bounded private file before touching SQL."""
+    deadline = time.monotonic() + RESTORE_TIMEOUT_SECONDS
+    maximum_bytes = UPGRADE_BACKUP_LIMIT_GIB * maintenance.GIB
+    reserve_bytes = UPGRADE_FREE_RESERVE_GIB * maintenance.GIB
+    with tempfile.TemporaryFile(dir=instance) as sql:
+        try:
+            with gzip.open(backup, 'rb') as compressed:
+                total_bytes = 0
+                while True:
+                    chunk = compressed.read(RESTORE_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total_bytes += len(chunk)
+                    if total_bytes > maximum_bytes or shutil.disk_usage(instance).free < len(chunk) + reserve_bytes:
+                        raise RuntimeError('Backup exceeds restore space limits; current database preserved')
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError('Backup validation timed out; current database preserved')
+                    sql.write(chunk)
+        except (EOFError, gzip.BadGzipFile) as error:
+            raise RuntimeError('Backup archive is damaged; current database preserved') from error
+        if not total_bytes:
+            raise RuntimeError('Backup contains no SQL; current database preserved')
+        sql.seek(0)
+        yield sql
+
+
 def restore_backup(host, name, backup, *, assume_yes):
-    """Replace a server's database with a backup; the current state is dumped first as a safety copy."""
+    """Validate first, fence all writers, then replace SQL with a checked import."""
     instance = host / name
     settings = install.load_installation(instance)
     if not owns_database(settings):
-        raise ValueError(name + ' shares another server\'s database; restore it on that server')
+        raise ValueError(name + ' shares another server database; restore it on its owner')
     backup = backup.resolve()
     if not backup.is_file() or not backup.name.endswith('.sql.gz'):
-        raise ValueError('Supply a .sql.gz backup, for example from ' + str(instance / 'automatic-backups'))
-    print('This replaces ALL data of ' + name + ' with ' + backup.name + '. Progress made after that backup is'
-          ' lost (a safety copy of the current state is kept). Players are disconnected.', flush=True)
+        raise ValueError('Supply a .sql.gz backup')
+    print('This replaces ALL data of ' + name + '. All servers sharing its database pause; a safety copy is kept.')
     if not assume_yes and not ask_yes_no('Restore now?', False):
         raise SystemExit('Nothing was changed.')
-    with operation_lock(instance / '.setup.lock'), running_for_maintenance(instance, settings):
-        safety = instance / 'upgrade-backups' / ('before-restore-' + timestamp() + '.sql.gz')
-        safety.parent.mkdir(mode=0o700, exist_ok=True)
-        maintenance.dump_database(instance, settings, safety,
-                                  byte_limit=UPGRADE_BACKUP_LIMIT_GIB * maintenance.GIB,
-                                  reserve_bytes=UPGRADE_FREE_RESERVE_GIB * maintenance.GIB)
-        print('Safety copy of the current data: ' + str(safety), flush=True)
-        install.compose(instance, settings, 'stop', 'server', *install.optional_services(settings), timeout=120)
-        name_sql = quote_identifier(settings['database']['name'])
-        with install.database_client(instance, settings, administrator=True) as db:
-            db.query('DROP DATABASE ' + name_sql + ';\nCREATE DATABASE ' + name_sql + ';')
-        container = install.compose(instance, settings, 'ps', '--quiet', 'db')
-        command = ['sh', '-c', 'gzip -dc "$0" | docker exec -i "$1" sh -c '
-                   '\'MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$(cat "$MYSQL_ROOT_PASSWORD_FILE")}" exec mysql -u root\'',
-                   str(backup), container]
-        run(command, timeout=7200, log=instance / 'restore.log')
-        # The backup may predate later releases' migrations; bring the schema and grants up to date.
-        upgrade_database(instance, settings)
-        start_services(instance, settings)
-        install.check_ready(instance, settings)
+    with validated_backup(instance, backup) as sql:
+        with DatabaseMaintenance(instance, 'restore', assume_yes=assume_yes) as maintenance_group:
+            journal = maintenance_group.journal
+            backup_hash = migration.sha256_file(backup)
+            if journal.get('backup_sha256', backup_hash) != backup_hash:
+                raise RuntimeError('An unfinished restore used a different backup; preserve its recovery record')
+            if 'safety' not in journal:
+                safety = instance / 'upgrade-backups' / ('before-restore-' + timestamp() + '.sql.gz')
+                safety.parent.mkdir(mode=0o700, exist_ok=True)
+                partial = safety.with_name('.' + safety.name + '.partial')
+                try:
+                    maintenance.dump_database(instance, settings, partial,
+                                              byte_limit=UPGRADE_BACKUP_LIMIT_GIB * maintenance.GIB,
+                                              reserve_bytes=UPGRADE_FREE_RESERVE_GIB * maintenance.GIB)
+                    os.replace(partial, safety)
+                finally:
+                    partial.unlink(missing_ok=True)
+                journal.update(safety=str(safety), backup_sha256=backup_hash)
+                save_json(maintenance_group.record, journal)
+            print('Safety copy of the original data: ' + journal['safety'], flush=True)
+            if not journal.get('data_ready'):
+                name_sql = quote_identifier(settings['database']['name'])
+                with install.database_client(instance, settings, administrator=True, schema='information_schema') as db:
+                    db.query('DROP DATABASE IF EXISTS ' + name_sql + ';\nCREATE DATABASE ' + name_sql + ';')
+                container = install.compose(instance, settings, 'ps', '--quiet', 'db')
+                command = ['docker', 'exec', '-i', container, 'sh', '-c',
+                           'MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$(cat "$MYSQL_ROOT_PASSWORD_FILE")}" exec mysql -u root']
+                run(command, stdin=sql, timeout=7200, log=instance / 'restore.log')
+                upgrade_database(instance, settings)
+                applied_migrations(instance, settings)
+                # A later activation failure must never re-import over progress
+                # accepted by a game that briefly resumed successfully.
+                journal['data_ready'] = True
+                save_json(maintenance_group.record, journal)
+            maintenance_group.resume(start_services)
     print(name + ' runs with the data from ' + backup.name + '.')
 
 
@@ -533,24 +640,37 @@ def refresh_instance(host, name, *, assume_yes):
           ' are connected to it.', flush=True)
     if not assume_yes and not ask_yes_no('Continue?', False):
         raise SystemExit('Nothing was changed.')
-    with operation_lock(instance / '.setup.lock'), running_for_maintenance(instance, settings):
-        bundle = instance / 'migration' / ('refresh-' + timestamp())
+    with DatabaseMaintenance(instance, 'refresh', assume_yes=assume_yes) as maintenance_group:
+        journal = maintenance_group.journal
+        if 'refresh_bundle' not in journal:
+            journal['refresh_bundle'] = str(instance / 'migration' / ('refresh-' + timestamp()))
+            journal['previous_runtime'] = str(instance / ('runtime.previous-' + timestamp()))
+            save_json(maintenance_group.record, journal)
+        bundle = Path(journal['refresh_bundle'])
         bundle.parent.mkdir(mode=0o700, exist_ok=True)
-        source_export.export_source(host / source_name, bundle, intent='rehearsal', without_assets=True)
-        manifest = migration.validate_bundle(bundle)
-        install.compose(instance, settings, 'stop', 'server', *(['discord'] if settings['discord']['enabled'] else []),
-                        timeout=120)
-        import_dump(instance, settings, bundle, manifest)
-        runtime = instance / 'runtime'
-        os.replace(runtime, instance / ('runtime.previous-' + timestamp()))
-        runtime.mkdir(mode=0o700)
-        os.chown(runtime, settings['uid'], settings['gid'])
-        migration.restore_runtime(instance, settings, bundle=bundle)
-        start_services(instance, settings)
-        install.check_ready(instance, settings)
+        if not journal.get('data_ready'):
+            # A completed export is reused; a retry must not mix one snapshot's SQL
+            # with another snapshot's saves and checkpoint drafts.
+            source_export.export_source(host / source_name, bundle, intent='rehearsal', without_assets=True)
+            manifest = migration.validate_bundle(bundle)
+            import_dump(instance, settings, bundle, manifest)
+            restore_refresh_runtime(instance, settings, bundle, Path(journal['previous_runtime']))
+            journal['data_ready'] = True
+            save_json(maintenance_group.record, journal)
+        maintenance_group.resume(start_services)
         shutil.rmtree(bundle)
     print(name + ' now holds a fresh copy of ' + source_name + '. Its previous runtime files are kept for 30 days'
           ' in ' + str(instance) + '/runtime.previous-*.')
+
+
+def restore_refresh_runtime(instance, settings, bundle, previous):
+    """Keep the original runtime once, including a crash immediately after its rename."""
+    runtime = instance / 'runtime'
+    if not previous.exists():
+        os.replace(runtime, previous)
+    runtime.mkdir(mode=0o700, exist_ok=True)
+    os.chown(runtime, settings['uid'], settings['gid'])
+    migration.restore_runtime(instance, settings, bundle=bundle)
 
 
 def main():
@@ -581,26 +701,31 @@ def main():
     if os.geteuid() != 0:
         parser.error('Run with sudo')
     host = args.host_dir.expanduser().resolve()
-    if args.command == 'configure':
-        configure_instance(host, args.name)
-    elif args.command == 'start':
-        start_instance(host, args.name)
-    elif args.command == 'stop':
-        stop_instance(host, args.name, assume_yes=args.yes)
-    elif args.command == 'status':
-        import status
-        status.show_status(host)
-    elif args.command == 'alerts':
-        configure_alerts(host)
-    elif args.command == 'dns':
-        import dns_guide
-        dns_guide.show(host_plan(host))
-    elif args.command == 'upgrade':
-        upgrade_host(host)
-    elif args.command == 'restore':
-        restore_backup(host, args.name, args.backup, assume_yes=args.yes)
-    else:
-        refresh_instance(host, args.name, assume_yes=args.yes)
+    # Membership and port allocation must not change while maintenance/configuration
+    # coordinates several instances. Per-instance locks also exclude scheduled jobs.
+    mutations = ('configure', 'start', 'stop', 'upgrade', 'restore', 'refresh')
+    lock = operation_lock(host / '.host-setup.lock') if args.command in mutations else nullcontext()
+    with lock:
+        if args.command == 'configure':
+            configure_instance(host, args.name)
+        elif args.command == 'start':
+            start_instance(host, args.name)
+        elif args.command == 'stop':
+            stop_instance(host, args.name, assume_yes=args.yes)
+        elif args.command == 'status':
+            import status
+            status.show_status(host)
+        elif args.command == 'alerts':
+            configure_alerts(host)
+        elif args.command == 'dns':
+            import dns_guide
+            dns_guide.show(host_plan(host))
+        elif args.command == 'upgrade':
+            upgrade_host(host)
+        elif args.command == 'restore':
+            restore_backup(host, args.name, args.backup, assume_yes=args.yes)
+        else:
+            refresh_instance(host, args.name, assume_yes=args.yes)
 
 
 if __name__ == '__main__':

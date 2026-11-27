@@ -119,8 +119,34 @@ an existing installation. Operator edits are preserved and reported for review.
 
 ## Supply game and compiled client files
 
-For each asset set, supply an existing directory, a local ZIP/tar archive, or an
-HTTPS archive URL. Downloads require the SHA-256 from a trusted source, entered
+For a fresh installation, the game-file question defaults to **SteamCMD**. Sign in
+interactively with a Steam account owning Call of Duty 4 (2007), app 7940. SteamCMD
+runs without root privileges in a disposable container, downloads the Windows game
+content needed by the Linux server, and validates the download. Enter passwords and
+Steam Guard codes only into SteamCMD's terminal prompts; OpenCJ does not put them in
+command arguments, its JSON configuration or its logs. This option requires an
+interactive SSH terminal, including when the rest of setup uses a saved JSON plan.
+Set `"game_assets": "steamcmd"` in such a plan.
+
+Setup also downloads checksum-pinned CoD4x support libraries and supplemental assets
+from the [official server bundle](https://cod4x.ovh/t/cod4x-client-and-server-files/24).
+It uses OpenCJ's compiled engine, not the engine included in that archive. Source
+URLs, versions, terms and bootstrap hashes are maintained in
+[steam-sources.json](../../dev-tools/setup/steam-sources.json). SteamCMD updates itself
+through Valve; game content follows the account's current Steam depot manifest.
+The installed `licenses/` directory retains the support readme and source receipt.
+
+An interrupted download stays in the host's private `.steam-download/` staging
+folder for retry, separate from accepted game assets. Allow room for both the full
+Steam download and the selected server files during publication. Downloads are
+limited to 16 GiB of game content, 2 GiB of SteamCMD state, two hours and a 2 GiB
+free-space reserve. After successful publication, setup removes staging, unused
+single-player files and Steam login/cache data. Existing game assets are reused
+without running SteamCMD against a live asset tree.
+
+Alternatively, for either asset set supply an existing directory, a local ZIP/tar
+archive, or an HTTPS archive URL. Compiled OpenCJ client assets still use one of
+these supplied inputs; Steam does not contain OpenCJ's `mod.ff` or IWD. Downloads require the SHA-256 from a trusted source, entered
 separately (`game_sha256` / `mod_sha256` in JSON). Archive roots must directly
 contain the expected files, without an extra enclosing folder.
 
@@ -129,6 +155,15 @@ licensed base-game files, matching CoD4x support IWDs and the chosen map's asset
 The mod set needs the matching compiled `mod.ff` and OpenCJ IWD files. Preserve the
 IWD's `licenses/` entries. `mp_killhouse` is the default initial stock map.
 Custom maps also require their installed `usermaps/<mapname>` assets.
+
+Public access and master-list registration are distinct: the CoD4x master list needs
+a per-server `sv_authtoken`. The public-server wizard and `configure` link to the
+[official token instructions](https://github.com/callofduty4x/CoD4x_Server#setting-up-a-call-of-duty-4-server-with-cod4x)
+and accept it through a hidden prompt. JSON plans use `auth_token`. An empty token
+leaves direct connection available without master-list registration; `off` clears
+an existing token. Tokens remain in private installation/runtime configuration and
+are redacted from outgoing crash alerts. Steam credentials and this CoD4x token are
+separate; setup never asks for a Steam password to obtain the listing token.
 
 Directory inputs are mounted read-only and never copied over or modified. Their
 contents must be readable by the runtime account. Archive inputs are extracted
@@ -452,8 +487,19 @@ deleted, a second upload with an existing name is ignored, and both are reported
 the alert channel. Each night the game server sends only the backups it has not sent
 before. The receiver keeps every backup for 14 days, one
 per week for 8 weeks and one per month for a year, within **50 GiB for all senders
-together** (`--max-gib`); over the limit the oldest go first, but each sender's newest
-7 backups always stay. It needs no Docker.
+together** (`--max-gib`). Setup preallocates a dedicated ext4 backing file of that
+size and mounts it with `nodev,nosuid,noexec`; filesystem metadata and reserved
+blocks reduce usable backup space slightly. All incoming files, partial uploads and
+kept copies share this hard capacity. The host must have that space plus a 2 GiB
+reserve; choose a smaller `--max-gib` on a small disk. Repeated setup requires the
+same capacity and owned mount. Cleanup refuses to run if that mount is missing.
+
+Retention removes the oldest eligible backups first and preserves each sender's
+newest seven. If those fill the filesystem, new uploads fail visibly while previous
+copies remain intact. Abandoned hidden rsync partials are removed after two days.
+Existing nonempty receiver directories are preserved: use a new empty directory
+for bounded storage, verify a received backup there, and retain the old copies until
+you deliberately retire them. The receiver needs systemd and ext4 tools, but no Docker.
 
 **Pruning abandoned runs.** Saves accumulate quickly with many active players. Each
 night (04:15) the database owner deletes **unfinished** runs nobody has played for the
@@ -568,23 +614,55 @@ sudo bash opencj.sh upgrade            # from the new release's checkout: all se
 sudo opencj refresh acceptance # replace acceptance's data with a fresh copy of main
 ```
 
-`configure` refuses when generated files were edited by hand, shows each current value
-as the default, restarts only that server, and updates the firewall. Making a server
-private generates a new join password.
+`configure` refuses operator edits to generated files and shows current values as
+defaults. Before applying, it displays the authoritative connected-player count and
+active map, then asks whether to restart now (default no). An unreadable console
+status cannot be mistaken for zero players. Declining saves private pending settings
+without changing the running configuration, firewall or jobs. `sudo opencj start NAME`
+applies those pending settings, asking again if the server is running; alternatively
+rerun `configure`. A plain Docker restart does not apply staged choices.
 
-`upgrade` runs from the new release's checkout and upgrades each server in order
-(database owners first). For each it takes a full database backup (in
-`upgrade-backups/`), builds the new release while the old one keeps running, applies
-the new database migrations, restarts and checks the server. If the new release does
-not start and the database schema was not changed, it switches back to the previous
-release automatically; otherwise it stops with instructions and the backup to restore.
-Interrupted upgrades continue where they stopped. Servers on other machines that share
-a database here must be upgraded too.
+An accepted change explicitly recreates the game and enabled optional services,
+checks the configuration mounted in the new game container and restores the prior
+active map when its assets remain available. If the previous map is gone, the
+configured start map remains active. If players arrive before map restoration,
+setup reports the incomplete restoration instead of switching their map. Servers
+that were intentionally off return to that state. Making a server private generates
+a new join password. Interrupted file replacement is journaled so retries can finish
+while still refusing intervening operator edits.
+
+`upgrade` runs from the new release checkout and accepts an intact older migration
+history. It coordinates each database owner with every managed local server sharing
+that database. All writers stop, their active maps are recorded, and MySQL's
+persistent read-only setting blocks runtime writes. A full recovery backup is taken
+in `upgrade-backups/` before schema changes. The new release is built, migrations are
+applied and all separate game/website grants are refreshed before services resume.
+This maintenance window includes building the release. Previously stopped services
+stay stopped; running servers return to their captured maps where available.
+
+A failed database operation remains stopped and fenced, including across reboots;
+fix the reported problem and rerun the same command. The watchdog, scheduled backup
+and pruning jobs respect this state. A partially applied migration still requires
+inspection or restoration; it is never silently replayed. Setup does not automatically
+start an old release against uncertain database state.
+
+`sudo opencj restore NAME /path/to/backup.sql.gz` validates and fully decompresses the
+archive into a bounded private temporary file before stopping services or replacing
+SQL. It stops all managed writers sharing that database, preserves one original-state
+safety backup across retries, checks SQL import errors, applies current migrations and
+verifies the installation before resuming. Temporary SQL needs up to 50 GiB and leaves
+2 GiB free. A changed backup is refused during an unfinished restore. If only service activation
+fails after verification, retrying resumes activation without re-importing the data. Keep scheduled
+SQL backups separate from full migration exports: they do not contain runtime drafts
+or game assets.
 
 `refresh` works for servers created as a copy (for example acceptance from main). The
-source pauses for about a minute for a consistent snapshot, and the refresh is refused
+source pauses for a consistent snapshot, and the refresh is refused
 while players are connected to it. The copy's database, saves and checkpoint drafts
-are replaced; its previous runtime folder is kept for 30 days.
+are replaced; its previous runtime folder is kept for 30 days. All local servers
+sharing the target database pause together. An interrupted refresh reuses its original
+snapshot and keeps one original runtime recovery folder, so a retry cannot mix
+SQL from one snapshot with drafts from another.
 
 ## Verify, operate and recover
 

@@ -202,7 +202,8 @@ class ConfigureTests(unittest.TestCase):
 
     def collect(self, answers):
         replies = iter(answers)
-        with patch('builtins.input', lambda label: next(replies)), patch('builtins.print'):
+        with patch('builtins.input', lambda label: next(replies)), patch('builtins.print'), \
+                patch.object(manage, 'collect_auth_token', return_value=''):
             return manage.collect_changes(dict(self.settings), other_ports={28960, 28961})
 
     def test_keeping_every_default_changes_nothing(self):

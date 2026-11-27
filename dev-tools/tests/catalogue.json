@@ -4,7 +4,7 @@
     {
       "id": "setup-unit",
       "category": "portable",
-      "description": "Setup/migration preservation, backup limits, topology and explicit database target selection.",
+      "description": "Setup/migration preservation, deferred settings, fenced recovery, backup limits and explicit database selection.",
       "requires": "Python 3 standard library; no initialized installation.",
       "effects": "Temporary files and bounded synthetic subprocesses; mocked external administration commands.",
       "files": [
@@ -14,7 +14,9 @@
         "dev-tools/tests/test_server_setup.py",
         "dev-tools/tests/test_migration_setup.py",
         "dev-tools/tests/test_operations_setup.py",
-        "dev-tools/tests/test_management_setup.py"
+        "dev-tools/tests/test_management_setup.py",
+        "dev-tools/tests/test_setup_recovery.py",
+        "dev-tools/tests/test_steam_setup.py"
       ],
       "commands": [],
       "mode": "unit"
@@ -830,6 +832,19 @@
       ],
       "commands": [
         "sudo python3 -B dev-tools/tests/run-server-setup.py --game-dir GAME_DIR --mod-dir MOD_DIR"
+      ]
+    },
+    {
+      "id": "setup-recovery",
+      "category": "integration",
+      "description": "Real configuration deferral/recreation, shared-database restore/refresh, interrupted schema upgrades and bounded receiver storage.",
+      "requires": "Root on a disposable Ubuntu 24.04 host with Docker, systemd, rsync, e2fsprogs, a prebuilt reviewed release image and supplied licensed assets.",
+      "effects": "Creates and cleans owned Linux accounts, Compose projects, synthetic databases and a temporary 1 GiB receiver filesystem/mount unit. Updates the opencj command symlink on the disposable host.",
+      "files": [
+        "dev-tools/tests/run-setup-recovery.py"
+      ],
+      "commands": [
+        "sudo python3 -B dev-tools/tests/run-setup-recovery.py --disposable-host --game-dir GAME_DIR --mod-dir MOD_DIR --image RELEASE_IMAGE"
       ]
     }
   ]
