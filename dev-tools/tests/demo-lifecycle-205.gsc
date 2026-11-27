@@ -32,6 +32,8 @@ main()
 initializeFixture()
 {
     openCJ\demoRecording::_initConstants();
+    // Record panels cancel their reads by SQL policy; no database is opened.
+    openCJ\mySQL::_initConstants();
     level.lifecycleChecks = 0;
     level.lifecycleFailures = 0;
     openCJ\settings::onInit();
