@@ -27,7 +27,7 @@ main()
     verifyIdleTrimming(viewer);
     verifyActiveMotionRetention(viewer);
     verifyRpgShotWindow(viewer);
-    verifySaveMarks();
+    verifySaveMarks(viewer);
     verifyAmmoRestoration(viewer);
     viewer openCJ\demoSelectionTest::run();
     reportCompletion();
@@ -287,8 +287,9 @@ verifyActiveMotionRetention(viewer)
     }
 }
 
-// The engine remembers the recording length at each save and rewinds to it on load.
-verifySaveMarks()
+// Loading any save continues the recording; the kept path is the chain of branches
+// leading to the latest load, and abandoned branches stay available.
+verifySaveMarks(viewer)
 {
     sourceDemoID = 1800000088;
     createDemo(sourceDemoID);
@@ -299,17 +300,35 @@ verifySaveMarks()
     addGroundFrames(sourceDemoID, 10);
     check(demoRecordSave(sourceDemoID, 3) == 30, "a third save is remembered");
 
-    check(demoRewindToSave(sourceDemoID, 2) == 20, "loading save 2 rewinds to its length");
-    check(!isDefined(demoRewindToSave(sourceDemoID, 3)),
-          "a save after the loaded one is no longer on the kept path");
-    check(!isDefined(demoRewindToSave(sourceDemoID, 99)), "an unknown save cannot be rewound to");
-    check(demoRewindToSave(sourceDemoID, 1) == 10, "an earlier save is still available");
+    check(demoRewindToSave(sourceDemoID, 2) == 20, "loading save 2 continues from its length");
+    check(keptPathFrames(viewer, sourceDemoID) == 20, "the kept path ends at save 2");
+    check(!isDefined(demoRewindToSave(sourceDemoID, 99)), "an unknown save cannot be loaded");
 
+    // Branch B: five frames after save 2, then save 4.
     addGroundFrames(sourceDemoID, 5);
     check(demoRecordSave(sourceDemoID, 4) == 35,
           "a save after a load records the full recording length, failed frames included");
-    check(demoRewindToSave(sourceDemoID, 4) == 35, "the new save can be loaded");
+    check(keptPathFrames(viewer, sourceDemoID) == 25, "branch B joins the path after save 2");
+
+    // Loading forward into the abandoned branch keeps the demo.
+    check(demoRewindToSave(sourceDemoID, 3) == 30, "a later save on an abandoned branch loads");
+    check(keptPathFrames(viewer, sourceDemoID) == 30, "the path returns to the first branch");
+    check(demoRewindToSave(sourceDemoID, 4) == 35, "branch B can be loaded again");
+    check(keptPathFrames(viewer, sourceDemoID) == 25, "the path follows branch B again");
+    check(demoRewindToSave(sourceDemoID, 1) == 10, "an earlier save is still available");
+    check(demoRewindToSave(sourceDemoID, 4) == 35, "two loads in a row keep one branch");
+    check(keptPathFrames(viewer, sourceDemoID) == 25, "an empty branch does not change the path");
     destroyDemo(sourceDemoID);
+}
+
+// Number of frames on the successful path (low-RPG playback keeps only key frames).
+keptPathFrames(viewer, demoID)
+{
+    lastFrame = numberOfDemoFrames(demoID) - 1;
+    viewer selectPlaybackDemo(demoID);
+    viewer demoPlaybackStyle(1, 0, lastFrame);
+    timing = viewer demoPlaybackTime(0, lastFrame);
+    return timing[1] + 1;
 }
 
 addGroundFrames(demoID, frameCount)

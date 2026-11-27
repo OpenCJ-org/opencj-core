@@ -304,15 +304,25 @@ typedef struct
 static sDemo_t opencj_demos[MAX_NR_DEMOS_PER_MAP];
 // For faster access every time an id is provided, use a map
 static std::map<uint32_t, uint16_t> opencj_demoIdToIdx;
-// Recording length at each save of a run on its kept path, so loading a save can
-// rewind the recording. Kept outside sDemo_t, which is cleared with memset.
-// Save numbers and frame counts both increase along the list.
+// Recording length at each save of a run, so loading any save can continue the
+// recording from it. Kept outside sDemo_t, which is cleared with memset. The list
+// is ordered by save number; frame counts need not increase after loads.
 struct DemoSaveMark
 {
     int saveNumber;
     int frameCount;
 };
 static std::unordered_map<int, std::vector<DemoSaveMark>> opencj_demoSaveMarks;
+
+// Each load starts a branch: the frames recorded from firstFrame on continue the
+// run from resumedFromFrame (the last frame before the loaded save, or -1 for a
+// save made before any frame). Ordered by firstFrame, which never decreases.
+struct DemoBranch
+{
+    int firstFrame;
+    int resumedFromFrame;
+};
+static std::unordered_map<int, std::vector<DemoBranch>> opencj_demoBranches;
 
 // A player can only watch 1 demo at a time
 static sDemoPlayback_t opencj_playback[MAX_CLIENTS];
@@ -525,6 +535,7 @@ static void clearDemoById(int demoId)
 
         cancelDemoLoads(*pDemo);
         opencj_demoSaveMarks.erase(demoId);
+        opencj_demoBranches.erase(demoId);
         printf("Clearing demo with pointer %p\n", pDemo);
         if (pDemo->pDemoFrames)
         {
@@ -574,12 +585,26 @@ static size_t allocatedDemoBytes()
     {
         bytes += opencj_demos[i].nrAllocatedFrames * sizeof(sDemoFrame_t);
     }
-    // Save marks share the recording budget, so endless saving is bounded too.
+    // Save marks and branches share the recording budget, so endless saving and
+    // loading are bounded too.
     for (const auto &entry : opencj_demoSaveMarks)
     {
         bytes += entry.second.capacity() * sizeof(DemoSaveMark);
     }
+    for (const auto &entry : opencj_demoBranches)
+    {
+        bytes += entry.second.capacity() * sizeof(DemoBranch);
+    }
     return bytes;
+}
+
+// Check whether appending one element to a full vector would exceed the budget.
+template <typename Element>
+static bool appendFitsDemoBudget(const std::vector<Element> &items)
+{
+    const bool growsStorage = items.size() == items.capacity();
+    const size_t extraBytes = growsStorage ? (items.capacity() + 1) * sizeof(Element) : 0;
+    return allocatedDemoBytes() + extraBytes <= demoMemoryLimit;
 }
 
 static sDemo_t *createDemo(int demoId, int capacity = DEMO_INITIAL_CAPACITY)
@@ -1865,19 +1890,100 @@ void Gsc_Demo_MarkFailedSince()
     stackPushInt(demo->size);
 }
 
-// Drop marks whose saved frame no longer exists or no longer lies on the kept path.
-static void dropSaveMarksAfter(int demoId, int frameCount)
+// Forget saves and branches that refer to frames removed by truncation.
+static void dropMarksBeyondFrames(int demoId, int frameCount)
 {
-    auto entry = opencj_demoSaveMarks.find(demoId);
-    if (entry == opencj_demoSaveMarks.end())
+    auto marks = opencj_demoSaveMarks.find(demoId);
+    if (marks != opencj_demoSaveMarks.end())
     {
-        return;
+        std::vector<DemoSaveMark> &saveMarks = marks->second;
+        saveMarks.erase(std::remove_if(saveMarks.begin(), saveMarks.end(),
+                                       [frameCount](const DemoSaveMark &mark)
+                                       {
+                                           return mark.frameCount > frameCount;
+                                       }),
+                        saveMarks.end());
     }
-    std::vector<DemoSaveMark> &marks = entry->second;
-    while (!marks.empty() && marks.back().frameCount > frameCount)
+    auto branches = opencj_demoBranches.find(demoId);
+    if (branches != opencj_demoBranches.end())
     {
-        marks.pop_back();
+        std::vector<DemoBranch> &loadBranches = branches->second;
+        while (!loadBranches.empty() && loadBranches.back().firstFrame >= frameCount)
+        {
+            loadBranches.pop_back();
+        }
     }
+}
+
+// Recompute the previous/next key-frame links after the key frames changed.
+// A frame's previous key is the last key frame before it (0 when none); its next
+// key is the first key frame after it, or itself when none follows.
+static void rebuildKeyFrameLinks(sDemo_t *demo)
+{
+    int previousKeyFrame = 0;
+    demo->lastKeyFrame = 0;
+    for (int frameIndex = 0; frameIndex < demo->size; ++frameIndex)
+    {
+        sDemoFrame_t &frame = demo->pDemoFrames[frameIndex];
+        frame.prevKeyFrame = previousKeyFrame;
+        if (frame.isKeyFrame)
+        {
+            previousKeyFrame = frameIndex;
+            demo->lastKeyFrame = frameIndex;
+        }
+    }
+    int nextKeyFrame = -1;
+    for (int frameIndex = demo->size - 1; frameIndex >= 0; --frameIndex)
+    {
+        sDemoFrame_t &frame = demo->pDemoFrames[frameIndex];
+        frame.nextKeyFrame = nextKeyFrame >= 0 ? nextKeyFrame : frameIndex;
+        if (frame.isKeyFrame)
+        {
+            nextKeyFrame = frameIndex;
+        }
+    }
+}
+
+// Make the key frames exactly the connected path that ends at endFrame: the
+// branch containing it, then the branch containing the frame it resumed from,
+// back to the recording start. Abandoned branches stay recorded as failed
+// attempts, so a later load into one of them can make it the path again.
+static void markPathToFrame(sDemo_t *demo, int endFrame)
+{
+    for (int frameIndex = 0; frameIndex < demo->size; ++frameIndex)
+    {
+        demo->pDemoFrames[frameIndex].isKeyFrame = false;
+    }
+    const auto entry = opencj_demoBranches.find(demo->id);
+    int pathFrame = std::min(endFrame, demo->size - 1);
+    while (pathFrame >= 0)
+    {
+        int branchFirstFrame = 0;
+        int resumedFromFrame = -1;
+        if (entry != opencj_demoBranches.end())
+        {
+            const std::vector<DemoBranch> &branches = entry->second;
+            auto containing = std::upper_bound(branches.begin(), branches.end(), pathFrame,
+                                               [](int frame, const DemoBranch &branch)
+                                               {
+                                                   return frame < branch.firstFrame;
+                                               });
+            if (containing != branches.begin())
+            {
+                --containing;
+                branchFirstFrame = containing->firstFrame;
+                resumedFromFrame = containing->resumedFromFrame;
+            }
+        }
+        for (int frameIndex = branchFirstFrame; frameIndex <= pathFrame; ++frameIndex)
+        {
+            demo->pDemoFrames[frameIndex].isKeyFrame = true;
+        }
+        // resumedFromFrame always precedes its branch, so the walk ends.
+        pathFrame = resumedFromFrame;
+    }
+    rebuildKeyFrameLinks(demo);
+    ++demo->editVersion;
 }
 
 // demoRecordSave(demoID, saveNumber): remember the recording length at this save.
@@ -1909,9 +2015,7 @@ void Gsc_Demo_RecordSave()
     {
         marks.pop_back();
     }
-    const bool growsStorage = marks.size() == marks.capacity();
-    const size_t extraBytes = growsStorage ? (marks.capacity() + 1) * sizeof(DemoSaveMark) : 0;
-    if (allocatedDemoBytes() + extraBytes > demoMemoryLimit)
+    if (!appendFitsDemoBudget(marks))
     {
         stackPushUndefined();
         return;
@@ -1920,9 +2024,10 @@ void Gsc_Demo_RecordSave()
     stackPushInt(demo->size);
 }
 
-// demoRewindToSave(demoID, saveNumber): make the frames after that save failed
-// attempts and forget later saves. Returns the save's frame count, or undefined
-// when the save is not on the kept path (the caller then stops recording).
+// demoRewindToSave(demoID, saveNumber): continue the recording from any earlier
+// save, including one on an abandoned branch. The kept path becomes the chain
+// leading to that save; nothing is deleted. Returns the save's frame count, or
+// undefined for an unknown save or an exhausted budget (the caller then stops).
 void Gsc_Demo_RewindToSave()
 {
     int id;
@@ -1956,8 +2061,20 @@ void Gsc_Demo_RewindToSave()
         return;
     }
     const int frameCount = mark->frameCount;
-    markDemoFailedSince(demo, frameCount);
-    dropSaveMarksAfter(id, frameCount);
+    std::vector<DemoBranch> &branches = opencj_demoBranches[id];
+    // Loads without frames between them: the later one replaces the empty branch.
+    if (!branches.empty() && branches.back().firstFrame == demo->size)
+    {
+        branches.pop_back();
+    }
+    if (!appendFitsDemoBudget(branches))
+    {
+        stackPushUndefined();
+        return;
+    }
+    const int resumedFromFrame = frameCount - 1;
+    branches.push_back({demo->size, resumedFromFrame});
+    markPathToFrame(demo, resumedFromFrame);
     stackPushInt(frameCount);
 }
 
@@ -2251,7 +2368,7 @@ void Gsc_Demo_Truncate()
         return;
     }
     demo->size = count;
-    dropSaveMarksAfter(id, count);
+    dropMarksBeyondFrames(id, count);
     demo->currentFrame = count ? count - 1 : 0;
     demo->isFirstFrameFilled = count != 0;
     demo->lastKeyFrame = 0;
@@ -3375,8 +3492,9 @@ void Gsc_Demo_KeepLast() {
         stackPushUndefined();
         return;
     }
-    // Dropping leading frames shifts every index, so no save mark stays valid.
+    // Dropping leading frames shifts every index, so no save mark or branch stays valid.
     opencj_demoSaveMarks.erase(id);
+    opencj_demoBranches.erase(id);
     int removed = std::max(0, demo->size - count);
     if (removed) {
         memmove(demo->pDemoFrames, demo->pDemoFrames + removed, count * sizeof(sDemoFrame_t));

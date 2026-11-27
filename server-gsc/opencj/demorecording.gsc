@@ -182,7 +182,8 @@ onSaved(saveNumber)
     }
 }
 
-// Retain failed attempts for playback; the engine forgets saves beyond the restored frame.
+// Continue the recording from the loaded save. The engine keeps every branch, so
+// loading any history save keeps the demo; the finish keeps the path that reached it.
 onLoaded(saveNumber)
 {
     recording = self current();
@@ -190,8 +191,8 @@ onLoaded(saveNumber)
     {
         return;
     }
-    // A save the recording cannot rewind to (for example from an older history page)
-    // ends this run's recording; the run itself is unaffected.
+    // A save made before this recording started (for example before a restore)
+    // cannot be continued; that ends this run's recording, not the run.
     if(!isDefined(demoRewindToSave(recording.id, saveNumber)))
     {
         recording.failed = true;

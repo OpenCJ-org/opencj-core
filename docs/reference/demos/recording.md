@@ -6,7 +6,10 @@ no frames. Disconnecting discards unfinished capture; a run resumed from another
 connection has no complete recording from that connection.
 
 Loading a save marks the abandoned frames as failed-path history rather than
-deleting them from the recording. Successful-path playback can skip those
+deleting them from the recording. Any save of the recording can be loaded,
+including one on an abandoned branch: the engine remembers which save each load
+continued from, and the successful path is always the connected chain leading to
+the latest load. The finish therefore keeps exactly the path that reached it. Successful-path playback can skip those
 frames; a fixed run-history view can include unsuccessful attempts. A failed
 capture stops that recording without invalidating the player's run.
 
