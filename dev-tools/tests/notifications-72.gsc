@@ -348,6 +348,9 @@ verifyChallengeAwards(player)
 {
     player openCJ\notifications::cancelFlash();
     player openCJ\notifications::cancelResults();
+    // Production sets challengesReady only after loading the catalogue. The synthetic
+    // award row has no catalogue entry, so no Discord announcement is expected.
+    level.challenges = [];
     level.challengesReady = true;
     level.challengeTierPoints[1] = 100;
     level.challengeTierPoints[2] = 0;
@@ -767,7 +770,11 @@ verifyConcurrentChallengeAwards(player)
     }
     check(level.n72AwardCallbacksDone == 2, "both duplicate award callbacks settle");
     stats = mysql_async_stats();
-    check(stats[8] - acceptedBefore == 2, "duplicate award skips a second write and progress read");
+    // One award starts a write, a progress read and a read of the completed challenges
+    // for the Discord announcement. The duplicate callback must start none.
+    sqlJobsForOneAward = 3;
+    check(stats[8] - acceptedBefore == sqlJobsForOneAward,
+          "duplicate award skips a second write and progress read");
     check(player.challengePoints == 10, "duplicate award retains one reward");
     check(level.n72Private.size == privateMessageCount + 1,
           "overlapping callbacks announce the challenge once");
