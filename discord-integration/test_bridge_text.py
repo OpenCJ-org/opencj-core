@@ -2,9 +2,11 @@
 
 import unittest
 
+from announcements import format_challenge_completed, format_server_record
 from bridge_config import parse_config
-from opencj_events import (FIELD_SEPARATOR, MapStartedEvent, PlayerCountChangedEvent, PlayerMessageEvent,
-                           PlayerRenamedEvent, RunFinishedEvent, parse_game_event)
+from opencj_events import (FIELD_SEPARATOR, ChallengeCompletedEvent, MapStartedEvent, PlayerCountChangedEvent,
+                           PlayerMessageEvent, PlayerRenamedEvent, RunFinishedEvent, ServerRecordEvent,
+                           parse_game_event)
 from util import get_clean_name, to_discord_text, to_game_text
 
 SOCKET_ENVIRONMENT = {'OPENCJ_DISCORD_SOCKET': '/run/opencj-discord/events.sock'}
@@ -44,6 +46,49 @@ class GameEventParsingTests(unittest.TestCase):
 
     def test_player_count(self):
         self.assertEqual(parse_game_event(game_line(2, 0)), PlayerCountChangedEvent(0))
+
+    def test_server_record_keeps_every_field(self):
+        event = parse_game_event(game_line(7, '^1Runner', 'mp_fixture', 'main', '125 FPS, checkpoints',
+                                           '1:02.345', 3, 'time: 0:00.512 faster'))
+        expected = ServerRecordEvent('Runner', 'mp_fixture', 'main', '125 FPS, checkpoints', '1:02.345', 3,
+                                     'time: 0:00.512 faster')
+        self.assertEqual(event, expected)
+
+    def test_challenge_without_time_limit(self):
+        event = parse_game_event(game_line(8, 'Runner', 'mp_fixture', 'Hard', 6, 60, ''))
+        self.assertEqual(event, ChallengeCompletedEvent('Runner', 'mp_fixture', 'Hard', 6, 60, None))
+
+    def test_malformed_record_and_challenge_lines_are_ignored(self):
+        record_without_improvement = game_line(7, 'Runner', 'mp_fixture', 'main', 'cat', '1:00', 3)
+        record_with_negative_rpgs = game_line(7, 'Runner', 'mp_fixture', 'main', 'cat', '1:00', -1, 'x')
+        challenge_with_tier_zero = game_line(8, 'Runner', 'mp_fixture', 'Hard', 0, 60, '')
+        challenge_with_text_tier = game_line(8, 'Runner', 'mp_fixture', 'Hard', 'six', 60, '')
+        with self.assertLogs('opencj_events', level='WARNING'):
+            self.assertIsNone(parse_game_event(record_without_improvement))
+            self.assertIsNone(parse_game_event(record_with_negative_rpgs))
+            self.assertIsNone(parse_game_event(challenge_with_tier_zero))
+            self.assertIsNone(parse_game_event(challenge_with_text_tier))
+
+
+class AnnouncementTests(unittest.TestCase):
+    def test_server_record_message(self):
+        event = ServerRecordEvent('Run*ner', 'mp_fixture', 'main', '125 FPS, checkpoints', '1:02.345', 1,
+                                  'time: 0:00.512 faster; RPGs: 2 fewer')
+        expected = ('\U0001F3C6 **Run\\*ner** set a server record on ``mp_fixture - main`` '
+                    '(125 FPS, checkpoints): ``1:02.345`` with 1 RPG (time: 0:00.512 faster; RPGs: 2 fewer)')
+        self.assertEqual(format_server_record(event), expected)
+
+    def test_route_backticks_cannot_end_the_code_span(self):
+        event = ServerRecordEvent('Runner', 'mp_fixture', 'a``b', 'Any FPS, any%', '0:59.000', 0, 'RPGs: 1 fewer')
+        self.assertIn('``mp_fixture - a\'\'b``', format_server_record(event))
+        self.assertIn('with 0 RPGs', format_server_record(event))
+
+    def test_challenge_messages(self):
+        untimed = ChallengeCompletedEvent('Runner', 'mp_fixture', 'Hard', 6, 60, None)
+        self.assertEqual(format_challenge_completed(untimed),
+                         '\U0001F3AF **Runner** completed the challenge ``mp_fixture - Hard`` (Tier 6, +60 pts)')
+        timed = ChallengeCompletedEvent('Runner', 'mp_fixture', 'Hard', 10, 100, '1:00:00')
+        self.assertTrue(format_challenge_completed(timed).endswith('(Tier 10, +100 pts, within 1:00:00)'))
 
 
 class DiscordTextTests(unittest.TestCase):

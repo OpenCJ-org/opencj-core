@@ -6,6 +6,8 @@
 //    PLAYER_LEFT             = 4,
 //    PLAYER_FINISHED         = 5,
 //    PLAYER_RENAMED          = 6,
+//    SERVER_RECORD           = 7,
+//    CHALLENGE_COMPLETED     = 8,
 
 #include openCJ\util;
 
@@ -96,6 +98,26 @@ onPlayerRenamed(oldName, newName)
 {
     // Called from playerNames :: _applyName for logged-in players, matching the join message
     discord_onEvent(6, oldName, newName);
+}
+
+onServerRecord(playerName, routeName, categoryLabel, timeMs, rpgCount, improvementText)
+{
+    // Called from recordNotices :: onRunFinished when a finish beats the server record of its
+    // exact category, by time, by RPGs or both; improvementText says which and by how much.
+    discord_onEvent(7, playerName, getCvar("mapname"), routeName, categoryLabel,
+                    formatTimeString(timeMs, false), rpgCount, improvementText);
+}
+
+onChallengeCompleted(playerName, challenge)
+{
+    // Called from challenges :: announceCompletedChallenges for each challenge a run completed.
+    timeLimitText = "";
+    if (challenge.maxTime > 0)
+    {
+        timeLimitText = formatTimeString(challenge.maxTime, true);
+    }
+    discord_onEvent(8, playerName, challenge.mapName, challenge.routeLabel, challenge.tier,
+                    challenge.points, timeLimitText);
 }
 
 _onPlayerCountChanged()

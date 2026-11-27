@@ -85,6 +85,11 @@ def escape_discord_markup(text):
     return DISCORD_MARKUP_PATTERN.sub(r'\\\1', text)
 
 
+def code_span(text):
+    """Show a label in a code span; it cannot contain backticks, which would end the span."""
+    return '``' + text.replace('`', "'") + '``'
+
+
 def to_discord_text(text, mentionable_user_ids_by_name=None):
     """Escape game text for Discord, turning @name into a ping for allowed users only.
 

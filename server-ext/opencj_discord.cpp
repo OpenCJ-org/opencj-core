@@ -30,6 +30,8 @@ typedef enum
     PLAYER_LEFT             = 4,
     RUN_FINISHED            = 5,
     PLAYER_RENAMED          = 6,
+    SERVER_RECORD           = 7,
+    CHALLENGE_COMPLETED     = 8,
 } eGameEvent_t;
 
 static int g_fileDescriptor = -1;
@@ -294,6 +296,40 @@ static const char *getStringParam(int paramIndex)
     return value;
 }
 
+// Appends parameters 1..expectedTypeCount as fields, in order, after checking their types.
+// A wrong type is reported as a script error with usageText. Returns false then, or when a
+// string is missing; the line may hold some fields already, so the caller must not send it.
+static bool appendParamFields(const int *expectedTypes, int expectedTypeCount, const char *usageText,
+                              char *eventLine, size_t eventLineSize, size_t *eventLength)
+{
+    if (!hasParamTypes(expectedTypes, expectedTypeCount))
+    {
+        stackError(usageText);
+        return false;
+    }
+
+    for (int fieldIndex = 0; fieldIndex < expectedTypeCount; fieldIndex++)
+    {
+        int paramIndex = fieldIndex + 1;
+        if (expectedTypes[fieldIndex] == STACK_INT)
+        {
+            int value = 0;
+            stackGetParamInt(paramIndex, &value);
+            appendIntField(eventLine, eventLineSize, eventLength, value);
+        }
+        else
+        {
+            const char *text = getStringParam(paramIndex);
+            if (text == NULL)
+            {
+                return false;
+            }
+            appendField(eventLine, eventLineSize, eventLength, text);
+        }
+    }
+    return true;
+}
+
 // Builds the event line for gameEventType from the GSC parameters.
 // Returns false (after reporting a script error where useful) when nothing should be sent.
 static bool buildEventLine(int gameEventType, char *eventLine, size_t eventLineSize)
@@ -386,6 +422,36 @@ static bool buildEventLine(int gameEventType, char *eventLine, size_t eventLineS
             appendField(eventLine, fieldSpace, &eventLength, timeStr);
             appendField(eventLine, fieldSpace, &eventLength, mapName);
             appendField(eventLine, fieldSpace, &eventLength, routeName);
+        } break;
+
+        case SERVER_RECORD:
+        {
+            const int expectedTypes[] = {STACK_STRING, STACK_STRING, STACK_STRING, STACK_STRING,
+                                         STACK_STRING, STACK_INT, STACK_STRING};
+            const char *usageText = "Expected 8 arguments: event (int), name, map, route, category, "
+                                    "time (strings), RPGs (int), improvement (string)";
+            int expectedTypeCount = (int)(sizeof(expectedTypes) / sizeof(expectedTypes[0]));
+            bool hasFields = appendParamFields(expectedTypes, expectedTypeCount, usageText,
+                                               eventLine, fieldSpace, &eventLength);
+            if (!hasFields)
+            {
+                return false;
+            }
+        } break;
+
+        case CHALLENGE_COMPLETED:
+        {
+            const int expectedTypes[] = {STACK_STRING, STACK_STRING, STACK_STRING, STACK_INT, STACK_INT,
+                                         STACK_STRING};
+            const char *usageText = "Expected 7 arguments: event (int), name, map, route (strings), "
+                                    "tier, points (ints), time limit (string, empty for none)";
+            int expectedTypeCount = (int)(sizeof(expectedTypes) / sizeof(expectedTypes[0]));
+            bool hasFields = appendParamFields(expectedTypes, expectedTypeCount, usageText,
+                                               eventLine, fieldSpace, &eventLength);
+            if (!hasFields)
+            {
+                return false;
+            }
         } break;
 
         default:

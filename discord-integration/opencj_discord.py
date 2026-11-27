@@ -6,10 +6,13 @@ import time
 
 import discord
 
-from opencj_events import (MapStartedEvent, PlayerCountChangedEvent, PlayerJoinedEvent, PlayerLeftEvent,
-                           PlayerMessageEvent, PlayerRenamedEvent, RunFinishedEvent)
+from announcements import format_challenge_completed, format_server_record
+from opencj_events import (ChallengeCompletedEvent, MapStartedEvent, PlayerCountChangedEvent, PlayerJoinedEvent,
+                           PlayerLeftEvent, PlayerMessageEvent, PlayerRenamedEvent, RunFinishedEvent,
+                           ServerRecordEvent)
 from util import (CHAT_MESSAGE_MAX_CHARACTERS, PLAYER_NAME_MAX_CHARACTERS, PLAYER_NAME_MIN_CHARACTERS,
-                  escape_discord_markup, replace_custom_emoji, to_discord_text, to_game_text, truncate)
+                  code_span, escape_discord_markup, replace_custom_emoji, to_discord_text, to_game_text,
+                  truncate)
 
 LOG = logging.getLogger(__name__)
 
@@ -22,10 +25,6 @@ MENTION_NAMES_REFRESH_SECONDS = 600
 UNKNOWN_DISCORD_NAME = 'Discord user'
 RELAYED_MESSAGE_TYPES = (discord.MessageType.default, discord.MessageType.reply)
 
-
-def code_span(text):
-    """Show a label in a code span; it cannot contain backticks, which would end the span."""
-    return '``' + text.replace('`', "'") + '``'
 
 
 def game_safe_author_name(author):
@@ -146,6 +145,10 @@ class OpenCJDiscord(discord.Client):
         if isinstance(event, RunFinishedEvent):
             return ('**' + escape_discord_markup(event.player_name) + '** finished '
                     + code_span(event.map_name + ' - ' + event.route_name) + ' in ' + code_span(event.time_text))
+        if isinstance(event, ServerRecordEvent):
+            return format_server_record(event)
+        if isinstance(event, ChallengeCompletedEvent):
+            return format_challenge_completed(event)
         if isinstance(event, MapStartedEvent):
             # The game repeats this after every reconnect; only a real change is announced.
             if event.map_name == self.map_name:

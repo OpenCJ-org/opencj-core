@@ -383,6 +383,36 @@ awardRun(runID)
         self iprintln("Challenge complete! +" + (self.challengePoints - pointsBefore) +
                       " points. Total: " + self.challengePoints + " | Level " + self.challengeRank);
         self openCJ\notifications::result("challenge", runID);
+        self announceCompletedChallenges(playerID, runID);
+    }
+}
+
+// Post each challenge this run completed to Discord. Only called after the award raised the
+// player's points, so a retried award (whose rows already existed) is not announced twice.
+announceCompletedChallenges(playerID, runID)
+{
+    // One finish completes at most a few challenges of its map (for example a route and its
+    // timed version); the limit keeps a catalogue mistake from flooding the channel.
+    maxAnnouncedChallenges = 5;
+    rows = self openCJ\mySQL::mysqlAsyncRead(
+        "SELECT challengeKey" +
+        " FROM challengeCompletions" +
+        " WHERE playerID=" + int(playerID) +
+        " AND runID=" + int(runID) +
+        " ORDER BY challengeKey" +
+        " LIMIT " + maxAnnouncedChallenges);
+    if(!isDefined(rows) || playerID != self openCJ\login::getPlayerID())
+    {
+        return;
+    }
+    for(rowIndex = 0; rowIndex < rows.size; rowIndex++)
+    {
+        challengeKey = rows[rowIndex][0];
+        if(!isDefined(challengeKey) || !isDefined(level.challenges[challengeKey]))
+        {
+            continue;
+        }
+        openCJ\discord::onChallengeCompleted(self.name, level.challenges[challengeKey]);
     }
 }
 

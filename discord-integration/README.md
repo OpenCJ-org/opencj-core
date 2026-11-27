@@ -1,8 +1,13 @@
 # Discord chat bridge
 
 Relays chat between one game server and one Discord channel, and posts joins, leaves,
-renames, finished runs and map changes. Installations made with `dev-tools/setup` set
-this up for you; these notes are for running it by hand.
+renames, finished runs and map changes. It also posts new server records (time or RPGs,
+with the run's FPS mode and other settings) and first-time challenge completions.
+Tutorial, assisted (noclip, speed mode, teleport, paused) and hard TAS runs are never
+announced as records; the game decides this, see `server-gsc/opencj/recordnotices.gsc`.
+
+Installations made with `dev-tools/setup` set this up for you; these notes are for
+running it by hand.
 
 ## Configuration
 

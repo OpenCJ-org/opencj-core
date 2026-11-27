@@ -275,6 +275,14 @@ onRunFinished(runID)
     {
         iprintln(finishedRun.playerName + "^7 | " + routeLabel +
                  " | ^2Server record: ^7" + serverImprovement);
+        // Discord is public: hard TAS (tool-assisted) records stay in game. Tutorial runs never
+        // get here (finishQuery skips them), nor do assisted ones (events\runFinished returns
+        // early for noclip, speed mode, teleports and paused runs).
+        if(!finishedRun.hardTAS)
+        {
+            openCJ\discord::onServerRecord(finishedRun.playerName, finishedRun.routeName, categoryLabel,
+                                           finishedRun.timeMs, finishedRun.rpgCount, serverImprovement);
+        }
     }
     if(personalImprovement != "" && self openCJ\login::getPlayerID() == ownerPlayerID)
     {

@@ -24,10 +24,16 @@ EVENT_PLAYER_JOINED = 3
 EVENT_PLAYER_LEFT = 4
 EVENT_RUN_FINISHED = 5
 EVENT_PLAYER_RENAMED = 6
+EVENT_SERVER_RECORD = 7
+EVENT_CHALLENGE_COMPLETED = 8
 
 MAP_NAME_MAX_CHARACTERS = 64
 ROUTE_NAME_MAX_CHARACTERS = 64
 RUN_TIME_MAX_CHARACTERS = 32
+# "Standard FPS, checkpoints, elevators, halfbeat, TAS" is the longest label recordNotices builds.
+RECORD_CATEGORY_MAX_CHARACTERS = 80
+# Both boards together, for example "time: tied, 2 fewer RPGs; RPGs: tied, 0:02.000 faster".
+RECORD_IMPROVEMENT_MAX_CHARACTERS = 120
 # Enough of a rejected line to recognise it in the log without flooding it.
 LOGGED_LINE_MAX_CHARACTERS = 80
 
@@ -71,6 +77,29 @@ class RunFinishedEvent:
 class PlayerRenamedEvent:
     old_name: str
     new_name: str
+
+
+@dataclass(frozen=True)
+class ServerRecordEvent:
+    """A finish that beat the server record of its exact category (time, RPGs or both)."""
+    player_name: str
+    map_name: str
+    route_name: str
+    category_label: str
+    time_text: str
+    rpg_count: int
+    improvement_text: str
+
+
+@dataclass(frozen=True)
+class ChallengeCompletedEvent:
+    """A challenge completed for the first time; time_limit_text is None when it has no limit."""
+    player_name: str
+    map_name: str
+    route_label: str
+    tier: int
+    points: int
+    time_limit_text: str | None
 
 
 def clean_label(text, max_characters):
@@ -151,6 +180,40 @@ def parse_player_renamed(fields):
     return PlayerRenamedEvent(old_name, new_name)
 
 
+def parse_server_record(fields):
+    if len(fields) != 7:
+        return None
+    player_name = get_clean_name(fields[0])
+    map_name = clean_label(fields[1], MAP_NAME_MAX_CHARACTERS)
+    route_name = clean_label(fields[2], ROUTE_NAME_MAX_CHARACTERS)
+    category_label = clean_label(fields[3], RECORD_CATEGORY_MAX_CHARACTERS)
+    time_text = clean_label(fields[4], RUN_TIME_MAX_CHARACTERS)
+    rpg_count = int(fields[5])
+    improvement_text = clean_label(fields[6], RECORD_IMPROVEMENT_MAX_CHARACTERS)
+    labels = (player_name, map_name, route_name, category_label, time_text, improvement_text)
+    has_every_label = all(label is not None for label in labels)
+    if not has_every_label or rpg_count < 0:
+        return None
+    return ServerRecordEvent(player_name, map_name, route_name, category_label, time_text, rpg_count,
+                             improvement_text)
+
+
+def parse_challenge_completed(fields):
+    if len(fields) != 6:
+        return None
+    player_name = get_clean_name(fields[0])
+    map_name = clean_label(fields[1], MAP_NAME_MAX_CHARACTERS)
+    route_label = clean_label(fields[2], ROUTE_NAME_MAX_CHARACTERS)
+    tier = int(fields[3])
+    points = int(fields[4])
+    # An empty field means the challenge has no time limit.
+    time_limit_text = clean_label(fields[5], RUN_TIME_MAX_CHARACTERS)
+    has_every_label = all(label is not None for label in (player_name, map_name, route_label))
+    if not has_every_label or tier < 1 or points < 0:
+        return None
+    return ChallengeCompletedEvent(player_name, map_name, route_label, tier, points, time_limit_text)
+
+
 FIELD_PARSERS_BY_EVENT_NUMBER = {
     EVENT_PLAYER_MESSAGE: parse_player_message,
     EVENT_MAP_STARTED: parse_map_started,
@@ -159,6 +222,8 @@ FIELD_PARSERS_BY_EVENT_NUMBER = {
     EVENT_PLAYER_LEFT: parse_player_left,
     EVENT_RUN_FINISHED: parse_run_finished,
     EVENT_PLAYER_RENAMED: parse_player_renamed,
+    EVENT_SERVER_RECORD: parse_server_record,
+    EVENT_CHALLENGE_COMPLETED: parse_challenge_completed,
 }
 
 
