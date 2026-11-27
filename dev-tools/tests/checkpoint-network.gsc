@@ -94,20 +94,20 @@ createNetwork(editor)
 
 checkNetworkPublication(editor, network)
 {
-    check(editor openCJ\checkpointPublish::publish(), "network publishes all route continuations");
+    check(publishDraft(editor), "network publishes all route continuations");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas", 6, "network shares opening without duplicate areas");
     checkScalar("SELECT COUNT(*) FROM checkpointSectionColors", 3, "network stores each section color");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE sectionName='net_a'", 2,
                 "first branch areas retain their section name");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE sectionName='net_b'", 2,
                 "second branch areas retain their section name");
-    check(editor openCJ\checkpointPublish::publish(), "unchanged network publication succeeds");
+    check(publishDraft(editor), "unchanged network publication succeeds");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas", 6, "repeated network publication preserves IDs");
     selected = editor.cpc;
     pending = editor openCJ\checkpointNetwork::readSection("net_b");
     pending.draft = openCJ\checkpointCreation::_decode(row(2400, false));
     check(editor openCJ\checkpointNetwork::writeSection("net_b", pending), "save pending branch edit");
-    check(!editor openCJ\checkpointPublish::publish(), "network rejects another section's pending edit");
+    check(!publishDraft(editor), "network rejects another section's pending edit");
     check(editor.cpc == selected, "rejected network publication restores active draft ownership");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas", 6, "pending edit leaves published network intact");
     pending.draft = openCJ\checkpointCreation::_empty();
@@ -156,7 +156,7 @@ checkMissingOpening(editor, network)
     {
         FS_Remove(path + ".b");
     }
-    check(!editor openCJ\checkpointPublish::publish(), "missing opening rejects network publication");
+    check(!publishDraft(editor), "missing opening rejects network publication");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas", 6, "missing draft leaves published geometry intact");
 }
 
@@ -200,34 +200,55 @@ checkLostNetworkCommitReply(editor)
     network.paths["net_a"].hex = "#654321";
     check(editor openCJ\checkpointNetwork::save(network), "save changed route color before lost reply");
     level.hideNetworkCommitReply = true;
-    check(!editor openCJ\checkpointPublish::publish(), "network does not claim success without commit reply");
+    check(!publishDraft(editor), "network does not claim success without commit reply");
     check(isSubStr(editor.cpc.status, "confirm"), "network reports uncertain commit outcome");
     checkScalar("SELECT colorRGB FROM routes WHERE routeName='net_a'", 6636321,
                 "network commit may succeed even when its reply is missing");
-    check(editor openCJ\checkpointPublish::publish(), "network retry reconciles committed route metadata");
+    check(publishDraft(editor), "network retry reconciles committed route metadata");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas", 6, "network retry does not duplicate areas");
 }
 
-publicationQuery(query)
+// A rejected COMMIT really rolls back; a hidden reply follows a real commit.
+publicationCommit(transaction)
 {
-    if(query == "COMMIT" && isDefined(level.rejectNetworkCommit) && level.rejectNetworkCommit)
+    if(isDefined(level.rejectNetworkCommit) && level.rejectNetworkCommit)
     {
         level.rejectNetworkCommit = false;
-        return undefined;
+        self openCJ\mySQL::rollbackTransaction(transaction);
+        return level.sqlConstants.outcomeError;
     }
-    result = openCJ\mySQL::mysqlSyncQuery(query);
+    outcome = self openCJ\mySQL::commitTransaction(transaction);
+    if(isDefined(level.hideNetworkCommitReply) && level.hideNetworkCommitReply)
+    {
+        level.hideNetworkCommitReply = false;
+        return level.sqlConstants.outcomeUnknown;
+    }
+    return outcome;
+}
+
+// Hide the rename identity lookup's reply when a scenario asks for it.
+publicationRead(query)
+{
+    rows = self openCJ\mySQL::mysqlAsyncRead(query);
     if(isSubStr(query, "SELECT routeName FROM routes WHERE routeID=") &&
        isDefined(level.hideRenameLookup) && level.hideRenameLookup)
     {
         level.hideRenameLookup = false;
         return undefined;
     }
-    if(query == "COMMIT" && isDefined(level.hideNetworkCommitReply) && level.hideNetworkCommitReply)
+    return rows;
+}
+
+// Publication runs inside an editor operation, as it does for !cp finalize.
+publishDraft(editor)
+{
+    if(!check(editor openCJ\checkpointOperation::begin(), "editor operation starts"))
     {
-        level.hideNetworkCommitReply = false;
-        return undefined;
+        return false;
     }
-    return result;
+    published = editor openCJ\checkpointPublish::publish();
+    editor openCJ\checkpointOperation::end();
+    return published;
 }
 
 checkSharedOpeningColor(editor)
@@ -236,7 +257,7 @@ checkSharedOpeningColor(editor)
     opening.routeHex = "#abcdef";
     check(editor openCJ\checkpointNetwork::writeSection("net_opening", opening),
           "save a new shared opening color");
-    check(editor openCJ\checkpointPublish::publish(), "shared color-only edit publishes");
+    check(publishDraft(editor), "shared color-only edit publishes");
     checkScalar("SELECT colorRGB FROM routes WHERE routeName='net_opening'", 11259375,
                 "shared opening runtime color follows the draft");
     checkScalar("SELECT colorRGB FROM checkpointSectionColors WHERE sectionName='net_opening'",
@@ -344,7 +365,7 @@ checkRejoin(editor, arguments)
           openCJ\checkpointCreation::_decode(editor.cpc.rows[1]).finish,
           "rejoin preserves existing checkpoints and finish");
     check(isDefined(editor.cpc.restoreOrigin), "rejoin queues editor travel to the joining landing");
-    check(editor openCJ\checkpointPublish::publish(), "edited network publishes its split and merged routes");
+    check(publishDraft(editor), "edited network publishes its split and merged routes");
     return true;
 }
 

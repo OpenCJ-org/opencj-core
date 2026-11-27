@@ -616,7 +616,8 @@ validateMergeApproaches(commandArguments, network)
 }
 
 // Validate every saved section before the transaction, then publish all routes together.
-// No waits occur while the synchronous SQL connection owns this transaction.
+// The caller holds the editor operation, which keeps other editor code away while
+// writeNetworkRoutes points self.cpc at each route's draft and waits for SQL.
 publish()
 {
     network = self load();
@@ -629,35 +630,30 @@ publish()
     {
         return false;
     }
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery(
-           "SELECT sectionName FROM checkpointSectionColors LIMIT 0")))
+    if(!self openCJ\checkpointOperation::openTransaction())
     {
-        return self fail("Install migration 005-checkpoint-sections.sql first.");
-    }
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION")))
-    {
-        return self fail("Cannot begin network publication.");
+        return self fail("Database busy; cannot begin network publication.");
     }
     errorMessage = self writeNetworkRoutes(routeDrafts);
     if(errorMessage == "")
     {
         errorMessage = self writeSectionColors(network);
     }
-    if(errorMessage == "" && !isDefined(openCJ\mySQL::mysqlSyncQuery(
+    if(errorMessage == "" && !isDefined(self openCJ\checkpointOperation::query(
            "CALL rebuildCheckpointRoutes(" + openCJ\mapID::getMapID() + ")")))
     {
         errorMessage = "Cannot rebuild route membership";
     }
     if(errorMessage != "")
     {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        self openCJ\checkpointOperation::rollback();
         return self fail("Network not published: " + errorMessage);
     }
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")))
+    // A retry compares the saved graph; a lost reply does not prove it was rolled back.
+    if(!self openCJ\checkpointPublish::commitPublication(
+           "Cannot confirm network commit; drafts retained. Check the published routes."))
     {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        // A retry compares the saved graph; a lost reply does not prove it was rolled back.
-        return self fail("Cannot confirm network commit; drafts retained. Check the published routes.");
+        return self fail(self.cpc.status);
     }
     self.cpc.publishedLabel = label(getArrayKeys(network.paths));
     return true;
@@ -761,7 +757,7 @@ writeNetworkRoutes(routeDrafts)
 assignRouteSections()
 {
     entries = self openCJ\checkpointPublish::_entries();
-    areaIdRows = openCJ\mySQL::mysqlSyncQuery(
+    areaIdRows = self openCJ\checkpointOperation::query(
         "SELECT cpID FROM checkpointAreas " +
         "WHERE mapID=" + openCJ\mapID::getMapID() +
         " AND draftName=" + dbStr(self.cpc.route) + " ORDER BY ordinal");
@@ -777,17 +773,19 @@ assignRouteSections()
     {
         return "Cannot read published section IDs";
     }
+    statements = [];
     for(i = sharedAreaCount; i < entries.size; i++)
     {
         sectionName = self.cpc.sections[entries[i].group];
         checkpointId = int(areaIdRows[i - sharedAreaCount][0]);
-        assigned = openCJ\mySQL::mysqlSyncQuery(
+        statements[statements.size] = openCJ\checkpointOperation::statement(
             "UPDATE checkpointAreas SET sectionName=" + dbStr(sectionName) +
-            " WHERE cpID=" + checkpointId);
-        if(!isDefined(assigned))
-        {
-            return "Cannot assign checkpoint section";
-        }
+            " WHERE cpID=" + checkpointId,
+            "Cannot assign checkpoint section");
+    }
+    if(!isDefined(self openCJ\checkpointOperation::batch(statements)))
+    {
+        return "Cannot assign checkpoint section";
     }
     return "";
 }
@@ -811,6 +809,7 @@ sectionNames(network)
 writeSectionColors(network)
 {
     names = sectionNames(network);
+    statements = [];
     for(i = 0; i < names.size; i++)
     {
         sectionDraft = self readSection(names[i]);
@@ -824,14 +823,15 @@ writeSectionColors(network)
             return "Invalid section color";
         }
         packedColor = openCJ\checkpointPublish::packRouteColor(sectionColor);
-        query =
+        statements[statements.size] = openCJ\checkpointOperation::statement(
             "INSERT INTO checkpointSectionColors(mapID,sectionName,colorRGB) " +
             "VALUES (" + openCJ\mapID::getMapID() + "," + dbStr(names[i]) + "," + packedColor + ") " +
-            "ON DUPLICATE KEY UPDATE colorRGB=VALUES(colorRGB)";
-        if(!isDefined(openCJ\mySQL::mysqlSyncQuery(query)))
-        {
-            return "Cannot save section color";
-        }
+            "ON DUPLICATE KEY UPDATE colorRGB=VALUES(colorRGB)",
+            "Cannot save section color");
+    }
+    if(!isDefined(self openCJ\checkpointOperation::batch(statements)))
+    {
+        return "Cannot save section color";
     }
     return "";
 }
@@ -1443,8 +1443,24 @@ pendingEdit(sectionDraft)
                                                    sectionDraft.rows[sectionDraft.selected]));
 }
 
-// Prepare renamed draft copies before changing the manifest and published names.
+// Rename a route or section. The editor operation is held while SQL replies are pending.
 rename(previousName, newName)
+{
+    // An endon in a helper ends only that helper and returns to its caller, so the
+    // operation's own frame ends it on disconnect. checkpointOperation::onDisconnect
+    // has already restored the draft and released the transaction.
+    self endon("disconnect");
+    if(!self openCJ\checkpointOperation::begin())
+    {
+        return false;
+    }
+    renamed = self renameDraftAndRoute(previousName, newName);
+    self openCJ\checkpointOperation::end();
+    return renamed;
+}
+
+// Prepare renamed draft copies before changing the manifest and published names.
+renameDraftAndRoute(previousName, newName)
 {
     if(!openCJ\checkpointCreation::_validName(previousName) ||
        !openCJ\checkpointCreation::_validName(newName) || previousName == newName ||
@@ -1477,11 +1493,13 @@ rename(previousName, newName)
             "Rename legacy branches after converting their shared-opening references.");
     }
     mapID = openCJ\mapID::getMapID();
+    // An early check avoids writing draft copies. If another editor publishes this name
+    // before the rename commits, the routes table's unique name rejects the rename.
     collisionRows =
-        openCJ\mySQL::mysqlSyncQuery("SELECT cpID FROM checkpointAreas WHERE mapID=" + mapID +
-                                     " AND draftName=" + dbStr(newName) +
-                                     " UNION SELECT routeID FROM routes WHERE mapID=" + mapID +
-                                     " AND routeName=" + dbStr(newName) + " LIMIT 1");
+        self openCJ\mySQL::mysqlAsyncRead("SELECT cpID FROM checkpointAreas WHERE mapID=" + mapID +
+                                          " AND draftName=" + dbStr(newName) +
+                                          " UNION SELECT routeID FROM routes WHERE mapID=" + mapID +
+                                          " AND routeName=" + dbStr(newName) + " LIMIT 1");
     if(!isDefined(collisionRows) || collisionRows.size)
     {
         return self fail("That name is already published; nothing overwritten.");
@@ -1536,55 +1554,57 @@ rename(previousName, newName)
 // Keep the manifest and SQL rename together, and settle uncertain replies before restoring names.
 publishRename(mapID, previousName, newName, network, previousNetwork)
 {
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("START TRANSACTION")))
+    if(!self openCJ\checkpointOperation::openTransaction())
     {
-        return self fail("Cannot begin rename; original retained.");
+        return self fail("Database busy; cannot begin rename. Original retained.");
     }
-    queries = [];
-    queries[0] = "SELECT mapID FROM mapids WHERE mapID=" + mapID + " FOR UPDATE";
-    queries[1] = "UPDATE checkpointAreas SET draftName=" + dbStr(newName) +
-                 " WHERE mapID=" + mapID + " AND draftName=" + dbStr(previousName);
-    queries[2] = "UPDATE routes SET routeName=" + dbStr(newName) + " WHERE mapID=" + mapID +
-                 " AND routeName=" + dbStr(previousName);
-    queries[3] = "UPDATE checkpointAreas SET sectionName=" + dbStr(newName) +
-                 " WHERE mapID=" + mapID + " AND sectionName=" + dbStr(previousName);
-    queries[4] = "UPDATE checkpointSectionColors SET sectionName=" + dbStr(newName) +
-                 " WHERE mapID=" + mapID + " AND sectionName=" + dbStr(previousName);
-    renamedRouteId = undefined;
-    for(i = 0; i < queries.size; i++)
+    renameFailure = "Rename failed; existing database records unchanged. New draft copy retained.";
+    statements = [];
+    statements[0] = openCJ\checkpointOperation::statement(
+        "SELECT mapID FROM mapids WHERE mapID=" + mapID + " FOR UPDATE", renameFailure);
+    // Read identity after the map lock, before any rename updates.
+    statements[1] = openCJ\checkpointOperation::statement(
+        "SELECT routeID FROM routes " +
+        "WHERE mapID=" + mapID + " AND routeName=" + dbStr(previousName),
+        "Cannot read route identity; original names retained.");
+    statements[2] = openCJ\checkpointOperation::statement(
+        "UPDATE checkpointAreas SET draftName=" + dbStr(newName) +
+        " WHERE mapID=" + mapID + " AND draftName=" + dbStr(previousName), renameFailure);
+    statements[3] = openCJ\checkpointOperation::statement(
+        "UPDATE routes SET routeName=" + dbStr(newName) + " WHERE mapID=" + mapID +
+        " AND routeName=" + dbStr(previousName), renameFailure);
+    statements[4] = openCJ\checkpointOperation::statement(
+        "UPDATE checkpointAreas SET sectionName=" + dbStr(newName) +
+        " WHERE mapID=" + mapID + " AND sectionName=" + dbStr(previousName), renameFailure);
+    statements[5] = openCJ\checkpointOperation::statement(
+        "UPDATE checkpointSectionColors SET sectionName=" + dbStr(newName) +
+        " WHERE mapID=" + mapID + " AND sectionName=" + dbStr(previousName), renameFailure);
+    rowsets = self openCJ\checkpointOperation::batch(statements);
+    if(!isDefined(rowsets))
     {
-        if(!isDefined(openCJ\mySQL::mysqlSyncQuery(queries[i])))
-        {
-            openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-            return self fail(
-                "Rename failed; existing database records unchanged. New draft copy retained.");
-        }
-        if(i == 0)
-        {
-            // Read identity after the map lock, before any rename updates.
-            routeRows = openCJ\mySQL::mysqlSyncQuery(
-                "SELECT routeID FROM routes " +
-                "WHERE mapID=" + mapID + " AND routeName=" + dbStr(previousName));
-            if(!isDefined(routeRows))
-            {
-                openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-                return self fail("Cannot read route identity; original names retained.");
-            }
-            if(routeRows.size == 1)
-            {
-                renamedRouteId = int(routeRows[0][0]);
-            }
-        }
+        self openCJ\checkpointOperation::rollback();
+        return self fail(self.cpc.status);
+    }
+    renamedRouteId = undefined;
+    routeRows = rowsets[1];
+    if(routeRows.size == 1)
+    {
+        renamedRouteId = int(routeRows[0][0]);
     }
     if(isDefined(network) && !self save(network))
     {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
+        self openCJ\checkpointOperation::rollback();
         return self fail("Cannot save renamed network; original retained.");
     }
-    if(!isDefined(openCJ\mySQL::mysqlSyncQuery("COMMIT")))
+    commitOutcome = self openCJ\checkpointOperation::commit();
+    if(commitOutcome != level.sqlConstants.outcomeOK)
     {
-        openCJ\mySQL::mysqlSyncQuery("ROLLBACK");
-        outcome = renameCommitOutcome(renamedRouteId, previousName, newName);
+        // Only a lost reply leaves the result open; other failures were rolled back.
+        outcome = "rolled_back";
+        if(commitOutcome == level.sqlConstants.outcomeUnknown)
+        {
+            outcome = self renameCommitOutcome(renamedRouteId, previousName, newName);
+        }
         if(outcome == "rolled_back")
         {
             if(isDefined(previousNetwork))
@@ -1643,7 +1663,7 @@ renameCommitOutcome(routeId, previousName, newName)
     {
         return "unknown";
     }
-    rows = openCJ\mySQL::mysqlSyncQuery(
+    rows = self openCJ\mySQL::mysqlAsyncRead(
         "SELECT routeName FROM routes WHERE routeID=" + routeId +
         " AND mapID=" + openCJ\mapID::getMapID());
     if(!isDefined(rows) || rows.size != 1)

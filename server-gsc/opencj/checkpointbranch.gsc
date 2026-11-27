@@ -1,6 +1,7 @@
 #include openCJ\util;
 
-// Publish saved CPC branch drafts inside the caller's transaction.
+// Publish saved CPC branch drafts inside the caller's editor transaction. The editor
+// operation keeps other editor code away while self.cpc points at a section draft.
 // Current split commands create section networks; this path preserves older saved drafts.
 publish()
 {
@@ -58,7 +59,7 @@ publicationSection(routeName, routeColor, rows, startIndex, endIndex)
 // Connect every final shared area to every first branch area, including alternatives.
 connectBranch(parentIds, firstGroupAreaCount)
 {
-    childRows = openCJ\mySQL::mysqlSyncQuery(
+    childRows = self openCJ\checkpointOperation::query(
         "SELECT cpID FROM checkpointAreas " +
         "WHERE mapID=" + openCJ\mapID::getMapID() +
         " AND draftName=" + dbStr(self.cpc.route) +
@@ -67,6 +68,7 @@ connectBranch(parentIds, firstGroupAreaCount)
     {
         return self openCJ\checkpointPublish::_fail("Cannot read branch connection IDs");
     }
+    statements = [];
     for (i = 0; i < parentIds.size; i++)
     {
         parentId = parentIds[i];
@@ -74,19 +76,15 @@ connectBranch(parentIds, firstGroupAreaCount)
         {
             childId = int(childRows[j][0]);
             // This legacy edge table has no unique key; explicitly avoid duplicates.
-            query =
+            statements[statements.size] = openCJ\checkpointOperation::statement(
                 "INSERT INTO checkpointConnections(cpID,childcpID) " +
                 "SELECT " + parentId + "," + childId +
                 " WHERE NOT EXISTS (SELECT 1 FROM checkpointConnections " +
-                "WHERE cpID=" + parentId + " AND childcpID=" + childId + ")";
-            if (!isDefined(openCJ\mySQL::mysqlSyncQuery(query)))
-            {
-                return self openCJ\checkpointPublish::_fail(
-                    "Could not connect branch to shared opening");
-            }
+                "WHERE cpID=" + parentId + " AND childcpID=" + childId + ")",
+                "Could not connect branch to shared opening");
         }
     }
-    return true;
+    return isDefined(self openCJ\checkpointOperation::batch(statements));
 }
 
 // Create the shared opening once, or require an exact match under the map lock.
@@ -94,7 +92,7 @@ connectBranch(parentIds, firstGroupAreaCount)
 ensurePrefix()
 {
     mapID = openCJ\mapID::getMapID();
-    lockedMapRows = openCJ\mySQL::mysqlSyncQuery(
+    lockedMapRows = self openCJ\checkpointOperation::query(
         "SELECT mapID FROM mapids WHERE mapID=" + mapID + " FOR UPDATE");
     if (!isDefined(lockedMapRows) || lockedMapRows.size != 1)
     {
@@ -111,7 +109,7 @@ ensurePrefix()
         }
     }
     routeNameSql = dbStr(self.cpc.route);
-    existingAreas = openCJ\checkpointPublish::readExistingAreas(mapID, routeNameSql);
+    existingAreas = self openCJ\checkpointPublish::readExistingAreas(mapID, routeNameSql);
     if (!isDefined(existingAreas))
     {
         self.cpc.status = "Cannot read shared opening";
@@ -124,7 +122,7 @@ ensurePrefix()
             return undefined;
         }
         // Re-read once; an unexpected empty result must not recursively retry publication.
-        existingAreas = openCJ\checkpointPublish::readExistingAreas(mapID, routeNameSql);
+        existingAreas = self openCJ\checkpointPublish::readExistingAreas(mapID, routeNameSql);
         if (!isDefined(existingAreas))
         {
             self.cpc.status = "Cannot read shared opening";

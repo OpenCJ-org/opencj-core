@@ -10,17 +10,31 @@ from isolated_database import IsolatedDatabase
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def install_commit_observer(home, script_name):
-    """Hide a real COMMIT reply only in the fixture copy, leaving its SQL effects intact."""
+def install_sql_observer(home, script_name, production_call, fixture_call):
+    """Route one SQL boundary through the fixture copy, which delegates to the real call.
+
+    The fixture can hide a real COMMIT reply or a lookup reply, or reject a graph query,
+    while the database effects stay real.
+    """
     path = home / "mods/opencj/opencj" / script_name
     source, count = re.subn(
-        r"openCJ\\mySQL::mysqlSyncQuery\s*\(",
-        lambda match: r"openCJ\platformTest::publicationQuery(",
+        re.escape(production_call) + r"\s*\(",
+        lambda match: fixture_call + "(",
         path.read_text(),
     )
     if count == 0:
-        raise RuntimeError("Publication SQL boundary was not found")
+        raise RuntimeError("Publication SQL boundary was not found: " + production_call)
     path.write_text(source)
+
+
+def install_commit_observer(home):
+    """Observe the editor transaction's COMMIT, used by every publication and rename."""
+    install_sql_observer(
+        home,
+        "checkpointoperation.gsc",
+        r"openCJ\mySQL::commitTransaction",
+        r"openCJ\platformTest::publicationCommit",
+    )
 
 
 def install_finalization_observers(home):
@@ -125,11 +139,24 @@ def main():
             options, fixture.home, retained_callbacks=()
         )
         if options.fixture.name == "checkpoint-publication.gsc":
-            install_commit_observer(fixture.home, "checkpointpublish.gsc")
-            install_commit_observer(fixture.home, "checkpoints.gsc")
+            install_commit_observer(fixture.home)
+            # Graph loading stays synchronous; the fixture rejects or corrupts its reads.
+            for script_name in ("checkpointpublish.gsc", "checkpoints.gsc"):
+                install_sql_observer(
+                    fixture.home,
+                    script_name,
+                    r"openCJ\mySQL::mysqlSyncQuery",
+                    r"openCJ\platformTest::publicationQuery",
+                )
             install_finalization_observers(fixture.home)
         elif options.fixture.name == "checkpoint-network.gsc":
-            install_commit_observer(fixture.home, "checkpointnetwork.gsc")
+            install_commit_observer(fixture.home)
+            install_sql_observer(
+                fixture.home,
+                "checkpointnetwork.gsc",
+                r"openCJ\mySQL::mysqlAsyncRead",
+                r"openCJ\platformTest::publicationRead",
+            )
             install_network_navigation_observers(fixture.home)
             install_network_file_observers(fixture.home)
         fixture.write_engine_config()

@@ -133,12 +133,15 @@ unusedPlan(oldRows, newRows)
 // Keep the recovery file before replacing any layout; historical records retain their IDs.
 prepare(entries, existing)
 {
-    if(isDefined(level.demoPersisting) && level.demoPersisting > 0)
-    {
-        return self fail("A demo is still saving; retry finalizing shortly");
-    }
     mapId = openCJ\mapID::getMapID();
     routeName = self.cpc.route;
+    blocker = replacementBlocker(routeName, self);
+    if(blocker != "")
+    {
+        return self fail(blocker);
+    }
+    // The checks must still hold when the transaction commits; see replacementsBlocker.
+    self openCJ\checkpointOperation::noteReplacedRoute(routeName);
     published = self readPublishedDraft(mapId, routeName);
     if(!isDefined(published))
     {
@@ -149,7 +152,7 @@ prepare(entries, existing)
     {
         return undefined;
     }
-    if(!self canReplaceRoute(published.checkpointIdsSql, routeName))
+    if(!self canReplaceRoute(published.checkpointIdsSql))
     {
         return undefined;
     }
@@ -165,10 +168,49 @@ prepare(entries, existing)
     return migrationPlan;
 }
 
+// Return why a route's layout may not be replaced now, or "" when nothing blocks it.
+// A demo being saved or another player's run on the route would keep references to
+// the replaced checkpoints. editor is the publishing player, whose own run is allowed.
+replacementBlocker(routeName, editor)
+{
+    if(isDefined(level.demoPersisting) && level.demoPersisting > 0)
+    {
+        return "A demo is still saving; retry finalizing shortly";
+    }
+    players = getEntArray("player", "classname");
+    for(i = 0; i < players.size; i++)
+    {
+        player = players[i];
+        if(player != editor && player openCJ\playerRuns::hasRunID() && isDefined(player.route) &&
+           player.route == routeName)
+        {
+            return "Another player has this route open; ask them to reset before finalizing";
+        }
+    }
+    return "";
+}
+
+// Repeat the replacement checks for every route this publication replaces. SQL replies
+// take server frames, so a demo save or run may have started since prepare checked.
+// The remaining window is the COMMIT round trip itself.
+replacementsBlocker()
+{
+    replacedRoutes = self openCJ\checkpointOperation::replacedRoutes();
+    for(i = 0; i < replacedRoutes.size; i++)
+    {
+        blocker = replacementBlocker(replacedRoutes[i], self);
+        if(blocker != "")
+        {
+            return blocker;
+        }
+    }
+    return "";
+}
+
 // Decode SQL columns once, then combine contiguous alternative areas into logical rows.
 readPublishedDraft(mapId, routeName)
 {
-    areaRows = openCJ\mySQL::mysqlSyncQuery(
+    areaRows = self openCJ\checkpointOperation::query(
         "SELECT a.cpID,b.bigBrotherID,c.finishRouteID,a.vertices,a.allowDoubleRPG," +
         "c.onGround,c.allowSave,c.elevate,a.platformRef,a.heightAbove " +
         "FROM checkpointAreas a " +
@@ -229,6 +271,14 @@ readPublishedDraft(mapId, routeName)
         published.groups[groupIndex][published.groups[groupIndex].size] = i;
     }
     published.checkpointIdsSql += ")";
+    // Migration statements repeat this list up to five times (canReplaceRoute), and the
+    // SQL pool accepts at most 10 KiB per statement. Refuse clearly rather than letting
+    // an oversized statement fail with an unrelated message (about 300 areas).
+    maximumCheckpointIdListBytes = 1900;
+    if(published.checkpointIdsSql.size > maximumCheckpointIdListBytes)
+    {
+        return self fail("Route has too many areas for automatic migration; draft retained");
+    }
     return published;
 }
 
@@ -241,7 +291,7 @@ choosePlan(published, mapId, routeName)
         return migrationPlan;
     }
     checkpointIdsSql = published.checkpointIdsSql;
-    historyRows = openCJ\mySQL::mysqlSyncQuery(
+    historyRows = self openCJ\checkpointOperation::query(
         "SELECT EXISTS(SELECT 1 FROM playerRuns WHERE finishcpID IN " + checkpointIdsSql + ")" +
         "+EXISTS(SELECT 1 FROM checkpointStatistics WHERE cpID IN " + checkpointIdsSql + ")" +
         "+EXISTS(SELECT 1 FROM playerSaves WHERE checkpointID IN " + checkpointIdsSql + ")" +
@@ -261,10 +311,10 @@ choosePlan(published, mapId, routeName)
     return unusedPlan(published.rows, self.cpc.rows);
 }
 
-// Do not detach shared graphs or replace a route while another player's run uses it.
-canReplaceRoute(checkpointIdsSql, routeName)
+// Do not detach shared graphs. Other players' runs are checked by replacementBlocker.
+canReplaceRoute(checkpointIdsSql)
 {
-    outsideConnections = openCJ\mySQL::mysqlSyncQuery(
+    outsideConnections = self openCJ\checkpointOperation::query(
         "SELECT cpID FROM checkpointConnections " +
         "WHERE (cpID IN " + checkpointIdsSql +
         " AND childcpID NOT IN " + checkpointIdsSql + ")" + " OR (childcpID IN " +
@@ -276,17 +326,6 @@ canReplaceRoute(checkpointIdsSql, routeName)
     {
         self fail("Shared route connections require manual migration; draft retained");
         return false;
-    }
-    players = getEntArray("player", "classname");
-    for(i = 0; i < players.size; i++)
-    {
-        player = players[i];
-        if(player != self && player openCJ\playerRuns::hasRunID() && isDefined(player.route) &&
-           player.route == routeName)
-        {
-            self fail("Another player has this route open; ask them to reset before finalizing");
-            return false;
-        }
     }
     return true;
 }
@@ -376,15 +415,13 @@ replaceLayout(checkpointIdsSql, retainedIdsSql, mapId, routeName)
                             " WHERE mapID=" + mapId +
                             " AND routeID IN (SELECT routeID FROM routes WHERE mapID=" + mapId +
                             " AND routeName=" + openCJ\util::dbStr(routeName) + ")";
+    statements = [];
     for(i = 0; i < queries.size; i++)
     {
-        if(!isDefined(openCJ\mySQL::mysqlSyncQuery(queries[i])))
-        {
-            self fail("Migration failed; transaction rolled back and draft retained");
-            return false;
-        }
+        statements[i] = openCJ\checkpointOperation::statement(
+            queries[i], "Migration failed; transaction rolled back and draft retained");
     }
-    return true;
+    return isDefined(self openCJ\checkpointOperation::batch(statements));
 }
 
 hasDefaultRequirements(checkpoint)

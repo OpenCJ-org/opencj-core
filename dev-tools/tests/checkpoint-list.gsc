@@ -72,6 +72,9 @@ checkRouteListMessages()
     level.checkpoints_checkpoints = [];
     level.mapid_mapID = undefined;
     level.mySQL = undefined;
+    // The route list reads asynchronously. No SQL pool runs in this fixture, so with
+    // the constants defined every read reports the database as unavailable.
+    openCJ\mySQL::_initConstants();
 
     published = openCJ\checkpointList::readPublishedRoutes();
     check(isDefined(published) && published.size == 0, "unregistered map has no published routes");

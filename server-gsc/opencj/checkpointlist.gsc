@@ -3,6 +3,8 @@
 // Current map only: private draft filenames are restricted to the caller's ID.
 show()
 {
+    // Stop here, not only in the read helper, when the player leaves during the read.
+    self endon("disconnect");
     listCooldownMs = 2000;
     if(isDefined(self.cpcListTime) && getTime() - self.cpcListTime < listCooldownMs)
     {
@@ -24,7 +26,7 @@ show()
             }
         }
     }
-    publishedByRoute = readPublishedRoutes();
+    publishedByRoute = self readPublishedRoutes();
     if(!isDefined(publishedByRoute))
     {
         self sendLocalChatMessage("Could not read published routes; please try again.", true);
@@ -172,9 +174,10 @@ readPublishedRoutes()
     publishedByRoute = [];
     if(openCJ\mapID::hasMapID())
     {
-        rows = openCJ\mySQL::mysqlSyncQuery("SELECT draftName, cpID " + "FROM checkpointAreas " +
-                                            "WHERE mapID=" + openCJ\mapID::getMapID() +
-                                            " ORDER BY draftName, ordinal");
+        rows = self openCJ\mySQL::mysqlAsyncRead("SELECT draftName, cpID " +
+                                                 "FROM checkpointAreas " +
+                                                 "WHERE mapID=" + openCJ\mapID::getMapID() +
+                                                 " ORDER BY draftName, ordinal");
         if(!isDefined(rows))
         {
             return undefined;

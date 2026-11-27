@@ -1,7 +1,24 @@
 #include openCJ\util;
 
-// Rebuild a standalone draft from active geometry only after saving its recovery copies.
+// Rebuild a standalone draft from active geometry. The editor operation is held while
+// the published areas are read, so the current draft cannot change meanwhile.
 reset(routeName)
+{
+    // An endon in a helper ends only that helper and returns to its caller, so the
+    // operation's own frame ends it on disconnect. checkpointOperation::onDisconnect
+    // has already restored the draft and released the transaction.
+    self endon("disconnect");
+    if(!self openCJ\checkpointOperation::begin())
+    {
+        return false;
+    }
+    restored = self resetFromPublished(routeName);
+    self openCJ\checkpointOperation::end();
+    return restored;
+}
+
+// Rebuild the draft only after saving its recovery copies.
+resetFromPublished(routeName)
 {
     if(!openCJ\checkpointCreation::_validName(routeName) || self.sessionState != "playing" ||
        self openCJ\demos::isPlayingDemo())
@@ -19,7 +36,8 @@ reset(routeName)
     {
         return self fail("Reset of shared network drafts is not supported; all drafts kept.");
     }
-    checkpointIdRows = openCJ\mySQL::mysqlSyncQuery(
+    // A publication during this read can retire some IDs; rowsFromActive then refuses.
+    checkpointIdRows = self openCJ\mySQL::mysqlAsyncRead(
         "SELECT cpID " +
         "FROM checkpointAreas " +
         "WHERE mapID=" + openCJ\mapID::getMapID() +

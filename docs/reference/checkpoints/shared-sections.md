@@ -62,10 +62,12 @@ and earned history; consumers resolve the current catalogue name. See
 [stable route identity](../database/route-identity.md).
 
 If the commit reply is lost, the editor checks a published route's stable ID
-before restoring any names. If the database is unavailable or the change only
-renames an internal section, the outcome may remain unknown: both draft copies
-and the alternating manifests are retained. Check the published names before
-retrying; an error reply alone does not prove that the database rename failed.
+before restoring any names. A commit that the database rejected was rolled back,
+so the previous names are restored directly. If the database is unavailable or
+the change only renames an internal section, the outcome of a lost reply may
+remain unknown: both draft copies and the alternating manifests are retained.
+Check the published names before retrying; a lost reply alone does not prove
+that the database rename failed.
 
 A committed rename also stays saved if the following gameplay refresh fails.
 The editor reopens under the saved name and reports that refresh still needs a

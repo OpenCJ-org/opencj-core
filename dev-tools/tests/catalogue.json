@@ -588,7 +588,7 @@
     {
       "id": "sql-adapter",
       "category": "integration",
-      "description": "Save ownership, native demo/clip transfers, pool and VM behavior; publication races, rollback, lost replies and receipt recovery. Shop reads stop after close or browser replacement and do not publish late results. Equipment replies belong to the current account and load; UI closure preserves needed equipment reads. Includes disconnect cancellation and late replies for country lookups. Latest-run lookup cases cover late/overlapping replies and queued cancellation on run changes, mode cancellation and disconnect cleanup.",
+      "description": "Save ownership, native demo/clip transfers, pool and VM behavior; editor transactions (one connection, failure and connection loss, idle timeout, map change, progress worker kept free); publication races, rollback, lost replies and receipt recovery. Shop reads stop after close or browser replacement and do not publish late results. Equipment replies belong to the current account and load; UI closure preserves needed equipment reads. Includes disconnect cancellation and late replies for country lookups. Latest-run lookup cases cover late/overlapping replies and queued cancellation on run changes, mode cancellation and disconnect cleanup.",
       "requires": "Selected disposable current database, Compose compiler image, current engine and game/compiled mod. Optional --engine PATH selects a candidate inside the core checkout.",
       "effects": "Creates/removes a temporary schema, grants and engine; private output.",
       "files": [
@@ -742,7 +742,7 @@
     {
       "id": "checkpoint-publication",
       "category": "integration",
-      "description": "Checkpoint publication and shared networks: persistence, recovery, refresh failure and editor run handoff.",
+      "description": "Checkpoint publication and shared networks: persistence, recovery, refresh failure and editor run handoff; asynchronous transactions, editor lock while SQL is pending and disconnect rollback.",
       "requires": "Initialized Compose with current schema and engine, licensed game assets; schema-only export requires database administration access.",
       "effects": "Creates a uniquely named empty schema and restricted account, isolated engine and private draft/log files. Deletes owned SQL resources and credentials on exit; no gameplay record writes.",
       "files": [

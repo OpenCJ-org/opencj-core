@@ -21,7 +21,10 @@ main()
     checkGraphReload();
     checkInvalidGroupLinks();
     checkLostCommitReply(editor);
+    checkPublicationLock(editor);
     checkFinalizationRun(editor);
+    // Last: the simulated disconnect ends the test client's waiting threads.
+    checkDisconnectDuringPublication(editor);
     printf("PUBLICATION SELFTEST COMPLETE failures=" + level.publicationFailures +
            " checks=" + level.publicationChecks + "\n");
 }
@@ -66,7 +69,7 @@ rectangle(offsetX, offsetY)
 
 checkInitialPublication(editor)
 {
-    if (!check(editor openCJ\checkpointPublish::publish(), "new route publishes"))
+    if (!check(publishDraft(editor), "new route publishes"))
     {
         return;
     }
@@ -84,18 +87,18 @@ checkInitialPublication(editor)
     {
         level.publicationOriginalIds[i] = int(publishedRows[i][0]);
     }
-    check(editor openCJ\checkpointPublish::publish(), "unchanged publication succeeds");
+    check(publishDraft(editor), "unchanged publication succeeds");
     checkScalar("SELECT COUNT(*) FROM checkpoints", 4, "repeated publication does not duplicate IDs");
     checkScalar("SELECT COUNT(*) FROM checkpointConnections", 4,
                 "repeated publication does not duplicate connections");
 
     editor.cpc.routeHex = "#654321";
-    check(editor openCJ\checkpointPublish::publish(), "color-only publication succeeds");
+    check(publishDraft(editor), "color-only publication succeeds");
     checkScalar("SELECT colorRGB FROM routes WHERE routeName='fixture_route'", 6636321,
                 "color-only edit reaches the published route");
     checkScalar("SELECT COUNT(*) FROM checkpoints", 4, "color-only edit keeps checkpoint IDs");
     editor.cpc.routeHex = "invalid";
-    check(!editor openCJ\checkpointPublish::publish(), "invalid color is rejected on an unchanged route");
+    check(!publishDraft(editor), "invalid color is rejected on an unchanged route");
     checkScalar("SELECT colorRGB FROM routes WHERE routeName='fixture_route'", 6636321,
                 "rejected color keeps the previously published value");
     editor.cpc.routeHex = "#654321";
@@ -123,7 +126,7 @@ checkRouteMigration(editor)
               " VALUES(1," + middleId + ",1000,0,0,0,0,0),(2," + middleId + ",1000,0,0,0,0,0)")),
           "seed historical checkpoint references");
     editor.cpc.rows[1] = row(250, false, true);
-    check(editor openCJ\checkpointPublish::publish(), "one changed checkpoint publishes with history");
+    check(publishDraft(editor), "one changed checkpoint publishes with history");
     checkScalar("SELECT cpID FROM checkpointAreas WHERE ordinal=1", middleId,
                 "geometry replacement retains checkpoint identity");
     checkScalar("SELECT COUNT(*) FROM checkpointStatistics", 2, "migration preserves statistics");
@@ -133,7 +136,7 @@ checkRouteMigration(editor)
     changedCheckpoint = openCJ\checkpointCreation::_decode(editor.cpc.rows[1]);
     changedCheckpoint.allowEle = true;
     editor.cpc.rows[1] = openCJ\checkpointCreation::_encode(changedCheckpoint);
-    check(!editor openCJ\checkpointPublish::publish(), "historical requirement change is rejected");
+    check(!publishDraft(editor), "historical requirement change is rejected");
     checkScalar("SELECT elevate FROM checkpoints WHERE cpID=" + middleId, 0,
                 "rejected edit leaves published requirements intact");
     checkScalar("SELECT COUNT(*) FROM checkpointConnections", 4,
@@ -144,7 +147,7 @@ checkRouteMigration(editor)
     reducedRows[1] = editor.cpc.rows[2];
     editor.cpc.rows = reducedRows;
     editor.cpc.selected = reducedRows.size;
-    check(editor openCJ\checkpointPublish::publish(), "middle group can be retired with history");
+    check(publishDraft(editor), "middle group can be retired with history");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas", 2, "retired group leaves active layout");
     checkScalar("SELECT COUNT(*) FROM checkpoints WHERE retired=1", 2,
                 "retired primary and alternative remain addressable");
@@ -168,7 +171,7 @@ checkPartialWriteRollback(editor)
     {
         return;
     }
-    check(!editor openCJ\checkpointPublish::publish(), "partial publication reports failure");
+    check(!publishDraft(editor), "partial publication reports failure");
     checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='rejected_route'", 0,
                 "failed transaction removes its route identity");
     checkScalar("SELECT COUNT(*) FROM checkpoints", 4, "failed transaction removes inserted checkpoints");
@@ -234,7 +237,7 @@ checkSharedBranches(editor)
     editor.cpc.sharedRoute = "shared_opening";
     editor.cpc.sharedHex = "#abcdef";
     editor.cpc.sharedCount = 2;
-    check(editor openCJ\checkpointPublish::publish(), "first branch publishes its shared opening");
+    check(publishDraft(editor), "first branch publishes its shared opening");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='shared_opening'", 3,
                 "shared opening includes primary and alternative areas");
     firstBranch = editor.cpc;
@@ -243,7 +246,7 @@ checkSharedBranches(editor)
     editor.cpc.sharedRoute = "shared_opening";
     editor.cpc.sharedHex = "#abcdef";
     editor.cpc.sharedCount = 2;
-    check(editor openCJ\checkpointPublish::publish(), "second branch reuses the shared opening");
+    check(publishDraft(editor), "second branch reuses the shared opening");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='shared_opening'", 3,
                 "second branch does not duplicate shared checkpoints");
     checkScalar(
@@ -255,14 +258,14 @@ checkSharedBranches(editor)
         "SELECT COUNT(*) FROM checkpointRoutes cr " +
         "JOIN checkpointAreas a ON a.cpID=cr.cpID WHERE a.draftName='shared_opening'",
         6, "shared checkpoints belong to both reachable routes");
-    check(editor openCJ\checkpointPublish::publish(), "repeated branch publication succeeds");
+    check(publishDraft(editor), "repeated branch publication succeeds");
     checkScalar(
         "SELECT COUNT(*) FROM checkpointConnections e " +
         "JOIN checkpointAreas p ON p.cpID=e.cpID JOIN checkpointAreas c ON c.cpID=e.childcpID " +
         "WHERE p.draftName='shared_opening' AND c.draftName IN ('branch_a','branch_b')",
         4, "repeated branch publication does not duplicate shared connections");
     editor.cpc.rows[0] = row(50, false, false);
-    check(!editor openCJ\checkpointPublish::publish(), "changed shared opening is rejected");
+    check(!publishDraft(editor), "changed shared opening is rejected");
     checkScalar(
         "SELECT c.x FROM checkpoints c JOIN checkpointAreas a ON a.cpID=c.cpID " +
         "WHERE a.draftName='shared_opening' AND a.ordinal=0",
@@ -274,7 +277,7 @@ checkInsertedCheckpoint(editor)
 {
     editor.cpc = routeDraft("fixture_route");
     editor.cpc.rows[1] = row(300, false, false);
-    check(editor openCJ\checkpointPublish::publish(), "insertion allocates only the new checkpoint");
+    check(publishDraft(editor), "insertion allocates only the new checkpoint");
     checkScalar("SELECT COUNT(*) FROM checkpoints", 5, "insertion keeps retired checkpoints and adds one");
     checkScalar("SELECT cpID FROM checkpointAreas WHERE draftName='fixture_route' AND ordinal=0",
                 level.publicationOriginalIds[0], "insertion keeps original start ID");
@@ -286,7 +289,7 @@ checkInsertedCheckpoint(editor)
 checkUnusedRouteReplacement(editor)
 {
     editor.cpc = routeDraft("unused_route");
-    check(editor openCJ\checkpointPublish::publish(), "unused route baseline publishes");
+    check(publishDraft(editor), "unused route baseline publishes");
     firstRows = openCJ\mySQL::mysqlSyncQuery(
         "SELECT cpID FROM checkpointAreas WHERE draftName='unused_route' ORDER BY ordinal");
     if (!check(isDefined(firstRows) && firstRows.size == 4, "unused route has four initial area IDs"))
@@ -299,7 +302,7 @@ checkUnusedRouteReplacement(editor)
     checkpoint = openCJ\checkpointCreation::_decode(editor.cpc.rows[1]);
     checkpoint.allowEle = true;
     editor.cpc.rows[1] = openCJ\checkpointCreation::_encode(checkpoint);
-    check(editor openCJ\checkpointPublish::publish(), "route without history permits endpoint and requirement changes");
+    check(publishDraft(editor), "route without history permits endpoint and requirement changes");
     checkScalar("SELECT cpID FROM checkpointAreas WHERE draftName='unused_route' AND ordinal=0",
                 firstCheckpointId, "unused route replacement preserves start identity");
     checkScalar("SELECT x FROM checkpoints WHERE cpID=" + firstCheckpointId, 150,
@@ -338,11 +341,11 @@ checkLostCommitReply(editor)
 {
     editor.cpc = routeDraft("lost_reply_route");
     level.hidePublicationCommitReply = true;
-    check(!editor openCJ\checkpointPublish::publish(), "lost commit reply does not claim success");
+    check(!publishDraft(editor), "lost commit reply does not claim success");
     check(isSubStr(editor.cpc.status, "confirm"), "lost commit reply reports an uncertain outcome");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='lost_reply_route'", 4,
                 "lost reply can accompany a completed commit");
-    check(editor openCJ\checkpointPublish::publish(), "retry reconciles the already-published route");
+    check(publishDraft(editor), "retry reconciles the already-published route");
     checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='lost_reply_route'", 4,
                 "retry after a lost commit reply keeps one set of areas");
     checkScalar("SELECT COUNT(*) FROM routes WHERE routeName='lost_reply_route'", 1,
@@ -361,13 +364,99 @@ publicationQuery(query)
     {
         result = corruptGroupLink(result, level.invalidGroupLink);
     }
-    if(query == "COMMIT" && isDefined(level.hidePublicationCommitReply) &&
-       level.hidePublicationCommitReply)
+    return result;
+}
+
+// The database commits normally; only the reply to the publisher is reported as lost.
+publicationCommit(transaction)
+{
+    outcome = self openCJ\mySQL::commitTransaction(transaction);
+    if (isDefined(level.hidePublicationCommitReply) && level.hidePublicationCommitReply)
     {
         level.hidePublicationCommitReply = false;
-        return undefined;
+        return level.sqlConstants.outcomeUnknown;
     }
-    return result;
+    return outcome;
+}
+
+// While publication waits for SQL, the editor refuses commands and travel, and no other
+// transaction can open until the publication has finished.
+checkPublicationLock(editor)
+{
+    editor.cpc = routeDraft("locked_route");
+    lockedDraft = editor.cpc;
+    level.backgroundPublication = undefined;
+    editor thread publishInBackground();
+    check(editor openCJ\checkpointOperation::isBusy(), "publication holds the editor operation");
+    check(!editor openCJ\checkpointOperation::begin(), "a second editor operation is refused");
+    stopArguments = [];
+    stopArguments[0] = "stop";
+    editor openCJ\checkpointCreation::command(stopArguments);
+    check(isDefined(editor.cpc) && editor.cpc == lockedDraft,
+          "editor commands wait for the publication");
+    check(!editor openCJ\checkpointCreation::loadPosition(0),
+          "editor travel waits for the publication");
+    check(mysql_async_session_begin() == 0 - level.sqlConstants.outcomeBusy,
+          "another transaction cannot open while the publication runs");
+    publicationWaitSeconds = 10;
+    for (waited = 0; waited < publicationWaitSeconds && !isDefined(level.backgroundPublication);
+         waited += 0.05)
+    {
+        wait 0.05;
+    }
+    check(isDefined(level.backgroundPublication) && level.backgroundPublication,
+          "locked publication succeeds");
+    check(!editor openCJ\checkpointOperation::isBusy(),
+          "publication releases the editor operation");
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas WHERE draftName='locked_route'", 4,
+                "locked publication stores its areas");
+}
+
+// The disconnect callback runs before the player's threads end, here while the branch
+// publisher points self.cpc at its shared opening and waits for SQL.
+checkDisconnectDuringPublication(editor)
+{
+    editor.cpc = routeDraft("abandoned_branch");
+    editor.cpc.sharedRoute = "abandoned_opening";
+    editor.cpc.sharedHex = "#abcdef";
+    editor.cpc.sharedCount = 2;
+    branchDraft = editor.cpc;
+    level.backgroundPublication = undefined;
+    editor thread publishInBackground();
+    check(editor.cpc != branchDraft, "branch publication temporarily replaces the editor draft");
+    editor openCJ\checkpointOperation::onDisconnect();
+    editor notify("disconnect");
+    check(editor.cpc == branchDraft && !editor openCJ\checkpointOperation::isBusy(),
+          "disconnect restores the editor's own draft");
+    transaction = openCJ\mySQL::beginTransaction();
+    check(isDefined(transaction), "abandoned publication releases its transaction");
+    if (isDefined(transaction))
+    {
+        openCJ\mySQL::rollbackTransaction(transaction);
+    }
+    checkScalar("SELECT COUNT(*) FROM checkpointAreas " +
+                "WHERE draftName IN ('abandoned_branch','abandoned_opening')", 0,
+                "abandoned publication writes nothing");
+    check(!isDefined(level.backgroundPublication), "disconnect ends the publishing thread");
+}
+
+// Like finalize, the thread's own frame ends the whole publication on disconnect.
+publishInBackground()
+{
+    self endon("disconnect");
+    level.backgroundPublication = publishDraft(self);
+}
+
+// Publication runs inside an editor operation, as it does for !cp finalize.
+publishDraft(editor)
+{
+    if (!check(editor openCJ\checkpointOperation::begin(), "editor operation starts"))
+    {
+        return false;
+    }
+    published = editor openCJ\checkpointPublish::publish();
+    editor openCJ\checkpointOperation::end();
+    return published;
 }
 
 // Finalization must leave editor mode before the normal run-creation gate can accept it.
@@ -386,7 +475,7 @@ checkFinalizationRun(editor)
     level.finalizeRunCreated = 0;
     editor.cpc.routeHex = "invalid";
     editor openCJ\checkpointCreation::finalize();
-    check(isDefined(editor.cpc) && !isDefined(editor.cpc.finalizing),
+    check(isDefined(editor.cpc) && !editor openCJ\checkpointOperation::isBusy(),
           "rejected finalization retains the editable draft");
     check(!editor openCJ\playerRuns::hasRunID() && level.finalizeActivations == 0,
           "rejected publication does not start gameplay or refresh the graph");
@@ -396,7 +485,7 @@ checkFinalizationRun(editor)
     editor openCJ\checkpointCreation::finalize();
     level.rejectedGraphQueryFragment = undefined;
     level.forwardGraphActivation = false;
-    check(isDefined(editor.cpc) && !isDefined(editor.cpc.finalizing),
+    check(isDefined(editor.cpc) && !editor openCJ\checkpointOperation::isBusy(),
           "failed gameplay refresh retains the published draft for retry");
     check(!editor openCJ\playerRuns::hasRunID() && isSubStr(editor.cpc.status, "Published"),
           "failed refresh reports committed publication without starting a run");

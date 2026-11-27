@@ -12,6 +12,8 @@ state. A condition variable replaces the 10 ms dispatch scan and per-query
 thread creation. One worker is reserved for progress operations; the remaining
 three use weighted fair service across progress, reads, background writes and
 menu reads. A continuously busy progress lane cannot starve background jobs.
+While an editor transaction is open, one of those three serves only it (see
+below), so the worker and thread counts stay the same.
 
 Admission limits include queued, executing and completed-but-uncollected jobs:
 512 total, 384 for non-progress work, and 64 menu jobs. Query text is stored at
@@ -50,6 +52,35 @@ Keep these close notifications in matching compiled client assets so stale menu
 reads are cancelled. Verify the affected compiled menus when changing this flow;
 a menu count from an earlier comparison is not a current acceptance check.
 
+## Editor transactions
+
+Checkpoint-editor publication and rename need several statements in one
+transaction on one connection. The pool runs at most one such editor transaction
+(a session) at a time:
+
+- Its first statement binds an idle non-progress worker, which starts the
+  transaction and then serves only that session, in submission order, until
+  COMMIT or ROLLBACK. The progress worker is never bound.
+- A statement that fails, or expires unrun after 30 seconds in the queue, fails the
+  transaction: later statements complete with SQL error without running, and a
+  requested COMMIT rolls back and reports an error. A lost connection is never
+  replaced inside the transaction.
+- COMMIT reports success, UNKNOWN when its reply was lost (it may have committed),
+  or an error after a rollback.
+- A session that stays silent for 10 seconds, or is open for 120 seconds, is rolled
+  back and closed. A map change abandons an open session the same way; a COMMIT
+  that was already requested still settles.
+
+GSC uses `beginTransaction()` (waits up to 5 seconds while another editor's
+transaction finishes), `transactionBatch(transaction, queries)`,
+`transactionQuery`, `commitTransaction`, `rollbackTransaction` and
+`abandonTransaction` (no wait, for a leaving owner). A batch submits up to 64
+statements together, so it waits for about one 50 ms completion poll instead of
+one per statement; statements can pass values such as new IDs through connection
+variables. Measured on the development fixture, the first publication of a
+three-checkpoint route takes 23 statements and about 350 ms, all off the game
+thread.
+
 ## Deadlines and outcomes
 
 Workers use a 3-second connect timeout and 2-second socket read/write options.
@@ -62,9 +93,9 @@ These are explicit failures, not silent queue removal.
 A new worker connection is established before a new statement when necessary.
 Automatic reconnection/replay is disabled during statement execution. A lost
 reply after submitting a write is outcome UNKNOWN: the write may have committed.
-Neither the adapter nor wrappers blindly retry it. Existing synchronous
-transactions use their own connection/error handling; async jobs may not
-leave a transaction open on a pooled connection.
+Neither the adapter nor wrappers blindly retry it. Independent async jobs may
+not leave a transaction open on a pooled connection; editor transactions are
+the only exception.
 
 Outcome codes:
 0 success; 1 SQL error; 2 connection unavailable before submission;

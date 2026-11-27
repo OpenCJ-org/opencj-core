@@ -147,6 +147,17 @@ Supported changes are one checkpoint's geometry/alternatives, or insertion/delet
 of up to three consecutive ordinary checkpoints. Reorders, multiple independent
 edits, changed requirements, and shared route connections are refused; the draft remains.
 
+Publication, rename, reset and `!cp list` wait for the database without stalling
+the server. Publication and rename each run as one transaction on a dedicated
+pool connection ([editor transactions](../database/sql-adapter.md#editor-transactions));
+only one runs at a time, and another editor's publication waits up to 5 seconds
+for it. While the editor waits, its commands, inputs and travel are refused with
+"Checkpoint database work is still running". Disconnecting during publication
+rolls back an unfinished transaction and saves the draft; if COMMIT was already
+requested, it still settles and gameplay is refreshed afterwards. The final
+reload of the published graph stays synchronous, like map start, so every player
+switches to the new layout in the same frame.
+
 Publication and gameplay refresh have separate outcomes. If publication commits
 but a database read fails or an alternative references an invalid group leader,
 the current playable graph stays active
@@ -164,7 +175,10 @@ Old demos and winner references remain stored (`ready=2`) but are excluded from
 playback and future winner comparison. A new recording can become the demo winner
 without beating the retained historical result. Other players must reset an open
 run on this route before it can be migrated. In-flight demo saves briefly block
-migration; retry finalizing after they finish.
+migration; retry finalizing after they finish. Both checks are repeated right
+before COMMIT, because the database work takes several server frames. Routes
+with more than about 300 areas are refused for automatic migration, because one
+migration statement lists every checkpoint ID of the route.
 
 Use the full [migration procedure](../../operations/database.md) before
 deploying matching scripts. Migration 012 introduced retirement; later

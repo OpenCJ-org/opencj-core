@@ -35,8 +35,10 @@ hasEditorAccess()
 // Dispatch editor commands; route names open drafts while action names edit the current one.
 command(commandArguments)
 {
-    if (self isEditing() && isDefined(self.cpc.finalizing))
+    // While a database operation waits, self.cpc may belong to another draft.
+    if (self openCJ\checkpointOperation::isBusy())
     {
+        self sendLocalChatMessage("Checkpoint database work is still running; try again shortly.");
         return;
     }
     if (!self hasEditorAccess())
@@ -64,7 +66,7 @@ command(commandArguments)
     }
     if (toLower(commandArguments[0]) == "list")
     {
-        self openCJ\checkpointList::show();
+        self thread openCJ\checkpointList::show();
         return;
     }
     if (toLower(commandArguments[0]) == "reset")
@@ -74,7 +76,7 @@ command(commandArguments)
             self sendLocalChatMessage("Use !cpc reset <route>, for example !cpc reset hard.");
             return;
         }
-        self openCJ\checkpointReset::reset(toLower(commandArguments[1]));
+        self thread openCJ\checkpointReset::reset(toLower(commandArguments[1]));
         return;
     }
     // Non-command names open the player's existing draft or create a new one.
@@ -103,8 +105,8 @@ command(commandArguments)
     }
     if (commandArguments[0] == "rename" && commandArguments.size == 3)
     {
-        self openCJ\checkpointNetwork::rename(toLower(commandArguments[1]),
-                                              toLower(commandArguments[2]));
+        self thread openCJ\checkpointNetwork::rename(toLower(commandArguments[1]),
+                                                     toLower(commandArguments[2]));
         return;
     }
     if (isDefined(self.cpc.insertAfter) &&
@@ -754,9 +756,11 @@ configureHud(hudElement)
 }
 
 // Spectating suspends the editor without closing its draft or selection.
+// During a database operation self.cpc may be another draft; _loop suspends afterwards.
 onSpawnSpectator()
 {
-    if (!self isEditing() || isDefined(self.cpc.suspended))
+    if (!self isEditing() || isDefined(self.cpc.suspended) ||
+        self openCJ\checkpointOperation::isBusy())
     {
         return;
     }
@@ -779,10 +783,17 @@ onSpawnPlayer()
 {
     // A player who starts playing no longer follows an editor.
     self stopViewingEditor();
-    if (!self isEditing())
+    // During a database operation self.cpc may be another draft; _loop resumes afterwards.
+    if (!self isEditing() || self openCJ\checkpointOperation::isBusy())
     {
         return;
     }
+    self _resume();
+}
+
+// Show the suspended editor again for a player who is playing.
+_resume()
+{
     self.cpc.suspended = undefined;
     // Normal spawning must not replay a pending draft-restoration teleport.
     self.cpc.restoreOrigin = undefined;
@@ -810,12 +821,23 @@ _loop()
     nextDraw = 0;
     while (self isEditing())
     {
+        // Publishers may point self.cpc at another draft while they wait for SQL.
+        if (self openCJ\checkpointOperation::isBusy())
+        {
+            wait updateIntervalSeconds;
+            continue;
+        }
         if (self.sessionState != "playing")
         {
             self onSpawnSpectator();
             nextDraw = 0;
             wait updateIntervalSeconds;
             continue;
+        }
+        // The player spawned while a database operation held the editor.
+        if (isDefined(self.cpc.suspended))
+        {
+            self _resume();
         }
         // Starting/loading a run must not resume scoring while editing.
         if (self openCJ\playerRuns::hasRunID())
@@ -1105,11 +1127,8 @@ handleEditorAction(action)
     }
     if (action == "finalize" || action == "publish")
     {
-        if (!isDefined(self.cpc.finalizing))
-        {
-            self.cpc.finalizing = true;
-            self thread doNextFrame(::finalize);
-        }
+        // finalize takes the editor's operation lock, so a repeated request does nothing.
+        self thread doNextFrame(::finalize);
         return true;
     }
     if (action == "test")
@@ -1734,16 +1753,25 @@ _close()
 }
 
 // Save and publish the draft before returning the player to a fresh gameplay run.
+// The editor stays locked while publication waits for the database.
 finalize()
 {
-    if (!self isEditing())
+    // An endon in a helper ends only that helper and returns to its caller, so the
+    // operation's own frame ends it on disconnect. checkpointOperation::onDisconnect
+    // has already restored the draft and released the transaction.
+    self endon("disconnect");
+    if (!self isEditing() || !self openCJ\checkpointOperation::begin())
     {
         return;
     }
-    self.cpc.finalizing = true;
+    self _finalizeDraft();
+    self openCJ\checkpointOperation::end();
+}
+
+_finalizeDraft()
+{
     if (!self _save() || !self openCJ\checkpointPublish::publish())
     {
-        self.cpc.finalizing = undefined;
         self sendLocalChatMessage(self.cpc.status, true);
         return;
     }
@@ -1754,7 +1782,6 @@ finalize()
     }
     if (!self openCJ\checkpointPublish::activate())
     {
-        self.cpc.finalizing = undefined;
         self.cpc.status = "Published, but gameplay refresh failed. Draft retained; retry !cp finalize.";
         self sendLocalChatMessage(self.cpc.status, true);
         return;
@@ -1772,6 +1799,8 @@ onDisconnect()
 {
     // Followers must be reset while this editor's entity still exists.
     self _stopEditorViewers();
+    // Restore the editor's own draft before saving it.
+    self openCJ\checkpointOperation::onDisconnect();
     if (self isEditing())
     {
         self _save();
@@ -2420,7 +2449,7 @@ getConfirmed(index)
 // Editor travel saves deliberately do not carry run IDs or checkpoint progress.
 processTravelRequests()
 {
-    if (isDefined(self.cpc.finalizing))
+    if (self openCJ\checkpointOperation::isBusy())
     {
         return;
     }
@@ -2495,6 +2524,11 @@ rememberPosition(savedPosition)
 
 loadPosition(backwardsAmount)
 {
+    // During a database operation self.cpc may be another draft without positions.
+    if (self openCJ\checkpointOperation::isBusy())
+    {
+        return false;
+    }
     if (!isDefined(self.cpc.travelIndex) || backwardsAmount == 0)
     {
         self.cpc.travelIndex = 0;

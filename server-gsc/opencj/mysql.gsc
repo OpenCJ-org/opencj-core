@@ -49,6 +49,7 @@ _initConstants()
     level.sqlConstants.outcomeError = 1;
     level.sqlConstants.outcomeUnknown = 3;
     level.sqlConstants.outcomeCancelled = 5;
+    level.sqlConstants.outcomeBusy = 6;
     level.sqlConstants.outcomeInvalid = 7;
     level.sqlConstants.scopeExact = 0;
     level.sqlConstants.scopePrefix = 1;
@@ -59,6 +60,12 @@ _initConstants()
     level.sqlConstants.backgroundQueueWaitMs = 30000;
     level.sqlConstants.menuQueueWaitMs = 2000;
     level.sqlConstants.busyNoticeIntervalMs = 5000;
+    // Only one editor transaction is open at a time; another editor's publication
+    // normally finishes well within this wait.
+    level.sqlConstants.transactionBeginWaitMs = 5000;
+    // Statements one transaction submits at once. Keeps an editor's batch well inside
+    // the pool's 384 non-progress job slots; longer batches run in several steps.
+    level.sqlConstants.transactionBatchStatements = 64;
 }
 
 // Consume every native completion, even if its waiting player disconnected.
@@ -319,6 +326,218 @@ _request(query, policy, key, scope, queueWaitMs, retainRows)
     result.waitMs = nativeCompletion[2];
     result.executionMs = nativeCompletion[3];
     return result;
+}
+
+// Editor transactions: statements run in submission order on one connection inside a
+// single transaction (mysql_async_pool.hpp, sqlPoolBeginSession). One is open at a time.
+
+// Open a transaction, waiting a bounded time while another one finishes.
+// Returns a transaction struct, or undefined when the database cannot open one.
+beginTransaction()
+{
+    if (isPlayer(self))
+    {
+        self endon("disconnect");
+    }
+    deadline = getTime() + level.sqlConstants.transactionBeginWaitMs;
+    sessionID = mysql_async_session_begin();
+    while (isDefined(sessionID) && sessionID == 0 - level.sqlConstants.outcomeBusy &&
+           getTime() < deadline)
+    {
+        wait level.sqlConstants.completionPollSeconds;
+        sessionID = mysql_async_session_begin();
+    }
+    if (!isDefined(sessionID) || sessionID <= 0)
+    {
+        return undefined;
+    }
+    transaction = spawnStruct();
+    transaction.sessionID = sessionID;
+    transaction.failed = false;
+    transaction.ended = false;
+    transaction.failedIndex = undefined;
+    transaction.commitRequested = false;
+    transaction.endJobID = undefined;
+    transaction.outcome = undefined;
+    return transaction;
+}
+
+// Run the statements in order and return one rowset per statement ([] without rows).
+// Up to transactionBatchStatements are submitted together, so a batch waits for about
+// one completion poll per group rather than one per statement. Returns undefined after
+// any failure: later statements do not run, transaction.failedIndex names the first
+// one that did not succeed, and the transaction can then only be rolled back.
+transactionBatch(transaction, queries)
+{
+    if (isPlayer(self))
+    {
+        self endon("disconnect");
+    }
+    if (transaction.failed || transaction.ended)
+    {
+        transaction.failedIndex = 0;
+        return undefined;
+    }
+    // Script arrays are copied on assignment; the struct lets each group append in place.
+    batchResult = spawnStruct();
+    batchResult.rowsets = [];
+    groupSize = level.sqlConstants.transactionBatchStatements;
+    for (groupStart = 0; groupStart < queries.size; groupStart += groupSize)
+    {
+        groupEnd = groupStart + groupSize;
+        if (groupEnd > queries.size)
+        {
+            groupEnd = queries.size;
+        }
+        if (!self _runTransactionGroup(transaction, queries, groupStart, groupEnd, batchResult))
+        {
+            return undefined;
+        }
+    }
+    return batchResult.rowsets;
+}
+
+// Submit queries[groupStart..groupEnd-1] together and store their rowsets in batchResult.
+// Returns false, recording transaction.failedIndex, when any of them did not succeed.
+_runTransactionGroup(transaction, queries, groupStart, groupEnd, batchResult)
+{
+    group = spawnStruct();
+    group.rowsets = [];
+    group.statuses = [];
+    group.pendingCount = 0;
+    submittedEnd = groupStart;
+    for (i = groupStart; i < groupEnd; i++)
+    {
+        jobID = mysql_async_session_submit(transaction.sessionID, queries[i], 1);
+        if (!isDefined(jobID) || jobID <= 0)
+        {
+            break;
+        }
+        group.pendingCount++;
+        submittedEnd++;
+        // Each collector waits before this thread yields, so no completion is missed.
+        group thread _collectTransactionStatement(i, jobID);
+    }
+    // Statements already queued still run; wait for them before reporting the result.
+    if (group.pendingCount > 0)
+    {
+        group waittill("collected");
+    }
+    for (i = groupStart; i < groupEnd; i++)
+    {
+        if (i >= submittedEnd || group.statuses[i] != level.sqlConstants.outcomeOK)
+        {
+            transaction.failed = true;
+            transaction.failedIndex = i;
+            return false;
+        }
+        batchResult.rowsets[i] = group.rowsets[i];
+    }
+    return true;
+}
+
+// Store one statement's completion in its group; the last one wakes the submitter.
+_collectTransactionStatement(statementIndex, jobID)
+{
+    level waittill("mysqlQueryDone" + jobID, rows, nativeCompletion);
+    self.rowsets[statementIndex] = rows;
+    self.statuses[statementIndex] = nativeCompletion[0];
+    self.pendingCount--;
+    if (self.pendingCount == 0)
+    {
+        self notify("collected");
+    }
+}
+
+// Run one statement; return its rows, or undefined when it (or an earlier one) failed.
+transactionQuery(transaction, query)
+{
+    queries = [];
+    queries[0] = query;
+    rowsets = self transactionBatch(transaction, queries);
+    if (!isDefined(rowsets))
+    {
+        return undefined;
+    }
+    return rowsets[0];
+}
+
+// Commit and return the outcome: outcomeOK; outcomeUnknown when the reply was lost
+// and the commit may have happened; anything else means it was rolled back.
+commitTransaction(transaction)
+{
+    if (isPlayer(self))
+    {
+        self endon("disconnect");
+    }
+    return self _endTransaction(transaction, true);
+}
+
+// Roll back and wait until the database has released the transaction's locks.
+rollbackTransaction(transaction)
+{
+    if (isPlayer(self))
+    {
+        self endon("disconnect");
+    }
+    self _endTransaction(transaction, false);
+}
+
+_endTransaction(transaction, commit)
+{
+    if (transaction.ended)
+    {
+        return level.sqlConstants.outcomeInvalid;
+    }
+    transaction.ended = true;
+    transaction.commitRequested = commit;
+    jobID = mysql_async_session_end(transaction.sessionID, int(commit));
+    if (!isDefined(jobID))
+    {
+        transaction.outcome = level.sqlConstants.outcomeInvalid;
+        return transaction.outcome;
+    }
+    if (jobID <= 0)
+    {
+        // The pool already rolled it back (idle timeout or map change).
+        transaction.outcome = 0 - jobID;
+        return transaction.outcome;
+    }
+    transaction.endJobID = jobID;
+    level waittill("mysqlQueryDone" + jobID, rows, nativeCompletion);
+    transaction.outcome = nativeCompletion[0];
+    return transaction.outcome;
+}
+
+// True when COMMIT was requested and its reply has not arrived yet.
+commitPending(transaction)
+{
+    return transaction.commitRequested && isDefined(transaction.endJobID) &&
+           !isDefined(transaction.outcome);
+}
+
+// Wait for a requested COMMIT from another thread, for example after its requester
+// disconnected, and return its outcome like commitTransaction.
+awaitCommit(transaction)
+{
+    if (!isDefined(transaction.outcome))
+    {
+        level waittill("mysqlQueryDone" + transaction.endJobID, rows, nativeCompletion);
+        transaction.outcome = nativeCompletion[0];
+    }
+    return transaction.outcome;
+}
+
+// Request a rollback without waiting, for an owner that is leaving. A COMMIT that
+// was already requested still settles.
+abandonTransaction(transaction)
+{
+    if (transaction.ended)
+    {
+        return;
+    }
+    transaction.ended = true;
+    mysql_async_session_end(transaction.sessionID, 0);
 }
 
 _reportFailure(status)
