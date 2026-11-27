@@ -17,6 +17,14 @@ static const int MAX_QUERY_BYTES = 10 * 1024;
 static const int MAX_SCOPE_KEY_BYTES = 95;
 static const int WORKER_COUNT = 4;
 static const int MAX_QUEUE_WAIT_MS = 60000;
+// Worker zero is reserved for progress writes and never serves an editor transaction.
+static const int PROGRESS_WORKER = 0;
+static const int NO_WORKER = -1;
+// Editor transactions hold row locks, so neither silence nor total time may last long.
+static const int SESSION_IDLE_TIMEOUT_MS = 10000;
+static const int SESSION_LIFETIME_MS = 120000;
+// A statement may wait while every non-progress worker is busy before it can bind one.
+static const int SESSION_STATEMENT_WAIT_MS = 30000;
 
 enum JobState {
     JOB_QUEUED = 0,
@@ -41,6 +49,9 @@ struct Job {
     long long deadlineMs;
     MYSQL_RES *result;
     SqlCompletion completion;
+    int sessionId;          // 0 for independent jobs
+    bool endsSession;       // COMMIT or ROLLBACK that closes the session
+    bool commitsSession;
 };
 
 struct Worker {
@@ -69,6 +80,26 @@ static int nextId = 0;
 static int scheduleIndex = 0;
 static int menuJobCount = 0;
 static SqlPoolStats stats = {};
+
+enum SessionState {
+    SESSION_CLOSED = 0,
+    SESSION_OPEN = 1,      // accepting statements
+    SESSION_ENDING = 2,    // COMMIT or ROLLBACK queued; no more statements
+    SESSION_ABANDONED = 3  // timed out or map changed; the bound worker rolls it back
+};
+
+// The pool lock protects every field. Only the bound worker uses its connection.
+struct Session {
+    int id;
+    SessionState state;
+    int workerIndex;
+    bool transactionStarted;
+    bool failed;            // the transaction can no longer commit
+    long long openedMs;
+    long long lastActivityMs;
+};
+static Session session = {0, SESSION_CLOSED, NO_WORKER, false, false, 0, 0};
+static int nextSessionId = 0;
 
 static long long nowMs() {
     timespec timestamp;
@@ -183,6 +214,51 @@ static void finishJob(Job *job, int outcome, int error) { // mutex held
     pthread_cond_broadcast(&changed);
 }
 
+static void closeSession() { // mutex held
+    session.state = SESSION_CLOSED;
+    session.workerIndex = NO_WORKER;
+    session.transactionStarted = false;
+    session.failed = false;
+}
+
+static bool sessionJobPending() { // mutex held
+    for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+        if(pendingJob->sessionId == session.id && pendingJob->state != JOB_COMPLETE) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Stop accepting statements and release queued ones. An unbound session has no
+// transaction yet; a bound worker rolls back before the session closes.
+static void abandonSession() { // mutex held
+    for(Job *pendingJob = head, *next; pendingJob; pendingJob = next) {
+        next = pendingJob->next;
+        if(pendingJob->sessionId == session.id && pendingJob->state == JOB_QUEUED) {
+            finishJob(pendingJob, SQL_EXPIRED, 0);
+        }
+    }
+    if(session.workerIndex == NO_WORKER) {
+        closeSession();
+    } else {
+        session.state = SESSION_ABANDONED;
+    }
+}
+
+// A transaction must not keep its locks after its owner went quiet or took too long.
+static void expireSession(long long currentTimeMs) { // mutex held
+    if(session.state != SESSION_OPEN) {
+        return;
+    }
+    const bool idle = currentTimeMs - session.lastActivityMs > SESSION_IDLE_TIMEOUT_MS &&
+                      !sessionJobPending();
+    const bool overlong = currentTimeMs - session.openedMs > SESSION_LIFETIME_MS;
+    if(idle || overlong) {
+        abandonSession();
+    }
+}
+
 // The pool lock protects the queue and the ordering decision.
 static bool canDispatch(Job *job) {
     if(job->state != JOB_QUEUED) {
@@ -206,10 +282,40 @@ static bool canDispatch(Job *job) {
 // Caller holds the pool lock; completed results still occupy admission slots.
 static Job *chooseNextJob(int workerIndex) {
     long long currentTimeMs = nowMs();
+    bool sessionEndExpired = false;
     for(Job *pendingJob = head, *next; pendingJob; pendingJob = next) {
         next = pendingJob->next;
         if(pendingJob->state == JOB_QUEUED && currentTimeMs >= pendingJob->deadlineMs) {
+            // An unrun statement leaves its transaction incomplete; it may not commit.
+            if(pendingJob->sessionId && pendingJob->sessionId == session.id) {
+                session.failed = true;
+                sessionEndExpired = sessionEndExpired || pendingJob->endsSession;
+            }
             finishJob(pendingJob, SQL_EXPIRED, 0);
+        }
+    }
+    // Abandon after the scan: abandoning finishes other queued jobs of the session.
+    if(sessionEndExpired) {
+        abandonSession();
+    }
+    expireSession(currentTimeMs);
+    // A bound worker serves only its transaction, in submission order.
+    if(session.workerIndex == workerIndex) {
+        for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+            if(pendingJob->state == JOB_QUEUED && pendingJob->sessionId == session.id) {
+                return pendingJob;
+            }
+        }
+        return NULL;
+    }
+    // The first statement of a transaction binds this idle non-progress worker.
+    if(session.workerIndex == NO_WORKER && workerIndex != PROGRESS_WORKER &&
+       session.state != SESSION_CLOSED) {
+        for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+            if(pendingJob->state == JOB_QUEUED && pendingJob->sessionId == session.id) {
+                session.workerIndex = workerIndex;
+                return pendingJob;
+            }
         }
     }
     // Worker zero is reserved for progress. Other workers use weighted fair
@@ -226,6 +332,9 @@ static Job *chooseNextJob(int workerIndex) {
     }
     for(int pass = 0; pass < 2; pass++) {
         for(Job *pendingJob = head; pendingJob; pendingJob = pendingJob->next) {
+            if(pendingJob->sessionId) {
+                continue;
+            }
             int schedulingPolicy = pendingJob->policy == SQL_WRITE ? SQL_READ : pendingJob->policy;
             if(workerIndex == 0 && schedulingPolicy != SQL_PROGRESS) {
                 continue;
@@ -325,6 +434,137 @@ static SqlExecution executeJob(Worker *worker, Job *job) {
     return execution;
 }
 
+// Session state the bound worker needs, copied under the pool lock.
+struct SessionStep {
+    bool transactionStarted;
+    bool failed;
+    bool endsSession;
+    bool commits;
+};
+
+struct SessionExecution {
+    SqlExecution execution;
+    bool startedTransaction;
+    bool transactionFailed;   // the transaction no longer exists or may not commit
+};
+
+static void rollbackConnection(Worker *worker) {
+    if(worker->db && mysql_query(worker->db, "ROLLBACK")) {
+        // Closing the connection also discards its transaction.
+        mysql_close(worker->db);
+        worker->db = NULL;
+    }
+}
+
+// Start the transaction on a fresh or verified connection. Never reconnect once a
+// transaction is open: a new connection would silently run outside it.
+static bool startSessionTransaction(Worker *worker, SqlExecution *execution) {
+    if(!worker->db || mysql_ping(worker->db)) {
+        if(worker->db) {
+            mysql_close(worker->db);
+        }
+        worker->db = connectWorker();
+    }
+    if(!worker->db) {
+        execution->outcome = SQL_UNAVAILABLE;
+        return false;
+    }
+    // Like independent writes there is no SELECT deadline; innodb_lock_wait_timeout
+    // bounds waiting for locks, and the session lifetime bounds the transaction.
+    if(mysql_query(worker->db, "SET SESSION max_execution_time=0") ||
+       mysql_query(worker->db, "START TRANSACTION")) {
+        execution->error = mysql_errno(worker->db);
+        execution->outcome = SQL_UNAVAILABLE;
+        return false;
+    }
+    return true;
+}
+
+// Run one statement of the bound transaction. Unlike independent jobs, the
+// transaction stays open between statements until COMMIT or ROLLBACK.
+static SessionExecution executeSessionJob(Worker *worker, Job *job, const SessionStep &step) {
+    SessionExecution result = {{SQL_OK, 0, NULL}, false, false};
+    SqlExecution &execution = result.execution;
+    if(step.endsSession && !step.transactionStarted) {
+        // No statement ran, so there is nothing to commit or roll back.
+        execution.outcome = step.commits && step.failed ? SQL_ERROR : SQL_OK;
+        return result;
+    }
+    if(step.failed) {
+        // After a failure nothing more may run, and a requested COMMIT rolls back.
+        if(step.endsSession) {
+            rollbackConnection(worker);
+        }
+        execution.outcome = step.endsSession && !step.commits ? SQL_OK : SQL_ERROR;
+        return result;
+    }
+    if(!step.transactionStarted) {
+        if(!startSessionTransaction(worker, &execution)) {
+            result.transactionFailed = true;
+            return result;
+        }
+        result.startedTransaction = true;
+    } else if(!worker->db) {
+        execution.outcome = SQL_UNAVAILABLE;
+        result.transactionFailed = true;
+        return result;
+    }
+    if(mysql_query(worker->db, job->query)) {
+        execution.error = mysql_errno(worker->db);
+    } else {
+        execution.result = collectResults(worker->db, job->retainResult, &execution.error);
+    }
+    if(execution.error) {
+        const bool lost = connectionLost(execution.error);
+        execution.outcome = lost && step.commits ? SQL_UNKNOWN : SQL_ERROR;
+        // Statements queued behind this one may depend on it, and MySQL may already
+        // have rolled back (for example after a deadlock), so it cannot commit.
+        result.transactionFailed = true;
+        if(lost) {
+            mysql_close(worker->db);
+            worker->db = NULL;
+        }
+    }
+    // A failed COMMIT must not leave the connection inside the transaction.
+    if(step.endsSession && worker->db && (worker->db->server_status & SERVER_STATUS_IN_TRANS)) {
+        rollbackConnection(worker);
+    }
+    return result;
+}
+
+// Run the selected session job outside the lock and record its effect on the session.
+static void runSessionJob(Worker *worker, Job *job) { // mutex held on entry and exit
+    SessionStep step = {session.transactionStarted, session.failed, job->endsSession,
+                        job->commitsSession};
+    pthread_mutex_unlock(&mutex);
+    SessionExecution sessionExecution = executeSessionJob(worker, job, step);
+    pthread_mutex_lock(&mutex);
+    if(sessionExecution.startedTransaction) {
+        session.transactionStarted = true;
+    }
+    if(sessionExecution.transactionFailed) {
+        session.failed = true;
+    }
+    session.lastActivityMs = nowMs();
+    if(job->endsSession) {
+        closeSession();
+    }
+    job->result = sessionExecution.execution.result;
+    finishJob(job, sessionExecution.execution.outcome, sessionExecution.execution.error);
+}
+
+// Roll back an abandoned transaction on its bound worker, then free that worker.
+static void settleAbandonedSession(Worker *worker) { // mutex held on entry and exit
+    const bool hasTransaction = session.transactionStarted;
+    pthread_mutex_unlock(&mutex);
+    if(hasTransaction) {
+        rollbackConnection(worker);
+    }
+    pthread_mutex_lock(&mutex);
+    closeSession();
+    pthread_cond_broadcast(&changed);
+}
+
 // Own one MySQL connection and execute selected jobs outside the queue lock.
 // The job remains in the queue while running so its ordering key stays reserved.
 static void *workerMain(void *workerIndexArgument) {
@@ -342,6 +582,11 @@ static void *workerMain(void *workerIndexArgument) {
         pthread_cond_wait(&changed, &mutex);
     }
     while(!stopping) {
+        if(session.workerIndex == workerIndex && session.state == SESSION_ABANDONED &&
+           !sessionJobPending()) {
+            settleAbandonedSession(worker);
+            continue;
+        }
         Job *job = chooseNextJob(workerIndex);
         if(!job) {
             // Wake for admission/completion/cancellation, or to expire jobs whose
@@ -356,6 +601,10 @@ static void *workerMain(void *workerIndexArgument) {
         job->startedMs = nowMs();
         stats.queued--;
         stats.running++;
+        if(job->sessionId) {
+            runSessionJob(worker, job);
+            continue;
+        }
         pthread_mutex_unlock(&mutex);
         SqlExecution execution = executeJob(worker, job);
         pthread_mutex_lock(&mutex);
@@ -429,23 +678,18 @@ bool sqlPoolInit(const char *serverHost, const char *serverUser, const char *ser
     return connected;
 }
 
+// Fields that only session statements set; independent jobs use NO_SESSION.
+struct SessionJobFields {
+    int sessionId;
+    bool endsSession;
+    bool commitsSession;
+};
+static const SessionJobFields NO_SESSION = {0, false, false};
+
 // Reserve both a job slot and query storage before accepting ownership.
-int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *orderingKey,
-                  const char *scope, int waitMs) {
-    if(!query || !orderingKey || !scope) {
-        return -SQL_INVALID;
-    }
-    if(strlen(query) > MAX_QUERY_BYTES || strlen(orderingKey) > MAX_SCOPE_KEY_BYTES ||
-       strlen(scope) > MAX_SCOPE_KEY_BYTES) {
-        return -SQL_INVALID;
-    }
-    if(policy < SQL_PROGRESS || policy > SQL_WRITE) {
-        return -SQL_INVALID;
-    }
-    if(waitMs < 1 || waitMs > MAX_QUEUE_WAIT_MS) {
-        return -SQL_INVALID;
-    }
-    pthread_mutex_lock(&mutex);
+// The caller holds the pool lock and has validated the arguments.
+static int enqueueJob(const char *query, bool retainResult, int policy, const char *orderingKey,
+                      const char *scope, int waitMs, const SessionJobFields &sessionFields) {
     int queryStorageBytes = strlen(query) + 1;
     int error = 0;
     if(!initialized) {
@@ -464,7 +708,6 @@ int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *
     }
     if(error) {
         stats.rejected++;
-        pthread_mutex_unlock(&mutex);
         return -error;
     }
     Job *job = (Job *)calloc(1, sizeof(Job));
@@ -476,7 +719,6 @@ int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *
             free(job);
         }
         stats.rejected++;
-        pthread_mutex_unlock(&mutex);
         return -SQL_BUSY;
     }
     do {
@@ -495,6 +737,9 @@ int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *
     job->id = nextId;
     job->policy = policy;
     job->retainResult = retainResult;
+    job->sessionId = sessionFields.sessionId;
+    job->endsSession = sessionFields.endsSession;
+    job->commitsSession = sessionFields.commitsSession;
     job->queryStorageBytes = queryStorageBytes;
     strcpy(job->query, query);
     strcpy(job->orderingKey, orderingKey);
@@ -520,8 +765,82 @@ int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *
     if(stats.queryBytes > stats.peakBytes) {
         stats.peakBytes = stats.queryBytes;
     }
-    int id = job->id;
     pthread_cond_broadcast(&changed);
+    return job->id;
+}
+
+static bool validQueryText(const char *query) {
+    return query && strlen(query) <= MAX_QUERY_BYTES;
+}
+
+int sqlPoolSubmit(const char *query, bool retainResult, int policy, const char *orderingKey,
+                  const char *scope, int waitMs) {
+    if(!validQueryText(query) || !orderingKey || !scope) {
+        return -SQL_INVALID;
+    }
+    if(strlen(orderingKey) > MAX_SCOPE_KEY_BYTES || strlen(scope) > MAX_SCOPE_KEY_BYTES) {
+        return -SQL_INVALID;
+    }
+    if(policy < SQL_PROGRESS || policy > SQL_WRITE) {
+        return -SQL_INVALID;
+    }
+    if(waitMs < 1 || waitMs > MAX_QUEUE_WAIT_MS) {
+        return -SQL_INVALID;
+    }
+    pthread_mutex_lock(&mutex);
+    int id = enqueueJob(query, retainResult, policy, orderingKey, scope, waitMs, NO_SESSION);
+    pthread_mutex_unlock(&mutex);
+    return id;
+}
+
+int sqlPoolBeginSession() {
+    pthread_mutex_lock(&mutex);
+    int result;
+    if(!initialized) {
+        result = -SQL_UNAVAILABLE;
+    } else if(session.state != SESSION_CLOSED) {
+        result = -SQL_BUSY;
+    } else {
+        nextSessionId = nextSessionId == INT_MAX ? 1 : nextSessionId + 1;
+        long long currentTimeMs = nowMs();
+        session = {nextSessionId, SESSION_OPEN, NO_WORKER, false, false, currentTimeMs,
+                   currentTimeMs};
+        result = session.id;
+    }
+    pthread_mutex_unlock(&mutex);
+    return result;
+}
+
+int sqlPoolSubmitSession(int sessionId, const char *query, bool retainResult) {
+    if(!validQueryText(query)) {
+        return -SQL_INVALID;
+    }
+    pthread_mutex_lock(&mutex);
+    int id = -SQL_EXPIRED;
+    if(initialized && session.state == SESSION_OPEN && session.id == sessionId) {
+        const SessionJobFields statement = {sessionId, false, false};
+        id = enqueueJob(query, retainResult, SQL_WRITE, "", "", SESSION_STATEMENT_WAIT_MS,
+                        statement);
+        if(id > 0) {
+            session.lastActivityMs = nowMs();
+        }
+    }
+    pthread_mutex_unlock(&mutex);
+    return id;
+}
+
+int sqlPoolEndSession(int sessionId, bool commit) {
+    pthread_mutex_lock(&mutex);
+    int id = -SQL_EXPIRED;
+    if(initialized && session.state == SESSION_OPEN && session.id == sessionId) {
+        const SessionJobFields ending = {sessionId, true, commit};
+        id = enqueueJob(commit ? "COMMIT" : "ROLLBACK", false, SQL_WRITE, "", "",
+                        SESSION_STATEMENT_WAIT_MS, ending);
+        if(id > 0) {
+            session.state = SESSION_ENDING;
+            session.lastActivityMs = nowMs();
+        }
+    }
     pthread_mutex_unlock(&mutex);
     return id;
 }
@@ -664,6 +983,13 @@ void sqlPoolCancel(const char *scope, SqlScopeMatch scopeMatch,
 
 void sqlPoolNewMap() {
     sqlPoolCancel("", SqlScopeMatch::Prefix, SqlCompletionHandling::Discard);
+    // The old map's editor cannot finish an open transaction. A queued COMMIT settles.
+    pthread_mutex_lock(&mutex);
+    if(session.state == SESSION_OPEN) {
+        abandonSession();
+    }
+    pthread_cond_broadcast(&changed);
+    pthread_mutex_unlock(&mutex);
 }
 
 SqlPoolStats sqlPoolStats() {
@@ -708,6 +1034,8 @@ void sqlPoolShutdown() {
     database = NULL;
     memset(workers, 0, sizeof(workers));
     memset(&stats, 0, sizeof(stats));
+    // Closing the worker connections already discarded any open transaction.
+    closeSession();
     workerCount = 0;
     menuJobCount = 0;
     stopping = false;

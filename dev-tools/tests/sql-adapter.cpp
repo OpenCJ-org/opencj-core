@@ -25,6 +25,10 @@ static const int DEFAULT_REQUEST_DEADLINE_MS = 10000;
 static const int PROGRESS_BURST_BUDGET_MS = 300;
 static const int QUERY_FINISH_BUDGET_MS = 8000;
 static const int LARGE_QUERY_PADDING_BYTES = 10000;
+// Editor transactions are rolled back after this much silence.
+static const int SESSION_IDLE_TIMEOUT_MS = 10000;
+static const int SESSION_IDLE_MARGIN_MS = 1500;
+static const int SLOW_READ_MS = 500;
 
 static long long nowMs()
 {
@@ -272,6 +276,170 @@ static void verifyMapCancellation()
           "map transition retains workers without leaking completed tasks");
 }
 
+static Reply runSessionQuery(int sessionId, const string &query)
+{
+    return takeReply(sqlPoolSubmitSession(sessionId, query.c_str(), true));
+}
+
+static int countProbeValue(int value)
+{
+    return queryScalar("SELECT COUNT(*) FROM adapter_probe WHERE value=" + to_string(value));
+}
+
+// An abandoned transaction closes once its worker has rolled it back; wait for that.
+static int beginSessionWhenFree()
+{
+    long long deadlineMs = nowMs() + COMPLETION_TIMEOUT_MS;
+    int sessionId = sqlPoolBeginSession();
+    while(sessionId == -SQL_BUSY && nowMs() < deadlineMs)
+    {
+        usleep(POLL_INTERVAL_US);
+        sessionId = sqlPoolBeginSession();
+    }
+    return sessionId;
+}
+
+static void verifySessionCommit()
+{
+    int sessionId = sqlPoolBeginSession();
+    check(sessionId > 0, "editor transaction opens");
+    check(sqlPoolBeginSession() == -SQL_BUSY, "a second editor transaction is refused");
+
+    // Submitted together: the second statement must run on the same connection.
+    int insert = sqlPoolSubmitSession(sessionId, "INSERT INTO adapter_probe(value) VALUES(60)",
+                                      false);
+    int lastId = sqlPoolSubmitSession(sessionId, "SELECT LAST_INSERT_ID()", true);
+    check(takeReply(insert).completion.outcome == SQL_OK, "transaction statement succeeds");
+    Reply lastIdReply = takeReply(lastId);
+    check(lastIdReply.completion.outcome == SQL_OK && lastIdReply.rows.size() == 1,
+          "pipelined statement returns its row");
+    string insertedSeq = lastIdReply.rows[0][0];
+    check(queryScalar("SELECT COUNT(*) FROM adapter_probe WHERE seq=" + insertedSeq) == 0,
+          "uncommitted row is invisible to other connections");
+    Reply ownRead =
+        runSessionQuery(sessionId, "SELECT COUNT(*) FROM adapter_probe WHERE seq=" + insertedSeq);
+    check(ownRead.completion.outcome == SQL_OK && ownRead.rows[0][0] == "1",
+          "pipelined statements share one connection and transaction");
+
+    // With the transaction bound, the slow reads fill the two other read workers and
+    // one waits; progress still runs at once on its reserved worker.
+    vector<int> slowReads;
+    for(int readIndex = 0; readIndex < MENU_WORKER_COUNT; readIndex++)
+    {
+        slowReads.push_back(submitQuery("SELECT SLEEP(" + to_string(SLOW_READ_MS / 1000.0) +
+                                        ")"));
+    }
+    long long progressStartMs = nowMs();
+    Reply progress = runQuery("INSERT INTO adapter_probe(value) VALUES(61)", SQL_PROGRESS,
+                              "run:session");
+    long long progressLatencyMs = nowMs() - progressStartMs;
+    check(progress.completion.outcome == SQL_OK && progressLatencyMs < SLOW_READ_MS,
+          "an open transaction never takes the progress worker");
+    drainReplies(slowReads);
+
+    check(takeReply(sqlPoolEndSession(sessionId, true)).completion.outcome == SQL_OK,
+          "COMMIT succeeds");
+    check(countProbeValue(60) == 1, "committed row becomes visible");
+    check(sqlPoolSubmitSession(sessionId, "SELECT 1", true) == -SQL_EXPIRED,
+          "an ended transaction accepts no statements");
+}
+
+static void verifySessionRollback()
+{
+    int sessionId = beginSessionWhenFree();
+    check(sessionId > 0, "transaction opens after the previous one ended");
+    Reply insert = runSessionQuery(sessionId, "INSERT INTO adapter_probe(value) VALUES(70)");
+    check(insert.completion.outcome == SQL_OK, "statement before rollback succeeds");
+    check(takeReply(sqlPoolEndSession(sessionId, false)).completion.outcome == SQL_OK,
+          "ROLLBACK succeeds");
+    check(countProbeValue(70) == 0, "rolled-back row is never visible");
+}
+
+static void verifySessionFailure()
+{
+    int sessionId = beginSessionWhenFree();
+    check(sessionId > 0, "transaction opens for the failure case");
+    int insert = sqlPoolSubmitSession(sessionId, "INSERT INTO adapter_probe(value) VALUES(80)",
+                                      false);
+    int failing = sqlPoolSubmitSession(sessionId, "SELECT * FROM missing_adapter_table", true);
+    int later = sqlPoolSubmitSession(sessionId, "INSERT INTO adapter_probe(value) VALUES(81)",
+                                     false);
+    int commit = sqlPoolEndSession(sessionId, true);
+    check(takeReply(insert).completion.outcome == SQL_OK, "statement before the failure runs");
+    check(takeReply(failing).completion.outcome == SQL_ERROR, "failing statement is explicit");
+    check(takeReply(later).completion.outcome == SQL_ERROR,
+          "statements after a failure do not run");
+    check(takeReply(commit).completion.outcome == SQL_ERROR,
+          "COMMIT after a failure reports the rollback");
+    check(countProbeValue(80) == 0 && countProbeValue(81) == 0,
+          "a failed transaction leaves no rows");
+}
+
+static void verifySessionConnectionLoss()
+{
+    int sessionId = beginSessionWhenFree();
+    check(sessionId > 0, "transaction opens for the connection-loss case");
+    runSessionQuery(sessionId, "INSERT INTO adapter_probe(value) VALUES(85)");
+    // Killing its own connection discards the transaction; a reconnect must not
+    // let later statements run outside it.
+    check(runSessionQuery(sessionId, "KILL CONNECTION_ID()").completion.outcome != SQL_OK,
+          "killed transaction connection is reported");
+    Reply later = runSessionQuery(sessionId, "INSERT INTO adapter_probe(value) VALUES(86)");
+    check(later.completion.outcome == SQL_ERROR,
+          "no statement runs after the transaction connection was lost");
+    check(takeReply(sqlPoolEndSession(sessionId, true)).completion.outcome == SQL_ERROR,
+          "COMMIT after connection loss is not reported as success");
+    check(countProbeValue(85) == 0 && countProbeValue(86) == 0,
+          "connection loss leaves no partial transaction");
+
+    int nextSessionId = beginSessionWhenFree();
+    check(nextSessionId > 0, "transaction opens after connection loss");
+    check(runSessionQuery(nextSessionId, "SELECT 1").completion.outcome == SQL_OK,
+          "the next transaction reconnects");
+    takeReply(sqlPoolEndSession(nextSessionId, false));
+}
+
+static void verifySessionIdleTimeout()
+{
+    int sessionId = beginSessionWhenFree();
+    check(sessionId > 0, "transaction opens for the idle case");
+    runSessionQuery(sessionId, "INSERT INTO adapter_probe(value) VALUES(90)");
+    usleep((SESSION_IDLE_TIMEOUT_MS + SESSION_IDLE_MARGIN_MS) * 1000);
+    check(sqlPoolSubmitSession(sessionId, "SELECT 1", true) == -SQL_EXPIRED,
+          "an idle transaction is closed");
+    int nextSessionId = beginSessionWhenFree();
+    check(nextSessionId > 0, "an idle transaction frees its worker");
+    takeReply(sqlPoolEndSession(nextSessionId, false));
+    check(countProbeValue(90) == 0, "an idle transaction is rolled back");
+}
+
+static void verifySessionMapChange()
+{
+    int sessionId = beginSessionWhenFree();
+    check(sessionId > 0, "transaction opens before the map change");
+    runSessionQuery(sessionId, "INSERT INTO adapter_probe(value) VALUES(95)");
+    sqlPoolNewMap();
+    check(sqlPoolEndSession(sessionId, true) == -SQL_EXPIRED,
+          "the old map's transaction cannot commit");
+    int nextSessionId = beginSessionWhenFree();
+    check(nextSessionId > 0, "the new map can open a transaction");
+    takeReply(sqlPoolEndSession(nextSessionId, false));
+    check(countProbeValue(95) == 0, "a map change rolls back the open transaction");
+
+    // A COMMIT requested before the map change still settles.
+    int committingSessionId = beginSessionWhenFree();
+    check(committingSessionId > 0, "transaction opens before a requested COMMIT");
+    int insert = sqlPoolSubmitSession(committingSessionId,
+                                      "INSERT INTO adapter_probe(value) "
+                                      "SELECT 96 FROM (SELECT SLEEP(0.2)) delay",
+                                      false);
+    int commit = sqlPoolEndSession(committingSessionId, true);
+    sqlPoolNewMap();
+    check(takeReply(insert).completion.outcome == SQL_OK, "queued statement survives the map");
+    check(takeReply(commit).completion.outcome == SQL_OK && countProbeValue(96) == 1,
+          "a requested COMMIT survives the map change");
+}
+
 // Exact cancellation is for owned reads, without putting them in the menu quota.
 static void verifyOwnedReadCancellation()
 {
@@ -409,6 +577,18 @@ int main(int argc, char **argv)
         verifyQueuedExpiry();
 
         verifyMapCancellation();
+
+        verifySessionCommit();
+
+        verifySessionRollback();
+
+        verifySessionFailure();
+
+        verifySessionConnectionLoss();
+
+        verifySessionIdleTimeout();
+
+        verifySessionMapChange();
 
         verifyDisconnectCancellation();
 

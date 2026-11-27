@@ -93,8 +93,30 @@ bool sqlPoolCancelRead(int id, SqlCompletionHandling completionHandling);
 // Discard releases it once its worker stops. Accepted writes are not cancelled.
 void sqlPoolCancel(const char *scope, SqlScopeMatch scopeMatch,
                    SqlCompletionHandling completionHandling);
+// A map change abandons an editor transaction that has not requested COMMIT
+// (its bound worker rolls it back); a queued COMMIT still settles.
 void sqlPoolNewMap();
 SqlPoolStats sqlPoolStats();
+
+// Editor transactions. At most one is open. Its statements run in submission order
+// on one connection inside a single transaction; from its first statement until
+// COMMIT or ROLLBACK it binds one non-progress worker, which then serves only it.
+// An idle (10 s) or overlong (120 s) transaction is rolled back automatically.
+
+// Return a positive session ID, -SQL_BUSY while another transaction is open, or
+// -SQL_UNAVAILABLE without an initialized pool. No SQL runs until a statement.
+int sqlPoolBeginSession();
+
+// Queue one statement. Return a job ID with the usual completion contract, or
+// -SQL_EXPIRED when the session is not open (ended, timed out or abandoned).
+// A statement that fails or expires unrun fails the transaction: later statements
+// complete with SQL_ERROR without running, and a requested COMMIT rolls back.
+int sqlPoolSubmitSession(int sessionId, const char *query, bool retainResult);
+
+// Queue COMMIT (commit=true) or ROLLBACK and close the session after it. COMMIT's
+// completion is SQL_OK, SQL_UNKNOWN (reply lost; it may have committed) or
+// SQL_ERROR (rolled back, including after an earlier failure). Same errors as submit.
+int sqlPoolEndSession(int sessionId, bool commit);
 
 // Test/process shutdown only; never on map transitions.
 void sqlPoolShutdown();

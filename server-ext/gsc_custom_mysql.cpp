@@ -143,6 +143,42 @@ void gsc_mysql_async_submit()
     stackPushInt(sqlPoolSubmit(query, retainResult != 0, policy, orderingKey, scope, queueWaitMs));
 }
 
+// mysql_async_session_begin(): open the editor transaction. Returns a positive
+// session ID, or a negative outcome (-SQL_BUSY while another one is open).
+void gsc_mysql_async_session_begin()
+{
+    stackPushInt(sqlPoolBeginSession());
+}
+
+// mysql_async_session_submit(sessionID, query, retainResult): queue one statement of
+// the transaction. Returns a job ID or a negative outcome, like mysql_async_submit.
+void gsc_mysql_async_session_submit()
+{
+    int sessionId = 0;
+    char *query = NULL;
+    int retainResult = 0;
+    if (!stackGetParams("isi", &sessionId, &query, &retainResult))
+    {
+        stackPushInt(-SQL_INVALID);
+        return;
+    }
+    stackPushInt(sqlPoolSubmitSession(sessionId, query, retainResult != 0));
+}
+
+// mysql_async_session_end(sessionID, commit): queue COMMIT (commit != 0) or ROLLBACK
+// and close the transaction. Returns a job ID or a negative outcome.
+void gsc_mysql_async_session_end()
+{
+    int sessionId = 0;
+    int commit = 0;
+    if (!stackGetParams("ii", &sessionId, &commit))
+    {
+        stackPushInt(-SQL_INVALID);
+        return;
+    }
+    stackPushInt(sqlPoolEndSession(sessionId, commit != 0));
+}
+
 // Poll completions without consuming them; native demo decoding shares one time budget.
 void gsc_mysql_async_getdone_list()
 {

@@ -39,6 +39,9 @@ void gsc_mysql_async_execute_longquery();
 
 
 void gsc_mysql_async_submit();
+void gsc_mysql_async_session_begin();
+void gsc_mysql_async_session_submit();
+void gsc_mysql_async_session_end();
 void gsc_mysql_async_getstatus();
 void gsc_mysql_async_cancel();
 void gsc_mysql_async_newmap();
